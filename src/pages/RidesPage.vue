@@ -262,11 +262,27 @@ async function handleEmailAuth() {
   }
 }
 
+function normalizePhone(raw) {
+  // Strip everything except digits and leading +
+  let digits = raw.replace(/[^\d+]/g, '')
+  // If starts with +, keep it; otherwise prepend +1
+  if (!digits.startsWith('+')) {
+    // Remove leading 1 if they typed 1XXXXXXXXXX (11 digits)
+    if (digits.length === 11 && digits.startsWith('1')) {
+      digits = '+' + digits
+    } else {
+      digits = '+1' + digits
+    }
+  }
+  return digits
+}
+
 async function handleSendCode() {
   authLoading.value = true
   authError.value = null
   try {
-    await sendPhoneCode(phoneForm.number, 'phone-sign-in-btn')
+    const phone = normalizePhone(phoneForm.number)
+    await sendPhoneCode(phone, 'phone-sign-in-btn')
     phoneCodeSent.value = true
   } catch (e) {
     authError.value = e.message.replace('Firebase: ', '')
