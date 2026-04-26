@@ -6,7 +6,6 @@
         <img
           :src="fullscreenSrc"
           class="fullscreen-img"
-          @click.stop
         />
         <div class="absolute-top-right q-pa-md" style="z-index: 1">
           <q-btn round flat icon="close" color="white" size="lg" @click="fullscreen = false" />
@@ -144,7 +143,7 @@ onUnmounted(() => clearInterval(refreshInterval))
 .fullscreen-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   cursor: default;
 }
 </style>

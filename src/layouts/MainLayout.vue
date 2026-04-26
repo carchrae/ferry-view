@@ -19,7 +19,8 @@
 
         <!-- Desktop nav tabs -->
         <q-tabs v-model="currentTab" shrink stretch class="gt-sm">
-          <q-route-tab name="status" label="Ferry Status" icon="directions_boat" to="/" />
+          <q-route-tab name="home" label="Home" icon="home" to="/" exact />
+          <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
           <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
         </q-tabs>
       </q-toolbar>
@@ -36,6 +37,11 @@
         </q-item-label>
 
         <q-item clickable v-ripple to="/" exact @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="home" /></q-item-section>
+          <q-item-section>Home</q-item-section>
+        </q-item>
+
+        <q-item clickable v-ripple to="/status" @click="leftDrawerOpen = false">
           <q-item-section avatar><q-icon name="directions_boat" /></q-item-section>
           <q-item-section>Ferry Status</q-item-section>
         </q-item>
@@ -54,7 +60,8 @@
     <!-- Mobile bottom nav -->
     <q-footer class="gt-sm-hide lt-md bg-white text-primary shadow-up-3">
       <q-tabs v-model="currentTab" active-color="primary" indicator-color="primary" class="text-grey-7">
-        <q-route-tab name="status" label="Status" icon="directions_boat" to="/" />
+        <q-route-tab name="home" label="Home" icon="home" to="/" exact />
+        <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
         <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
       </q-tabs>
     </q-footer>
@@ -66,7 +73,11 @@ import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const currentTab = ref(route.path === '/webcams' ? 'webcams' : 'status')
+const currentTab = ref(
+  route.path === '/webcams' ? 'webcams'
+    : route.path === '/status' ? 'status'
+      : 'home'
+)
 const leftDrawerOpen = ref(false)
 
 function toggleLeftDrawer() {
