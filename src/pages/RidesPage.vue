@@ -6,7 +6,51 @@
         <q-icon name="people" size="48px" color="primary" class="q-mb-sm" />
         <div class="text-h6 q-mb-xs">Ride Share</div>
         <div class="text-body2 text-grey-7 q-mb-md">Sign in to offer or request rides with fellow ferry travellers</div>
-        <q-btn color="primary" icon="login" label="Sign in with Google" @click="signInWithGoogle" />
+
+        <q-btn-toggle
+          v-model="authMethod"
+          no-caps dense spread
+          toggle-color="primary"
+          class="q-mb-md"
+          :options="[{label: 'Google', value: 'google'}, {label: 'Email', value: 'email'}, {label: 'Phone', value: 'phone'}]"
+        />
+
+        <!-- Google -->
+        <q-btn v-if="authMethod === 'google'" color="primary" icon="login" label="Sign in with Google" @click="signInWithGoogle" class="full-width" />
+
+        <!-- Email -->
+        <div v-if="authMethod === 'email'">
+          <q-input v-model="emailForm.name" dense outlined label="Name" class="q-mb-sm" v-if="emailForm.isSignUp" />
+          <q-input v-model="emailForm.email" dense outlined label="Email" type="email" class="q-mb-sm" />
+          <q-input v-model="emailForm.password" dense outlined label="Password" type="password" class="q-mb-sm" />
+          <div class="row q-gutter-sm">
+            <q-btn
+              color="primary" no-caps dense
+              :label="emailForm.isSignUp ? 'Create Account' : 'Sign In'"
+              :loading="authLoading"
+              @click="handleEmailAuth"
+              class="col"
+            />
+          </div>
+          <q-btn flat dense no-caps size="sm" class="q-mt-xs"
+            :label="emailForm.isSignUp ? 'Already have an account? Sign in' : 'No account? Create one'"
+            @click="emailForm.isSignUp = !emailForm.isSignUp"
+          />
+          <div v-if="authError" class="text-negative text-caption q-mt-xs">{{ authError }}</div>
+        </div>
+
+        <!-- Phone -->
+        <div v-if="authMethod === 'phone'">
+          <div v-if="!phoneCodeSent">
+            <q-input v-model="phoneForm.number" dense outlined label="Phone number" placeholder="+1 604 555 1234" class="q-mb-sm" />
+            <q-btn id="phone-sign-in-btn" color="primary" no-caps dense label="Send Code" :loading="authLoading" @click="handleSendCode" class="full-width" />
+          </div>
+          <div v-else>
+            <q-input v-model="phoneForm.code" dense outlined label="Verification code" class="q-mb-sm" />
+            <q-btn color="primary" no-caps dense label="Verify" :loading="authLoading" @click="handleVerifyCode" class="full-width" />
+          </div>
+          <div v-if="authError" class="text-negative text-caption q-mt-xs">{{ authError }}</div>
+        </div>
       </q-card-section>
     </q-card>
 
@@ -83,7 +127,7 @@
                 v-if="!user"
                 flat dense no-caps size="sm" icon="contact_mail" label="Sign in to contact"
                 color="grey"
-                @click="signInWithGoogle"
+                @click="scrollToSignIn"
               />
             </div>
             <div v-if="visibleContacts[ride.id]" class="text-caption q-mt-xs q-pa-xs bg-blue-1 rounded-borders">
@@ -186,12 +230,66 @@ import { ref, reactive } from 'vue'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
 
-const { user, signInWithGoogle, signOut } = useAuth()
+const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, sendPhoneCode, verifyPhoneCode, signOut } = useAuth()
 const { rides, createRide, deleteRide } = useRides()
 
 const posting = ref(false)
 const showPostDialog = ref(false)
 const visibleContacts = reactive({})
+
+// Auth UI state
+const authMethod = ref('google')
+const authLoading = ref(false)
+const authError = ref(null)
+const phoneCodeSent = ref(false)
+
+const emailForm = reactive({ email: '', password: '', name: '', isSignUp: false })
+const phoneForm = reactive({ number: '', code: '' })
+
+async function handleEmailAuth() {
+  authLoading.value = true
+  authError.value = null
+  try {
+    if (emailForm.isSignUp) {
+      await signUpWithEmail(emailForm.email, emailForm.password, emailForm.name)
+    } else {
+      await signInWithEmail(emailForm.email, emailForm.password)
+    }
+  } catch (e) {
+    authError.value = e.message.replace('Firebase: ', '')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+async function handleSendCode() {
+  authLoading.value = true
+  authError.value = null
+  try {
+    await sendPhoneCode(phoneForm.number, 'phone-sign-in-btn')
+    phoneCodeSent.value = true
+  } catch (e) {
+    authError.value = e.message.replace('Firebase: ', '')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+async function handleVerifyCode() {
+  authLoading.value = true
+  authError.value = null
+  try {
+    await verifyPhoneCode(phoneForm.code)
+  } catch (e) {
+    authError.value = e.message.replace('Firebase: ', '')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+function scrollToSignIn() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 function toggleContact(rideId) {
   visibleContacts[rideId] = !visibleContacts[rideId]
