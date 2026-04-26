@@ -12,7 +12,10 @@
               <div class="text-caption">{{ speedText }}</div>
             </div>
             <q-space />
-            <div class="text-caption text-grey-6">{{ ferryData.lastUpdate }}</div>
+            <div class="text-caption text-grey-6">
+              Last Update <br/>
+              {{ ferryData.lastUpdate }}
+            </div>
           </q-card-section>
         </q-card>
       </div>
@@ -235,8 +238,8 @@ const pastSailings = computed(() => {
     let diffText = null
     let diffColor = 'grey'
     if (diff !== null) {
-      if (Math.abs(diff) <= 2) {
-        diffText = 'On time'
+      if (Math.abs(diff) <= 1) {
+        diffText = 'on time'
         diffColor = 'positive'
       } else if (diff > 0) {
         diffText = `${diff}m late`

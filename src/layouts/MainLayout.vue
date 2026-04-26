@@ -22,9 +22,55 @@
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
           <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
           <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
+          <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
         </q-tabs>
+
+        <q-btn flat dense round icon="info" @click="showAttributions = true" />
       </q-toolbar>
     </q-header>
+
+    <!-- Attributions dialog -->
+    <q-dialog v-model="showAttributions">
+      <q-card style="min-width: 300px">
+        <q-card-section class="row items-center">
+          <div class="text-h6">Attributions</div>
+          <q-space />
+          <q-btn flat round dense icon="close" v-close-popup />
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <q-list>
+            <q-item>
+              <q-item-section avatar><q-icon name="api" color="primary" /></q-item-section>
+              <q-item-section>
+                <q-item-label>Carlos</q-item-label>
+                <q-item-label caption>AIS tracking and ferry status API</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section avatar><q-icon name="videocam" color="primary" /></q-item-section>
+              <q-item-section>
+                <q-item-label>Bowen Island Municipality</q-item-label>
+                <q-item-label caption>Community centre webcam</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section avatar><q-icon name="directions_boat" color="primary" /></q-item-section>
+              <q-item-section>
+                <q-item-label>BC Ferries</q-item-label>
+                <q-item-label caption>Terminal webcams and ferry service</q-item-label>
+              </q-item-section>
+            </q-item>
+            <q-item>
+              <q-item-section avatar><q-icon name="person" color="primary" /></q-item-section>
+              <q-item-section>
+                <q-item-label>Tom Carchrae</q-item-label>
+                <q-item-label caption>Just this guy who mashed this up</q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
 
     <q-drawer
       v-model="leftDrawerOpen"
@@ -50,6 +96,11 @@
           <q-item-section avatar><q-icon name="videocam" /></q-item-section>
           <q-item-section>Webcams</q-item-section>
         </q-item>
+
+        <q-item clickable v-ripple @click="openBowenFerry(); leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="map" /></q-item-section>
+          <q-item-section>Map</q-item-section>
+        </q-item>
       </q-list>
     </q-drawer>
 
@@ -63,6 +114,7 @@
         <q-route-tab name="home" label="Home" icon="home" to="/" exact />
         <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
         <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
+        <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
       </q-tabs>
     </q-footer>
   </q-layout>
@@ -79,8 +131,13 @@ const currentTab = ref(
       : 'home'
 )
 const leftDrawerOpen = ref(false)
+const showAttributions = ref(false)
 
 function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value
+}
+
+function openBowenFerry() {
+  window.open('https://bowenferry.ca', '_blank')
 }
 </script>
