@@ -130,6 +130,8 @@
                 :src="cam.src"
                 :ratio="16/9"
                 spinner-color="primary"
+                @error="handleCamError(cam.globalIndex)"
+                @load="handleCamLoad(cam.globalIndex)"
               >
                 <template v-slot:error>
                   <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
@@ -243,6 +245,24 @@ const allCamLabels = [
 const displayIndexes = [4, 5, 0, 1, 2, 3]
 const cacheBusters = ref(allCamUrls.map(() => Date.now()))
 
+const MAX_CAM_RETRIES = 3
+const CAM_RETRY_DELAY = 2000
+const camRetries = ref(allCamUrls.map(() => 0))
+const retryTimeouts = []
+
+function handleCamError(camIndex) {
+  if (camRetries.value[camIndex] >= MAX_CAM_RETRIES) return
+  camRetries.value[camIndex]++
+  const t = setTimeout(() => {
+    cacheBusters.value[camIndex] = Date.now()
+  }, CAM_RETRY_DELAY)
+  retryTimeouts.push(t)
+}
+
+function handleCamLoad(camIndex) {
+  camRetries.value[camIndex] = 0
+}
+
 const displayCams = computed(() =>
   displayIndexes.map(i => ({
     src: `${allCamUrls[i]}?t=${cacheBusters.value[i]}`,
@@ -345,44 +365,43 @@ const pastSailings = computed(() => {
 })
 
 // --- Speed / stopped duration for banner ---
+const isSailing = computed(() => {
+  if (!ferryData.value) return false
+  const speed = parseFloat(ferryData.value.speed)
+  return !isNaN(speed) && speed > 0.5
+})
+
 const speedText = computed(() => {
   if (!ferryData.value) return 'Waiting for data...'
 
-
-
   const mostRecent = ferryData.value.recentActivity[0]
-  if (mostRecent) {
-    const evtTime = parseTimeToday(mostRecent.time)
-    if (evtTime) {
-      const mins = Math.round((Date.now() - evtTime) / 60000)
-      if (mins >= 0 && mins < 600) {
-        if (mostRecent.action === 'Departed') {
-          return `Left ${mostRecent.location} ${mins} min ago`
-        }
-        if (mostRecent.action === 'Arrived') {
-          return `Stopped at ${mostRecent.location} for ${mins} min`
-        }
-      }
-    }
+  if (!mostRecent) return ''
+
+  const evtTime = parseTimeToday(mostRecent.time)
+  if (!evtTime) return ''
+
+  const mins = Math.round((Date.now() - evtTime) / 60000)
+  if (mins < 0 || mins >= 600) return ''
+
+  if (mostRecent.action === 'Departed') {
+    return isSailing.value
+      ? `Left ${mostRecent.location} ${mins} min ago`
+      : `Stopped for ${mins} min`
   }
-
-  const speed = parseFloat(ferryData.value.speed)
-  if (!isNaN(speed) && speed > 0.5) return `Underway at ${ferryData.value.speed} knots`
-
+  if (mostRecent.action === 'Arrived') {
+    return `Stopped at ${mostRecent.location} for ${mins} min`
+  }
   return ''
 })
 
 const speedClass = computed(() => {
   if (!ferryData.value) return ''
-  const speed = parseFloat(ferryData.value.speed)
-  if (isNaN(speed)) return ''
-  return speed > 0.5 ? 'bg-blue-1' : 'bg-grey-2'
+  return isSailing.value ? 'bg-blue-1' : 'bg-grey-2'
 })
 
 const speedIcon = computed(() => {
   if (!ferryData.value) return 'directions_boat'
-  const speed = parseFloat(ferryData.value.speed)
-  return speed > 0.5 ? 'sailing' : 'anchor'
+  return isSailing.value ? 'sailing' : 'anchor'
 })
 
 function getDeckColor(available) {
@@ -416,11 +435,13 @@ onMounted(() => {
   refreshInterval = setInterval(fetchFerryData, 60000)
   camRefreshInterval = setInterval(() => {
     cacheBusters.value = allCamUrls.map(() => Date.now())
-  }, 30000)
+    camRetries.value = allCamUrls.map(() => 0)
+  }, 60000)
 })
 onUnmounted(() => {
   clearInterval(refreshInterval)
   clearInterval(camRefreshInterval)
+  retryTimeouts.forEach(clearTimeout)
 })
 </script>
 
