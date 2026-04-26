@@ -1,10 +1,35 @@
 <template>
   <q-page class="q-pa-sm">
-    <!-- Status Banner -->
-    <div v-if="ferryData" class="row q-col-gutter-sm q-mb-sm">
-      <!-- Vessel Status -->
+    <!-- Loading state -->
+    <div v-if="loading && !ferryData" class="row q-col-gutter-sm q-mb-sm">
       <div class="col-12">
-        <q-card flat bordered :class="speedClass">
+        <q-card flat bordered>
+          <q-card-section class="q-pa-sm">
+            <q-skeleton type="text" width="60%" />
+            <q-skeleton type="text" width="40%" />
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div v-else-if="error && !ferryData" class="row q-col-gutter-sm q-mb-sm">
+      <div class="col-12">
+        <q-banner dense class="bg-negative text-white rounded-borders">
+          Failed to load: {{ error }}
+          <template v-slot:action>
+            <q-btn flat label="Retry" @click="fetchFerryData" />
+          </template>
+        </q-banner>
+      </div>
+    </div>
+
+    <!-- All content in one flowing row -->
+    <div class="row q-col-gutter-sm">
+      <!-- Sailings (one col-md-6 block) -->
+      <div v-if="ferryData" class="col-12 col-md-6">
+        <!-- Vessel Status -->
+        <q-card flat bordered :class="speedClass" class="q-mb-sm">
           <q-card-section horizontal class="items-center q-pa-sm">
             <q-icon :name="speedIcon" size="sm" class="q-mr-sm" />
             <div>
@@ -18,129 +43,112 @@
             </div>
           </q-card-section>
         </q-card>
-      </div>
-
-      <!-- Next Sailings -->
-      <div class="col-6">
-        <q-card flat bordered>
-          <q-card-section class="q-pa-sm">
-            <div class="text-overline text-grey-7">Next Sailings</div>
-            <div v-for="(s, i) in upcomingSailings" :key="i" class="row items-center no-wrap q-mt-xs">
-              <span class="text-body2">{{ s.label }}</span>
-              <q-badge v-if="s.deckSpace" :color="getDeckColor(s.deckSpace)" :label="s.deckSpace" dense class="q-ml-xs" />
-              <q-space />
-              <div class="text-body2 text-weight-bold q-ml-sm">{{ s.shortTime }}</div>
-            </div>
-            <div v-if="!upcomingSailings.length" class="text-caption text-grey-5 q-mt-xs">No upcoming sailings</div>
-          </q-card-section>
-        </q-card>
-      </div>
-
-      <!-- Past Sailings -->
-      <div class="col-6">
-        <q-card flat bordered>
-          <q-card-section class="q-pa-sm">
-            <div class="text-overline text-grey-7">Past Sailings</div>
-            <div v-for="(event, i) in pastSailings" :key="i" class="row items-center no-wrap q-mt-xs">
-              <span class="text-body2">{{ event.displayLabel }}</span>
-              <q-badge v-if="event.diffText" :color="event.diffColor" class="q-ml-xs" dense>{{ event.diffText }}</q-badge>
-              <q-space />
-              <div class="text-body2 text-weight-bold q-ml-sm text-no-wrap" >{{ event.shortTime }}</div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
-
-    <!-- Loading state -->
-    <div v-else-if="loading" class="row q-col-gutter-sm q-mb-sm">
-      <div class="col-12">
-        <q-card flat bordered>
-          <q-card-section class="q-pa-sm">
-            <q-skeleton type="text" width="60%" />
-            <q-skeleton type="text" width="40%" />
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
-
-    <!-- Error state -->
-    <div v-else-if="error" class="row q-col-gutter-sm q-mb-sm">
-      <div class="col-12">
-        <q-banner dense class="bg-negative text-white rounded-borders">
-          Failed to load: {{ error }}
-          <template v-slot:action>
-            <q-btn flat label="Retry" @click="fetchFerryData" />
-          </template>
-        </q-banner>
-      </div>
-    </div>
-
-    <!-- Cameras Grid -->
-    <div class="row q-col-gutter-sm">
-      <div
-        v-for="(cam, index) in displayCams"
-        :key="index"
-        class="col-6"
-      >
-        <q-card flat bordered class="webcam-card cursor-pointer" @click="openFullscreen(cam.globalIndex)">
-          <q-img
-            :src="cam.src"
-            :ratio="16/9"
-            spinner-color="primary"
-          >
-            <template v-slot:error>
-              <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
-                <q-icon name="videocam_off" size="24px" />
-              </div>
-            </template>
-          </q-img>
-          <q-card-actions class="q-py-none q-px-sm">
-            <div class="text-caption ellipsis">{{ cam.label }}</div>
-            <q-space />
-            <q-btn flat dense icon="fullscreen" size="sm" color="primary" @click.stop="openFullscreen(cam.globalIndex)" />
-          </q-card-actions>
-        </q-card>
-      </div>
-    </div>
-
-    <!-- Rides -->
-    <q-card flat bordered class="q-mt-sm">
-      <q-card-section v-if="!sortedRides.length" class="text-center q-pa-md">
-        <q-icon name="directions_car" size="36px" color="grey-5" class="q-mb-xs" />
-        <div class="text-body2 text-grey-7">Need a ride from the ferry? Or have room in your car?</div>
-        <q-btn color="primary" no-caps dense label="Offer or Request a Ride" icon="thumb_up" to="/rides" class="q-mt-sm" />
-      </q-card-section>
-    </q-card>
-    <q-card v-if="sortedRides.length" flat bordered class="q-mt-sm">
-      <q-card-section class="q-pa-sm">
-        <div class="text-overline text-grey-7">Ride Share</div>
-        <div v-for="ride in sortedRides" :key="ride.id" class="q-mt-xs">
-          <div class="row items-center no-wrap q-pa-xs rounded-borders" :class="ride.isUpcoming ? 'bg-yellow-1' : ''">
-            <q-badge
-              :color="ride.type === 'offer' ? 'positive' : 'info'"
-              :label="ride.type === 'offer' ? 'Offer' : 'Request'"
-              dense
-              class="q-mr-xs"
-            />
-            <q-badge
-              outline dense
-              :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
-              :label="ride.direction === 'on-bowen' ? 'Bowen' : 'Mainland'"
-              class="q-mr-xs"
-            />
-            <span v-if="ride.sailing" class="text-caption text-weight-bold q-mr-xs">{{ ride.sailing }}</span>
-            <span v-if="ride.recurring" class="text-caption text-grey-7 q-mr-xs">{{ ride.schedule || 'Recurring' }}</span>
-            <q-space />
-            <q-btn flat dense no-caps size="sm" color="primary" :label="'Contact ' + ride.authorName" :to="'/rides/' + ride.id" />
+        <div class="row q-mb-sm q-col-gutter-sm">
+          <!-- Next Sailings -->
+          <div class="col-6">
+            <q-card flat bordered>
+              <q-card-section class="q-pa-sm">
+                <div class="text-overline text-grey-7">Next Sailings</div>
+                <div v-for="(s, i) in upcomingSailings" :key="i" class="row items-center no-wrap q-mt-xs">
+                  <span class="text-body2">{{ s.label }}</span>
+                  <q-badge v-if="s.deckSpace" :color="getDeckColor(s.deckSpace)" :label="s.deckSpace" dense class="q-ml-xs" />
+                  <q-space />
+                  <div class="text-body2 text-weight-bold q-ml-sm">{{ s.shortTime }}</div>
+                </div>
+                <div v-if="!upcomingSailings.length" class="text-caption text-grey-5 q-mt-xs">No upcoming sailings</div>
+              </q-card-section>
+            </q-card>
           </div>
-          <div class="text-caption text-grey-8 q-pl-xs">{{ ride.description }}</div>
+          <!-- Past Sailings -->
+          <div class="col-6">
+            <q-card flat bordered>
+              <q-card-section class="q-pa-sm">
+                <div class="text-overline text-grey-7">Past Sailings</div>
+                <div v-for="(event, i) in pastSailings" :key="i" class="row items-center no-wrap q-mt-xs">
+                  <span class="text-body2">{{ event.displayLabel }}</span>
+                  <q-badge v-if="event.diffText" :color="event.diffColor" class="q-ml-xs" dense>{{ event.diffText }}</q-badge>
+                  <q-space />
+                  <div class="text-body2 text-weight-bold q-ml-sm text-no-wrap">{{ event.shortTime }}</div>
+                </div>
+              </q-card-section>
+            </q-card>
+          </div>
         </div>
-        <div class="text-right q-mt-xs">
-          <q-btn flat dense no-caps size="sm" label="View all rides" color="primary" to="/rides" />
+        <!-- Rides -->
+        <div class="col-12 col-md-6">
+          <q-card flat bordered>
+            <q-card-section v-if="!sortedRides.length" class="text-center q-pa-md">
+              <q-icon name="directions_car" size="36px" color="grey-5" class="q-mb-xs" />
+              <div class="text-body2 text-grey-7">Need a ride from the ferry? Or have room in your car?</div>
+              <q-btn color="primary" no-caps dense label="Offer or Request a Ride" icon="thumb_up" to="/rides" class="q-mt-sm" />
+            </q-card-section>
+          </q-card>
+          <q-card v-if="sortedRides.length" flat bordered>
+            <q-card-section class="q-pa-sm">
+              <div class="text-overline text-grey-7">Ride Share</div>
+              <div v-for="ride in sortedRides" :key="ride.id" class="q-mt-xs">
+                <div class="row items-center no-wrap q-pa-xs rounded-borders" :class="ride.isUpcoming ? 'bg-yellow-1' : ''">
+                  <q-badge
+                    :color="ride.type === 'offer' ? 'positive' : 'info'"
+                    :label="ride.type === 'offer' ? 'Offer' : 'Request'"
+                    dense
+                    class="q-mr-xs"
+                  />
+                  <q-badge
+                    outline dense
+                    :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
+                    :label="ride.direction === 'on-bowen' ? 'Bowen' : 'Mainland'"
+                    class="q-mr-xs"
+                  />
+                  <span v-if="ride.sailing" class="text-caption text-weight-bold q-mr-xs">{{ ride.sailing }}</span>
+                  <span v-if="ride.recurring" class="text-caption text-grey-7 q-mr-xs">{{ ride.schedule || 'Recurring' }}</span>
+                  <q-space />
+                  <q-btn flat dense no-caps size="sm" color="primary" :label="'Contact ' + ride.authorName" :to="'/rides/' + ride.id" />
+                </div>
+                <div class="text-caption text-grey-8 q-pl-xs">{{ ride.description }}</div>
+              </div>
+              <div class="text-right q-mt-xs">
+                <q-btn flat dense no-caps size="sm" label="View all rides" color="primary" to="/rides" />
+              </div>
+            </q-card-section>
+          </q-card>
         </div>
-      </q-card-section>
-    </q-card>
+
+      </div>
+
+
+      <!-- Cameras Grid -->
+      <div class="col-12 col-md-6">
+        <div class="row q-col-gutter-sm">
+          <div
+            v-for="(cam, index) in displayCams"
+            :key="index"
+            class="col-6"
+          >
+            <q-card flat bordered class="webcam-card cursor-pointer" @click="openFullscreen(cam.globalIndex)">
+              <q-img
+                :src="cam.src"
+                :ratio="16/9"
+                spinner-color="primary"
+              >
+                <template v-slot:error>
+                  <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
+                    <q-icon name="videocam_off" size="24px" />
+                  </div>
+                </template>
+              </q-img>
+              <q-card-actions class="q-py-none q-px-sm">
+                <div class="text-caption ellipsis">{{ cam.label }}</div>
+                <q-space />
+                <q-btn flat dense icon="fullscreen" size="sm" color="primary" @click.stop="openFullscreen(cam.globalIndex)" />
+              </q-card-actions>
+            </q-card>
+          </div>
+        </div>
+      </div>
+
+
+    </div>
 
     <!-- Fullscreen viewer -->
     <q-dialog v-model="fullscreen" maximized transition-show="fade" transition-hide="fade">
