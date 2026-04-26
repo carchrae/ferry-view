@@ -51,7 +51,7 @@
                 <div class="text-overline text-grey-7">Next Sailings</div>
                 <div v-for="(s, i) in upcomingSailings" :key="i" class="row items-center no-wrap q-mt-xs">
                   <span class="text-body2">{{ s.label }}</span>
-                  <q-badge v-if="s.deckSpace" :color="getDeckColor(s.deckSpace)" :label="s.deckSpace" dense class="q-ml-xs" />
+                  <q-badge rounded v-if="s.deckSpace" :color="getDeckColor(s.deckSpace)" :label="s.deckSpace" dense class="q-ml-xs" />
                   <q-space />
                   <div class="text-body2 text-weight-bold q-ml-sm">{{ s.shortTime }}</div>
                 </div>
@@ -66,7 +66,7 @@
                 <div class="text-overline text-grey-7">Past Sailings</div>
                 <div v-for="(event, i) in pastSailings" :key="i" class="row items-center no-wrap q-mt-xs">
                   <span class="text-body2">{{ event.displayLabel }}</span>
-                  <q-badge v-if="event.diffText" :color="event.diffColor" class="q-ml-xs" dense>{{ event.diffText }}</q-badge>
+                  <q-badge rounded v-if="event.diffText" :color="event.diffColor" class="q-ml-xs" dense>{{ event.diffText }}</q-badge>
                   <q-space />
                   <div class="text-body2 text-weight-bold q-ml-sm text-no-wrap">{{ event.shortTime }}</div>
                 </div>
