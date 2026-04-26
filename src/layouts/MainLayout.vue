@@ -14,7 +14,7 @@
 
         <q-toolbar-title>
           <q-icon name="directions_boat" class="q-mr-sm" />
-          Bowen Ferry
+          Bowen Lift
         </q-toolbar-title>
 
         <!-- Desktop nav tabs -->
@@ -84,7 +84,7 @@
     >
       <q-list>
         <q-item-label header class="text-weight-bold">
-          Bowen Ferry
+          Bowen Lift
         </q-item-label>
 
         <q-item clickable v-ripple to="/" exact @click="leftDrawerOpen = false">

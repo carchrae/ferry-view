@@ -239,8 +239,8 @@ const allCamLabels = [
   'Bowen Community',
 ]
 
-// Show cameras 1, 3 (indexes 0, 2) and Bowen cameras (indexes 4, 5)
-const displayIndexes = [0, 2, 4, 5]
+// Bowen cameras first, then HSB in order
+const displayIndexes = [4, 5, 0, 1, 2, 3]
 const cacheBusters = ref(allCamUrls.map(() => Date.now()))
 
 const displayCams = computed(() =>
