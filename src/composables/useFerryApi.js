@@ -1,6 +1,10 @@
-import { ref } from 'vue'
+import {ref} from 'vue'
 
-const BASE_URL = '/api/'
+// use netlify proxy for local development
+const BASE_URL =
+  window.location.host === 'localhost'
+    ? 'https://bowen-ferry.netlify.app/api/'
+    : '/api/'
 
 export function useFerryApi() {
   const ferryData = ref(null)
@@ -13,8 +17,15 @@ export function useFerryApi() {
     try {
       const response = await fetch(`${BASE_URL}AISPositionsData3`)
       const text = await response.text()
-      const data = JSON.parse(text)
-      ferryData.value = parseFerryData(data)
+      let data = JSON.parse(text)
+      // API may return double-encoded JSON string
+      if (typeof data === 'string') {
+        data = JSON.parse(data)
+      }
+      console.log('ferry data', data)
+      const parsed = parseFerryData(data)
+      console.log('ferry parsed', parsed)
+      ferryData.value = parsed
     } catch (e) {
       error.value = e.message
     } finally {
