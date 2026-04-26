@@ -350,25 +350,18 @@ const speedText = computed(() => {
 
 
 
-  // Ferry is stopped — calculate how long since last arrival
-  const lastArrival = ferryData.value.recentActivity.find(e => e.action === 'Arrived')
-  if (lastArrival) {
-    const arrTime = parseTimeToday(lastArrival.time)
-    if (arrTime) {
-      const mins = Math.round((Date.now() - arrTime) / 60000)
+  const mostRecent = ferryData.value.recentActivity[0]
+  if (mostRecent) {
+    const evtTime = parseTimeToday(mostRecent.time)
+    if (evtTime) {
+      const mins = Math.round((Date.now() - evtTime) / 60000)
       if (mins >= 0 && mins < 600) {
-        return `Stopped at ${lastArrival.location} for ${mins} min`
-      }
-    }
-  }
-
-  const lastDepart = ferryData.value.recentActivity.find(e => e.action === 'Departed')
-  if (lastDepart) {
-    const arrTime = parseTimeToday(lastDepart.time)
-    if (arrTime) {
-      const mins = Math.round((Date.now() - arrTime) / 60000)
-      if (mins >= 0 && mins < 600) {
-        return `Left ${lastDepart.location} ${mins} min ago`
+        if (mostRecent.action === 'Departed') {
+          return `Left ${mostRecent.location} ${mins} min ago`
+        }
+        if (mostRecent.action === 'Arrived') {
+          return `Stopped at ${mostRecent.location} for ${mins} min`
+        }
       }
     }
   }
