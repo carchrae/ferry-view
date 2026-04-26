@@ -46,7 +46,7 @@
             <q-btn id="phone-sign-in-btn" color="primary" no-caps dense label="Send Code" :loading="authLoading" @click="handleSendCode" class="full-width" />
           </div>
           <div v-else>
-            <q-input v-model="phoneForm.code" dense outlined label="Verification code" class="q-mb-sm" />
+            <q-input v-model="phoneForm.code" dense outlined label="Verification code" class="q-mb-sm" inputmode="numeric" autocomplete="one-time-code" />
             <q-btn color="primary" no-caps dense label="Verify" :loading="authLoading" @click="handleVerifyCode" class="full-width" />
           </div>
           <div v-if="authError" class="text-negative text-caption q-mt-xs">{{ authError }}</div>
@@ -226,7 +226,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onUnmounted } from 'vue'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
 
@@ -277,6 +277,12 @@ function normalizePhone(raw) {
   return digits
 }
 
+let otpAbort = null
+
+onUnmounted(() => {
+  otpAbort?.abort()
+})
+
 async function handleSendCode() {
   authLoading.value = true
   authError.value = null
@@ -284,6 +290,7 @@ async function handleSendCode() {
     const phone = normalizePhone(phoneForm.number)
     await sendPhoneCode(phone, 'phone-sign-in-btn')
     phoneCodeSent.value = true
+    listenForOtp()
   } catch (e) {
     authError.value = e.message.replace('Firebase: ', '')
   } finally {
@@ -291,11 +298,28 @@ async function handleSendCode() {
   }
 }
 
+function listenForOtp() {
+  if (!('OTPCredential' in window)) return
+  otpAbort?.abort()
+  otpAbort = new AbortController()
+  navigator.credentials
+    .get({ otp: { transport: ['sms'] }, signal: otpAbort.signal })
+    .then((otp) => {
+      if (otp?.code) {
+        phoneForm.code = otp.code
+        handleVerifyCode()
+      }
+    })
+    .catch(() => {})
+}
+
 async function handleVerifyCode() {
   authLoading.value = true
   authError.value = null
   try {
     await verifyPhoneCode(phoneForm.code)
+    otpAbort?.abort()
+    otpAbort = null
   } catch (e) {
     authError.value = e.message.replace('Firebase: ', '')
   } finally {
