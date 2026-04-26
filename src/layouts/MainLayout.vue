@@ -13,8 +13,7 @@
         />
 
         <q-toolbar-title>
-          <q-icon name="directions_boat" class="q-mr-sm" />
-          Bowen Lift
+          Bowen LIFT
         </q-toolbar-title>
 
         <!-- Desktop nav tabs -->
