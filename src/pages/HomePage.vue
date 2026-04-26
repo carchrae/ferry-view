@@ -104,6 +104,37 @@
       </div>
     </div>
 
+    <!-- Rides -->
+    <q-card v-if="sortedRides.length" flat bordered class="q-mt-sm">
+      <q-card-section class="q-pa-sm">
+        <div class="text-overline text-grey-7">Ride Share</div>
+        <div v-for="ride in sortedRides" :key="ride.id" class="q-mt-xs">
+          <div class="row items-center no-wrap q-pa-xs rounded-borders" :class="ride.isUpcoming ? 'bg-yellow-1' : ''">
+            <q-badge
+              :color="ride.type === 'offer' ? 'positive' : 'info'"
+              :label="ride.type === 'offer' ? 'Offer' : 'Request'"
+              dense
+              class="q-mr-xs"
+            />
+            <q-badge
+              outline dense
+              :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
+              :label="ride.direction === 'on-bowen' ? 'Bowen' : 'Mainland'"
+              class="q-mr-xs"
+            />
+            <span v-if="ride.sailing" class="text-caption text-weight-bold q-mr-xs">{{ ride.sailing }}</span>
+            <span v-if="ride.recurring" class="text-caption text-grey-7 q-mr-xs">{{ ride.schedule || 'Recurring' }}</span>
+            <q-space />
+            <q-btn flat dense no-caps size="sm" color="primary" :label="'Contact ' + ride.authorName" :to="'/rides/' + ride.id" />
+          </div>
+          <div class="text-caption text-grey-8 q-pl-xs">{{ ride.description }}</div>
+        </div>
+        <div class="text-right q-mt-xs">
+          <q-btn flat dense no-caps size="sm" label="View all rides" color="primary" to="/rides" />
+        </div>
+      </q-card-section>
+    </q-card>
+
     <!-- Fullscreen viewer -->
     <q-dialog v-model="fullscreen" maximized transition-show="fade" transition-hide="fade">
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
@@ -130,8 +161,50 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useFerryApi } from 'src/composables/useFerryApi'
+import { useRides } from 'src/composables/useRides'
 
 const { ferryData, loading, error, fetchFerryData } = useFerryApi()
+const { rides } = useRides()
+
+// Sort rides: today's one-off first, then recurring. Highlight if sailing matches upcoming schedule.
+const sortedRides = computed(() => {
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const upcoming = upcomingSailingTimes.value
+
+  return [...rides.value]
+    .map(r => {
+      const isToday = !r.recurring && r.date === todayStr
+      const isUpcoming = !!(r.sailing && upcoming.has(r.sailing.trim().toUpperCase()))
+      return { ...r, isToday, isUpcoming }
+    })
+    .sort((a, b) => {
+      // Today's one-off first, then recurring
+      if (a.isToday && !b.isToday) return -1
+      if (!a.isToday && b.isToday) return 1
+      // Upcoming highlighted ones first within each group
+      if (a.isUpcoming && !b.isUpcoming) return -1
+      if (!a.isUpcoming && b.isUpcoming) return 1
+      return 0
+    })
+})
+
+// Set of upcoming sailing times for highlighting
+const upcomingSailingTimes = computed(() => {
+  if (!ferryData.value) return new Set()
+  const now = new Date()
+  const times = new Set()
+  for (const s of ferryData.value.hsbSchedule) {
+    if (!s.cancelled && parseTimeToday(s.time) > now) {
+      times.add(s.time.trim().toUpperCase())
+    }
+  }
+  for (const s of ferryData.value.bowenSchedule) {
+    if (!s.cancelled && parseTimeToday(s.time) > now) {
+      times.add(s.time.trim().toUpperCase())
+    }
+  }
+  return times
+})
 
 // --- Cameras ---
 const allCamUrls = [

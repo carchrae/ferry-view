@@ -22,6 +22,7 @@
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
           <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
           <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
+          <q-route-tab name="rides" label="Rides" icon="thumb_up" to="/rides" />
           <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
         </q-tabs>
 
@@ -97,6 +98,11 @@
           <q-item-section>Webcams</q-item-section>
         </q-item>
 
+        <q-item clickable v-ripple to="/rides" @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="thumb_up" /></q-item-section>
+          <q-item-section>Rides</q-item-section>
+        </q-item>
+
         <q-item clickable v-ripple @click="openBowenFerry(); leftDrawerOpen = false">
           <q-item-section avatar><q-icon name="map" /></q-item-section>
           <q-item-section>Map</q-item-section>
@@ -114,6 +120,7 @@
         <q-route-tab name="home" label="Home" icon="home" to="/" exact />
         <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
         <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
+        <q-route-tab name="rides" label="Rides" icon="thumb_up" to="/rides" />
         <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
       </q-tabs>
     </q-footer>
@@ -128,7 +135,8 @@ const route = useRoute()
 const currentTab = ref(
   route.path === '/webcams' ? 'webcams'
     : route.path === '/status' ? 'status'
-      : 'home'
+      : route.path === '/rides' ? 'rides'
+        : 'home'
 )
 const leftDrawerOpen = ref(false)
 const showAttributions = ref(false)
