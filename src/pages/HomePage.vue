@@ -347,9 +347,8 @@ const pastSailings = computed(() => {
 // --- Speed / stopped duration for banner ---
 const speedText = computed(() => {
   if (!ferryData.value) return 'Waiting for data...'
-  const speed = parseFloat(ferryData.value.speed)
-  if (isNaN(speed)) return 'Speed unknown'
-  if (speed > 0.5) return `Underway at ${ferryData.value.speed} knots`
+
+
 
   // Ferry is stopped — calculate how long since last arrival
   const lastArrival = ferryData.value.recentActivity.find(e => e.action === 'Arrived')
@@ -362,7 +361,22 @@ const speedText = computed(() => {
       }
     }
   }
-  return 'Stopped'
+
+  const lastDepart = ferryData.value.recentActivity.find(e => e.action === 'Departed')
+  if (lastDepart) {
+    const arrTime = parseTimeToday(lastDepart.time)
+    if (arrTime) {
+      const mins = Math.round((Date.now() - arrTime) / 60000)
+      if (mins >= 0 && mins < 600) {
+        return `Left ${lastDepart.location} ${mins} min ago`
+      }
+    }
+  }
+
+  const speed = parseFloat(ferryData.value.speed)
+  if (!isNaN(speed) && speed > 0.5) return `Underway at ${ferryData.value.speed} knots`
+
+  return ''
 })
 
 const speedClass = computed(() => {
