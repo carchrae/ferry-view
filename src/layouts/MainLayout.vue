@@ -40,33 +40,37 @@
         </q-card-section>
         <q-card-section class="q-pt-none">
           <q-list>
-            <q-item>
+            <q-item clickable tag="a" href="https://bowenferry.ca" target="_blank">
               <q-item-section avatar><q-icon name="api" color="primary" /></q-item-section>
               <q-item-section>
                 <q-item-label>Carlos</q-item-label>
                 <q-item-label caption>AIS tracking and ferry status API</q-item-label>
               </q-item-section>
+              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
             </q-item>
-            <q-item>
+            <q-item clickable tag="a" href="https://bowenislandmunicipality.ca/" target="_blank">
               <q-item-section avatar><q-icon name="videocam" color="primary" /></q-item-section>
               <q-item-section>
                 <q-item-label>Bowen Island Municipality</q-item-label>
                 <q-item-label caption>Community centre webcam</q-item-label>
               </q-item-section>
+              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
             </q-item>
-            <q-item>
+            <q-item clickable tag="a" href="https://www.bcferries.com/" target="_blank">
               <q-item-section avatar><q-icon name="directions_boat" color="primary" /></q-item-section>
               <q-item-section>
                 <q-item-label>BC Ferries</q-item-label>
                 <q-item-label caption>Terminal webcams and ferry service</q-item-label>
               </q-item-section>
+              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
             </q-item>
-            <q-item>
+            <q-item clickable tag="a" href="mailto:carchrae@gmail.com">
               <q-item-section avatar><q-icon name="person" color="primary" /></q-item-section>
               <q-item-section>
                 <q-item-label>Tom Carchrae</q-item-label>
-                <q-item-label caption>Just this guy who mashed this up</q-item-label>
+                <q-item-label caption>Just a guy who mashed this up</q-item-label>
               </q-item-section>
+              <q-item-section side><q-icon name="email" size="xs" /></q-item-section>
             </q-item>
           </q-list>
         </q-card-section>
