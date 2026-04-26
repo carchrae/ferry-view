@@ -105,6 +105,13 @@
     </div>
 
     <!-- Rides -->
+    <q-card flat bordered class="q-mt-sm">
+      <q-card-section v-if="!sortedRides.length" class="text-center q-pa-md">
+        <q-icon name="directions_car" size="36px" color="grey-5" class="q-mb-xs" />
+        <div class="text-body2 text-grey-7">Need a ride from the ferry? Or have room in your car?</div>
+        <q-btn color="primary" no-caps dense label="Offer or Request a Ride" icon="thumb_up" to="/rides" class="q-mt-sm" />
+      </q-card-section>
+    </q-card>
     <q-card v-if="sortedRides.length" flat bordered class="q-mt-sm">
       <q-card-section class="q-pa-sm">
         <div class="text-overline text-grey-7">Ride Share</div>
