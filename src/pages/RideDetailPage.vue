@@ -13,6 +13,15 @@
             :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
             :label="ride.direction === 'on-bowen' ? 'On Bowen' : 'On Mainland'"
           />
+          <q-space />
+          <q-btn
+            v-if="canEdit"
+            no-caps dense
+            icon="edit"
+            label="Edit"
+            color="primary"
+            :to="`/rides/${ride.id}/edit`"
+          />
         </div>
 
         <div class="text-h6 q-mb-sm">{{ ride.description }}</div>
@@ -109,13 +118,13 @@
     </q-card>
 
     <div class="q-mt-sm">
-      <q-btn flat no-caps icon="arrow_back" label="All rides" color="primary" to="/rides" />
+      <q-btn flat no-caps icon="arrow_back" label="Back" color="primary" @click="$router.back()" />
     </div>
   </q-page>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
@@ -127,6 +136,7 @@ const { user } = useAuth()
 
 const ride = ref(null)
 const loading = ref(true)
+const canEdit = computed(() => user.value && ride.value && ride.value.authorUid === user.value.uid)
 let unsubscribe = null
 
 onMounted(() => {

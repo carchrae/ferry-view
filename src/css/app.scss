@@ -1,1 +1,9 @@
 // app global css
+
+.debugcss {
+  border: 1px solid red;
+}
+
+.debugcss * {
+  border: 1px solid green;
+}

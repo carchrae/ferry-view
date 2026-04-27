@@ -125,39 +125,13 @@
           <q-card v-if="sortedRides.length" flat bordered>
             <q-card-section class="q-pa-sm">
               <div class="text-overline text-grey-7">Ride Share</div>
-              <div
+              <RideCard
                 v-for="ride in sortedRides"
                 :key="ride.id"
-                class="q-mt-xs q-pa-xs rounded-borders ride-row cursor-pointer"
-                :class="ride.isUpcoming ? 'bg-yellow-1' : ''"
-                @click="$router.push('/rides/' + ride.id)"
-              >
-                <div class="row items-center no-wrap">
-                  <q-badge
-                    :color="ride.type === 'offer' ? 'positive' : 'info'"
-                    :label="ride.type === 'offer' ? 'Offer' : 'Request'"
-                    dense
-                    class="q-mr-xs"
-                  />
-                  <q-badge
-                    outline
-                    dense
-                    :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
-                    :label="ride.direction === 'on-bowen' ? 'Bowen' : 'Mainland'"
-                    class="q-mr-xs"
-                  />
-                  <span v-if="ride.sailing" class="text-caption text-weight-bold q-mr-xs">{{
-                    ride.sailing
-                  }}</span>
-                  <span v-if="ride.recurring" class="text-caption text-grey-7 q-mr-xs">{{
-                    ride.schedule || 'Recurring'
-                  }}</span>
-                  <q-space />
-                  <span class="text-caption text-grey-7 q-mr-xs">{{ ride.authorName }}</span>
-                  <q-icon name="chevron_right" color="primary" size="sm" />
-                </div>
-                <div class="text-caption text-grey-8">{{ ride.description }}</div>
-              </div>
+                :ride="ride"
+                :upcoming="ride.isUpcoming"
+                class="q-mt-sm"
+              />
               <div class="row q-gutter-sm q-mt-sm">
                 <q-btn
                   no-caps dense
@@ -256,6 +230,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useFerryApi } from 'src/composables/useFerryApi'
 import { useRides } from 'src/composables/useRides'
+import RideCard from 'src/components/RideCard.vue'
 
 const { ferryData, loading, error, fetchFerryData } = useFerryApi()
 const { rides } = useRides()
@@ -573,12 +548,6 @@ onUnmounted(() => {
   transition: transform 0.2s;
   &:hover {
     transform: translateY(-2px);
-  }
-}
-.ride-row {
-  transition: filter 0.15s;
-  &:hover {
-    filter: brightness(0.96);
   }
 }
 .fullscreen-viewer {
