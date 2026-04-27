@@ -12,14 +12,27 @@
 // to match your app's branding.
 // Tip: Use the "Theme Builder" on Quasar's documentation website.
 
-$primary   : #1976D2;
-$secondary : #26A69A;
-$accent    : #9C27B0;
+// Mapped from legacy Ionic palette:
+//   Ionic $positive (#005527) → Quasar $primary  (brand / headers)
+//   Ionic $calm     (#086CA2) → Quasar $secondary & $info
+//   Ionic $balanced (#00B454) → Quasar $positive (success)
+//   Ionic $assertive(#A82600) → Quasar $negative
+//   Ionic $energized(#FF8B00) → Quasar $warning
+//   Ionic $royal    (#886aea) → Quasar $accent
+//   Ionic $dark     (#444)    → Quasar $dark
 
-$dark      : #1D1D1D;
+$primary   : #005527;
+$secondary : #086CA2;
+$accent    : #886aea;
+
+$dark      : #444444;
 $dark-page : #121212;
 
-$positive  : #21BA45;
-$negative  : #C10015;
-$info      : #31CCEC;
-$warning   : #F2C037;
+$positive  : #00B454;
+$negative  : #A82600;
+$info      : #086CA2;
+$warning   : #FF8B00;
+
+// Surface tones (no direct Quasar equivalent — use as `background-color: $stable;` etc.)
+$light     : #ffffff;
+$stable    : #f8f8f8;
