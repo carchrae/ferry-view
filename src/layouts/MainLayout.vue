@@ -12,7 +12,7 @@
           class="lt-md"
         />
 
-        <q-toolbar-title>
+        <q-toolbar-title class="cursor-pointer" @click="showAttributions = true">
           Bowen LIFT
         </q-toolbar-title>
 
@@ -24,18 +24,6 @@
           <q-route-tab name="rides" label="Rides" icon="thumb_up" to="/rides" />
           <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
         </q-tabs>
-
-        <q-btn
-          v-if="canInstall"
-          flat
-          dense
-          round
-          icon="add_to_home_screen"
-          aria-label="Install app"
-          @click="install"
-        >
-          <q-tooltip>Install app</q-tooltip>
-        </q-btn>
 
         <q-btn flat dense round icon="info" @click="showAttributions = true" />
       </q-toolbar>
@@ -68,6 +56,16 @@
           <q-space />
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
+        <q-card-section v-if="isInstallable" class="q-pt-none">
+          <q-btn
+            no-caps
+            color="primary"
+            icon="add_to_home_screen"
+            label="Install Bowen Lift"
+            class="full-width"
+            @click="install"
+          />
+        </q-card-section>
         <q-card-section class="q-pt-none">
           <q-list>
             <q-item clickable tag="a" href="https://bowenferry.ca" target="_blank">
@@ -91,6 +89,16 @@
               <q-item-section>
                 <q-item-label>BC Ferries</q-item-label>
                 <q-item-label caption>Terminal webcams and ferry service</q-item-label>
+              </q-item-section>
+              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
+            </q-item>
+            <q-item clickable tag="a" href="https://bowenbook.ca/ron-woodall-art/" target="_blank">
+              <q-item-section avatar>
+                <img src="/app-icon.png" alt="Bowen Lift logo" style="width: 32px; height: 32px;" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label>Ron Woodall</q-item-label>
+                <q-item-label caption>Cartoonist — Lift logo</q-item-label>
               </q-item-section>
               <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
             </q-item>
@@ -162,8 +170,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useInstall } from 'src/composables/useInstall'
 
 const route = useRoute()
 const currentTab = ref(
@@ -174,51 +183,8 @@ const currentTab = ref(
 )
 const leftDrawerOpen = ref(false)
 const showAttributions = ref(false)
-const showIosHint = ref(false)
 
-const installEvent = ref(null)
-const isStandalone = ref(false)
-const isIOS = ref(false)
-
-const canInstall = computed(() => {
-  if (isStandalone.value) return false
-  if (installEvent.value) return true
-  if (isIOS.value) return true
-  return false
-})
-
-function onBeforeInstallPrompt(e) {
-  e.preventDefault()
-  installEvent.value = e
-}
-
-function onAppInstalled() {
-  installEvent.value = null
-  isStandalone.value = true
-}
-
-async function install() {
-  if (installEvent.value) {
-    installEvent.value.prompt()
-    await installEvent.value.userChoice
-    installEvent.value = null
-  } else if (isIOS.value) {
-    showIosHint.value = true
-  }
-}
-
-onMounted(() => {
-  isStandalone.value = window.matchMedia('(display-mode: standalone)').matches
-    || window.navigator.standalone === true
-  isIOS.value = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
-  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-  window.addEventListener('appinstalled', onAppInstalled)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-  window.removeEventListener('appinstalled', onAppInstalled)
-})
+const { isInstallable, install, showIosHint } = useInstall()
 
 function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value

@@ -26,6 +26,35 @@
 
     <!-- All content in one flowing row -->
     <div class="row q-col-gutter-sm">
+      <!-- Install prompt -->
+      <div v-if="canInstall" class="col-12">
+        <q-card flat bordered class="bg-blue-1">
+          <q-card-section class="q-pa-sm row items-center no-wrap">
+            <q-icon name="add_to_home_screen" color="primary" size="md" class="q-mr-sm" />
+            <div class="col">
+              <div class="text-subtitle2">Install Bowen Lift</div>
+              <div class="text-caption text-grey-8">Add to your home screen for quick access.</div>
+            </div>
+            <q-btn
+              no-caps
+              dense
+              color="primary"
+              label="Install"
+              @click="install"
+            />
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="grey-7"
+              label="Hide"
+              class="q-ml-xs"
+              @click="dismiss"
+            />
+          </q-card-section>
+        </q-card>
+      </div>
+
       <!-- Sailings (one col-md-6 block) -->
       <div v-if="ferryData" class="col-12 col-md-6">
         <!-- Vessel Status -->
@@ -240,10 +269,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useFerryApi } from 'src/composables/useFerryApi'
 import { useRides } from 'src/composables/useRides'
+import { useInstall } from 'src/composables/useInstall'
 import RideCard from 'src/components/RideCard.vue'
 
 const { ferryData, loading, error, fetchFerryData } = useFerryApi()
 const { rides } = useRides()
+const { canInstall, install, dismiss } = useInstall()
 
 // TEMP: pretend "now" is shifted by this many ms (set to 0 to disable)
 // const TIME_OFFSET_MS = 2 * 60 * 60 * 1000
