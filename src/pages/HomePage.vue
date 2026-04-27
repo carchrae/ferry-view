@@ -35,13 +35,7 @@
               <div class="text-subtitle2">Install Bowen Lift</div>
               <div class="text-caption text-grey-8">Add to your home screen for quick access.</div>
             </div>
-            <q-btn
-              no-caps
-              dense
-              color="primary"
-              label="Install"
-              @click="install"
-            />
+            <q-btn no-caps dense color="primary" label="Install" @click="install" />
             <q-btn
               flat
               dense
@@ -84,6 +78,7 @@
                   class="row items-center no-wrap q-mt-xs"
                 >
                   <span class="text-body2">{{ s.label }}</span>
+                  <q-space />
                   <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="q-ml-xs" dense>
                     {{ s.lateText }}
                   </q-badge>
@@ -95,7 +90,6 @@
                     dense
                     class="q-ml-xs"
                   />
-                  <q-space />
                   <div class="text-body2 text-weight-bold q-ml-sm">{{ s.shortTime }}</div>
                 </div>
                 <div v-if="!upcomingSailings.length" class="text-caption text-grey-5 q-mt-xs">
@@ -113,7 +107,7 @@
                   <q-space />
                   <div v-if="hasOntime">
                     <q-badge rounded color="positive" class="q-ml-xs" dense> ✓ </q-badge>
-                    is on-time
+                    on-time
                   </div>
                 </div>
                 <div
@@ -122,6 +116,7 @@
                   class="row items-center no-wrap q-mt-xs"
                 >
                   <span class="text-body2">{{ event.displayLabel }}</span>
+                  <q-space />
                   <q-badge
                     rounded
                     v-if="event.diffText"
@@ -130,7 +125,7 @@
                     dense
                     >{{ event.diffText }}
                   </q-badge>
-                  <q-space />
+
                   <div class="text-body2 text-weight-bold q-ml-sm text-no-wrap">
                     {{ event.shortTime }}
                   </div>
@@ -280,6 +275,7 @@ const { canInstall, install, dismiss } = useInstall()
 // const TIME_OFFSET_MS = 2 * 60 * 60 * 1000
 const TIME_OFFSET_MS = 0
 const nowDate = () => new Date(Date.now() + TIME_OFFSET_MS)
+const oneMinuteFromNowDate = () => new Date(Date.now() + 1000 * 60 + TIME_OFFSET_MS)
 const nowMs = () => Date.now() + TIME_OFFSET_MS
 
 // Sort rides: today's one-off first, then recurring. Highlight if sailing matches upcoming schedule.
@@ -400,6 +396,7 @@ function prevCam() {
 const upcomingSailings = computed(() => {
   if (!ferryData.value) return []
   const now = nowDate()
+  const oneMinuteFromNow = oneMinuteFromNowDate()
 
   function lastConsumedScheduleTime(eventLocation, schedule) {
     const dep = ferryData.value.recentActivity.find(
@@ -430,7 +427,7 @@ const upcomingSailings = computed(() => {
       .map((s) => ({ s, t: parseTimeToday(s.time) }))
       .filter(({ t }) => t && (lastConsumed ? t > lastConsumed : t > now))
       .map(({ s, t }) => {
-        const isLate = t <= now
+        const isLate = t <= oneMinuteFromNow
         let deckSpace = label === 'Bowen' ? null : s.deckSpace
         let full
         if (deckSpace === 'Full') {
