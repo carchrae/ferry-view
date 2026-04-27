@@ -5,8 +5,8 @@
       <div class="col-12">
         <q-card flat bordered>
           <q-card-section class="q-pa-sm">
-            <q-skeleton type="text" width="60%"/>
-            <q-skeleton type="text" width="40%"/>
+            <q-skeleton type="text" width="60%" />
+            <q-skeleton type="text" width="40%" />
           </q-card-section>
         </q-card>
       </div>
@@ -18,7 +18,7 @@
         <q-banner dense class="bg-negative text-white rounded-borders">
           Failed to load: {{ error }}
           <template v-slot:action>
-            <q-btn flat label="Retry" @click="fetchFerryData"/>
+            <q-btn flat label="Retry" @click="fetchFerryData" />
           </template>
         </q-banner>
       </div>
@@ -31,14 +31,14 @@
         <!-- Vessel Status -->
         <q-card flat bordered :class="speedClass" class="q-mb-sm">
           <q-card-section horizontal class="items-center q-pa-sm">
-            <q-icon :name="speedIcon" size="sm" class="q-mr-sm"/>
+            <q-icon :name="speedIcon" size="sm" class="q-mr-sm" />
             <div>
               <div class="text-subtitle2">{{ ferryData.vesselName }}</div>
               <div class="text-caption">{{ speedText }}</div>
             </div>
-            <q-space/>
+            <q-space />
             <div class="text-caption text-grey-6">
-              Last Update <br/>
+              Last Update <br />
               {{ ferryData.lastUpdate }}
             </div>
           </q-card-section>
@@ -55,9 +55,8 @@
                   class="row items-center no-wrap q-mt-xs"
                 >
                   <span class="text-body2">{{ s.label }}</span>
-                  <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="q-ml-xs" dense>{{
-                      s.lateText
-                    }}
+                  <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="q-ml-xs" dense>
+                    {{ s.lateText }}
                   </q-badge>
                   <q-badge
                     rounded
@@ -67,7 +66,7 @@
                     dense
                     class="q-ml-xs"
                   />
-                  <q-space/>
+                  <q-space />
                   <div class="text-body2 text-weight-bold q-ml-sm">{{ s.shortTime }}</div>
                 </div>
                 <div v-if="!upcomingSailings.length" class="text-caption text-grey-5 q-mt-xs">
@@ -82,16 +81,9 @@
               <q-card-section class="q-pa-sm">
                 <div class="text-overline flex text-grey-7">
                   <div>Past Sailings</div>
-                  <q-space/>
+                  <q-space />
                   <div v-if="hasOntime">
-                    <q-badge
-                      rounded
-                      color="positive"
-                      class="q-ml-xs"
-                      dense
-                    >
-                      ✓
-                    </q-badge>
+                    <q-badge rounded color="positive" class="q-ml-xs" dense> ✓ </q-badge>
                     is on-time
                   </div>
                 </div>
@@ -107,10 +99,9 @@
                     :color="event.diffColor"
                     class="q-ml-xs"
                     dense
-                  >{{ event.diffText }}
-                  </q-badge
-                  >
-                  <q-space/>
+                    >{{ event.diffText }}
+                  </q-badge>
+                  <q-space />
                   <div class="text-body2 text-weight-bold q-ml-sm text-no-wrap">
                     {{ event.shortTime }}
                   </div>
@@ -123,7 +114,7 @@
         <div class="col-12 col-md-6">
           <q-card flat bordered>
             <q-card-section v-if="!sortedRides.length" class="text-center q-pa-md">
-              <q-icon name="directions_car" size="36px" color="grey-5" class="q-mb-xs"/>
+              <q-icon name="directions_car" size="36px" color="grey-5" class="q-mb-xs" />
               <div class="text-body2 text-grey-7">
                 Need a ride from the ferry? Or have room in your car?
               </div>
@@ -150,7 +141,8 @@
               />
               <div class="row q-gutter-sm q-mt-sm">
                 <q-btn
-                  no-caps dense
+                  no-caps
+                  dense
                   class="col"
                   color="primary"
                   icon="add"
@@ -158,7 +150,9 @@
                   to="/rides/post"
                 />
                 <q-btn
-                  no-caps dense outline
+                  no-caps
+                  dense
+                  outline
                   class="col"
                   color="primary"
                   icon="list"
@@ -190,13 +184,13 @@
               >
                 <template v-slot:error>
                   <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
-                    <q-icon name="videocam_off" size="24px"/>
+                    <q-icon name="videocam_off" size="24px" />
                   </div>
                 </template>
               </q-img>
               <q-card-actions class="q-py-none q-px-sm">
                 <div class="text-caption ellipsis">{{ cam.label }}</div>
-                <q-space/>
+                <q-space />
                 <q-btn
                   flat
                   dense
@@ -215,12 +209,12 @@
     <!-- Fullscreen viewer -->
     <q-dialog v-model="fullscreen" maximized transition-show="fade" transition-hide="fade">
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
-        <img :src="fullscreenSrc" class="fullscreen-img"/>
+        <img :src="fullscreenSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 1">
-          <q-btn round flat icon="close" color="white" size="lg" @click="fullscreen = false"/>
+          <q-btn round flat icon="close" color="white" size="lg" @click="fullscreen = false" />
         </div>
         <div class="absolute-bottom row justify-center q-pa-md q-gutter-sm" style="z-index: 1">
-          <q-btn round flat icon="chevron_left" color="white" size="lg" @click.stop="prevCam"/>
+          <q-btn round flat icon="chevron_left" color="white" size="lg" @click.stop="prevCam" />
           <q-btn
             round
             flat
@@ -229,7 +223,7 @@
             size="lg"
             @click.stop="refreshFullscreen"
           />
-          <q-btn round flat icon="chevron_right" color="white" size="lg" @click.stop="nextCam"/>
+          <q-btn round flat icon="chevron_right" color="white" size="lg" @click.stop="nextCam" />
         </div>
         <div
           class="absolute-top q-pa-sm text-white text-subtitle1"
@@ -243,13 +237,13 @@
 </template>
 
 <script setup>
-import {ref, computed, onMounted, onUnmounted} from 'vue'
-import {useFerryApi} from 'src/composables/useFerryApi'
-import {useRides} from 'src/composables/useRides'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useFerryApi } from 'src/composables/useFerryApi'
+import { useRides } from 'src/composables/useRides'
 import RideCard from 'src/components/RideCard.vue'
 
-const {ferryData, loading, error, fetchFerryData} = useFerryApi()
-const {rides} = useRides()
+const { ferryData, loading, error, fetchFerryData } = useFerryApi()
+const { rides } = useRides()
 
 // TEMP: pretend "now" is shifted by this many ms (set to 0 to disable)
 // const TIME_OFFSET_MS = 2 * 60 * 60 * 1000
@@ -266,7 +260,7 @@ const sortedRides = computed(() => {
     .map((r) => {
       const isToday = !r.recurring && r.date === todayStr
       const isUpcoming = !!(r.sailing && upcoming.has(r.sailing.trim().toUpperCase()))
-      return {...r, isToday, isUpcoming}
+      return { ...r, isToday, isUpcoming }
     })
     .sort((a, b) => {
       // Today's one-off first, then recurring
@@ -402,27 +396,31 @@ const upcomingSailings = computed(() => {
     const lastConsumed = lastConsumedScheduleTime(eventLocation, schedule)
     return schedule
       .filter((s) => !s.cancelled)
-      .map((s) => ({s, t: parseTimeToday(s.time)}))
-      .filter(({t}) => t && (lastConsumed ? t > lastConsumed : t > now))
-      .map(({s, t}) => {
+      .map((s) => ({ s, t: parseTimeToday(s.time) }))
+      .filter(({ t }) => t && (lastConsumed ? t > lastConsumed : t > now))
+      .map(({ s, t }) => {
         const isLate = t <= now
-        let deckSpace = label === 'Bowen' ? null : s.deckSpace;
-        let full;
-        if (deckSpace) {
+        let deckSpace = label === 'Bowen' ? null : s.deckSpace
+        let full
+        if (deckSpace === 'Full') {
+          full = deckSpace
+        } else if (deckSpace) {
           // convert to % full, clear if 100 since that is no info
-          deckSpace = parseInt(deckSpace.replace('%', ''), 10);
+          deckSpace = parseInt(deckSpace.replace('%', ''), 10)
           if (isNaN(deckSpace) || deckSpace === 100) {
-            deckSpace = null;
+            deckSpace = null
           } else {
-            full = 100 - deckSpace;
+            full = 100 - deckSpace
           }
+          full = full + '% full'
         }
+
         const lateMins = isLate ? Math.round((now - t) / 60000) : 0
         return {
           ...s,
           label,
           deckSpace,
-          full: full + '% full',
+          full,
           shortTime: s.time.replace(/(\d+:\d{2}):\d{2}\s/, '$1 '),
           sortTime: t,
           lateText: isLate ? `${lateMins}m late` : null,
@@ -493,7 +491,7 @@ const pastSailings = computed(() => {
     const shortLocation = event.location === 'Horseshoe Bay' ? 'HSB' : event.location
     const displayLabel = event.action === 'Arrived' ? `Arrive ${shortLocation}` : shortLocation
     const shortTime = event.time.replace(/(\d+:\d{2}):\d{2}\s/, '$1 ')
-    return {...event, ontime, diffText, diffColor, displayLabel, shortTime}
+    return { ...event, ontime, diffText, diffColor, displayLabel, shortTime }
   })
 })
 
@@ -538,11 +536,14 @@ const speedIcon = computed(() => {
 })
 
 function getDeckColor(available) {
+  if (available === 'Full') return 'red'
   if (!available) return 'grey'
   const pct = parseInt(available)
+  if (pct === 'Full') return 'red'
   if (isNaN(pct)) return 'grey'
   if (pct >= 80) return 'positive'
   if (pct >= 30) return 'warning'
+
   return 'negative'
 }
 
