@@ -340,22 +340,30 @@ const allCamLabels = [
 const displayIndexes = [4, 5, 0, 1, 2, 3]
 const cacheBusters = ref(allCamUrls.map(() => Date.now()))
 
-const MAX_CAM_RETRIES = 3
-const CAM_RETRY_DELAY = 2000
+const MAX_CAM_RETRIES = 10
+const CAM_RETRY_DELAY = 1000
 const camRetries = ref(allCamUrls.map(() => 0))
-const retryTimeouts = []
+const retryTimeouts = {}
 
 function handleCamError(camIndex) {
+  if (retryTimeouts[camIndex]) {
+    clearTimeout(retryTimeouts[camIndex])
+    retryTimeouts[camIndex] = false
+  }
   if (camRetries.value[camIndex] >= MAX_CAM_RETRIES) return
   camRetries.value[camIndex]++
   const t = setTimeout(() => {
     cacheBusters.value[camIndex] = Date.now()
-  }, CAM_RETRY_DELAY)
-  retryTimeouts.push(t)
+  }, CAM_RETRY_DELAY * camRetries.value[camIndex])
+  retryTimeouts[camIndex] = t
 }
 
 function handleCamLoad(camIndex) {
   camRetries.value[camIndex] = 0
+  if (retryTimeouts[camIndex]) {
+    clearTimeout(retryTimeouts[camIndex])
+    retryTimeouts[camIndex] = false
+  }
 }
 
 const displayCams = computed(() =>
@@ -603,7 +611,7 @@ onMounted(() => {
 onUnmounted(() => {
   clearInterval(refreshInterval)
   clearInterval(camRefreshInterval)
-  retryTimeouts.forEach(clearTimeout)
+  Object.values(retryTimeouts).forEach(clearTimeout)
 })
 </script>
 
