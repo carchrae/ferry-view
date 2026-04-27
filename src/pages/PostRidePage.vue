@@ -2,7 +2,7 @@
   <q-page class="q-pa-sm">
     <q-card flat bordered class="q-mb-sm">
       <q-card-section class="row items-center q-pa-sm">
-        <q-btn flat dense round icon="arrow_back" @click="$router.back()" class="q-mr-sm" />
+        <q-btn flat dense round icon="arrow_back" aria-label="Go back" @click="$router.back()" class="q-mr-sm" />
         <div class="text-h6">{{ isEdit ? 'Edit Ride' : 'Post a Ride' }}</div>
       </q-card-section>
     </q-card>

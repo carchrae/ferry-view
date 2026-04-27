@@ -25,7 +25,7 @@
           <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
         </q-tabs>
 
-        <q-btn flat dense round icon="info" @click="showAttributions = true" />
+        <q-btn flat dense round icon="info" aria-label="About Bowen Lift" @click="showAttributions = true" />
       </q-toolbar>
     </q-header>
 
@@ -35,7 +35,7 @@
         <q-card-section class="row items-center">
           <div class="text-h6">Add to Home Screen</div>
           <q-space />
-          <q-btn flat round dense icon="close" v-close-popup />
+          <q-btn flat round dense icon="close" aria-label="Close" v-close-popup />
         </q-card-section>
         <q-card-section class="q-pt-none">
           <p class="q-mb-sm">To install Bowen Lift on your iPhone or iPad:</p>
@@ -54,7 +54,7 @@
         <q-card-section class="row items-center">
           <div class="text-h6">Attributions</div>
           <q-space />
-          <q-btn flat round dense icon="close" v-close-popup />
+          <q-btn flat round dense icon="close" aria-label="Close" v-close-popup />
         </q-card-section>
         <q-card-section v-if="isInstallable" class="q-pt-none">
           <q-btn

@@ -8,12 +8,12 @@
           class="fullscreen-img"
         />
         <div class="absolute-top-right q-pa-md" style="z-index: 1">
-          <q-btn round flat icon="close" color="white" size="lg" @click="fullscreen = false" />
+          <q-btn round flat icon="close" color="white" size="lg" aria-label="Close fullscreen" @click="fullscreen = false" />
         </div>
         <div class="absolute-bottom row justify-center q-pa-md q-gutter-sm" style="z-index: 1">
-          <q-btn round flat icon="chevron_left" color="white" size="lg" @click.stop="prevCam" />
-          <q-btn round flat icon="refresh" color="white" size="lg" @click.stop="refreshFullscreen" />
-          <q-btn round flat icon="chevron_right" color="white" size="lg" @click.stop="nextCam" />
+          <q-btn round flat icon="chevron_left" color="white" size="lg" aria-label="Previous webcam" @click.stop="prevCam" />
+          <q-btn round flat icon="refresh" color="white" size="lg" aria-label="Refresh webcam" @click.stop="refreshFullscreen" />
+          <q-btn round flat icon="chevron_right" color="white" size="lg" aria-label="Next webcam" @click.stop="nextCam" />
         </div>
         <div class="absolute-top q-pa-sm text-white text-subtitle1" style="z-index: 1; background: rgba(0,0,0,0.5); width: auto; display: inline-block">
           {{ camLabels[fullscreenIndex] }}
@@ -48,8 +48,8 @@
             <q-card-actions>
               <div class="text-subtitle2 q-ml-sm">{{ cam.label }}</div>
               <q-space />
-              <q-btn flat icon="refresh" color="grey" @click.stop="refreshCam(index)" />
-              <q-btn flat icon="fullscreen" color="primary" @click.stop="openFullscreen(index)" />
+              <q-btn flat icon="refresh" color="grey" :aria-label="`Refresh ${cam.label}`" @click.stop="refreshCam(index)" />
+              <q-btn flat icon="fullscreen" color="primary" :aria-label="`Open ${cam.label} fullscreen`" @click.stop="openFullscreen(index)" />
             </q-card-actions>
           </q-card>
         </div>
