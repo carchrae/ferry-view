@@ -25,9 +25,40 @@
           <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
         </q-tabs>
 
+        <q-btn
+          v-if="canInstall"
+          flat
+          dense
+          round
+          icon="add_to_home_screen"
+          aria-label="Install app"
+          @click="install"
+        >
+          <q-tooltip>Install app</q-tooltip>
+        </q-btn>
+
         <q-btn flat dense round icon="info" @click="showAttributions = true" />
       </q-toolbar>
     </q-header>
+
+    <!-- iOS install hint dialog -->
+    <q-dialog v-model="showIosHint">
+      <q-card style="min-width: 300px">
+        <q-card-section class="row items-center">
+          <div class="text-h6">Add to Home Screen</div>
+          <q-space />
+          <q-btn flat round dense icon="close" v-close-popup />
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <p class="q-mb-sm">To install Bowen Lift on your iPhone or iPad:</p>
+          <ol class="q-pl-md">
+            <li>Tap the <strong>Share</strong> button <q-icon name="ios_share" /> in Safari's toolbar.</li>
+            <li>Choose <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong>.</li>
+          </ol>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
 
     <!-- Attributions dialog -->
     <q-dialog v-model="showAttributions">
@@ -131,7 +162,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
@@ -143,6 +174,51 @@ const currentTab = ref(
 )
 const leftDrawerOpen = ref(false)
 const showAttributions = ref(false)
+const showIosHint = ref(false)
+
+const installEvent = ref(null)
+const isStandalone = ref(false)
+const isIOS = ref(false)
+
+const canInstall = computed(() => {
+  if (isStandalone.value) return false
+  if (installEvent.value) return true
+  if (isIOS.value) return true
+  return false
+})
+
+function onBeforeInstallPrompt(e) {
+  e.preventDefault()
+  installEvent.value = e
+}
+
+function onAppInstalled() {
+  installEvent.value = null
+  isStandalone.value = true
+}
+
+async function install() {
+  if (installEvent.value) {
+    installEvent.value.prompt()
+    await installEvent.value.userChoice
+    installEvent.value = null
+  } else if (isIOS.value) {
+    showIosHint.value = true
+  }
+}
+
+onMounted(() => {
+  isStandalone.value = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true
+  isIOS.value = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
+  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  window.addEventListener('appinstalled', onAppInstalled)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+  window.removeEventListener('appinstalled', onAppInstalled)
+})
 
 function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value
