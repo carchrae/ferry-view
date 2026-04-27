@@ -84,9 +84,9 @@
         </q-list>
       </q-card-section>
 
-      <q-card-section v-else class="text-center">
-        <div class="text-body2 text-grey-7 q-mb-sm">Sign in to see contact details</div>
-        <q-btn color="primary" icon="login" label="Sign in with Google" @click="signInWithGoogle" />
+      <q-card-section v-else>
+        <div class="text-body2 text-grey-7 q-mb-sm text-center">Sign in to see contact details</div>
+        <SignInOptions />
       </q-card-section>
     </q-card>
 
@@ -120,9 +120,10 @@ import { useRoute } from 'vue-router'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
+import SignInOptions from 'src/components/SignInOptions.vue'
 
 const route = useRoute()
-const { user, signInWithGoogle } = useAuth()
+const { user } = useAuth()
 
 const ride = ref(null)
 const loading = ref(true)

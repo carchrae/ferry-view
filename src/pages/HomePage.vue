@@ -117,7 +117,7 @@
                 dense
                 label="Offer or Request a Ride"
                 icon="thumb_up"
-                to="/rides"
+                to="/rides/post"
                 class="q-mt-sm"
               />
             </q-card-section>
@@ -125,11 +125,14 @@
           <q-card v-if="sortedRides.length" flat bordered>
             <q-card-section class="q-pa-sm">
               <div class="text-overline text-grey-7">Ride Share</div>
-              <div v-for="ride in sortedRides" :key="ride.id" class="q-mt-xs">
-                <div
-                  class="row items-center no-wrap q-pa-xs rounded-borders"
-                  :class="ride.isUpcoming ? 'bg-yellow-1' : ''"
-                >
+              <div
+                v-for="ride in sortedRides"
+                :key="ride.id"
+                class="q-mt-xs q-pa-xs rounded-borders ride-row cursor-pointer"
+                :class="ride.isUpcoming ? 'bg-yellow-1' : ''"
+                @click="$router.push('/rides/' + ride.id)"
+              >
+                <div class="row items-center no-wrap">
                   <q-badge
                     :color="ride.type === 'offer' ? 'positive' : 'info'"
                     :label="ride.type === 'offer' ? 'Offer' : 'Request'"
@@ -150,26 +153,26 @@
                     ride.schedule || 'Recurring'
                   }}</span>
                   <q-space />
-                  <q-btn
-                    flat
-                    dense
-                    no-caps
-                    size="sm"
-                    color="primary"
-                    :label="'Contact ' + ride.authorName"
-                    :to="'/rides/' + ride.id"
-                  />
+                  <span class="text-caption text-grey-7 q-mr-xs">{{ ride.authorName }}</span>
+                  <q-icon name="chevron_right" color="primary" size="sm" />
                 </div>
-                <div class="text-caption text-grey-8 q-pl-xs">{{ ride.description }}</div>
+                <div class="text-caption text-grey-8">{{ ride.description }}</div>
               </div>
-              <div class="text-right q-mt-xs">
+              <div class="row q-gutter-sm q-mt-sm">
                 <q-btn
-                  flat
-                  dense
-                  no-caps
-                  size="sm"
-                  label="View all rides"
+                  no-caps dense
+                  class="col"
                   color="primary"
+                  icon="add"
+                  label="Post a Ride"
+                  to="/rides/post"
+                />
+                <q-btn
+                  no-caps dense outline
+                  class="col"
+                  color="primary"
+                  icon="list"
+                  label="View All Rides"
                   to="/rides"
                 />
               </div>
@@ -570,6 +573,12 @@ onUnmounted(() => {
   transition: transform 0.2s;
   &:hover {
     transform: translateY(-2px);
+  }
+}
+.ride-row {
+  transition: filter 0.15s;
+  &:hover {
+    filter: brightness(0.96);
   }
 }
 .fullscreen-viewer {

@@ -5,71 +5,26 @@
       <q-card-section class="text-center q-pa-md">
         <q-icon name="people" size="48px" color="primary" class="q-mb-sm" />
         <div class="text-h6 q-mb-xs">Ride Share</div>
-        <div class="text-body2 text-grey-7 q-mb-md">Sign in to offer or request rides with fellow ferry travellers</div>
+        <div class="text-body2 text-grey-7 q-mb-md">Sign in to request or offer a ride, and edit your own posts</div>
 
-        <q-btn-toggle
-          v-model="authMethod"
-          no-caps dense spread
-          toggle-color="primary"
-          class="q-mb-md"
-          :options="[{label: 'Google', value: 'google'}, {label: 'Email', value: 'email'}, {label: 'Phone', value: 'phone'}]"
-        />
-
-        <!-- Google -->
-        <q-btn v-if="authMethod === 'google'" color="primary" icon="login" label="Sign in with Google" @click="signInWithGoogle" class="full-width" />
-
-        <!-- Email -->
-        <div v-if="authMethod === 'email'">
-          <q-input v-model="emailForm.name" dense outlined label="Name" class="q-mb-sm" v-if="emailForm.isSignUp" />
-          <q-input v-model="emailForm.email" dense outlined label="Email" type="email" class="q-mb-sm" />
-          <q-input v-model="emailForm.password" dense outlined label="Password" type="password" class="q-mb-sm" />
-          <div class="row q-gutter-sm">
-            <q-btn
-              color="primary" no-caps dense
-              :label="emailForm.isSignUp ? 'Create Account' : 'Sign In'"
-              :loading="authLoading"
-              @click="handleEmailAuth"
-              class="col"
-            />
-          </div>
-          <q-btn flat dense no-caps size="sm" class="q-mt-xs"
-            :label="emailForm.isSignUp ? 'Already have an account? Sign in' : 'No account? Create one'"
-            @click="emailForm.isSignUp = !emailForm.isSignUp"
-          />
-          <div v-if="authError" class="text-negative text-caption q-mt-xs">{{ authError }}</div>
-        </div>
-
-        <!-- Phone -->
-        <div v-if="authMethod === 'phone'">
-          <div v-if="!phoneCodeSent">
-            <q-input v-model="phoneForm.number" dense outlined label="Phone number" placeholder="+1 604 555 1234" class="q-mb-sm" />
-            <q-btn id="phone-sign-in-btn" color="primary" no-caps dense label="Send Code" :loading="authLoading" @click="handleSendCode" class="full-width" />
-          </div>
-          <div v-else>
-            <q-input v-model="phoneForm.code" dense outlined label="Verification code" class="q-mb-sm" inputmode="numeric" autocomplete="one-time-code" />
-            <q-btn color="primary" no-caps dense label="Verify" :loading="authLoading" @click="handleVerifyCode" class="full-width" />
-          </div>
-          <div v-if="authError" class="text-negative text-caption q-mt-xs">{{ authError }}</div>
-        </div>
+        <SignInOptions />
       </q-card-section>
     </q-card>
 
-    <!-- Signed in: post form + list -->
-    <template v-else>
-      <q-card flat bordered class="q-mb-sm">
-        <q-card-section class="q-pa-sm row items-center">
-          <q-avatar size="32px" class="q-mr-sm">
-            <img :src="user.photoURL" v-if="user.photoURL" />
-            <q-icon name="person" v-else />
-          </q-avatar>
-          <div class="text-subtitle2">{{ user.displayName }}</div>
-          <q-space />
-          <q-btn flat dense size="sm" label="Sign out" @click="signOut" />
-        </q-card-section>
-      </q-card>
+    <!-- Signed in: user info -->
+    <q-card v-else flat bordered class="q-mb-sm">
+      <q-card-section class="q-pa-sm row items-center">
+        <q-avatar size="32px" class="q-mr-sm">
+          <img :src="user.photoURL" v-if="user.photoURL" />
+          <q-icon name="person" v-else />
+        </q-avatar>
+        <div class="text-subtitle2">{{ user.displayName }}</div>
+        <q-space />
+        <q-btn flat dense size="sm" label="Sign out" @click="signOut" />
+      </q-card-section>
+    </q-card>
 
-      <q-btn color="primary" icon="add" label="Post a Ride" no-caps dense class="q-mb-sm full-width" @click="showPostDialog = true" />
-    </template>
+    <q-btn color="primary" icon="add" label="Post a Ride" no-caps dense class="q-mb-sm full-width" to="/rides/post" />
 
     <!-- Ride list (visible to everyone) -->
     <q-card flat bordered>
@@ -77,7 +32,7 @@
         <div class="text-overline text-grey-7">Active Rides</div>
         <div v-if="!rides.length" class="text-caption text-grey-5 q-mt-xs">No rides posted yet</div>
         <div v-for="ride in rides" :key="ride.id" class="q-mt-sm">
-          <q-card flat bordered class="q-pa-sm">
+          <q-card flat bordered class="q-pa-sm ride-card cursor-pointer" @click="$router.push('/rides/' + ride.id)">
             <div class="row items-center no-wrap">
               <q-badge
                 :color="ride.type === 'offer' ? 'positive' : 'info'"
@@ -108,7 +63,7 @@
                 icon="delete"
                 size="sm"
                 color="negative"
-                @click="removeRide(ride.id)"
+                @click.stop="removeRide(ride.id)"
               />
             </div>
             <div class="text-body2 q-mt-xs">{{ ride.description }}</div>
@@ -117,253 +72,23 @@
                 {{ ride.authorName }} &middot; {{ formatTime(ride.createdAt) }}
               </div>
               <q-space />
-              <q-btn
-                v-if="user && ride.authorUid !== user.uid"
-                flat dense no-caps size="sm" icon="contact_mail" label="Contact"
-                color="primary"
-                @click="toggleContact(ride.id)"
-              />
-              <q-btn
-                v-if="!user"
-                flat dense no-caps size="sm" icon="contact_mail" label="Sign in to contact"
-                color="grey"
-                @click="scrollToSignIn"
-              />
-            </div>
-            <div v-if="visibleContacts[ride.id]" class="text-caption q-mt-xs q-pa-xs bg-blue-1 rounded-borders">
-              <div v-if="ride.authorEmail">
-                <q-icon name="email" size="xs" class="q-mr-xs" />
-                <a :href="'mailto:' + ride.authorEmail">{{ ride.authorEmail }}</a>
-              </div>
-              <div v-if="ride.authorPhone">
-                <q-icon name="phone" size="xs" class="q-mr-xs" />
-                <a :href="'tel:' + ride.authorPhone">{{ ride.authorPhone }}</a>
-              </div>
+              <q-icon name="chevron_right" color="primary" size="sm" />
             </div>
           </q-card>
         </div>
       </q-card-section>
     </q-card>
 
-    <!-- Post a ride dialog -->
-    <q-dialog v-model="showPostDialog">
-      <q-card style="min-width: 340px">
-        <q-card-section class="row items-center">
-          <div class="text-h6">Post a Ride</div>
-          <q-space />
-          <q-btn flat round dense icon="close" v-close-popup />
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <div class="row q-col-gutter-sm q-mb-sm">
-            <div class="col-6">
-              <q-btn-toggle
-                v-model="form.type"
-                spread no-caps dense
-                toggle-color="primary"
-                :options="[{label: 'Offer', value: 'offer'}, {label: 'Request', value: 'request'}]"
-              />
-            </div>
-            <div class="col-6">
-              <q-btn-toggle
-                v-model="form.direction"
-                spread no-caps dense
-                toggle-color="primary"
-                :options="[{label: 'On Bowen', value: 'on-bowen'}, {label: 'On Mainland', value: 'on-mainland'}]"
-              />
-            </div>
-          </div>
-
-          <q-toggle v-model="form.recurring" label="Recurring" dense class="q-mb-sm" />
-
-          <q-input
-            v-if="form.recurring"
-            v-model="form.schedule"
-            dense outlined
-            label="Schedule"
-            placeholder="e.g. Weekdays, Mon/Wed/Fri"
-            class="q-mb-sm"
-          />
-
-          <div v-if="!form.recurring" class="row q-col-gutter-sm q-mb-sm">
-            <div class="col-6">
-              <q-input v-model="form.date" dense outlined label="Date">
-                <template v-slot:append>
-                  <q-icon name="event" class="cursor-pointer">
-                    <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                      <q-date v-model="form.date" mask="YYYY-MM-DD" :options="dateFn" />
-                    </q-popup-proxy>
-                  </q-icon>
-                </template>
-              </q-input>
-            </div>
-            <div class="col-6">
-              <q-input v-model="form.sailing" dense outlined label="Sailing time" placeholder="e.g. 5:20 PM" />
-            </div>
-          </div>
-
-          <q-input v-model="form.description" dense outlined label="Details" placeholder="Where are you headed?" class="q-mb-sm" />
-          <q-input v-model="form.phone" dense outlined label="Phone (optional)" placeholder="e.g. 604-555-1234" class="q-mb-sm" />
-
-          <q-btn
-            color="primary"
-            :label="form.type === 'offer' ? 'Post Offer' : 'Post Request'"
-            dense no-caps
-            :disable="!form.description"
-            :loading="posting"
-            @click="postRide"
-            class="full-width"
-          />
-
-          <div class="text-caption text-grey-6 q-mt-sm">
-            <div class="text-weight-bold q-mb-xs">Examples:</div>
-            <div>"Every weekday I drive to downtown from Snug Cove"</div>
-            <div>"I'm on the next ferry, can you give me a ride home"</div>
-          </div>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
   </q-page>
 </template>
 
 <script setup>
-import { ref, reactive, onUnmounted } from 'vue'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
+import SignInOptions from 'src/components/SignInOptions.vue'
 
-const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, sendPhoneCode, verifyPhoneCode, signOut } = useAuth()
-const { rides, createRide, deleteRide } = useRides()
-
-const posting = ref(false)
-const showPostDialog = ref(false)
-const visibleContacts = reactive({})
-
-// Auth UI state
-const authMethod = ref('google')
-const authLoading = ref(false)
-const authError = ref(null)
-const phoneCodeSent = ref(false)
-
-const emailForm = reactive({ email: '', password: '', name: '', isSignUp: false })
-const phoneForm = reactive({ number: '', code: '' })
-
-async function handleEmailAuth() {
-  authLoading.value = true
-  authError.value = null
-  try {
-    if (emailForm.isSignUp) {
-      await signUpWithEmail(emailForm.email, emailForm.password, emailForm.name)
-    } else {
-      await signInWithEmail(emailForm.email, emailForm.password)
-    }
-  } catch (e) {
-    authError.value = e.message.replace('Firebase: ', '')
-  } finally {
-    authLoading.value = false
-  }
-}
-
-function normalizePhone(raw) {
-  // Strip everything except digits and leading +
-  let digits = raw.replace(/[^\d+]/g, '')
-  // If starts with +, keep it; otherwise prepend +1
-  if (!digits.startsWith('+')) {
-    // Remove leading 1 if they typed 1XXXXXXXXXX (11 digits)
-    if (digits.length === 11 && digits.startsWith('1')) {
-      digits = '+' + digits
-    } else {
-      digits = '+1' + digits
-    }
-  }
-  return digits
-}
-
-let otpAbort = null
-
-onUnmounted(() => {
-  otpAbort?.abort()
-})
-
-async function handleSendCode() {
-  authLoading.value = true
-  authError.value = null
-  try {
-    const phone = normalizePhone(phoneForm.number)
-    await sendPhoneCode(phone, 'phone-sign-in-btn')
-    phoneCodeSent.value = true
-    listenForOtp()
-  } catch (e) {
-    authError.value = e.message.replace('Firebase: ', '')
-  } finally {
-    authLoading.value = false
-  }
-}
-
-function listenForOtp() {
-  if (!('OTPCredential' in window)) return
-  otpAbort?.abort()
-  otpAbort = new AbortController()
-  navigator.credentials
-    .get({ otp: { transport: ['sms'] }, signal: otpAbort.signal })
-    .then((otp) => {
-      if (otp?.code) {
-        phoneForm.code = otp.code
-        handleVerifyCode()
-      }
-    })
-    .catch(() => {})
-}
-
-async function handleVerifyCode() {
-  authLoading.value = true
-  authError.value = null
-  try {
-    await verifyPhoneCode(phoneForm.code)
-    otpAbort?.abort()
-    otpAbort = null
-  } catch (e) {
-    authError.value = e.message.replace('Firebase: ', '')
-  } finally {
-    authLoading.value = false
-  }
-}
-
-function scrollToSignIn() {
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-}
-
-function toggleContact(rideId) {
-  visibleContacts[rideId] = !visibleContacts[rideId]
-}
-const today = new Date().toISOString().slice(0, 10)
-const form = ref({
-  type: 'offer',
-  direction: 'on-bowen',
-  recurring: false,
-  schedule: '',
-  date: today,
-  sailing: '',
-  description: '',
-  phone: '',
-})
-
-function dateFn(date) {
-  return date >= today
-}
-
-async function postRide() {
-  posting.value = true
-  try {
-    await createRide(user.value, form.value)
-    form.value.description = ''
-    form.value.sailing = ''
-    form.value.schedule = ''
-    form.value.date = today
-    form.value.phone = ''
-    showPostDialog.value = false
-  } finally {
-    posting.value = false
-  }
-}
+const { user, signOut } = useAuth()
+const { rides, deleteRide } = useRides()
 
 async function removeRide(id) {
   await deleteRide(id)
@@ -386,3 +111,14 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 </script>
+
+<style lang="scss" scoped>
+.ride-card {
+  transition: background-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  &:hover {
+    background-color: #fafafa;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+  }
+}
+</style>
