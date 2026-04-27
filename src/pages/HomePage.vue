@@ -487,7 +487,7 @@ const speedText = computed(() => {
       : `Stopped for ${mins} min`
   }
   if (mostRecent.action === 'Arrived') {
-    return `Stopped at ${mostRecent.location} for ${mins} min`
+    return `Docked at ${mostRecent.location} for ${mins} min`
   }
   return ''
 })
