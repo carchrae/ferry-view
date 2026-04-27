@@ -102,8 +102,8 @@
           <div class="col-6">
             <q-card flat bordered>
               <q-card-section class="q-pa-sm">
-                <div class="text-overline flex text-grey-7">
-                  <div>Past Sailings</div>
+                <div class="text-overline flex text-grey-7 no-wrap">
+                  <div>Past <span v-if="$q.screen.gt.xs">Sailings</span></div>
                   <q-space />
                   <div v-if="hasOntime">
                     <q-badge rounded color="positive" class="q-ml-xs" dense> ✓ </q-badge>
