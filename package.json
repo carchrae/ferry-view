@@ -12,7 +12,12 @@
     "test": "echo \"No test specified\" && exit 0",
     "dev": "quasar dev -m pwa",
     "build": "quasar build -m pwa",
-    "postinstall": "quasar prepare"
+    "postinstall": "quasar prepare",
+    "firebase-config": "bash scripts/get-firebase-config.sh",
+    "set-firebase-secrets": "bash scripts/set-firebase-secrets.sh",
+    "generate-vapid-keys": "bash scripts/generate-vapid-keys.sh staging; bash scripts/generate-vapid-keys.sh production",
+    "set-vapid-public-key-in-netlify": "bash scripts/set-vapid-public-key.sh",
+    "rotate-all-keys": "pnpm run generate-vapid-keys && pnpm run set-vapid-public-key-in-netlify && pnpm run set-functions-secrets"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",

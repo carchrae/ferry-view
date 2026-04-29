@@ -1,0 +1,52 @@
+name: Deploy Cloud Functions
+
+on:
+  push:
+    branches:
+      - main
+      - production
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd functions
+          npm ci
+
+      - name: Run tests
+        run: |
+          cd functions
+          npm test
+
+      - name: Authenticate to Google Cloud (staging)
+        if: github.ref != 'refs/heads/production'
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+          service_account_key: ${{ secrets.GCP_SA_KEY_STAGING }}
+
+      - name: Authenticate to Google Cloud (production)
+        if: github.ref == 'refs/heads/production'
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: 'latest'
+          service_account_key: ${{ secrets.GCP_SA_KEY_PROD }}
+
+      - name: Deploy to Firebase
+        run: |
+          cd functions
+          if [ "${{ github.ref }}" = "refs/heads/production" ]; then
+            npx firebase deploy --only functions --project bowen-ferry
+          else
+            npx firebase deploy --only functions --project bowen-ferry-staging
+          fi

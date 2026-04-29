@@ -49,6 +49,11 @@
         </q-card>
       </div>
 
+      <!-- Push notifications -->
+      <div class="col-12">
+        <NotificationSettings />
+      </div>
+
       <!-- Sailings (one col-md-6 block) -->
       <div v-if="ferryData" class="col-12 col-md-6">
         <!-- Vessel Status -->
@@ -95,6 +100,15 @@
                 <div v-if="!upcomingSailings.length" class="text-caption text-grey-5 q-mt-xs">
                   No upcoming sailings
                 </div>
+                <q-btn
+                  no-caps
+                  dense
+                  flat
+                  color="primary"
+                  label="More details"
+                  to="/status"
+                  class="q-mt-xs"
+                />
               </q-card-section>
             </q-card>
           </div>
@@ -228,6 +242,15 @@
             </q-card>
           </div>
         </div>
+        <q-btn
+          no-caps
+          dense
+          flat
+          color="primary"
+          label="View all webcams"
+          to="/webcams"
+          class="q-mt-xs"
+        />
       </div>
     </div>
 
@@ -268,6 +291,7 @@ import { useFerryApi } from 'src/composables/useFerryApi'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import RideCard from 'src/components/RideCard.vue'
+import NotificationSettings from 'src/components/NotificationSettings.vue'
 
 const { ferryData, loading, error, fetchFerryData } = useFerryApi()
 const { rides } = useRides()

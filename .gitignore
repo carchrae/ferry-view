@@ -29,8 +29,8 @@ yarn-error.log*
 *.njsproj
 *.sln
 
-# local .env files
+# no .env files in repo
 .env.local*
-
+.env.vapid-keys
 # Local Netlify folder
 .netlify

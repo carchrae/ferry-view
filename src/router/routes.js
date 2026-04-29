@@ -10,6 +10,9 @@ const routes = [
       { path: 'rides/post', component: () => import('pages/PostRidePage.vue') },
       { path: 'rides/:id/edit', component: () => import('pages/PostRidePage.vue') },
       { path: 'rides/:id', component: () => import('pages/RideDetailPage.vue') },
+      { path: 'alerts', component: () => import('pages/AlertsPage.vue') },
+      { path: 'map', component: () => import('pages/MapPage.vue') },
+      { path: 'settings', component: () => import('pages/SettingsPage.vue') },
     ]
   },
 
