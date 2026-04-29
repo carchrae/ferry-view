@@ -33,5 +33,7 @@ yarn-error.log*
 # no .env files in repo
 .env.local*
 .env.vapid-keys
+# GitHub workflow credentials
+credentials.json
 # Local Netlify folder
 .netlify
