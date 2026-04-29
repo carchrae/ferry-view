@@ -17,9 +17,7 @@
     "set-firebase-secrets": "bash scripts/set-firebase-secrets.sh",
     "generate-vapid-keys": "bash scripts/generate-vapid-keys.sh staging; bash scripts/generate-vapid-keys.sh production",
     "set-vapid-public-key-in-netlify": "bash scripts/set-vapid-public-key.sh",
-    "rotate-all-keys": "pnpm run generate-vapid-keys && pnpm run set-vapid-public-key-in-netlify && pnpm run set-functions-secrets",
-    "deploy:functions:staging": "firebase -P bowen-ferry-staging deploy --only functions",
-    "deploy:functions:production": "firebase -P bowen-ferry deploy --only functions"
+    "rotate-all-keys": "pnpm run generate-vapid-keys && pnpm run set-vapid-public-key-in-netlify && pnpm run set-functions-secrets"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",
@@ -38,7 +36,6 @@
     "eslint": "^9.14.0",
     "eslint-plugin-vue": "^10.8.0",
     "eslint-webpack-plugin": "^4.2.0",
-    "firebase-tools": "^14.3.0",
     "globals": "^17.4.0",
     "prettier": "^3.8.1",
     "vue-eslint-parser": "^10.4.0",
