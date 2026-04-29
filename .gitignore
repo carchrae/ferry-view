@@ -28,6 +28,7 @@ yarn-error.log*
 *.ntvs*
 *.njsproj
 *.sln
+*.log
 
 # no .env files in repo
 .env.local*
