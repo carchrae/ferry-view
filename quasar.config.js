@@ -46,7 +46,7 @@ export default defineConfig((ctx) => {
     ],
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file#build
-    build: {
+build: {
       publicPath: '/',
       vueRouterMode: 'hash', // available values: 'hash', 'history'
 
@@ -70,15 +70,23 @@ export default defineConfig((ctx) => {
       // Options below are automatically set depending on the env, set them if you want to override
       // extractCSS: false,
 
-      // https://v2.quasar.dev/quasar-cli-webpack/handling-webpack
+      // https://quasar.dev/quasar-cli-webpack/handling-webpack
       // "chain" is a webpack-chain object https://github.com/sorrycc/webpack-chain
-      // chainWebpack (/* chain, { isClient, isServer } */) {}
+      chainWebpack (chain, { isClient, isServer }) {
+        if (process.env.STAGING === 'true') {
+          chain.plugin('html-webpack').tap((args) => {
+            args[0].productName = 'Bowen Lift (Test Version)'
+            return args
+          })
+        }
+      },
 
       env: {
         VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
         DEV: ctx.dev,
+        STAGING: process.env.STAGING === 'true',
       },
-    },
+},
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file#devserver
     devServer: {
@@ -164,7 +172,12 @@ export default defineConfig((ctx) => {
       workboxMode: 'InjectManifest', // 'GenerateSW' or 'InjectManifest'
       // swFilename: 'sw.js',
       // manifestFilename: 'manifest.json',
-      // extendManifestJson (json) {},
+      extendManifestJson (json) {
+        if (process.env.STAGING === 'true') {
+          json.short_name = 'Bowen Lift (Test)'
+          json.name = 'Bowen Lift (Test Version)'
+        }
+      },
       // useCredentialsForManifestTag: true,
       // injectPwaMetaTags: false,
       // extendPWACustomSWConf (esbuildConf) {},
