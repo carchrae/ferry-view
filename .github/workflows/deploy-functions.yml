@@ -50,7 +50,8 @@ jobs:
         run: echo '${{ secrets.GCP_SA_KEY_STAGING }}' > ./credentials.json
         shell: bash
       - name: Deploy to Firebase
-        run: npx firebase deploy --only functions --project bowen-ferry-staging
+        run: npm run deploy:functions:staging
+        working-directory: functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ./credentials.json
       - name: Cleanup credentials
@@ -78,7 +79,8 @@ jobs:
         run: echo '${{ secrets.GCP_SA_KEY_PROD }}' > ./credentials.json
         shell: bash
       - name: Deploy to Firebase
-        run: npx firebase deploy --only functions --project bowen-ferry
+        run: npm run deploy:functions:production
+        working-directory: functions
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ./credentials.json
       - name: Cleanup credentials
