@@ -4,8 +4,6 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  # Staging public key (from .env.staging)
-  VAPID_PUBLIC_KEY = "BOjst23Qz_u2WRxwz_CuCsmHS8VP5Bf6opH67-5gO0SeNclUbPdhepKCWv5Qv3sy32pYtrWokPYvhz0zO3vXX3A"
 
 [[redirects]]
   from = "/api/*"
@@ -13,10 +11,4 @@
   status = 200
   force = true
 
-# Branch-based env vars
-# Default: STAGING=true for all branches (staging)
-# production branch: STAGING=false
-
 [context.production]
-  environment = { STAGING = "false" }
-  VAPID_PUBLIC_KEY = "BJ26OyWhSN0JIwxASzJvJXqaUepFtJc-FETMPO1EPFHN39j3yFAzJhNfeafB3iC168Ci380sM4z921zR5XwIK84"

@@ -14,10 +14,10 @@
     "build": "quasar build -m pwa",
     "postinstall": "quasar prepare",
     "firebase-config": "bash scripts/get-firebase-config.sh",
-    "set-firebase-secrets": "bash scripts/set-firebase-secrets.sh",
-    "generate-vapid-keys": "bash scripts/generate-vapid-keys.sh staging; bash scripts/generate-vapid-keys.sh production",
-    "set-vapid-public-key-in-netlify": "bash scripts/set-vapid-public-key.sh",
-    "rotate-all-keys": "pnpm run generate-vapid-keys && pnpm run set-vapid-public-key-in-netlify && pnpm run set-functions-secrets"
+    "update-vapid-keys:staging": "bash scripts/rotate-vapid-keys.sh staging",
+    "generate-vapid-keys:staging": "bash scripts/generate-vapid-keys.sh staging",
+    "set-firebase-secrets:staging": "bash scripts/set-firebase-secrets.sh staging",
+    "set-vapid-public-key:staging": "bash scripts/set-vapid-public-key.sh"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",
@@ -36,6 +36,7 @@
     "eslint": "^9.14.0",
     "eslint-plugin-vue": "^10.8.0",
     "eslint-webpack-plugin": "^4.2.0",
+    "firebase-tools": "^14.3.0",
     "globals": "^17.4.0",
     "prettier": "^3.8.1",
     "vue-eslint-parser": "^10.4.0",

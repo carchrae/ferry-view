@@ -287,13 +287,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useFerryApi } from 'src/composables/useFerryApi'
+import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import RideCard from 'src/components/RideCard.vue'
 import NotificationSettings from 'src/components/NotificationSettings.vue'
 
-const { ferryData, loading, error, fetchFerryData } = useFerryApi()
+const { ferryData, loading, error } = useFirestoreFerryListener()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
 
@@ -624,18 +624,14 @@ function parseTimeToday(timeStr) {
 }
 
 // --- Auto-refresh ---
-let refreshInterval
 let camRefreshInterval
 onMounted(() => {
-  fetchFerryData()
-  refreshInterval = setInterval(fetchFerryData, 60000)
   camRefreshInterval = setInterval(() => {
     cacheBusters.value = allCamUrls.map(() => Date.now())
     camRetries.value = allCamUrls.map(() => 0)
   }, 60000)
 })
 onUnmounted(() => {
-  clearInterval(refreshInterval)
   clearInterval(camRefreshInterval)
   Object.values(retryTimeouts).forEach(clearTimeout)
 })

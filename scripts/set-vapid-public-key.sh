@@ -1,20 +1,35 @@
 #!/bin/bash
-# Replace the VAPID public key in netlify.toml
-# Usage: pnpm run set-vapid-public-key [staging|production]
-#
-# Run generate-vapid-keys first, then call this with the new public key
+# Update .env file with public key from vapid-keys file
+# Usage: ./scripts/set-vapid-public-key.sh <staging|production>
 
-NEW_KEY="$1"
+TARGET="${1}"
 
-if [ -z "$NEW_KEY" ]; then
-  echo "Usage: pnpm run set-vapid-public-key <public-key>"
-  echo ""
-  echo "First run: pnpm run generate-vapid-keys"
-  echo "Then: pnpm run set-vapid-public-key <the-new-public-key>"
+if [ -z "$TARGET" ]; then
+  echo "Usage: ./scripts/set-vapid-public-key.sh <staging|production>"
   exit 1
 fi
 
-# For now, just update the default (staging) key
-# Production key is in [context.production]
-sed -i 's/^  VAPID_PUBLIC_KEY = ".*"/  VAPID_PUBLIC_KEY = "'"$NEW_KEY"'"/' netlify.toml
-echo "Updated netlify.toml public key"
+if [ "$TARGET" = "production" ]; then
+  KEY_FILE="vapid-keys-production"
+  ENV_FILE=".env.production"
+else
+  KEY_FILE="vapid-keys-staging"
+  ENV_FILE=".env.staging"
+fi
+
+if [ ! -f "$KEY_FILE" ]; then
+  echo "Error: $KEY_FILE not found"
+  echo "Run ./scripts/generate-vapid-keys.sh first"
+  exit 1
+fi
+
+PUBLIC_KEY=$(grep "^VAPID_PUBLIC_KEY=" "$KEY_FILE" | cut -d= -f2- | tr -d '\r')
+
+if [ -z "$PUBLIC_KEY" ]; then
+  echo "Error: VAPID_PUBLIC_KEY not found in $KEY_FILE"
+  exit 1
+fi
+
+echo "VAPID_PUBLIC_KEY=$PUBLIC_KEY" > "$ENV_FILE"
+
+echo "✅ Updated $ENV_FILE"

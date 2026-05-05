@@ -15,7 +15,10 @@ initializeApp()
 const db = getFirestore()
 
 export const pollFerryStatus = onSchedule(
-  'every 1 minutes',
+  {
+    schedule: 'every 1 minutes',
+    secrets: [VAPID_PRIVATE_KEY],
+  },
   async (context) => {
     console.log('Polling ferry status...')
 
@@ -29,27 +32,24 @@ export const pollFerryStatus = onSchedule(
     const existingDoc = await db.collection('ferryStatus').doc('current').get()
     const existingData = existingDoc.exists ? existingDoc.data() : null
 
-    // Check if data has changed (excluding fetchedAt)
+    // Check if data has changed
     const newDataSanitized = sanitizeForCompare(data)
     const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
     
     if (checkDataChanged(newDataSanitized, existingDataSanitized)) {
       console.log('Data changed, saving...')
       
-      // Save to history collection with auto-generated ID
       await db.collection('ferryStatusHistory').add({
         ...data,
         recordedAt: new Date().toISOString(),
       })
       
-      // Update current
       await db.collection('ferryStatus').doc('current').set(data)
       console.log('Saved ferry status to Firestore')
     } else {
       console.log('No changes detected, skipping save')
     }
 
-    // Configure web-push with the secret key
     configureWebPush(VAPID_PRIVATE_KEY.value())
 
     await checkLatenessAndNotify(data)

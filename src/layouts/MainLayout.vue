@@ -13,7 +13,7 @@
         />
 
         <q-toolbar-title class="cursor-pointer" @click="showAttributions = true">
-          Bowen LIFT
+          {{ isStaging ? 'Staging Bowen LIFT' : 'Bowen LIFT' }}
         </q-toolbar-title>
 
         <!-- Desktop nav tabs -->
@@ -37,7 +37,9 @@
         <q-card-section class="q-pt-none">
           <p class="q-mb-sm">To install Bowen Lift on your iPhone or iPad:</p>
           <ol class="q-pl-md">
-            <li>Tap the <strong>Share</strong> button <q-icon name="ios_share" /> in Safari's toolbar.</li>
+            <li>
+              Tap the <strong>Share</strong> button <q-icon name="ios_share" /> in Safari's toolbar.
+            </li>
             <li>Choose <strong>Add to Home Screen</strong>.</li>
             <li>Tap <strong>Add</strong>.</li>
           </ol>
@@ -82,7 +84,9 @@
               <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
             </q-item>
             <q-item clickable tag="a" href="https://www.bcferries.com/" target="_blank">
-              <q-item-section avatar><q-icon name="directions_boat" color="primary" /></q-item-section>
+              <q-item-section avatar
+                ><q-icon name="directions_boat" color="primary"
+              /></q-item-section>
               <q-item-section>
                 <q-item-label>BC Ferries</q-item-label>
                 <q-item-label caption>Terminal webcams and ferry service</q-item-label>
@@ -91,7 +95,7 @@
             </q-item>
             <q-item clickable tag="a" href="https://bowenbook.ca/ron-woodall-art/" target="_blank">
               <q-item-section avatar>
-                <img src="/app-icon.png" alt="Bowen Lift logo" style="width: 32px; height: 32px;" />
+                <img src="/app-icon.png" alt="Bowen Lift logo" style="width: 32px; height: 32px" />
               </q-item-section>
               <q-item-section>
                 <q-item-label>Ron Woodall</q-item-label>
@@ -112,15 +116,9 @@
       </q-card>
     </q-dialog>
 
-    <q-drawer
-      v-model="leftDrawerOpen"
-      bordered
-      class="lt-md"
-    >
+    <q-drawer v-model="leftDrawerOpen" bordered class="lt-md">
       <q-list>
-        <q-item-label header class="text-weight-bold">
-          Bowen Lift
-        </q-item-label>
+        <q-item-label header class="text-weight-bold"> Bowen Lift </q-item-label>
 
         <q-item clickable v-ripple to="/" exact @click="leftDrawerOpen = false">
           <q-item-section avatar><q-icon name="home" /></q-item-section>
@@ -158,7 +156,7 @@
       <router-view />
     </q-page-container>
 
-<!-- Mobile bottom nav (disabled for now) -->
+    <!-- Mobile bottom nav (disabled for now) -->
     <!--
     <q-footer class="gt-sm-hide lt-md bg-white text-primary shadow-up-3">
       <q-tabs v-model="currentTab" active-color="primary" indicator-color="primary" class="text-grey-7">
@@ -176,14 +174,19 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useInstall } from 'src/composables/useInstall'
+import { isStaging } from '../boot/firebase.js'
 
 const route = useRoute()
 const currentTab = ref(
-  route.path === '/webcams' ? 'webcams'
-    : route.path === '/status' ? 'status'
-      : route.path === '/rides' ? 'rides'
-        : route.path === '/settings' ? 'settings'
-          : 'home'
+  route.path === '/webcams'
+    ? 'webcams'
+    : route.path === '/status'
+      ? 'status'
+      : route.path === '/rides'
+        ? 'rides'
+        : route.path === '/settings'
+          ? 'settings'
+          : 'home',
 )
 const leftDrawerOpen = ref(false)
 const showAttributions = ref(false)

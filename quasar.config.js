@@ -13,7 +13,7 @@ export default defineConfig((ctx) => {
       // rawEsbuildEslintOptions: {},
       // rawWebpackEslintPluginOptions: {},
       warnings: true,
-      errors: true
+      errors: true,
     },
 
     // https://v2.quasar.dev/quasar-cli-webpack/prefetch-feature
@@ -22,14 +22,10 @@ export default defineConfig((ctx) => {
     // app boot file (/src/boot)
     // --> boot files are part of "main.js"
     // https://v2.quasar.dev/quasar-cli-webpack/boot-files
-    boot: [
-      'firebase',
-    ],
+    boot: ['firebase'],
 
     // https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file#css
-    css: [
-      'app.scss'
-    ],
+    css: ['app.scss'],
 
     // https://github.com/quasarframework/quasar/tree/dev/extras
     extras: [
@@ -46,7 +42,7 @@ export default defineConfig((ctx) => {
     ],
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file#build
-build: {
+    build: {
       publicPath: '/',
       vueRouterMode: 'hash', // available values: 'hash', 'history'
 
@@ -59,7 +55,7 @@ build: {
 
       esbuildTarget: {
         browser: 'es2022',
-        node: 'node20'
+        node: 'node20',
       },
 
       // rtl: true, // https://quasar.dev/options/rtl-support
@@ -72,7 +68,7 @@ build: {
 
       // https://quasar.dev/quasar-cli-webpack/handling-webpack
       // "chain" is a webpack-chain object https://github.com/sorrycc/webpack-chain
-      chainWebpack (chain, { isClient, isServer }) {
+      chainWebpack(chain, { isClient, isServer }) {
         if (process.env.STAGING === 'true') {
           chain.plugin('html-webpack').tap((args) => {
             args[0].productName = 'Bowen Lift (Test Version)'
@@ -86,12 +82,12 @@ build: {
         DEV: ctx.dev,
         STAGING: process.env.STAGING === 'true',
       },
-},
+    },
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file#devserver
     devServer: {
       server: {
-        type: 'http'
+        type: 'http',
       },
       port: 9000,
       open: true,
@@ -100,9 +96,9 @@ build: {
           context: ['/api'],
           target: 'https://bowenferry.ca',
           changeOrigin: true,
-          pathRewrite: { '^/api': '/Production' }
-        }
-      ]
+          pathRewrite: { '^/api': '/Production' },
+        },
+      ],
     },
 
     // https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file#framework
@@ -120,7 +116,7 @@ build: {
       // directives: [],
 
       // Quasar plugins
-      plugins: ['Dialog']
+      plugins: ['Dialog'],
     },
 
     // animations: 'all', // --- includes all animations
@@ -144,10 +140,10 @@ build: {
     // https://v2.quasar.dev/quasar-cli-webpack/developing-ssr/configuring-ssr
     ssr: {
       prodPort: 3000, // The default port that the production server should use
-                      // (gets superseded if process.env.PORT is specified at runtime)
+      // (gets superseded if process.env.PORT is specified at runtime)
 
       middlewares: [
-        'render' // keep as last one
+        'render', // keep as last one
       ],
 
       // extendPackageJson (json) {},
@@ -160,7 +156,7 @@ build: {
 
       pwa: {
         injectPwaMetaTags: true,
-      }
+      },
       // pwaOfflineHtmlFilename: 'offline.html', // do NOT use index.html as name!
 
       // pwaExtendGenerateSWOptions (cfg) {},
@@ -172,7 +168,7 @@ build: {
       workboxMode: 'InjectManifest', // 'GenerateSW' or 'InjectManifest'
       // swFilename: 'sw.js',
       // manifestFilename: 'manifest.json',
-      extendManifestJson (json) {
+      extendManifestJson(json) {
         if (process.env.STAGING === 'true') {
           json.short_name = 'Bowen Lift (Test)'
           json.name = 'Bowen Lift (Test Version)'
@@ -192,7 +188,7 @@ build: {
 
     // https://v2.quasar.dev/quasar-cli-webpack/developing-capacitor-apps/configuring-capacitor
     capacitor: {
-      hideSplashscreen: true
+      hideSplashscreen: true,
     },
 
     // https://v2.quasar.dev/quasar-cli-webpack/developing-electron-apps/configuring-electron
@@ -203,7 +199,7 @@ build: {
       // extendPackageJson (json) {},
 
       // Electron preload scripts (if any) from /src-electron, WITHOUT file extension
-      preloadScripts: [ 'electron-preload' ],
+      preloadScripts: ['electron-preload'],
 
       // specify the debugging port to use for the Electron app when running in development mode
       inspectPort: 5858,
@@ -212,13 +208,11 @@ build: {
 
       packager: {
         // https://github.com/electron-userland/electron-packager/blob/master/docs/api.md#options
-
         // OS X / Mac App Store
         // appBundleId: '',
         // appCategoryType: '',
         // osxSign: '',
         // protocol: 'myapp://',
-
         // Windows only
         // win32metadata: { ... }
       },
@@ -226,8 +220,8 @@ build: {
       builder: {
         // https://www.electron.build/configuration
 
-        appId: 'bowen-lift-ferry'
-      }
+        appId: 'bowen-lift-ferry',
+      },
     },
 
     // https://v2.quasar.dev/quasar-cli-webpack/developing-bex/configuring-bex
@@ -243,7 +237,7 @@ build: {
        *
        * @example [ 'my-script.ts', 'sub-folder/my-other-script.js' ]
        */
-      extraScripts: []
-    }
+      extraScripts: [],
+    },
   }
 })
