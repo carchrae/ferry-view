@@ -155,15 +155,18 @@
           </q-card>
           <q-card v-if="sortedRides.length" flat bordered>
             <q-card-section class="q-pa-sm">
-              <div class="text-overline text-grey-7">Ride Share</div>
-              <RideCard
-                v-for="ride in sortedRides"
-                :key="ride.id"
-                :ride="ride"
-                :upcoming="ride.isUpcoming"
-                class="q-mt-sm"
-              />
-              <div class="row q-gutter-sm q-mt-sm">
+              <div class="row q-gutter-sm q-mb-sm">
+                <q-btn
+                  no-caps
+                  dense
+                  outline
+                  class="col"
+                  color="primary"
+                  icon="list"
+                  label="Ride Sharing"
+                  to="/rides"
+                />
+
                 <q-btn
                   no-caps
                   dense
@@ -173,17 +176,15 @@
                   label="Post a Ride"
                   to="/rides/post"
                 />
-                <q-btn
-                  no-caps
-                  dense
-                  outline
-                  class="col"
-                  color="primary"
-                  icon="list"
-                  label="View All Rides"
-                  to="/rides"
-                />
               </div>
+
+              <RideCard
+                v-for="ride in sortedRides"
+                :key="ride.id"
+                :ride="ride"
+                :upcoming="ride.isUpcoming"
+                class="q-mt-sm"
+              />
             </q-card-section>
           </q-card>
         </div>
@@ -236,10 +237,26 @@
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
         <img :src="fullscreenSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 1">
-          <q-btn round flat icon="close" color="white" size="lg" aria-label="Close fullscreen" @click="fullscreen = false" />
+          <q-btn
+            round
+            flat
+            icon="close"
+            color="white"
+            size="lg"
+            aria-label="Close fullscreen"
+            @click="fullscreen = false"
+          />
         </div>
         <div class="absolute-bottom row justify-center q-pa-md q-gutter-sm" style="z-index: 1">
-          <q-btn round flat icon="chevron_left" color="white" size="lg" aria-label="Previous webcam" @click.stop="prevCam" />
+          <q-btn
+            round
+            flat
+            icon="chevron_left"
+            color="white"
+            size="lg"
+            aria-label="Previous webcam"
+            @click.stop="prevCam"
+          />
           <q-btn
             round
             flat
@@ -249,7 +266,15 @@
             aria-label="Refresh webcam"
             @click.stop="refreshFullscreen"
           />
-          <q-btn round flat icon="chevron_right" color="white" size="lg" aria-label="Next webcam" @click.stop="nextCam" />
+          <q-btn
+            round
+            flat
+            icon="chevron_right"
+            color="white"
+            size="lg"
+            aria-label="Next webcam"
+            @click.stop="nextCam"
+          />
         </div>
         <div
           class="absolute-top q-pa-sm text-white text-subtitle1"

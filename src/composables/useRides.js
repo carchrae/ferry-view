@@ -45,10 +45,11 @@ export function useRides() {
       direction: data.direction,
       sailing: data.sailing || null,
       date: data.date || null,
-      authorName: user.displayName || 'Anonymous',
+      authorName: data.authorName || user.displayName || user.email || 'Anonymous',
       authorEmail: user.email || null,
-      authorPhone: data.phone || null,
       authorUid: user.uid,
+      contactMethod: data.contactMethod || null,
+      contactInfo: data.contactInfo || null,
       createdAt: Timestamp.now(),
       expiresAt: Timestamp.fromDate(expiresAt),
     })
@@ -72,7 +73,9 @@ export function useRides() {
       direction: data.direction,
       sailing: data.sailing || null,
       date: data.date || null,
-      authorPhone: data.phone || null,
+      authorName: data.authorName || null,
+      contactMethod: data.contactMethod || null,
+      contactInfo: data.contactInfo || null,
       expiresAt: Timestamp.fromDate(expiresAt),
     })
   }

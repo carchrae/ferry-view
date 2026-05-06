@@ -24,20 +24,22 @@
       <q-space />
       <q-badge v-if="isMine" color="primary" label="Yours" />
     </div>
-    <div class="text-body2 q-mt-xs">{{ ride.description }}</div>
-    <div class="row items-center q-mt-xs">
-      <div class="text-caption text-grey-6">
-        {{ ride.authorName }}<span v-if="postedTime"> &middot; {{ postedTime }}</span>
-      </div>
-      <q-space />
-      <q-icon name="chevron_right" color="primary" size="sm" />
+    <div class="row items-center no-wrap">
+      <div class="text-body2" :class="{ 'ellipsis-lines': isMobile }">{{ ride.description }}</div>
+      <q-space/>
+      <q-icon name="chevron_right" color="primary" size="sm" class="q-ml-sm" />
     </div>
+    <div class="text-caption text-primary q-mt-xs" v-if="contactLabel && !isMobile">Contact: {{ contactLabel }}</div>
   </q-card>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { useQuasar } from 'quasar'
 import { useAuth } from 'src/composables/useAuth'
+
+const $q = useQuasar()
+const isMobile = computed(() => $q.screen.lt.sm)
 
 const props = defineProps({
   ride: { type: Object, required: true },
@@ -46,7 +48,15 @@ const props = defineProps({
 
 const { user } = useAuth()
 const isMine = computed(() => user.value && props.ride.authorUid === user.value.uid)
-const postedTime = computed(() => formatTime(props.ride.createdAt))
+const contactLabel = computed(() => {
+  const method = props.ride.contactMethod
+  const info = props.ride.contactInfo
+  if (!method || !info) return ''
+  if (method === 'email') return 'Email'
+  if (method === 'sms') return info
+  if (method === 'other') return info
+  return ''
+})
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -56,13 +66,7 @@ function formatDate(dateStr) {
   const tomorrow = new Date(now)
   tomorrow.setDate(tomorrow.getDate() + 1)
   if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
-}
-
-function formatTime(ts) {
-  if (!ts?.toDate) return ''
-  const d = ts.toDate()
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 }
 </script>
 
@@ -73,5 +77,12 @@ function formatTime(ts) {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     transform: translateY(-1px);
   }
+}
+
+.ellipsis-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>

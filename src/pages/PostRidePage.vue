@@ -60,11 +60,11 @@
 
         <div v-if="!form.recurring" class="row q-col-gutter-sm q-mb-sm">
           <div class="col-6">
-            <q-input v-model="form.date" dense outlined label="Date">
+            <q-input :model-value="displayDate" dense outlined label="Date" readonly>
               <template v-slot:append>
                 <q-icon name="event" class="cursor-pointer">
-                  <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                    <q-date v-model="form.date" mask="YYYY-MM-DD" :options="dateFn" />
+                  <q-popup-proxy v-model="showDate" cover transition-show="scale" transition-hide="scale">
+                    <q-date v-model="form.date" mask="YYYY-MM-DD" :options="dateFn" @update:model-value="showDate = false" />
                   </q-popup-proxy>
                 </q-icon>
               </template>
@@ -75,14 +75,43 @@
           </div>
         </div>
 
+        <q-input v-model="form.authorName" dense outlined :label="nameLabel" class="q-mb-sm" />
+
         <q-input v-model="form.description" dense outlined label="Details" placeholder="Where are you headed?" class="q-mb-sm" />
-        <q-input v-model="form.phone" dense outlined label="Phone (optional)" placeholder="e.g. 604-555-1234" class="q-mb-sm" />
+
+        <q-select
+          v-model="form.contactMethod"
+          :options="contactOptions"
+          dense outlined
+          label="How should people contact you?"
+          class="q-mb-sm"
+          emit-value
+          map-options
+        />
+
+        <q-input
+          v-if="form.contactMethod === 'sms'"
+          v-model="form.contactInfo"
+          dense outlined
+          label="Phone number"
+          placeholder="e.g. 604-555-1234"
+          class="q-mb-sm"
+        />
+
+        <q-input
+          v-if="form.contactMethod === 'other'"
+          v-model="form.contactInfo"
+          dense outlined
+          label="Contact details"
+          placeholder="e.g. @username, Signal, etc."
+          class="q-mb-sm"
+        />
 
         <q-btn
           color="primary"
           :label="submitLabel"
           dense no-caps
-          :disable="!form.description"
+          :disable="!canSubmit"
           :loading="saving"
           @click="save"
           class="full-width"
@@ -110,11 +139,12 @@
 </template>
 
 <script setup>
-import { ref, computed, watchEffect } from 'vue'
+import { ref, computed, watchEffect, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { doc, getDoc } from 'firebase/firestore'
-import { db } from 'src/boot/firebase'
+import { updateProfile } from 'firebase/auth'
+import { db, auth } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
 import SignInOptions from 'src/components/SignInOptions.vue'
@@ -131,7 +161,13 @@ const isEdit = computed(() => !!editId.value)
 const today = new Date().toISOString().slice(0, 10)
 const saving = ref(false)
 const deleting = ref(false)
+const showDate = ref(false)
 const notAuthorized = ref(false)
+const contactOptions = [
+  { label: 'Email', value: 'email' },
+  { label: 'SMS', value: 'sms' },
+  { label: 'Other', value: 'other' },
+]
 const form = ref({
   type: 'offer',
   direction: 'on-bowen',
@@ -139,13 +175,41 @@ const form = ref({
   schedule: '',
   date: today,
   sailing: '',
+  authorName: user.value?.displayName || '',
   description: '',
-  phone: '',
+  contactMethod: 'email',
+  contactInfo: '',
 })
 
 const submitLabel = computed(() => {
   if (isEdit.value) return form.value.type === 'offer' ? 'Update Offer' : 'Update Request'
   return form.value.type === 'offer' ? 'Post Offer' : 'Post Request'
+})
+
+const displayDate = computed(() => {
+  if (!form.value.date) return ''
+  const d = new Date(form.value.date + 'T00:00:00')
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) return 'Today'
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+})
+
+const nameLabel = computed(() => user.value?.displayName ? 'Your name' : 'Your name *')
+
+watch(user, (u) => {
+  if (u?.displayName && !form.value.authorName) {
+    form.value.authorName = u.displayName
+  }
+})
+
+const canSubmit = computed(() => {
+  if (!form.value.description) return false
+  if (!form.value.authorName) return false
+  if (form.value.contactMethod !== 'email' && !form.value.contactInfo) return false
+  return true
 })
 
 let loaded = false
@@ -169,8 +233,10 @@ watchEffect(async () => {
     schedule: d.schedule || '',
     date: d.date || today,
     sailing: d.sailing || '',
+    authorName: d.authorName || '',
     description: d.description || '',
-    phone: d.authorPhone || '',
+    contactMethod: d.contactMethod || 'email',
+    contactInfo: d.contactInfo || '',
   }
 })
 
@@ -181,6 +247,10 @@ function dateFn(date) {
 async function save() {
   saving.value = true
   try {
+    const name = form.value.authorName.trim()
+    if (!user.value?.displayName || user.value.displayName !== name) {
+      await updateProfile(auth.currentUser, { displayName: name })
+    }
     if (isEdit.value) {
       await updateRide(editId.value, form.value)
       router.push('/rides/' + editId.value)
