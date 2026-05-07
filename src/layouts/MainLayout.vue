@@ -20,9 +20,8 @@
         <q-tabs v-model="currentTab" shrink stretch class="gt-sm">
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
           <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
-          <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
           <q-route-tab name="rides" label="Rides" icon="thumb_up" to="/rides" />
-          <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
+          <q-route-tab name="map" label="Map" icon="map" to="/map" />
         </q-tabs>
 
         <q-btn flat dense round icon="info" aria-label="About Bowen Lift" @click="showAttributions = true" />
@@ -135,17 +134,12 @@
           <q-item-section>Ferry Status</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/webcams" @click="leftDrawerOpen = false">
-          <q-item-section avatar><q-icon name="videocam" /></q-item-section>
-          <q-item-section>Webcams</q-item-section>
-        </q-item>
-
         <q-item clickable v-ripple to="/rides" @click="leftDrawerOpen = false">
           <q-item-section avatar><q-icon name="thumb_up" /></q-item-section>
           <q-item-section>Rides</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple @click="openBowenFerry(); leftDrawerOpen = false">
+        <q-item clickable v-ripple to="/map" @click="leftDrawerOpen = false">
           <q-item-section avatar><q-icon name="map" /></q-item-section>
           <q-item-section>Map</q-item-section>
         </q-item>
@@ -161,9 +155,8 @@
       <q-tabs v-model="currentTab" active-color="primary" indicator-color="primary" class="text-grey-7">
         <q-route-tab name="home" label="Home" icon="home" to="/" exact />
         <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
-        <q-route-tab name="webcams" label="Webcams" icon="videocam" to="/webcams" />
         <q-route-tab name="rides" label="Rides" icon="thumb_up" to="/rides" />
-        <q-tab name="map" label="Map" icon="map" @click="openBowenFerry" />
+        <q-route-tab name="map" label="Map" icon="map" to="/map" />
       </q-tabs>
     </q-footer>
   </q-layout>
@@ -176,9 +169,9 @@ import { useInstall } from 'src/composables/useInstall'
 
 const route = useRoute()
 const currentTab = ref(
-  route.path === '/webcams' ? 'webcams'
-    : route.path === '/status' ? 'status'
-      : route.path === '/rides' ? 'rides'
+  route.path === '/status' ? 'status'
+    : route.path === '/rides' ? 'rides'
+      : route.path === '/map' ? 'map'
         : 'home'
 )
 const leftDrawerOpen = ref(false)
@@ -188,9 +181,5 @@ const { isInstallable, install, showIosHint } = useInstall()
 
 function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value
-}
-
-function openBowenFerry() {
-  window.open('https://bowenferry.ca', '_blank')
 }
 </script>

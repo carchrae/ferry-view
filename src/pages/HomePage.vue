@@ -42,7 +42,7 @@
               no-caps
               color="grey-7"
               label="Hide"
-              class="q-ml-xs"
+              class="badge-gap"
               @click="dismiss"
             />
           </q-card-section>
@@ -52,7 +52,7 @@
       <!-- Sailings (one col-md-6 block) -->
       <div v-if="ferryData" class="col-12 col-md-6">
         <!-- Vessel Status -->
-        <q-card flat bordered :class="speedClass" class="q-mb-sm">
+        <q-card flat bordered :style="vesselCardStyle" class="q-mb-sm">
           <q-card-section horizontal class="items-center q-pa-sm">
             <q-icon :name="speedIcon" size="sm" class="q-mr-sm" />
             <div>
@@ -79,61 +79,71 @@
                 >
                   <span class="text-body2">{{ s.label }}</span>
                   <q-space />
-                  <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="q-ml-xs" dense>
-                    {{ s.lateText }}
-                  </q-badge>
-                  <q-badge
-                    rounded
-                    v-if="s.deckSpace"
-                    :color="getDeckColor(s.deckSpace)"
-                    :label="s.full"
-                    dense
-                    class="q-ml-xs"
-                  />
-                  <div class="text-body2 text-weight-bold q-ml-sm">{{ s.shortTime }}</div>
-                </div>
-                <div v-if="!upcomingSailings.length" class="text-caption text-grey-5 q-mt-xs">
-                  No upcoming sailings
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-          <!-- Past Sailings -->
-          <div class="col-6">
-            <q-card flat bordered>
-              <q-card-section class="q-pa-sm">
-                <div class="text-overline flex text-grey-7 no-wrap">
-                  <div>Past <span v-if="$q.screen.gt.xs">Sailings</span></div>
-                  <q-space />
-                  <div v-if="hasOntime">
-                    <q-badge rounded color="positive" class="q-ml-xs" dense> ✓ </q-badge>
-                    on-time
-                  </div>
-                </div>
-                <div
-                  v-for="(event, i) in pastSailings"
-                  :key="i"
-                  class="row items-center no-wrap q-mt-xs"
-                >
-                  <span class="text-body2">{{ event.displayLabel }}</span>
-                  <q-space />
-                  <q-badge
-                    rounded
-                    v-if="event.diffText"
-                    :color="event.diffColor"
-                    class="q-ml-xs"
-                    dense
-                    >{{ event.diffText }}
-                  </q-badge>
+                   <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
+                     {{ s.lateText }}
+                   </q-badge>
+                   <q-badge
+                     rounded
+                     v-if="s.deckSpace"
+                     :color="getDeckColor(s.deckSpace)"
+                     :label="s.full"
+                     dense
+                     class="badge-gap"
+                   />
+                    <div class="text-body2 text-right text-weight-bold text-no-wrap clip-time">{{ s.shortTime }}</div>
+                 </div>
+                 <div v-if="!upcomingSailings.length" class="text-caption text-grey-5 q-mt-xs">
+                   No upcoming sailings
+                 </div>
+               </q-card-section>
+             </q-card>
+           </div>
+           <!-- Past Sailings -->
+           <div class="col-6">
+             <q-card flat bordered>
+               <q-card-section class="q-pa-sm">
+                 <div class="text-overline flex text-grey-7 no-wrap">
+                   <div>Past <span v-if="$q.screen.gt.xs">Sailings</span></div>
+                   <q-space />
+                   <div v-if="hasOntime">
+                     <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
+                     on-time
+                   </div>
+                 </div>
+                 <div
+                   v-for="(event, i) in pastSailings"
+                   :key="i"
+                   class="row items-center no-wrap q-mt-xs"
+                 >
+                   <span class="text-body2">{{ event.label }}</span>
+                   <q-space />
+                    <q-badge
+                      rounded
+                      v-if="event.diffText"
+                      :color="event.diffColor"
+                      class="badge-gap"
+                      dense
+                      >{{ event.diffText }}
+                    </q-badge>
 
-                  <div class="text-body2 text-weight-bold q-ml-sm text-no-wrap">
-                    {{ event.shortTime }}
+                    <div class="text-body2 text-weight-bold   text-no-wrap text-right clip-time">
+                       {{ event.shortTime }}
+                     </div>
                   </div>
-                </div>
-              </q-card-section>
-            </q-card>
-          </div>
-        </div>
+                </q-card-section>
+              </q-card>
+            </div>
+         </div>
+         <q-btn
+          no-caps
+          dense
+          flat
+          color="primary"
+          icon="calendar_today"
+          label="Full Schedule"
+          class="full-width q-mt-xs q-mb-sm"
+          @click="showFullDialog = true"
+        />
         <!-- Rides -->
         <div class="col-12 col-md-6">
           <q-card flat bordered>
@@ -155,7 +165,15 @@
           </q-card>
           <q-card v-if="sortedRides.length" flat bordered>
             <q-card-section class="q-pa-sm">
-              <div class="row q-gutter-sm q-mb-sm">
+              <RideCard
+                v-for="ride in sortedRides"
+                :key="ride.id"
+                :ride="ride"
+                :upcoming="ride.isUpcoming"
+                class="q-mt-sm"
+              />
+
+              <div class="row q-gutter-sm q-mt-sm">
                 <q-btn
                   no-caps
                   dense
@@ -177,14 +195,6 @@
                   to="/rides/post"
                 />
               </div>
-
-              <RideCard
-                v-for="ride in sortedRides"
-                :key="ride.id"
-                :ride="ride"
-                :upcoming="ride.isUpcoming"
-                class="q-mt-sm"
-              />
             </q-card-section>
           </q-card>
         </div>
@@ -237,26 +247,10 @@
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
         <img :src="fullscreenSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 1">
-          <q-btn
-            round
-            flat
-            icon="close"
-            color="white"
-            size="lg"
-            aria-label="Close fullscreen"
-            @click="fullscreen = false"
-          />
+          <q-btn round flat icon="close" color="white" size="lg" aria-label="Close fullscreen" @click="fullscreen = false" />
         </div>
         <div class="absolute-bottom row justify-center q-pa-md q-gutter-sm" style="z-index: 1">
-          <q-btn
-            round
-            flat
-            icon="chevron_left"
-            color="white"
-            size="lg"
-            aria-label="Previous webcam"
-            @click.stop="prevCam"
-          />
+          <q-btn round flat icon="chevron_left" color="white" size="lg" aria-label="Previous webcam" @click.stop="prevCam" />
           <q-btn
             round
             flat
@@ -266,15 +260,7 @@
             aria-label="Refresh webcam"
             @click.stop="refreshFullscreen"
           />
-          <q-btn
-            round
-            flat
-            icon="chevron_right"
-            color="white"
-            size="lg"
-            aria-label="Next webcam"
-            @click.stop="nextCam"
-          />
+          <q-btn round flat icon="chevron_right" color="white" size="lg" aria-label="Next webcam" @click.stop="nextCam" />
         </div>
         <div
           class="absolute-top q-pa-sm text-white text-subtitle1"
@@ -284,6 +270,101 @@
         </div>
       </div>
     </q-dialog>
+
+    <!-- Full schedule dialog -->
+    <q-dialog v-model="showFullDialog">
+      <q-card :style="{ minWidth: $q.screen.gt.xs ? '400px' : '95vw', maxWidth: '95vw', maxHeight: '90vh' }">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Full Schedule</div>
+          <q-space />
+          <q-btn flat dense icon="close" aria-label="Close" @click="showFullDialog = false" />
+        </q-card-section>
+        <q-separator />
+        <q-card-section class="q-pa-sm" style="overflow-y: auto">
+          <div class="text-overline text-grey-7">Past</div>
+          <div class="row q-col-gutter-sm q-mb-md">
+            <div class="col">
+              <div v-for="(event, i) in allPastHSB" :key="'ph'+i" class="row items-center no-wrap q-mt-xs">
+                <span class="text-body2">HSB</span>
+                <q-space />
+                <q-badge
+                  rounded
+                  v-if="event.diffText"
+                  :color="event.diffColor"
+                  class="badge-gap"
+                  dense
+                  >{{ event.diffText }}
+                </q-badge>
+                <div class="text-body2 text-weight-bold q-ml-xs text-no-wrap">
+                  {{ event.shortTime }}
+                </div>
+              </div>
+              <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+            </div>
+            <div class="col">
+              <div v-for="(event, i) in allPastBowen" :key="'pb'+i" class="row items-center no-wrap q-mt-xs">
+                <span class="text-body2">Bowen</span>
+                <q-space />
+                <q-badge
+                  rounded
+                  v-if="event.diffText"
+                  :color="event.diffColor"
+                  class="badge-gap"
+                  dense
+                  >{{ event.diffText }}
+                </q-badge>
+                <div class="text-body2 text-weight-bold q-ml-xs text-no-wrap">
+                  {{ event.shortTime }}
+                </div>
+              </div>
+              <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+            </div>
+          </div>
+          <q-separator class="q-mb-md" />
+          <div class="text-overline text-grey-7">Upcoming</div>
+          <div class="row q-col-gutter-sm">
+            <div class="col">
+              <div v-for="(s, i) in allUpcomingHSB" :key="'uh'+i" class="row items-center no-wrap q-mt-xs">
+                <span class="text-body2">HSB</span>
+                <q-space />
+                <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
+                  {{ s.lateText }}
+                </q-badge>
+                <q-badge
+                  rounded
+                  v-if="s.deckSpace"
+                  :color="getDeckColor(s.deckSpace)"
+                  :label="s.full"
+                  dense
+                  class="badge-gap"
+                />
+                 <div class="text-body2 text-weight-bold q-ml-xs text-no-wrap">{{ s.shortTime }}</div>
+               </div>
+               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+             </div>
+             <div class="col">
+               <div v-for="(s, i) in allUpcomingBowen" :key="'ub'+i" class="row items-center no-wrap q-mt-xs">
+                 <span class="text-body2">Bowen</span>
+                 <q-space />
+                 <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
+                   {{ s.lateText }}
+                 </q-badge>
+                 <q-badge
+                   rounded
+                   v-if="s.deckSpace"
+                   :color="getDeckColor(s.deckSpace)"
+                   :label="s.full"
+                   dense
+                   class="badge-gap"
+                 />
+                 <div class="text-body2 text-weight-bold q-ml-xs text-no-wrap">{{ s.shortTime }}</div>
+              </div>
+              <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -292,20 +373,28 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useFerryApi } from 'src/composables/useFerryApi'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
+import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
 import RideCard from 'src/components/RideCard.vue'
 
 const { ferryData, loading, error, fetchFerryData } = useFerryApi()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
 
-// TEMP: pretend "now" is shifted by this many ms (set to 0 to disable)
-// const TIME_OFFSET_MS = 2 * 60 * 60 * 1000
 const TIME_OFFSET_MS = 0
 const nowDate = () => new Date(Date.now() + TIME_OFFSET_MS)
 const oneMinuteFromNowDate = () => new Date(Date.now() + 1000 * 60 + TIME_OFFSET_MS)
 const nowMs = () => Date.now() + TIME_OFFSET_MS
 
-// Sort rides: today's one-off first, then recurring. Highlight if sailing matches upcoming schedule.
+const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
+
+const upcomingSailings = computed(() => schedule.upcomingSailings(6))
+const pastSailings = computed(() => schedule.pastSailings(6))
+const allUpcomingHSB = computed(() => schedule.allUpcomingHSB())
+const allUpcomingBowen = computed(() => schedule.allUpcomingBowen())
+const allPastHSB = computed(() => schedule.allPastHSB())
+const allPastBowen = computed(() => schedule.allPastBowen())
+const hasOntime = computed(() => pastSailings.value.some((s) => s.ontime))
+
 const sortedRides = computed(() => {
   const todayStr = new Date().toISOString().slice(0, 10)
   const upcoming = upcomingSailingTimes.value
@@ -317,17 +406,14 @@ const sortedRides = computed(() => {
       return { ...r, isToday, isUpcoming }
     })
     .sort((a, b) => {
-      // Today's one-off first, then recurring
       if (a.isToday && !b.isToday) return -1
       if (!a.isToday && b.isToday) return 1
-      // Upcoming highlighted ones first within each group
       if (a.isUpcoming && !b.isUpcoming) return -1
       if (!a.isUpcoming && b.isUpcoming) return 1
       return 0
     })
 })
 
-// Set of upcoming sailing times for highlighting
 const upcomingSailingTimes = computed(() => {
   if (!ferryData.value) return new Set()
   const now = nowDate()
@@ -345,7 +431,6 @@ const upcomingSailingTimes = computed(() => {
   return times
 })
 
-// --- Cameras ---
 const allCamUrls = [
   'https://ccimg.bcferries.com/cc/support/terminals/cam1_hsb.jpg',
   'https://ccimg.bcferries.com/cc/support/terminals/cam2_hsb.jpg',
@@ -363,7 +448,6 @@ const allCamLabels = [
   'Bowen Community',
 ]
 
-// Bowen cameras first, then HSB in order
 const displayIndexes = [4, 5, 0, 1, 2, 3]
 const cacheBusters = ref(allCamUrls.map(() => Date.now()))
 
@@ -403,6 +487,7 @@ const displayCams = computed(() =>
 
 const fullscreen = ref(false)
 const fullscreenIndex = ref(0)
+const showFullDialog = ref(false)
 const fullscreenSrc = computed(
   () => `${allCamUrls[fullscreenIndex.value]}?t=${cacheBusters.value[fullscreenIndex.value]}`,
 )
@@ -424,141 +509,16 @@ function prevCam() {
   fullscreenIndex.value = (fullscreenIndex.value - 1 + allCamUrls.length) % allCamUrls.length
 }
 
-// --- Next sailing from each terminal ---
-// A scheduled sailing remains in "upcoming" until we observe the corresponding
-// Departed event for that terminal — so a late ferry stays visible (with a
-// "late" badge) instead of disappearing the moment its scheduled time passes.
-const upcomingSailings = computed(() => {
-  if (!ferryData.value) return []
-  const now = nowDate()
-  const oneMinuteFromNow = oneMinuteFromNowDate()
-
-  function lastConsumedScheduleTime(eventLocation, schedule) {
-    const dep = ferryData.value.recentActivity.find(
-      (e) => e.action === 'Departed' && e.location === eventLocation,
-    )
-    if (!dep) return null
-    const depTime = parseTimeToday(dep.time)
-    if (!depTime) return null
-    let best = null
-    let minDiff = Infinity
-    for (const s of schedule) {
-      if (s.cancelled) continue
-      const t = parseTimeToday(s.time)
-      if (!t) continue
-      const diff = Math.abs(t - depTime)
-      if (diff < minDiff) {
-        minDiff = diff
-        best = t
-      }
-    }
-    return best
-  }
-
-  function build(schedule, label, eventLocation) {
-    const lastConsumed = lastConsumedScheduleTime(eventLocation, schedule)
-    return schedule
-      .filter((s) => !s.cancelled)
-      .map((s) => ({ s, t: parseTimeToday(s.time) }))
-      .filter(({ t }) => t && (lastConsumed ? t > lastConsumed : t > now))
-      .map(({ s, t }) => {
-        const isLate = t <= oneMinuteFromNow
-        let deckSpace = label === 'Bowen' ? null : s.deckSpace
-        let full
-        if (deckSpace === 'Full') {
-          full = deckSpace
-        } else if (deckSpace) {
-          // convert to % full, clear if 100 since that is no info
-          deckSpace = parseInt(deckSpace.replace('%', ''), 10)
-          if (isNaN(deckSpace) || deckSpace === 100) {
-            deckSpace = null
-          } else {
-            full = 100 - deckSpace
-          }
-          full = full + '% full'
-        }
-
-        const lateMins = isLate ? Math.round((now - t) / 60000) : 0
-        return {
-          ...s,
-          label,
-          deckSpace,
-          full,
-          shortTime: s.time.replace(/(\d+:\d{2}):\d{2}\s/, '$1 '),
-          sortTime: t,
-          lateText: isLate ? `${lateMins}m late` : null,
-          lateColor: lateMins > 5 ? 'negative' : 'warning',
-        }
-      })
-  }
-
-  const hsb = build(ferryData.value.hsbSchedule, 'HSB', 'Horseshoe Bay')
-  const bowen = build(ferryData.value.bowenSchedule, 'Bowen', 'Bowen')
-  return [...hsb, ...bowen].sort((a, b) => a.sortTime - b.sortTime).slice(0, 6)
-})
-
-// --- Lateness for departures ---
-function getDepartureLateness(event) {
-  if (!ferryData.value || event.action !== 'Departed') return null
-
-  const schedule =
-    event.location === 'Bowen' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
-
-  const departTime = parseTimeToday(event.time)
-  if (!departTime) return null
-
-  let closestScheduled = null
-  let minDiff = Infinity
-  for (const s of schedule) {
-    if (s.cancelled) continue
-    const schTime = parseTimeToday(s.time)
-    if (!schTime) continue
-    const diff = Math.abs(departTime - schTime)
-    if (diff < minDiff) {
-      minDiff = diff
-      closestScheduled = schTime
-    }
-  }
-  if (!closestScheduled) return null
-
-  return Math.round((departTime - closestScheduled) / 60000)
+function getDeckColor(available) {
+  if (available === 'Full') return 'red'
+  if (!available) return 'grey'
+  const pct = parseInt(available)
+  if (isNaN(pct)) return 'grey'
+  if (pct >= 80) return 'positive'
+  if (pct >= 30) return 'warning'
+  return 'negative'
 }
 
-const hasOntime = computed(() => pastSailings.value.some((s) => s.ontime))
-
-// Past sailings: only show departures, except keep arrival if it's the most recent event
-const pastSailings = computed(() => {
-  if (!ferryData.value) return []
-  const all = ferryData.value.recentActivity
-  const filtered = all
-    .filter((event, i) => event.action === 'Departed' || (i === 0 && event.action === 'Arrived'))
-    .slice(0, 6)
-  return filtered.map((event) => {
-    const diff = getDepartureLateness(event)
-    let diffText = null
-    let diffColor = 'grey'
-    let ontime
-    if (diff !== null) {
-      if (Math.abs(diff) <= 1) {
-        diffText = '✓'
-        diffColor = 'positive'
-        ontime = true
-      } else if (diff > 0) {
-        diffText = `${diff}m late`
-        diffColor = diff > 5 ? 'negative' : 'warning'
-      } else {
-        diffText = `${Math.abs(diff)}m early`
-        diffColor = 'positive'
-      }
-    }
-    const shortLocation = event.location === 'Horseshoe Bay' ? 'HSB' : event.location
-    const displayLabel = event.action === 'Arrived' ? `Arrive ${shortLocation}` : shortLocation
-    const shortTime = event.time.replace(/(\d+:\d{2}):\d{2}\s/, '$1 ')
-    return { ...event, ontime, diffText, diffColor, displayLabel, shortTime }
-  })
-})
-
-// --- Speed / stopped duration for banner ---
 const isSailing = computed(() => {
   if (!ferryData.value) return false
   const speed = parseFloat(ferryData.value.speed)
@@ -588,9 +548,19 @@ const speedText = computed(() => {
   return ''
 })
 
-const speedClass = computed(() => {
-  if (!ferryData.value) return ''
-  return isSailing.value ? 'bg-blue-1' : 'bg-grey-2'
+const colorGradient = [
+  '#B8E29C', // Soft Lime
+  '#C6D9A1', // Pale Greenish Beige
+  '#D4CFA5', // Warm Primrose
+  '#E3C6AA', // Muted Peach
+  '#F1BCAE', // Faded Rose
+  '#FFB3B3', // Light Red
+]
+
+const vesselCardStyle = computed(() => {
+  if (!ferryData.value) return {}
+  const lateCount = pastSailings.value.filter(s => s.diffText && s.diffText !== '✓' && !s.diffText.includes('early')).length
+  return { backgroundColor: colorGradient[Math.min(lateCount, colorGradient.length - 1)] }
 })
 
 const speedIcon = computed(() => {
@@ -598,33 +568,6 @@ const speedIcon = computed(() => {
   return isSailing.value ? 'sailing' : 'anchor'
 })
 
-function getDeckColor(available) {
-  if (available === 'Full') return 'red'
-  if (!available) return 'grey'
-  const pct = parseInt(available)
-  if (pct === 'Full') return 'red'
-  if (isNaN(pct)) return 'grey'
-  if (pct >= 80) return 'positive'
-  if (pct >= 30) return 'warning'
-
-  return 'negative'
-}
-
-function parseTimeToday(timeStr) {
-  if (!timeStr) return null
-  const match = timeStr.match(/(\d+):(\d+):?(\d+)?\s*(AM|PM)/i)
-  if (!match) return null
-  let hours = parseInt(match[1])
-  const mins = parseInt(match[2])
-  const ampm = match[4].toUpperCase()
-  if (ampm === 'PM' && hours !== 12) hours += 12
-  if (ampm === 'AM' && hours === 12) hours = 0
-  const d = new Date()
-  d.setHours(hours, mins, 0, 0)
-  return d
-}
-
-// --- Auto-refresh ---
 let refreshInterval
 let camRefreshInterval
 onMounted(() => {
@@ -663,5 +606,15 @@ onUnmounted(() => {
   height: 100%;
   object-fit: contain;
   cursor: default;
+}
+
+.clip-time {
+  overflow: visible;
+  text-overflow: clip;
+  width: 3.6rem;
+}
+
+.badge-gap {
+  margin-left: 2px;
 }
 </style>
