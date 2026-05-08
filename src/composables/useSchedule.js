@@ -61,25 +61,25 @@ function formatSailingTime(timeStr) {
 }
 
 function buildPast(scheduleItems, recentActivity, eventLocation, now, label) {
-  const departedTimes = recentActivity
+  const departedEvents = recentActivity
     .filter((e) => e.action === 'Departed' && e.location === eventLocation)
-    .map((e) => parseTimeToday(e.time))
-    .filter(Boolean)
+    .map((e) => ({ time: parseTimeToday(e.time), display: e.time }))
+    .filter(d => d.time)
 
   return scheduleItems
     .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: parseTimeToday(s.time) }))
     .filter(({ t }) => t && t <= now)
     .map(({ s, t }) => {
-      const matchedDep = departedTimes.find((dt) => Math.abs(dt - t) < 5 * 60 * 1000)
+      const matchedDep = departedEvents.find((d) => Math.abs(d.time - t) < 5 * 60 * 1000)
       const lateness = matchedDep
-        ? formatLateness(Math.round((matchedDep - t) / 60000))
+        ? formatLateness(Math.round((matchedDep.time - t) / 60000))
         : { diffText: null, diffColor: 'grey' }
       return {
         ...s,
         label,
         ...lateness,
-        shortTime: formatSailingTime(s.time),
+        shortTime: matchedDep ? formatSailingTime(matchedDep.display) : formatSailingTime(s.time),
         sortTime: t,
       }
     })

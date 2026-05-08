@@ -159,15 +159,15 @@ describe('useSchedule', () => {
       assert.ok(result.length >= 12, `Expected >= 12 past HSB sailings, got ${result.length}`)
     })
 
-    it('includes early morning sailings like 4:40 AM', () => {
+    it('includes early morning sailings like 4:40am', () => {
       const result = schedule.allPastHSB()
-      const early = result.find(s => s.shortTime.includes('4:40 AM'))
+      const early = result.find(s => s.shortTime === '4:40am')
       assert.ok(early, 'Should include 4:40 AM HSB departure')
     })
 
-    it('excludes cancelled 9:20 AM', () => {
+    it('excludes cancelled 9:20am', () => {
       const result = schedule.allPastHSB()
-      const cancelled = result.find(s => s.shortTime.includes('9:20 AM'))
+      const cancelled = result.find(s => s.shortTime === '9:20am')
       assert.equal(cancelled, undefined, 'Should not include cancelled 9:20 AM')
     })
 
@@ -175,21 +175,20 @@ describe('useSchedule', () => {
       const result = schedule.allPastHSB()
       const withLateness = result.filter(s => s.diffText !== null)
       const withoutLateness = result.filter(s => s.diffText === null)
-      // ~10 recent departures from HSB have data, rest don't
       assert.ok(withLateness.length > 0, 'Should have some sailings with lateness')
       assert.ok(withoutLateness.length > 0, 'Should have some sailings without lateness')
     })
 
     it('does not show bogus lateness for early morning sailings', () => {
       const result = schedule.allPastHSB()
-      const early = result.find(s => s.shortTime.includes('4:40 AM'))
+      const early = result.find(s => s.shortTime === '4:40am')
       assert.equal(early.diffText, null, '4:40 AM should have no lateness badge')
     })
 
-    it('includes 8:55 PM (just departed)', () => {
+    it('includes 8:54pm (just departed)', () => {
       const result = schedule.allPastHSB()
-      const late = result.find(s => s.shortTime.includes('8:55 PM'))
-      assert.ok(late, 'Should include 8:55 PM HSB departure')
+      const late = result.find(s => s.shortTime === '8:54pm')
+      assert.ok(late, 'Should include 8:54 PM HSB departure (actual time)')
     })
   })
 
