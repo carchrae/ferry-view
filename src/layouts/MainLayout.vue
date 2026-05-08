@@ -20,7 +20,7 @@
         <q-tabs v-model="currentTab" shrink stretch class="gt-sm">
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
           <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
-          <q-route-tab name="rides" label="Rides" icon="thumb_up" to="/rides" />
+          <q-route-tab name="rides" label="Rides" icon="img:app-icon.png" to="/rides" />
           <q-route-tab name="map" label="Map" icon="map" to="/map" />
         </q-tabs>
 
@@ -135,7 +135,7 @@
         </q-item>
 
         <q-item clickable v-ripple to="/rides" @click="leftDrawerOpen = false">
-          <q-item-section avatar><q-icon name="thumb_up" /></q-item-section>
+          <q-item-section avatar><q-icon name="img:app-icon.png" /></q-item-section>
           <q-item-section>Rides</q-item-section>
         </q-item>
 
