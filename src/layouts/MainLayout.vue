@@ -20,7 +20,7 @@
         <q-tabs v-model="currentTab" shrink stretch class="gt-sm">
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
           <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
-          <q-route-tab name="rides" label="Rides" icon="img:app-icon.png" to="/rides" />
+          <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
           <q-route-tab name="map" label="Map" icon="map" to="/map" />
         </q-tabs>
 
@@ -151,11 +151,11 @@
     </q-page-container>
 
     <!-- Mobile bottom nav -->
-    <q-footer class="gt-sm-hide lt-md bg-white text-primary shadow-up-3">
-      <q-tabs v-model="currentTab" active-color="primary" indicator-color="primary" class="text-grey-7">
+    <q-footer class="gt-sm-hide lt-md bg-primary text-white shadow-up-3">
+      <q-tabs v-model="currentTab" active-color="white" indicator-color="white" class="text-grey-4">
         <q-route-tab name="home" label="Home" icon="home" to="/" exact />
         <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
-        <q-route-tab name="rides" label="Rides" icon="img:app-icon.png" to="/rides" />
+        <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
         <q-route-tab name="map" label="Map" icon="map" to="/map" />
       </q-tabs>
     </q-footer>
@@ -185,8 +185,14 @@ function toggleLeftDrawer() {
 </script>
 
 <style>
-.q-footer .q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon.png"] {
-  filter: grayscale(1);
-  opacity: 0.6;
+.q-footer .q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon-transparent"],
+.q-header .q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon-transparent"] {
+  opacity: 0.5;
+}
+.q-header .q-tab:has(.q-tab__icon img[src*="app-icon-transparent"]):hover .q-tab__icon img {
+  opacity: 0.8;
+}
+.q-header .q-tab--active .q-tab__icon img[src*="app-icon-transparent"] {
+  opacity: 1;
 }
 </style>
