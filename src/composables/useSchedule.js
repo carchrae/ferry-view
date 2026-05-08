@@ -50,7 +50,7 @@ function parseDeckSpace(deckSpace, label) {
   if (!deckSpace) return { deckSpace: null, full: null }
   const pct = parseInt(deckSpace.replace('%', ''), 10)
   if (isNaN(pct) || pct === 100) return { deckSpace: null, full: null }
-  return { deckSpace: 100 - pct, full: `${100 - pct}% full` }
+  return { deckSpace: pct, full: `${100 - pct}% full` }
 }
 
 function formatSailingTime(timeStr) {
