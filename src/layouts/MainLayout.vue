@@ -155,7 +155,7 @@
       <q-tabs v-model="currentTab" active-color="primary" indicator-color="primary" class="text-grey-7">
         <q-route-tab name="home" label="Home" icon="home" to="/" exact />
         <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
-        <q-route-tab name="rides" label="Rides" icon="thumb_up" to="/rides" />
+        <q-route-tab name="rides" label="Rides" icon="img:app-icon.png" to="/rides" />
         <q-route-tab name="map" label="Map" icon="map" to="/map" />
       </q-tabs>
     </q-footer>
@@ -183,3 +183,14 @@ function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value
 }
 </script>
+
+<style>
+.q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon.png"] {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+.q-item:not(.q-item--active) .q-item__section--avatar img[src*="app-icon.png"] {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+</style>
