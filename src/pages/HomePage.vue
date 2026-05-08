@@ -140,30 +140,29 @@
           flat
           color="primary"
           icon="calendar_today"
-          label="Full Schedule"
+          label="Today's Sailings"
           class="full-width q-mt-xs q-mb-sm"
           @click="showFullDialog = true"
         />
         <!-- Rides -->
         <div class="col-12 col-md-6">
           <q-card flat bordered>
-            <q-card-section v-if="!sortedRides.length" class="text-center q-pa-md">
-              <q-icon name="directions_car" size="36px" color="grey-5" class="q-mb-xs" />
+            <q-card-section v-if="!sortedRides.length" class="text-center q-pa-sm">
               <div class="text-body2 text-grey-7">
                 Need a ride from the ferry? Or have room in your car?
               </div>
-              <q-btn
-                color="primary"
-                no-caps
-                dense
-                label="Offer or Request a Ride"
-                icon="thumb_up"
-                to="/rides/post"
-                class="q-mt-sm"
-              />
-            </q-card-section>
-          </q-card>
-          <q-card v-if="sortedRides.length" flat bordered>
+               <q-btn
+                 color="primary"
+                 no-caps
+                 dense
+                 label="Offer or Request a Ride"
+                 icon="img:app-icon.png"
+                 to="/rides/post"
+                  class="q-mt-sm"
+                />
+             </q-card-section>
+           </q-card>
+           <q-card v-if="sortedRides.length" flat bordered class="q-mt-sm">
             <q-card-section class="q-pa-sm">
               <RideCard
                 v-for="ride in sortedRides"
@@ -246,7 +245,7 @@
     <q-dialog v-model="fullscreen" maximized transition-show="fade" transition-hide="fade">
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
         <img :src="fullscreenSrc" class="fullscreen-img" />
-        <div class="absolute-top-right q-pa-md" style="z-index: 1">
+        <div class="absolute-top-right q-pa-md" style="z-index: 2">
           <q-btn round flat icon="close" color="white" size="lg" aria-label="Close fullscreen" @click="fullscreen = false" />
         </div>
         <div class="absolute-bottom row justify-center q-pa-md q-gutter-sm" style="z-index: 1">
@@ -275,7 +274,7 @@
     <q-dialog v-model="showFullDialog">
       <q-card :style="{ minWidth: $q.screen.gt.xs ? '400px' : '95vw', maxWidth: '95vw', maxHeight: '90vh' }">
         <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">Full Schedule</div>
+          <div class="text-h6">Today's Sailings</div>
           <q-space />
           <q-btn flat dense icon="close" aria-label="Close" @click="showFullDialog = false" />
         </q-card-section>
