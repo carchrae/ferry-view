@@ -185,11 +185,7 @@ function toggleLeftDrawer() {
 </script>
 
 <style>
-.q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon.png"] {
-  filter: grayscale(1);
-  opacity: 0.6;
-}
-.q-item:not(.q-item--active) .q-item__section--avatar img[src*="app-icon.png"] {
+.q-footer .q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon.png"] {
   filter: grayscale(1);
   opacity: 0.6;
 }
