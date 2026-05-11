@@ -558,8 +558,21 @@ const colorGradient = [
 
 const vesselCardStyle = computed(() => {
   if (!ferryData.value) return {}
-  const lateCount = pastSailings.value.filter(s => s.diffText && s.diffText !== '✓' && !s.diffText.includes('early')).length
-  return { backgroundColor: colorGradient[Math.min(lateCount, colorGradient.length - 1)] }
+  let score = 0
+  pastSailings.value.forEach((s, i) => {
+    if (s.diffText && s.diffText !== '✓' && !s.diffText.includes('early')) {
+      score += 1 / (i + 1)
+    }
+  })
+  upcomingSailings.value.forEach((s, i) => {
+    if (s.full) {
+      const match = s.full.match(/(\d+)%/)
+      if (match && parseInt(match[1]) >= 90) {
+        score += 1 / (i + 1)
+      }
+    }
+  })
+  return { backgroundColor: colorGradient[Math.min(Math.round(score), colorGradient.length - 1)] }
 })
 
 const speedIcon = computed(() => {
