@@ -25,6 +25,7 @@ const prodConfig = {
 
 const isProduction = typeof process !== 'undefined' && process.env?.PRODUCTION === 'true'
 
+
 const firebaseConfig = isProduction ? prodConfig : stagingConfig
 
 const app = initializeApp(firebaseConfig)
@@ -32,36 +33,8 @@ export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const messaging = getMessaging(app)
 
-let analytics = null
-if (isProduction) {
-  isSupported().then((supported) => {
-    if (supported) {
-      analytics = getAnalytics(app)
-    }
-  })
-}
-
-const prodConfig = {
-  apiKey: 'AIzaSyA_MuEMwhIi0khDWk7vvWL4oszi7kBWHsI',
-  authDomain: 'bowen-ferry.firebaseapp.com',
-  projectId: 'bowen-ferry',
-  storageBucket: 'bowen-ferry.firebasestorage.app',
-  messagingSenderId: '369584658317',
-  appId: '1:369584658317:web:4feddf4cbd3841fde78fc4',
-  measurementId: 'G-Z4JWMNK727',
-}
-
-export const isStaging = process.env.STAGING === 'true'
-
-const firebaseConfig = isStaging ? stagingConfig : prodConfig
-
-const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
-export const db = getFirestore(app)
-export const messaging = getMessaging(app)
-
 export let analytics = null
-if (!isStaging) {
+if (isProduction) {
   isSupported().then((supported) => {
     if (supported) {
       analytics = getAnalytics(app)
