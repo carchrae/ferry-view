@@ -403,7 +403,7 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
       { action: 'Departed', location: 'Horseshoe Bay', time: '6:48:14 AM' },
     ],
     hsbSchedule: [
-      { time: '4:40 AM', cancelled: true, deckSpace: null },
+      { time: '4:40 AM', cancelled: false, deckSpace: null },
       { time: '5:45 AM', cancelled: false, deckSpace: null },
       { time: '6:50 AM', cancelled: false, deckSpace: null },
       { time: '8:05 AM', cancelled: false, deckSpace: null },
@@ -421,7 +421,7 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
       { time: '11:00 PM', cancelled: false, deckSpace: '100%' },
     ],
     bowenSchedule: [
-      { time: '5:15 AM', cancelled: true },
+      { time: '5:15 AM', cancelled: false },
       { time: '6:15 AM', cancelled: false },
       { time: '7:30 AM', cancelled: false },
       { time: '8:45 AM', cancelled: false },
@@ -451,16 +451,16 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
   })
 
   describe('allPastHSB', () => {
-    it('returns 6 entries (5 matched + 1 skipped, 4:40 AM excluded as cancelled)', () => {
+    it('returns 7 entries (5 matched + 2 skipped: 4:40 AM, 5:45 AM have no departure)', () => {
       const result = debugSchedule.allPastHSB()
-      assert.equal(result.length, 6, `Expected 6, got ${result.length}`)
+      assert.equal(result.length, 7, `Expected 7, got ${result.length}`)
     })
 
-    it('first entry is skipped 5:45 AM (no departure in window [5:40, 6:45))', () => {
+    it('first entry is skipped 4:40 AM (no departure data — morning sailing never happened)', () => {
       const result = debugSchedule.allPastHSB()
       const first = result[0]
-      assert.equal(first.shortTime, '5:45am', 'First HSB past should be 5:45 AM')
-      assert.equal(first.skipped, true, '5:45 AM should be skipped')
+      assert.equal(first.shortTime, '4:40am', 'First HSB past should be 4:40 AM')
+      assert.equal(first.skipped, true, '4:40 AM should be skipped')
       assert.equal(first.diffText, null, 'Skipped entries have no lateness badge')
     })
 
@@ -501,16 +501,16 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
   })
 
   describe('allPastBowen', () => {
-    it('returns 6 entries (5 matched + 1 skipped, 5:15 AM excluded as cancelled)', () => {
+    it('returns 7 entries (5 matched + 2 skipped: 5:15 AM, 6:15 AM have no departure)', () => {
       const result = debugSchedule.allPastBowen()
-      assert.equal(result.length, 6, `Expected 6, got ${result.length}`)
+      assert.equal(result.length, 7, `Expected 7, got ${result.length}`)
     })
 
-    it('first entry is skipped 6:15 AM (no departure in window [6:10, 7:25))', () => {
+    it('first entry is skipped 5:15 AM (no departure data — morning sailing never happened)', () => {
       const result = debugSchedule.allPastBowen()
       const first = result[0]
-      assert.equal(first.shortTime, '6:15am', 'First Bowen past should be 6:15 AM')
-      assert.equal(first.skipped, true, '6:15 AM should be skipped')
+      assert.equal(first.shortTime, '5:15am', 'First Bowen past should be 5:15 AM')
+      assert.equal(first.skipped, true, '5:15 AM should be skipped')
       assert.equal(first.diffText, null, 'Skipped entries have no lateness badge')
     })
 
@@ -551,9 +551,9 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
   })
 
   describe('pastSailings', () => {
-    it('returns 12 total entries (6 HSB + 6 Bowen)', () => {
+    it('returns 14 total entries (7 HSB + 7 Bowen)', () => {
       const result = debugSchedule.pastSailings()
-      assert.equal(result.length, 12, `Expected 12, got ${result.length}`)
+      assert.equal(result.length, 14, `Expected 14, got ${result.length}`)
     })
 
     it('sorted newest first', () => {
@@ -639,7 +639,7 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
       { action: 'Departed', location: 'Horseshoe Bay', time: '6:48:14 AM' },
     ],
     hsbSchedule: [
-      { time: '4:40 AM', cancelled: true, deckSpace: null },
+      { time: '4:40 AM', cancelled: false, deckSpace: null },
       { time: '5:45 AM', cancelled: false, deckSpace: null },
       { time: '6:50 AM', cancelled: false, deckSpace: null },
       { time: '8:05 AM', cancelled: false, deckSpace: null },
@@ -657,7 +657,7 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
       { time: '11:00 PM', cancelled: false, deckSpace: '100%' },
     ],
     bowenSchedule: [
-      { time: '5:15 AM', cancelled: true },
+      { time: '5:15 AM', cancelled: false },
       { time: '6:15 AM', cancelled: false },
       { time: '7:30 AM', cancelled: false },
       { time: '8:45 AM', cancelled: false },
@@ -687,15 +687,15 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
   })
 
   describe('allPastHSB', () => {
-    it('returns 7 entries (6 matched + 1 skipped, 4:40 AM excluded)', () => {
+    it('returns 8 entries (6 matched + 2 skipped: 4:40 AM, 5:45 AM)', () => {
       const result = debug2Schedule.allPastHSB()
-      assert.equal(result.length, 7, `Expected 7, got ${result.length}`)
+      assert.equal(result.length, 8, `Expected 8, got ${result.length}`)
     })
 
-    it('first entry is skipped 5:45 AM', () => {
+    it('first entry is skipped 4:40 AM', () => {
       const result = debug2Schedule.allPastHSB()
       const first = result[0]
-      assert.equal(first.shortTime, '5:45am')
+      assert.equal(first.shortTime, '4:40am')
       assert.equal(first.skipped, true)
       assert.equal(first.diffText, null)
     })
@@ -744,15 +744,15 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
   })
 
   describe('allPastBowen', () => {
-    it('returns 6 entries (5 matched + 1 skipped, 5:15 AM excluded)', () => {
+    it('returns 7 entries (5 matched + 2 skipped: 5:15 AM, 6:15 AM)', () => {
       const result = debug2Schedule.allPastBowen()
-      assert.equal(result.length, 6, `Expected 6, got ${result.length}`)
+      assert.equal(result.length, 7, `Expected 7, got ${result.length}`)
     })
 
-    it('first entry is skipped 6:15 AM', () => {
+    it('first entry is skipped 5:15 AM', () => {
       const result = debug2Schedule.allPastBowen()
       const first = result[0]
-      assert.equal(first.shortTime, '6:15am')
+      assert.equal(first.shortTime, '5:15am')
       assert.equal(first.skipped, true)
       assert.equal(first.diffText, null)
     })
@@ -794,9 +794,9 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
   })
 
   describe('pastSailings', () => {
-    it('returns 13 total entries (7 HSB + 6 Bowen)', () => {
+    it('returns 15 total entries (8 HSB + 7 Bowen)', () => {
       const result = debug2Schedule.pastSailings()
-      assert.equal(result.length, 13, `Expected 13, got ${result.length}`)
+      assert.equal(result.length, 15, `Expected 15, got ${result.length}`)
     })
 
     it('sorted newest first', () => {

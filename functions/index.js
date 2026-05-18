@@ -32,6 +32,33 @@ export const pollFerryStatus = onSchedule(
 
     const now = new Date()
 
+    // Augment recentActivity with historical departure data from sailingStatus
+    // (the API only provides a rolling window of ~10-20 events; sailingStatus
+    // captures departures permanently as they happen)
+    try {
+      const statusSnap = await db.collection('sailingStatus')
+        .where('date', '==', data.date)
+        .where('actualDepartureTime', '!=', null)
+        .get()
+      if (!statusSnap.empty) {
+        const seen = new Set(data.recentActivity.map(e => `${e.time}_${e.location}`))
+        let added = 0
+        statusSnap.forEach(doc => {
+          const s = doc.data()
+          const location = s.direction === 'To Bowen' ? 'Horseshoe Bay' : 'Bowen'
+          const key = `${s.actualDepartureTime}_${location}`
+          if (!seen.has(key)) {
+            data.recentActivity.push({ action: 'Departed', location, time: s.actualDepartureTime })
+            seen.add(key)
+            added++
+          }
+        })
+        if (added) console.log(`Augmented recentActivity with ${added} historical departure(s) from sailingStatus`)
+      }
+    } catch (e) {
+      console.error('Failed to query sailingStatus for augmentation:', e)
+    }
+
     // Pre-compute matched departure data on schedule entries
     const hsbPast = buildPast(data.hsbSchedule, data.recentActivity, 'Horseshoe Bay', now, 'HSB')
     const bowenPast = buildPast(data.bowenSchedule, data.recentActivity, 'Bowen', now, 'Bowen')

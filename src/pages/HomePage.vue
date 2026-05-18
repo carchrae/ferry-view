@@ -146,37 +146,37 @@
                   >
                     <span class="text-body2">{{ event.label }}</span>
                     <q-space />
-                     <q-badge
-                       rounded
-                       v-if="event.skipped"
-                       color="grey"
-                       class="badge-gap"
-                       dense
-                       >Cancelled
-                     </q-badge>
-                     <q-badge
-                       rounded
-                       v-else-if="event.diffText"
-                       :color="event.diffColor"
-                       class="badge-gap"
-                       dense
-                       >{{ event.diffText }}
-                     </q-badge>
+                      <q-badge
+                        rounded
+                        v-if="event.skipped"
+                        color="grey"
+                        class="badge-gap"
+                        dense
+                        >?
+                      </q-badge>
+                      <q-badge
+                        rounded
+                        v-else-if="event.diffText"
+                        :color="event.diffColor"
+                        class="badge-gap"
+                        dense
+                        >{{ event.diffText }}
+                      </q-badge>
 
-                    <div class="text-body2 text-weight-bold   text-no-wrap text-right clip-time">
-                       {{ event.shortTime }}
-                     </div>
-                  </div>
-                </q-card-section>
-              </q-card>
-            </div>
-         </div>
-         <q-btn
-          no-caps
-          dense
-          flat
-          color="primary"
-          icon="calendar_today"
+                     <div class="text-body2 text-weight-bold   text-no-wrap text-right clip-time">
+                        {{ event.shortTime }}
+                      </div>
+                   </div>
+                 </q-card-section>
+               </q-card>
+             </div>
+          </div>
+          <q-btn
+           no-caps
+           dense
+           flat
+           color="primary"
+           icon="calendar_today"
           label="Today's Sailings"
           class="full-width q-mt-xs q-mb-sm"
           @click="showFullDialog = true"
@@ -329,7 +329,7 @@
                   color="grey"
                   class="badge-gap"
                   dense
-                  >Cancelled
+                  >?
                 </q-badge>
                 <q-badge
                   rounded
@@ -355,7 +355,7 @@
                   color="grey"
                   class="badge-gap"
                   dense
-                  >Cancelled
+                  >?
                 </q-badge>
                 <q-badge
                   rounded
