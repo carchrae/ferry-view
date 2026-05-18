@@ -178,8 +178,10 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     const schedule = eventLocation === 'Horseshoe Bay'
       ? ferryData.value.hsbSchedule
       : ferryData.value.bowenSchedule
-    return buildForLocation(schedule, eventLocation,
+    const result = buildForLocation(schedule, eventLocation,
       eventLocation === 'Horseshoe Bay' ? 'HSB' : 'Bowen').past
+    // Oldest first for the dialog listing
+    return result.sort((a, b) => a.sortTime - b.sortTime)
   }
 
   return {
