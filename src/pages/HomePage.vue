@@ -318,7 +318,7 @@
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
           <div class="text-overline text-grey-7">Past</div>
-          <div class="row q-col-gutter-sm q-mb-md">
+          <div class="row items-end q-col-gutter-sm q-mb-md">
             <div class="col">
               <div v-for="(event, i) in allPastHSB" :key="'ph'+i" class="row items-center no-wrap q-mt-xs">
                 <span class="text-body2">HSB</span>
