@@ -24,6 +24,30 @@
       </div>
     </div>
 
+    <!-- Staging-only debug tools -->
+    <div v-if="isStaging" class="row q-mb-sm">
+      <div class="col-12 staging-tools">
+        <q-btn
+          flat
+          dense
+          icon="bug_report"
+          size="sm"
+          color="grey-7"
+          class="staging-btn"
+          @click="captureDebugData"
+        />
+        <q-btn
+          flat
+          dense
+          icon="schedule"
+          size="sm"
+          color="grey-7"
+          class="staging-btn"
+          @click="delayDepartures"
+        />
+      </div>
+    </div>
+
     <!-- All content in one flowing row -->
     <div class="row q-col-gutter-sm">
       <!-- Install prompt -->
@@ -115,21 +139,29 @@
                      on-time
                    </div>
                  </div>
-                 <div
-                   v-for="(event, i) in pastSailings"
-                   :key="i"
-                   class="row items-center no-wrap q-mt-xs"
-                 >
-                   <span class="text-body2">{{ event.label }}</span>
-                   <q-space />
-                    <q-badge
-                      rounded
-                      v-if="event.diffText"
-                      :color="event.diffColor"
-                      class="badge-gap"
-                      dense
-                      >{{ event.diffText }}
-                    </q-badge>
+                  <div
+                    v-for="(event, i) in pastSailings"
+                    :key="i"
+                    class="row items-center no-wrap q-mt-xs"
+                  >
+                    <span class="text-body2">{{ event.label }}</span>
+                    <q-space />
+                     <q-badge
+                       rounded
+                       v-if="event.skipped"
+                       color="grey"
+                       class="badge-gap"
+                       dense
+                       >Cancelled
+                     </q-badge>
+                     <q-badge
+                       rounded
+                       v-else-if="event.diffText"
+                       :color="event.diffColor"
+                       class="badge-gap"
+                       dense
+                       >{{ event.diffText }}
+                     </q-badge>
 
                     <div class="text-body2 text-weight-bold   text-no-wrap text-right clip-time">
                        {{ event.shortTime }}
@@ -293,7 +325,15 @@
                 <q-space />
                 <q-badge
                   rounded
-                  v-if="event.diffText"
+                  v-if="event.skipped"
+                  color="grey"
+                  class="badge-gap"
+                  dense
+                  >Cancelled
+                </q-badge>
+                <q-badge
+                  rounded
+                  v-else-if="event.diffText"
                   :color="event.diffColor"
                   class="badge-gap"
                   dense
@@ -311,7 +351,15 @@
                 <q-space />
                 <q-badge
                   rounded
-                  v-if="event.diffText"
+                  v-if="event.skipped"
+                  color="grey"
+                  class="badge-gap"
+                  dense
+                  >Cancelled
+                </q-badge>
+                <q-badge
+                  rounded
+                  v-else-if="event.diffText"
                   :color="event.diffColor"
                   class="badge-gap"
                   dense
@@ -367,6 +415,17 @@
             </div>
           </div>
         </q-card-section>
+        <q-card-section class="q-py-sm text-center">
+          <q-btn
+            flat
+            dense
+            icon="bug_report"
+            size="sm"
+            color="grey-5"
+            class="debug-btn"
+            @click="captureDebugData"
+          />
+        </q-card-section>
       </q-card>
     </q-dialog>
   </q-page>
@@ -378,6 +437,7 @@ import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryList
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
+import { isStaging } from 'src/boot/firebase'
 import RideCard from 'src/components/RideCard.vue'
 
 const { ferryData, loading, error } = useFirestoreFerryListener()
@@ -390,6 +450,61 @@ const oneMinuteFromNowDate = () => new Date(Date.now() + 1000 * 60 + TIME_OFFSET
 const nowMs = () => Date.now() + TIME_OFFSET_MS
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
+
+function captureDebugData() {
+  const payload = {
+    capturedAt: new Date().toISOString(),
+    now: nowDate().toISOString(),
+    ferryData: JSON.parse(JSON.stringify(ferryData.value)),
+    computed: {
+      upcomingSailings: JSON.parse(JSON.stringify(upcomingSailings.value)),
+      pastSailings: JSON.parse(JSON.stringify(pastSailings.value)),
+      allUpcomingHSB: JSON.parse(JSON.stringify(allUpcomingHSB.value)),
+      allUpcomingBowen: JSON.parse(JSON.stringify(allUpcomingBowen.value)),
+      allPastHSB: JSON.parse(JSON.stringify(allPastHSB.value)),
+      allPastBowen: JSON.parse(JSON.stringify(allPastBowen.value)),
+    },
+  }
+  navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+    .then(() => alert('Debug data copied to clipboard'))
+    .catch(() => alert('Failed to copy to clipboard'))
+}
+
+function formatTime(date) {
+  let hours = date.getHours()
+  const mins = String(date.getMinutes()).padStart(2, '0')
+  const secs = String(date.getSeconds()).padStart(2, '0')
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  if (hours > 12) hours -= 12
+  if (hours === 0) hours = 12
+  return `${hours}:${mins}:${secs} ${ampm}`
+}
+
+function delayDepartures() {
+  const input = window.prompt('Artificial delay per departure (minutes):', '15')
+  if (!input) return
+  const mins = parseInt(input)
+  if (isNaN(mins) || mins <= 0) return
+
+  const events = ferryData.value.recentActivity
+  const departed = events.filter(e => e.action === 'Departed')
+  const sorted = [...departed].sort((a, b) => {
+    const ta = parseTimeToday(a.time)
+    const tb = parseTimeToday(b.time)
+    return ta - tb
+  })
+
+  sorted.forEach((event, i) => {
+    const parsed = parseTimeToday(event.time)
+    if (!parsed) return
+    parsed.setMinutes(parsed.getMinutes() + mins * (i + 1))
+    event.time = formatTime(parsed)
+  })
+
+  // Trigger reactivity
+  ferryData.value = { ...ferryData.value }
+  alert(`Added ${mins} min cumulative delay to ${sorted.length} departures`)
+}
 
 const upcomingSailings = computed(() => schedule.upcomingSailings(6))
 const pastSailings = computed(() => schedule.pastSailings(6))
@@ -629,5 +744,26 @@ onUnmounted(() => {
 
 .badge-gap {
   margin-left: 2px;
+}
+
+.staging-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.staging-btn {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.staging-btn:hover {
+  opacity: 1;
+}
+
+.debug-btn {
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+.debug-btn:hover {
+  opacity: 1;
 }
 </style>
