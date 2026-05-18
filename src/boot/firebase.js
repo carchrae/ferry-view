@@ -13,6 +13,7 @@ const stagingConfig = {
   appId: '1:118448121098:web:af5975ff6809145e3706f3',
 }
 
+// eslint-disable-next-line no-unused-vars
 const prodConfig = {
   apiKey: 'AIzaSyA_MuEMwhIi0khDWk7vvWL4oszi7kBWHsI',
   authDomain: 'bowen-ferry.firebaseapp.com',
@@ -32,7 +33,8 @@ try {
 }
 const isProduction = productionEnv === 'true'
 
-const firebaseConfig = isProduction ? prodConfig : stagingConfig
+// const firebaseConfig = isProduction ? prodConfig : stagingConfig
+const firebaseConfig = stagingConfig
 
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
