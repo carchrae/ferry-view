@@ -12,3 +12,4 @@
   force = true
 
 [context.production]
+  environment = { PRODUCTION = "true" }

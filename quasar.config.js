@@ -2,6 +2,14 @@
 // https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file
 
 import { defineConfig } from '#q-app/wrappers'
+import { config } from 'dotenv'
+
+let envFile = '.env.staging'
+if (process.env.PRODUCTION === 'true') {
+  envFile = '.env.production'
+}
+config({ path: envFile })
+console.log(`Loaded env from ${envFile}, PRODUCTION=${process.env.PRODUCTION}`)
 
 export default defineConfig((ctx) => {
   return {

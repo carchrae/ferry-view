@@ -14,6 +14,9 @@ importers:
       core-js:
         specifier: ^3.31.1
         version: 3.49.0
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       firebase:
         specifier: ^12.12.1
         version: 12.12.1

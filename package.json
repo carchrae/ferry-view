@@ -10,7 +10,7 @@
     "lint": "eslint -c ./eslint.config.js \"./src*/**/*.{js,cjs,mjs,vue}\"",
     "format": "prettier --write \"**/*.{js,vue,css,scss,html,md,json}\" --ignore-path .gitignore",
     "test": "echo \"No test specified\" && exit 0",
-    "deploy:webapp:production" : "git push origin main:production",
+    "deploy:webapp:production": "git push origin main:production",
     "deploy:rules": "npx firebase deploy --project bowen-ferry-staging --only firestore:rules",
     "deploy:functions": "npx firebase deploy --project bowen-ferry-staging --only functions",
     "deploy:rules:production": "npx firebase deploy --project bowen-ferry --only firestore:rules",
@@ -27,6 +27,7 @@
   "dependencies": {
     "@quasar/extras": "^1.16.4",
     "core-js": "^3.31.1",
+    "dotenv": "^17.4.2",
     "firebase": "^12.12.1",
     "quasar": "^2.16.0",
     "register-service-worker": "^1.7.2",
