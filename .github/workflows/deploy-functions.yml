@@ -3,8 +3,9 @@ name: Deploy Cloud Functions
 on:
   push:
     branches:
-      - main
-      - production
+      - never-disabled-for-now
+#      - main
+#      - production
   workflow_dispatch:
 
 permissions:
