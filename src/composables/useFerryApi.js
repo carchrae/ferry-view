@@ -1,3 +1,9 @@
+/**
+ * Composable for ferry API interactions - deprecated as firebase function now
+ * does this for all clients
+ *
+ */
+
 import {ref} from 'vue'
 
 // use netlify proxy for local development
