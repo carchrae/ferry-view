@@ -1,6 +1,7 @@
 #!/bin/bash
 # Generate VAPID keys
 # Usage: ./scripts/generate-vapid-keys.sh <staging|production>
+set -v
 
 TARGET="${1:-staging}"
 
@@ -10,7 +11,7 @@ else
   KEY_FILE="vapid-keys-staging"
 fi
 
-KEYS=$(npx web-push generate-vapid-keys 2>/dev/null)
+KEYS=$(npx -y web-push generate-vapid-keys 2>/dev/null)
 PUBLIC_KEY=$(echo "$KEYS" | grep -A1 'Public Key:' | tail -1 | xargs)
 PRIVATE_KEY=$(echo "$KEYS" | grep -A1 'Private Key:' | tail -1 | xargs)
 
