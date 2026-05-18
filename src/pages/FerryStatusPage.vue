@@ -185,9 +185,9 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useFerryApi } from 'src/composables/useFerryApi'
+import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 
-const { ferryData, loading, error, fetchFerryData } = useFerryApi()
+const { ferryData, loading, error } = useFirestoreFerryListener()
 const scheduleTab = ref('hsb')
 
 function getDeckColor(available) {
@@ -200,13 +200,13 @@ function getDeckColor(available) {
 }
 
 function refresh() {
-  fetchFerryData()
+  // Manual refresh not needed - Firestore listener auto-updates
 }
 
-let autoRefresh
 onMounted(() => {
-  fetchFerryData()
-  autoRefresh = setInterval(fetchFerryData, 60000)
+  // Auto-updates from Firestore listener
 })
-onUnmounted(() => clearInterval(autoRefresh))
+onUnmounted(() => {
+  // Cleanup handled by composable
+})
 </script>

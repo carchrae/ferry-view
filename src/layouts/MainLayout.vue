@@ -13,7 +13,7 @@
         />
 
         <q-toolbar-title class="cursor-pointer" @click="showAttributions = true">
-          Bowen LIFT
+          {{ isStaging ? 'Staging Bowen LIFT' : 'Bowen LIFT' }}
         </q-toolbar-title>
 
         <!-- Desktop nav tabs -->
@@ -166,6 +166,7 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useInstall } from 'src/composables/useInstall'
+import { isStaging } from '../boot/firebase.js'
 
 const route = useRoute()
 const currentTab = ref(

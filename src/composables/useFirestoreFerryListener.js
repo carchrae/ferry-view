@@ -9,9 +9,14 @@ export function useFirestoreFerryListener() {
 
   let unsubscribe = null
 
+  let interval;
   function startListening() {
     loading.value = true
     error.value = null
+
+    interval = setInterval(()=>{
+      ferryData.value = { ...ferryData.value, updated: Date.now()};
+    },60*1000);
 
     const docRef = doc(db, 'ferryStatus', 'current')
 
@@ -37,6 +42,10 @@ export function useFirestoreFerryListener() {
     if (unsubscribe) {
       unsubscribe()
       unsubscribe = null
+    }
+    if (interval) {
+      clearInterval(interval);
+      interval = null;
     }
   }
 

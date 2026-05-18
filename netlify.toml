@@ -1,0 +1,14 @@
+[build]
+  command = "pnpm build"
+  publish = "dist/pwa"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://bowenferry.ca/Production/:splat"
+  status = 200
+  force = true
+
+[context.production]

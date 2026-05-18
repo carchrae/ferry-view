@@ -43,7 +43,7 @@ export default defineConfig((ctx) => {
 
     // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/quasar-config-file#build
     build: {
-      // publicPath: '/',
+      publicPath: '/',
       vueRouterMode: 'hash', // available values: 'hash', 'history'
 
       // webpackTranspile: false,
@@ -54,7 +54,7 @@ export default defineConfig((ctx) => {
       // webpackTranspileDependencies: [],
 
       esbuildTarget: {
-        browser: ['es2022', 'firefox115', 'chrome115', 'safari14'],
+        browser: 'es2022',
         node: 'node20',
       },
 
@@ -66,7 +66,7 @@ export default defineConfig((ctx) => {
       // Options below are automatically set depending on the env, set them if you want to override
       // extractCSS: false,
 
-      // https://v2.quasar.dev/quasar-cli-webpack/handling-webpack
+      // https://quasar.dev/quasar-cli-webpack/handling-webpack
       // "chain" is a webpack-chain object https://github.com/sorrycc/webpack-chain
       chainWebpack(chain, { isClient, isServer }) {
         if (process.env.PRODUCTION !== 'true') {
@@ -109,7 +109,7 @@ export default defineConfig((ctx) => {
       // lang: 'en-US', // Quasar language pack
 
       // For special cases outside of where the auto-import strategy can have an impact
-      // (like functional components as one of the examples),
+      // (like electric components as one of the examples),
       // you can manually specify Quasar components/directives to be available everywhere:
       //
       // components: [],
@@ -143,7 +143,7 @@ export default defineConfig((ctx) => {
       // (gets superseded if process.env.PORT is specified at runtime)
 
       middlewares: [
-        'render', // keep this as last one
+        'render', // keep as last one
       ],
 
       // extendPackageJson (json) {},
@@ -165,10 +165,15 @@ export default defineConfig((ctx) => {
 
     // https://v2.quasar.dev/quasar-cli-webpack/developing-pwa/configuring-pwa
     pwa: {
-      workboxMode: 'GenerateSW', // 'GenerateSW' or 'InjectManifest'
+      workboxMode: 'InjectManifest', // 'GenerateSW' or 'InjectManifest'
       // swFilename: 'sw.js',
       // manifestFilename: 'manifest.json',
-      // extendManifestJson (json) {},
+      extendManifestJson(json) {
+        if (process.env.PRODUCTION !== 'true') {
+          json.short_name = 'Bowen Lift (Test)'
+          json.name = 'Bowen Lift (Test Version)'
+        }
+      },
       // useCredentialsForManifestTag: true,
       // injectPwaMetaTags: false,
       // extendPWACustomSWConf (esbuildConf) {},
@@ -176,17 +181,17 @@ export default defineConfig((ctx) => {
       // extendInjectManifestOptions (cfg) {}
     },
 
-    // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/developing-cordova-apps/configuring-cordova
+    // https://v2.quasar.dev/quasar-cli-webpack/developing-cordova-apps/configuring-cordova
     cordova: {
       // noIosLegacyBuildFlag: true, // uncomment only if you know what you are doing
     },
 
-    // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/developing-capacitor-apps/configuring-capacitor
+    // https://v2.quasar.dev/quasar-cli-webpack/developing-capacitor-apps/configuring-capacitor
     capacitor: {
       hideSplashscreen: true,
     },
 
-    // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/developing-electron-apps/configuring-electron
+    // https://v2.quasar.dev/quasar-cli-webpack/developing-electron-apps/configuring-electron
     electron: {
       // extendElectronMainConf (esbuildConf) {},
       // extendElectronPreloadConf (esbuildConf) {},
@@ -207,7 +212,7 @@ export default defineConfig((ctx) => {
         // appBundleId: '',
         // appCategoryType: '',
         // osxSign: '',
-        // protocol: 'myapp://path',
+        // protocol: 'myapp://',
         // Windows only
         // win32metadata: { ... }
       },
@@ -219,13 +224,13 @@ export default defineConfig((ctx) => {
       },
     },
 
-    // Full list of options: https://v2.quasar.dev/quasar-cli-webpack/developing-browser-extensions/configuring-bex
+    // https://v2.quasar.dev/quasar-cli-webpack/developing-bex/configuring-bex
     bex: {
       // extendBexScriptsConf (esbuildConf) {},
       // extendBexManifestJson (json) {},
 
       /**
-       * The list of extra scripts (js/ts) not in your bex manifest that you want to
+       * The list of extra scripts (js/ts) not in your BEX manifest that you want to
        * compile and use in your browser extension. Maybe dynamic use them?
        *
        * Each entry in the list should be a relative filename to /src-bex/

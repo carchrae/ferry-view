@@ -49,6 +49,11 @@
         </q-card>
       </div>
 
+      <!-- Push notifications -->
+      <div class="col-12">
+        <NotificationSettings />
+      </div>
+
       <!-- Sailings (one col-md-6 block) -->
       <div v-if="ferryData" class="col-12 col-md-6">
         <!-- Vessel Status -->
@@ -369,13 +374,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useFerryApi } from 'src/composables/useFerryApi'
+import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
 import RideCard from 'src/components/RideCard.vue'
 
-const { ferryData, loading, error, fetchFerryData } = useFerryApi()
+const { ferryData, loading, error } = useFirestoreFerryListener()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
 
@@ -580,18 +585,14 @@ const speedIcon = computed(() => {
   return isSailing.value ? 'sailing' : 'anchor'
 })
 
-let refreshInterval
 let camRefreshInterval
 onMounted(() => {
-  fetchFerryData()
-  refreshInterval = setInterval(fetchFerryData, 60000)
   camRefreshInterval = setInterval(() => {
     cacheBusters.value = allCamUrls.map(() => Date.now())
     camRetries.value = allCamUrls.map(() => 0)
   }, 60000)
 })
 onUnmounted(() => {
-  clearInterval(refreshInterval)
   clearInterval(camRefreshInterval)
   Object.values(retryTimeouts).forEach(clearTimeout)
 })

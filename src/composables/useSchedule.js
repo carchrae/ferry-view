@@ -14,37 +14,9 @@ export function parseTimeToday(timeStr) {
 
 function formatLateness(diffMins) {
   if (diffMins === null) return { diffText: null, diffColor: 'grey' }
-  // left 2 mins early is still on time
-  if (diffMins <= 0 && diffMins >= -2) return { diffText: '✓', diffColor: 'positive', ontime: true }
-  // left up to 1 min late is still on time
-  if (diffMins <= 1) return { diffText: '✓', diffColor: 'positive', ontime: true }
+  if (Math.abs(diffMins) <= 1) return { diffText: '✓', diffColor: 'positive', ontime: true }
   if (diffMins > 0) return { diffText: `${diffMins}m late`, diffColor: diffMins > 5 ? 'negative' : 'warning' }
   return { diffText: `${Math.abs(diffMins)}m early`, diffColor: 'positive' }
-}
-
-function findClosestScheduled(scheduleItems, departTime) {
-  let best = null
-  let minDiff = Infinity
-  for (const s of scheduleItems) {
-    const t = parseTimeToday(s.time)
-    if (!t) continue
-    const diff = Math.abs(t - departTime)
-    if (diff < minDiff) {
-      minDiff = diff
-      best = t
-    }
-  }
-  return best
-}
-
-function findLastConsumed(scheduleItems, recentActivity, eventLocation) {
-  const dep = recentActivity.find(
-    (e) => e.action === 'Departed' && e.location === eventLocation,
-  )
-  if (!dep) return null
-  const depTime = parseTimeToday(dep.time)
-  if (!depTime) return null
-  return findClosestScheduled(scheduleItems, depTime)
 }
 
 function parseDeckSpace(deckSpace, label) {
@@ -69,32 +41,71 @@ function buildPast(scheduleItems, recentActivity, eventLocation, now, label) {
     .map((e) => ({ time: parseTimeToday(e.time), display: e.time }))
     .filter(d => d.time)
 
-  return scheduleItems
+  const schedulesWithEnd = scheduleItems
     .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: parseTimeToday(s.time) }))
     .filter(({ t }) => t && t <= now)
-    .map(({ s, t }) => {
-      const matchedDep = departedEvents.find((d) => Math.abs(d.time - t) < 5 * 60 * 1000)
-      const lateness = matchedDep
-        ? formatLateness(Math.round((matchedDep.time - t) / 60000))
-        : { diffText: null, diffColor: 'grey' }
-      return {
-        ...s,
-        label,
-        ...lateness,
-        shortTime: matchedDep ? formatSailingTime(matchedDep.display) : formatSailingTime(s.time),
-        sortTime: t,
-      }
+    .map((item, i, arr) => {
+      const windowEnd = arr[i + 1]?.t || new Date(item.t.getTime() + 90 * 60 * 1000)
+      return { ...item, windowEnd }
     })
+
+  const usedDisplays = new Set()
+  const scheduleEntries = schedulesWithEnd.map(({ s, t, windowEnd }) => {
+    let matchedDep = null
+    let minDiff = Infinity
+    const windowStart = new Date(t.getTime() - 5 * 60 * 1000)
+    for (const d of departedEvents) {
+      if (usedDisplays.has(d.display)) continue
+      if (d.time < windowStart || d.time >= windowEnd) continue
+      const diff = Math.abs(d.time - t)
+      if (diff < minDiff) {
+        minDiff = diff
+        matchedDep = d
+      }
+    }
+    if (matchedDep) usedDisplays.add(matchedDep.display)
+
+    const lateness = matchedDep
+      ? formatLateness(Math.round((matchedDep.time - t) / 60000))
+      : { diffText: null, diffColor: 'grey' }
+    return {
+      ...s,
+      label,
+      ...lateness,
+      shortTime: matchedDep ? formatSailingTime(matchedDep.display) : formatSailingTime(s.time),
+      sortTime: t,
+      _hasDep: !!matchedDep,
+    }
+  })
+
+  const orphanEntries = departedEvents
+    .filter(d => !usedDisplays.has(d.display))
+    .map(d => ({
+      label,
+      shortTime: formatSailingTime(d.display),
+      sortTime: d.time,
+      diffText: null,
+      diffColor: 'grey',
+      _hasDep: true,
+    }))
+
+  // Only include schedules that have a matched departure, plus orphans
+  return [...scheduleEntries.filter(e => e._hasDep), ...orphanEntries]
 }
 
-function buildUpcoming(scheduleItems, recentActivity, eventLocation, now, oneMinuteFromNow, label) {
-  const lastConsumed = findLastConsumed(scheduleItems, recentActivity, eventLocation)
-
+function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, earliestDepTime) {
   return scheduleItems
     .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: parseTimeToday(s.time) }))
-    .filter(({ t }) => t && (lastConsumed ? t > lastConsumed : t > now))
+    .filter(({ t }) => {
+      if (!t) return false
+      if (consumedTimes.has(t.getTime())) return false
+      // Exclude past-time items before the earliest known departure for this route.
+      // Without this, early-morning items with no departure data would appear as late-running.
+      if (earliestDepTime && t < earliestDepTime) return false
+      return true
+    })
     .map(({ s, t }) => {
       const isLate = t <= oneMinuteFromNow
       const lateMins = isLate ? Math.round((now - t) / 60000) : 0
@@ -114,66 +125,56 @@ function buildUpcoming(scheduleItems, recentActivity, eventLocation, now, oneMin
 }
 
 export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
-  function upcomingSailings(limit) {
-    if (!ferryData.value) return []
+  function buildForLocation(schedule, eventLocation, label) {
+    if (!ferryData.value) return { past: [], upcoming: [], consumedTimes: new Set() }
     const now = nowDate()
     const oneMinuteFromNow = oneMinuteFromNowDate()
-    const hsb = buildUpcoming(
-      ferryData.value.hsbSchedule,
-      ferryData.value.recentActivity,
-      'Horseshoe Bay',
-      now, oneMinuteFromNow,
-      'HSB',
-    )
-    const bowen = buildUpcoming(
-      ferryData.value.bowenSchedule,
-      ferryData.value.recentActivity,
-      'Bowen',
-      now, oneMinuteFromNow,
-      'Bowen',
-    )
-    const all = [...hsb, ...bowen].sort((a, b) => a.sortTime - b.sortTime)
+    const past = buildPast(schedule, ferryData.value.recentActivity, eventLocation, now, label)
+    const consumedTimes = new Set(past.filter(e => e.sortTime).map(e => e.sortTime.getTime()))
+
+    const departedTimes = ferryData.value.recentActivity
+      .filter((e) => e.action === 'Departed' && e.location === eventLocation)
+      .map((e) => parseTimeToday(e.time))
+      .filter(t => t)
+    const earliestDepTime = departedTimes.length > 0
+      ? new Date(Math.min(...departedTimes.map(t => t.getTime())))
+      : null
+
+    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, earliestDepTime)
+    return { past, upcoming, consumedTimes }
+  }
+
+  function upcomingSailings(limit) {
+    if (!ferryData.value) return []
+    const hsb = buildForLocation(ferryData.value.hsbSchedule, 'Horseshoe Bay', 'HSB')
+    const bowen = buildForLocation(ferryData.value.bowenSchedule, 'Bowen', 'Bowen')
+    const all = [...hsb.upcoming, ...bowen.upcoming].sort((a, b) => a.sortTime - b.sortTime)
     return limit ? all.slice(0, limit) : all
   }
 
   function allUpcoming(label, eventLocation) {
     if (!ferryData.value) return []
-    const now = nowDate()
-    const oneMinuteFromNow = oneMinuteFromNowDate()
     const schedule = eventLocation === 'Horseshoe Bay'
       ? ferryData.value.hsbSchedule
       : ferryData.value.bowenSchedule
-    return buildUpcoming(schedule, ferryData.value.recentActivity, eventLocation, now, oneMinuteFromNow, label)
+    return buildForLocation(schedule, eventLocation, label).upcoming
   }
 
   function pastSailings(limit) {
     if (!ferryData.value) return []
-    const now = nowDate()
-    const hsb = buildPast(
-      ferryData.value.hsbSchedule,
-      ferryData.value.recentActivity,
-      'Horseshoe Bay',
-      now,
-      'HSB',
-    )
-    const bowen = buildPast(
-      ferryData.value.bowenSchedule,
-      ferryData.value.recentActivity,
-      'Bowen',
-      now,
-      'Bowen',
-    )
-    const all = [...hsb, ...bowen].sort((a, b) => b.sortTime - a.sortTime)
+    const hsb = buildForLocation(ferryData.value.hsbSchedule, 'Horseshoe Bay', 'HSB')
+    const bowen = buildForLocation(ferryData.value.bowenSchedule, 'Bowen', 'Bowen')
+    const all = [...hsb.past, ...bowen.past].sort((a, b) => b.sortTime - a.sortTime)
     return limit ? all.slice(0, limit) : all
   }
 
   function allPast(eventLocation) {
     if (!ferryData.value) return []
-    const now = nowDate()
     const schedule = eventLocation === 'Horseshoe Bay'
       ? ferryData.value.hsbSchedule
       : ferryData.value.bowenSchedule
-    return buildPast(schedule, ferryData.value.recentActivity, eventLocation, now, eventLocation === 'Horseshoe Bay' ? 'HSB' : 'Bowen')
+    return buildForLocation(schedule, eventLocation,
+      eventLocation === 'Horseshoe Bay' ? 'HSB' : 'Bowen').past
   }
 
   return {

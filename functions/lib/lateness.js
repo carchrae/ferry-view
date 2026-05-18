@@ -1,8 +1,5 @@
-
-import admin from 'firebase-admin'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 
-admin.initializeApp()
 const db = getFirestore()
 
 import { sendPushNotification } from './notify.js'

@@ -13,7 +13,6 @@ const stagingConfig = {
   appId: '1:118448121098:web:af5975ff6809145e3706f3',
 }
 
-// eslint-disable-next-line no-unused-vars
 const prodConfig = {
   apiKey: 'AIzaSyA_MuEMwhIi0khDWk7vvWL4oszi7kBWHsI',
   authDomain: 'bowen-ferry.firebaseapp.com',
@@ -24,17 +23,16 @@ const prodConfig = {
   measurementId: 'G-Z4JWMNK727',
 }
 
-let productionEnv
-
+let envProduction
 try {
-  productionEnv = process.env.PRODUCTION
+  envProduction = process.env?.PRODUCTION === 'true'
 } catch (e) {
-  console.log('fail to get env', e)
+  console.log('envProduction not found',e)
 }
-const isProduction = productionEnv === 'true'
+export const isProduction = envProduction === 'true'
+export const isStaging = !isProduction
 
-// const firebaseConfig = isProduction ? prodConfig : stagingConfig
-const firebaseConfig = stagingConfig
+const firebaseConfig = isProduction ? prodConfig : stagingConfig
 
 const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)

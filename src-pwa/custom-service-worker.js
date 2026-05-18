@@ -26,3 +26,54 @@ if (process.env.MODE !== 'ssr' || process.env.PROD) {
     )
   )
 }
+
+// Push notification handler
+self.addEventListener('push', (event) => {
+  if (!event.data) return
+
+  const data = event.data.json()
+
+  const options = {
+    body: data.body,
+    icon: data.icon || '/icons/icon-192x192.png',
+    badge: data.badge || '/icons/icon-192x192.png',
+    vibrate: [100, 50, 100],
+    data: {
+      url: data.url || '/',
+      timestamp: Date.now(),
+    },
+    actions: data.actions || [
+      { action: 'open', title: 'Open' },
+    ],
+    tag: data.tag || 'default',
+    renotify: data.renotify ?? true,
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Bowen Ferry', options)
+  )
+})
+
+// Notification click handler
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const url = event.notification.data?.url || '/'
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // If a window is already open, focus it
+        for (const client of clientList) {
+          if (client.url === url && 'focus' in client) {
+            return client.focus()
+          }
+        }
+        // Otherwise open a new window
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(url)
+        }
+      })
+  )
+})

@@ -13,12 +13,9 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "firebase-tools": "^14.3.0",
     "vitest": "^3.2.4"
   },
   "scripts": {
-    "test": "vitest",
-    "deploy:functions:staging": "cd ..; firebase -P bowen-ferry-staging deploy --only functions",
-    "deploy:functions:production": "cd ..; firebase -P bowen-ferry deploy --only functions"
+    "test": "vitest"
   }
 }

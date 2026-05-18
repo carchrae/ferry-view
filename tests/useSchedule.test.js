@@ -99,7 +99,9 @@ describe('useSchedule', () => {
 
     it('returns all when no limit', () => {
       const result = schedule.upcomingSailings()
-      // At 8:56 PM: HSB=10:00PM,11:00PM + Bowen=9:30PM,10:30PM,11:30PM = 5
+      // At 8:56 PM: only items after earliest known departure per route
+      // HSB earliest=4:04pm → 10:00pm, 11:00pm remain (other past items filtered)
+      // Bowen earliest=3:22pm → 9:30pm, 10:30pm, 11:30pm remain
       assert.equal(result.length, 5, `Expected 5, got ${result.length}`)
     })
 
@@ -128,8 +130,11 @@ describe('useSchedule', () => {
 
     it('returns all when no limit', () => {
       const result = schedule.pastSailings()
-      // At 8:56 PM: 13 HSB + 12 Bowen = 25 total past scheduled sailings
-      assert.equal(result.length, 25, `Expected 25, got ${result.length}`)
+      // Past = matched schedule departures + orphan departures (no lateness badge)
+      // HSB: 5 matched (4:04, 5:19, 6:39, 7:52, 8:54)
+      // Bowen: 4 matched (3:22, 6:00, 7:15, 8:24) + 1 orphan (4:35) = 5
+      // Total: 10
+      assert.equal(result.length, 10, `Expected 10, got ${result.length}`)
     })
 
     it('contains both HSB and Bowen entries', () => {
@@ -152,17 +157,15 @@ describe('useSchedule', () => {
       const result = schedule.allPastHSB()
       console.log('allPastHSB count:', result.length)
       console.log('allPastHSB:', result.map(s => s.shortTime))
-      // At 8:56 PM, past HSB departures should be:
-      // 4:40 AM, 5:45 AM, 6:50 AM, 8:05 AM, 9:20 AM(cancelled skip), 10:35 AM, 11:55 AM,
-      // 1:10 PM, 2:35 PM, 3:55 PM, 5:20 PM, 6:35 PM, 7:50 PM
-      // That's 13 non-cancelled past sailings
-      assert.ok(result.length >= 12, `Expected >= 12 past HSB sailings, got ${result.length}`)
+      // Only departures with matched schedules appear: 4:04pm, 5:19pm, 6:39pm, 7:52pm, 8:54pm
+      assert.equal(result.length, 5, `Expected 5, got ${result.length}`)
     })
 
-    it('includes early morning sailings like 4:40am', () => {
+    it('only includes departures that have actual departure data', () => {
       const result = schedule.allPastHSB()
+      // Early morning sailings like 4:40am have no departure data, so they don't appear
       const early = result.find(s => s.shortTime === '4:40am')
-      assert.ok(early, 'Should include 4:40 AM HSB departure')
+      assert.equal(early, undefined, 'Should not include 4:40 AM without departure data')
     })
 
     it('excludes cancelled 9:20am', () => {
@@ -173,16 +176,29 @@ describe('useSchedule', () => {
 
     it('shows lateness only when departure data exists', () => {
       const result = schedule.allPastHSB()
-      const withLateness = result.filter(s => s.diffText !== null)
-      const withoutLateness = result.filter(s => s.diffText === null)
+      const withLateness = result.filter(s => s.diffText && s.diffText !== '✓')
+      const ontime = result.filter(s => s.ontime === true)
       assert.ok(withLateness.length > 0, 'Should have some sailings with lateness')
-      assert.ok(withoutLateness.length > 0, 'Should have some sailings without lateness')
+      assert.ok(ontime.length > 0, 'Should have some on-time sailings')
+      // All past entries have a departure matched, so diffText is always set
+      result.forEach(s => {
+        assert.ok(s.diffText !== undefined && s.diffText !== null,
+          `diffText should be set, got ${s.diffText}`)
+      })
     })
 
-    it('does not show bogus lateness for early morning sailings', () => {
+    it('does not show bogus lateness for departures within 1 minute', () => {
       const result = schedule.allPastHSB()
-      const early = result.find(s => s.shortTime === '4:40am')
-      assert.equal(early.diffText, null, '4:40 AM should have no lateness badge')
+      // 5:19pm matched to 5:20 PM = -1 min → ontime
+      const five19 = result.find(s => s.shortTime === '5:19pm')
+      assert.ok(five19, 'Should include 5:19pm')
+      assert.equal(five19.ontime, true, '5:19pm (1 min early) should be ontime')
+      assert.equal(five19.diffText, '✓', '5:19pm should show checkmark')
+      // 8:54pm matched to 8:55 PM = -1 min → ontime
+      const eight54 = result.find(s => s.shortTime === '8:54pm')
+      assert.ok(eight54, 'Should include 8:54pm')
+      assert.equal(eight54.ontime, true, '8:54pm (1 min early) should be ontime')
+      assert.equal(eight54.diffText, '✓', '8:54pm should show checkmark')
     })
 
     it('includes 8:54pm (just departed)', () => {
@@ -197,12 +213,10 @@ describe('useSchedule', () => {
       const result = schedule.allPastBowen()
       console.log('allPastBowen count:', result.length)
       console.log('allPastBowen:', result.map(s => s.shortTime))
-      // At 8:56 PM, past Bowen departures (non-cancelled):
-      // 5:15 AM, 6:15 AM, 7:30 AM, 8:45 AM, 10:00 AM, 11:15 AM, 12:35 PM,
-      // 1:55 PM, 3:15 PM, 6:00 PM, 7:15 PM, 8:25 PM
-      // 4:40 PM is cancelled
-      // That's 12 non-cancelled past sailings
-      assert.ok(result.length >= 11, `Expected >= 11 past Bowen sailings, got ${result.length}`)
+      // Only departures with matched schedules appear:
+      // 3:22pm (matches 3:15pm), 6:00pm (matches 6:00pm), 7:15pm (matches 7:15pm),
+      // 8:24pm (matches 8:25pm), + orphan 4:35pm
+      assert.equal(result.length, 5, `Expected 5, got ${result.length}`)
     })
 
     it('excludes cancelled 4:40 PM', () => {
@@ -215,7 +229,8 @@ describe('useSchedule', () => {
   describe('allUpcoming HSB', () => {
     it('shows future HSB sailings only', () => {
       const result = schedule.allUpcomingHSB()
-      // At 8:56 PM: 10:00 PM, 11:00 PM (8:55 just departed, 9:20 cancelled)
+      // At 8:56 PM: earliest HSB departure = 4:04pm. After filtering pre-4:04pm and consumed:
+      // 10:00 PM, 11:00 PM
       assert.equal(result.length, 2, `Expected 2, got ${result.length}`)
     })
   })
