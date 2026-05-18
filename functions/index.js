@@ -39,9 +39,11 @@ export const pollFerryStatus = onSchedule(
     if (checkDataChanged(newDataSanitized, existingDataSanitized)) {
       console.log('Data changed, saving...')
 
-      await db.collection('ferryStatusHistory').add({
-        ...data,
-        recordedAt: new Date().toISOString(),
+      await db
+        .collection('ferryStatusHistory')
+        .add({
+          ...data,
+          recordedAt: new Date().toISOString(),
       })
 
       await db.collection('ferryStatus').doc('current').set(data)
