@@ -79,6 +79,16 @@ function buildPast(scheduleItems, recentActivity, eventLocation, now, label) {
     }
   })
 
+  const matched = scheduleEntries.filter(e => e._hasDep)
+  const unmatched = scheduleEntries.filter(e => !e._hasDep)
+
+  // Schedules before the latest consumed schedule are skipped/cancelled
+  const consumedMs = matched.filter(e => e.sortTime).map(e => e.sortTime.getTime())
+  const lastConsumedTime = consumedMs.length > 0 ? new Date(Math.max(...consumedMs)) : null
+  const skipped = unmatched
+    .filter(e => e.sortTime && lastConsumedTime && e.sortTime < lastConsumedTime)
+    .map(e => ({ ...e, skipped: true }))
+
   const orphanEntries = departedEvents
     .filter(d => !usedDisplays.has(d.display))
     .map(d => ({
@@ -90,20 +100,18 @@ function buildPast(scheduleItems, recentActivity, eventLocation, now, label) {
       _hasDep: true,
     }))
 
-  // Only include schedules that have a matched departure, plus orphans
-  return [...scheduleEntries.filter(e => e._hasDep), ...orphanEntries]
+  return [...matched, ...skipped, ...orphanEntries]
 }
 
-function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, earliestDepTime) {
+function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime) {
   return scheduleItems
     .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: parseTimeToday(s.time) }))
     .filter(({ t }) => {
       if (!t) return false
       if (consumedTimes.has(t.getTime())) return false
-      // Exclude past-time items before the earliest known departure for this route.
-      // Without this, early-morning items with no departure data would appear as late-running.
-      if (earliestDepTime && t < earliestDepTime) return false
+      // Items before the latest consumed schedule are in past as skipped
+      if (lastConsumedTime && t < lastConsumedTime) return false
       return true
     })
     .map(({ s, t }) => {
@@ -130,17 +138,14 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     const now = nowDate()
     const oneMinuteFromNow = oneMinuteFromNowDate()
     const past = buildPast(schedule, ferryData.value.recentActivity, eventLocation, now, label)
-    const consumedTimes = new Set(past.filter(e => e.sortTime).map(e => e.sortTime.getTime()))
+    // Only schedule-based entries consume their schedule time (orphans and skipped don't)
+    const consumedArr = past
+      .filter(e => !e.skipped && e.time && e.sortTime)
+      .map(e => e.sortTime.getTime())
+    const consumedTimes = new Set(consumedArr)
+    const lastConsumedTime = consumedArr.length > 0 ? new Date(Math.max(...consumedArr)) : null
 
-    const departedTimes = ferryData.value.recentActivity
-      .filter((e) => e.action === 'Departed' && e.location === eventLocation)
-      .map((e) => parseTimeToday(e.time))
-      .filter(t => t)
-    const earliestDepTime = departedTimes.length > 0
-      ? new Date(Math.min(...departedTimes.map(t => t.getTime())))
-      : null
-
-    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, earliestDepTime)
+    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime)
     return { past, upcoming, consumedTimes }
   }
 

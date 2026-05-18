@@ -130,11 +130,11 @@ describe('useSchedule', () => {
 
     it('returns all when no limit', () => {
       const result = schedule.pastSailings()
-      // Past = matched schedule departures + orphan departures (no lateness badge)
-      // HSB: 5 matched (4:04, 5:19, 6:39, 7:52, 8:54)
-      // Bowen: 4 matched (3:22, 6:00, 7:15, 8:24) + 1 orphan (4:35) = 5
-      // Total: 10
-      assert.equal(result.length, 10, `Expected 10, got ${result.length}`)
+      // Past = matched + skipped + orphan
+      // HSB: 5 matched + 8 skipped = 13
+      // Bowen: 4 matched + 8 skipped + 1 orphan = 13
+      // Total: 26
+      assert.equal(result.length, 26, `Expected 26, got ${result.length}`)
     })
 
     it('contains both HSB and Bowen entries', () => {
@@ -153,19 +153,22 @@ describe('useSchedule', () => {
   })
 
   describe('allPast HSB', () => {
-    it('shows ALL past HSB scheduled sailings (not just recent activity)', () => {
+    it('shows ALL past HSB scheduled sailings including skipped ones', () => {
       const result = schedule.allPastHSB()
       console.log('allPastHSB count:', result.length)
       console.log('allPastHSB:', result.map(s => s.shortTime))
-      // Only departures with matched schedules appear: 4:04pm, 5:19pm, 6:39pm, 7:52pm, 8:54pm
-      assert.equal(result.length, 5, `Expected 5, got ${result.length}`)
+      // 5 matched + 8 skipped (no departure data, before last consumed schedule)
+      assert.equal(result.length, 13, `Expected 13, got ${result.length}`)
     })
 
-    it('only includes departures that have actual departure data', () => {
+    it('includes early morning skipped sailings with cancelled tag', () => {
       const result = schedule.allPastHSB()
-      // Early morning sailings like 4:40am have no departure data, so they don't appear
+      // 4:40am, 5:45am, 6:50am, 8:05am have no departure data → appear as skipped
       const early = result.find(s => s.shortTime === '4:40am')
-      assert.equal(early, undefined, 'Should not include 4:40 AM without departure data')
+      assert.ok(early, 'Should include 4:40 AM as skipped')
+      assert.equal(early.skipped, true, '4:40 AM should have skipped: true')
+      // Skipped entries have no diffText
+      assert.equal(early.diffText, null, 'Skipped entries should have no lateness badge')
     })
 
     it('excludes cancelled 9:20am', () => {
@@ -174,16 +177,18 @@ describe('useSchedule', () => {
       assert.equal(cancelled, undefined, 'Should not include cancelled 9:20 AM')
     })
 
-    it('shows lateness only when departure data exists', () => {
+    it('shows lateness, on-time, and skipped badges', () => {
       const result = schedule.allPastHSB()
       const withLateness = result.filter(s => s.diffText && s.diffText !== '✓')
       const ontime = result.filter(s => s.ontime === true)
+      const skipped = result.filter(s => s.skipped === true)
       assert.ok(withLateness.length > 0, 'Should have some sailings with lateness')
       assert.ok(ontime.length > 0, 'Should have some on-time sailings')
-      // All past entries have a departure matched, so diffText is always set
+      assert.ok(skipped.length > 0, 'Should have some skipped sailings')
+      // Every entry should have either a lateness badge or be skipped
       result.forEach(s => {
-        assert.ok(s.diffText !== undefined && s.diffText !== null,
-          `diffText should be set, got ${s.diffText}`)
+        assert.ok(s.skipped || s.diffText !== undefined,
+          `Entry should have diffText or skipped: ${s.shortTime}`)
       })
     })
 
@@ -209,20 +214,26 @@ describe('useSchedule', () => {
   })
 
   describe('allPast Bowen', () => {
-    it('shows ALL past Bowen scheduled sailings', () => {
+    it('shows ALL past Bowen scheduled sailings including skipped ones', () => {
       const result = schedule.allPastBowen()
       console.log('allPastBowen count:', result.length)
       console.log('allPastBowen:', result.map(s => s.shortTime))
-      // Only departures with matched schedules appear:
-      // 3:22pm (matches 3:15pm), 6:00pm (matches 6:00pm), 7:15pm (matches 7:15pm),
-      // 8:24pm (matches 8:25pm), + orphan 4:35pm
-      assert.equal(result.length, 5, `Expected 5, got ${result.length}`)
+      // 4 matched + 8 skipped + 1 orphan = 13
+      assert.equal(result.length, 13, `Expected 13, got ${result.length}`)
     })
 
     it('excludes cancelled 4:40 PM', () => {
       const result = schedule.allPastBowen()
       const cancelled = result.find(s => s.shortTime.includes('4:40 PM'))
       assert.equal(cancelled, undefined, 'Should not include cancelled 4:40 PM')
+    })
+
+    it('includes 5:15 AM as skipped (no departure, later Bowen sailed)', () => {
+      const result = schedule.allPastBowen()
+      const five15 = result.find(s => s.shortTime === '5:15am')
+      assert.ok(five15, 'Should include 5:15 AM as skipped')
+      assert.equal(five15.skipped, true, '5:15 AM should have skipped: true')
+      assert.equal(five15.diffText, null, 'Skipped entries should have no lateness badge')
     })
   })
 
@@ -241,6 +252,125 @@ describe('useSchedule', () => {
       assert.ok(result.length > 0, 'Should have upcoming Bowen sailings')
       // 9:30 PM, 10:30 PM, 11:30 PM
       assert.ok(result.length >= 3, `Expected >= 3, got ${result.length}`)
+    })
+  })
+})
+
+describe('useSchedule — morning sample (5:15 AM should NOT appear in upcoming)', () => {
+  const MORNING_FERRY_DATA = {
+    recentActivity: [
+      { action: 'Departed', location: 'Horseshoe Bay', time: '8:04:09 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '7:48:28 AM' },
+      { action: 'Departed', location: 'Bowen', time: '7:30:33 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '7:06:58 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '6:48:14 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '6:38:47 AM' },
+      { action: 'Departed', location: 'Bowen', time: '6:20:44 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '6:09:17 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '5:50:46 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '12:31:19 AM' },
+      { action: 'Departed', location: 'Bowen', time: '12:14:02 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '12:07:39 AM' },
+    ],
+    hsbSchedule: [
+      { time: '4:40 AM', cancelled: false, deckSpace: null },
+      { time: '5:45 AM', cancelled: false, deckSpace: null },
+      { time: '6:50 AM', cancelled: false, deckSpace: null },
+      { time: '8:05 AM', cancelled: false, deckSpace: null },
+      { time: '9:20 AM', cancelled: false, deckSpace: '88%' },
+      { time: '10:35 AM', cancelled: false, deckSpace: '100%' },
+      { time: '11:55 AM', cancelled: false, deckSpace: '100%' },
+      { time: '1:10 PM', cancelled: false, deckSpace: '100%' },
+      { time: '2:35 PM', cancelled: false, deckSpace: '100%' },
+      { time: '3:55 PM', cancelled: false, deckSpace: '100%' },
+      { time: '5:20 PM', cancelled: false, deckSpace: '100%' },
+      { time: '6:35 PM', cancelled: false, deckSpace: '100%' },
+      { time: '7:50 PM', cancelled: false, deckSpace: '100%' },
+      { time: '8:55 PM', cancelled: false, deckSpace: '100%' },
+      { time: '10:00 PM', cancelled: false, deckSpace: '100%' },
+      { time: '11:00 PM', cancelled: false, deckSpace: '100%' },
+    ],
+    bowenSchedule: [
+      { time: '5:15 AM', cancelled: false },
+      { time: '6:15 AM', cancelled: false },
+      { time: '7:30 AM', cancelled: false },
+      { time: '8:45 AM', cancelled: false },
+      { time: '10:00 AM', cancelled: false },
+      { time: '11:15 AM', cancelled: false },
+      { time: '12:35 PM', cancelled: false },
+      { time: '1:55 PM', cancelled: false },
+      { time: '3:15 PM', cancelled: false },
+      { time: '4:40 PM', cancelled: false },
+      { time: '6:00 PM', cancelled: false },
+      { time: '7:15 PM', cancelled: false },
+      { time: '8:25 PM', cancelled: false },
+      { time: '9:30 PM', cancelled: false },
+      { time: '10:30 PM', cancelled: false },
+      { time: '11:30 PM', cancelled: false },
+    ],
+  }
+  // Capture time 8:18 AM PDT = 15:18 UTC
+  const morningNow = () => new Date('2026-05-18T15:18:00.000Z')
+  const morningNowPlus1 = () => new Date('2026-05-18T15:19:00.000Z')
+
+  let morningSchedule
+
+  before(() => {
+    const ferryData = ref(MORNING_FERRY_DATA)
+    morningSchedule = useSchedule(ferryData, morningNow, morningNowPlus1)
+  })
+
+  describe('upcomingSailings', () => {
+    it('does NOT include 5:15 AM Bowen (cancelled/skipped, later Bowen sailed)', () => {
+      const result = morningSchedule.upcomingSailings()
+      const five15 = result.find(s => s.shortTime === '5:15am')
+      assert.equal(five15, undefined, '5:15 AM Bowen should NOT appear in upcoming — it was skipped')
+    })
+
+    it('does NOT include 4:40 AM HSB (cancelled/skipped, later HSB sailed)', () => {
+      const result = morningSchedule.upcomingSailings()
+      const four40 = result.find(s => s.shortTime === '4:40am')
+      assert.equal(four40, undefined, '4:40 AM HSB should NOT appear in upcoming — it was skipped')
+    })
+
+    it('includes 8:45 AM Bowen (truly upcoming, not yet happened)', () => {
+      const result = morningSchedule.upcomingSailings()
+      const eight45 = result.find(s => s.shortTime === '8:45am')
+      assert.ok(eight45, '8:45 AM Bowen should appear in upcoming')
+    })
+
+    it('includes 9:20 AM HSB (truly upcoming)', () => {
+      const result = morningSchedule.upcomingSailings()
+      const nine20 = result.find(s => s.shortTime === '9:20am')
+      assert.ok(nine20, '9:20 AM HSB should appear in upcoming')
+    })
+  })
+
+  describe('allUpcomingBowen', () => {
+    it('does NOT include 5:15 AM Bowen', () => {
+      const result = morningSchedule.allUpcomingBowen()
+      const five15 = result.find(s => s.shortTime === '5:15am')
+      assert.equal(five15, undefined, '5:15 AM Bowen should not be in allUpcomingBowen')
+    })
+
+    it('starts with 8:45 AM as first upcoming Bowen sailing', () => {
+      const result = morningSchedule.allUpcomingBowen()
+      assert.ok(result.length > 0)
+      assert.equal(result[0].shortTime, '8:45am', 'First upcoming Bowen should be 8:45 AM')
+    })
+  })
+
+  describe('allUpcomingHSB', () => {
+    it('does NOT include 4:40 AM HSB', () => {
+      const result = morningSchedule.allUpcomingHSB()
+      const four40 = result.find(s => s.shortTime === '4:40am')
+      assert.equal(four40, undefined, '4:40 AM HSB should not be in allUpcomingHSB')
+    })
+
+    it('starts with 9:20 AM as first upcoming HSB sailing', () => {
+      const result = morningSchedule.allUpcomingHSB()
+      assert.ok(result.length > 0)
+      assert.equal(result[0].shortTime, '9:20am', 'First upcoming HSB should be 9:20 AM')
     })
   })
 })
