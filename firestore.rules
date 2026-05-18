@@ -24,6 +24,18 @@ service cloud.firestore {
         && request.auth.uid == resource.data.authorUid;
     }
 
+    // Capacity history collection (server-write only)
+    match /capacityHistory/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Sailing status collection (server-write only)
+    match /sailingStatus/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Default: deny all other access
     match /{document=**} {
       allow read, write: if false;

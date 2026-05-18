@@ -1,3 +1,5 @@
+import { parseTimeToday, calculateLateness } from './matching.js'
+
 const API_URL = 'https://bowenferry.ca/Production/AISPositionsData3'
 
 export async function fetchFerryData() {
@@ -28,13 +30,24 @@ function parseFerryData(data) {
     time: entry[2],
   }))
 
+  const bowenSchedule = (schBowen.times?.[0] || []).map(entry => ({
+    time: entry[0],
+    cancelled: parseInt(entry[1]) === 1,
+  }))
+
+  const hsbSchedule = (schHSB.times?.[0] || []).map(entry => ({
+    time: entry[0],
+    cancelled: parseInt(entry[1]) === 1,
+    deckSpace: entry[3] || null,
+  }))
+
   // Calculate current lateness from most recent departure
   let currentLateness = null
   let latenessDirection = null
 
   const departure = recentActivity.find(e => e.action === 'Departed')
   if (departure) {
-    const lateness = calculateLateness(departure, schBowen, schHSB, departure.location)
+    const lateness = calculateLateness(departure, bowenSchedule, hsbSchedule, departure.location)
     if (lateness !== null) {
       currentLateness = lateness.minutes
       latenessDirection = lateness.direction
@@ -55,63 +68,12 @@ function parseFerryData(data) {
       direction: parseInt(entry[2]) === 0 ? 'To Bowen' : 'To HSB',
     })),
     deckSpaceLastUpdated: deckSpace.lastUpdated,
-    bowenSchedule: (schBowen.times?.[0] || []).map(entry => ({
-      time: entry[0],
-      cancelled: parseInt(entry[1]) === 1,
-    })),
-    hsbSchedule: (schHSB.times?.[0] || []).map(entry => ({
-      time: entry[0],
-      cancelled: parseInt(entry[1]) === 1,
-      deckSpace: entry[3] || null,
-    })),
+    bowenSchedule,
+    hsbSchedule,
     currentLateness,
     latenessDirection,
     fetchedAt: Date.now(),
   }
-}
-
-function calculateLateness(event, schBowen, schHSB, location) {
-  const eventTime = parseTimeToday(event.time)
-  if (!eventTime) return null
-
-  const schedule = location === 'Bowen' ? schBowen : schHSB
-  if (!schedule?.times?.[0]) return null
-
-  let closestScheduled = null
-  let minDiff = Infinity
-  const direction = location === 'Bowen' ? 'to HSB' : 'to Bowen'
-
-  for (const entry of schedule.times[0]) {
-    const schTime = parseTimeToday(entry[0])
-    if (!schTime) continue
-    const diff = Math.abs(eventTime - schTime)
-    if (diff < minDiff) {
-      minDiff = diff
-      closestScheduled = schTime
-    }
-  }
-
-  if (!closestScheduled) return null
-
-  const minutesLate = Math.round((eventTime - closestScheduled) / 60000)
-  return { minutes: minutesLate, direction }
-}
-
-function parseTimeToday(timeStr) {
-  if (!timeStr) return null
-  const match = timeStr.match(/(\d+):(\d+):?(\d+)?\s*(AM|PM)/i)
-  if (!match) return null
-
-  let hours = parseInt(match[1])
-  const mins = parseInt(match[2])
-  const ampm = match[4].toUpperCase()
-
-  if (ampm === 'PM' && hours !== 12) hours += 12
-  if (ampm === 'AM' && hours === 12) hours = 0
-
-  const d = new Date()
-  d.setHours(hours, mins, 0, 0)
-  return d
 }
 
 function checkDataChanged(newData, existingData) {
