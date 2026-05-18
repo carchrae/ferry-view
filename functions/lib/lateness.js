@@ -1,10 +1,10 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 
-const db = getFirestore()
 
 import { sendPushNotification } from './notify.js'
 
 export async function checkLatenessAndNotify(ferryData) {
+  const db = getFirestore()
   const currentLateness = ferryData.currentLateness
   if (currentLateness === null) return
 

@@ -35,15 +35,15 @@ export const pollFerryStatus = onSchedule(
     // Check if data has changed
     const newDataSanitized = sanitizeForCompare(data)
     const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
-    
+
     if (checkDataChanged(newDataSanitized, existingDataSanitized)) {
       console.log('Data changed, saving...')
-      
+
       await db.collection('ferryStatusHistory').add({
         ...data,
         recordedAt: new Date().toISOString(),
       })
-      
+
       await db.collection('ferryStatus').doc('current').set(data)
       console.log('Saved ferry status to Firestore')
     } else {
