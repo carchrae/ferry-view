@@ -46,7 +46,8 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     .map((s) => ({ s, t: parseTimeToday(s.time) }))
     .filter(({ t }) => t && t <= now)
     .map((item, i, arr) => {
-      const windowEnd = arr[i + 1]?.t || new Date(item.t.getTime() + 90 * 60 * 1000)
+      const rawEnd = arr[i + 1]?.t || new Date(item.t.getTime() + 90 * 60 * 1000)
+      const windowEnd = new Date(rawEnd.getTime() - 5 * 60 * 1000)
       return { ...item, windowEnd }
     })
 

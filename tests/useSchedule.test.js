@@ -374,3 +374,461 @@ describe('useSchedule — morning sample (5:15 AM should NOT appear in upcoming)
     })
   })
 })
+
+describe('useSchedule — live debug data (1:40 PM)', () => {
+  const NOW_TS = '2026-05-18T20:40:00.000Z'
+  const NOW_PLUS_1_TS = '2026-05-18T20:41:00.000Z'
+
+  const DEBUG_FERRY_DATA = {
+    recentActivity: [
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '1:23:07 PM' },
+      { action: 'Departed', location: 'Bowen', time: '1:04:30 PM' },
+      { action: 'Arrived', location: 'Bowen', time: '12:35:27 PM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '12:15:03 PM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '11:46:58 AM' },
+      { action: 'Departed', location: 'Bowen', time: '11:27:26 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '10:58:36 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '10:38:47 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '10:19:26 AM' },
+      { action: 'Departed', location: 'Bowen', time: '10:00:26 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '9:37:37 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '9:19:04 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '9:03:37 AM' },
+      { action: 'Departed', location: 'Bowen', time: '8:45:20 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '8:22:58 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '8:04:09 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '7:48:28 AM' },
+      { action: 'Departed', location: 'Bowen', time: '7:30:33 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '7:06:58 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '6:48:14 AM' },
+    ],
+    hsbSchedule: [
+      { time: '4:40 AM', cancelled: true, deckSpace: null },
+      { time: '5:45 AM', cancelled: false, deckSpace: null },
+      { time: '6:50 AM', cancelled: false, deckSpace: null },
+      { time: '8:05 AM', cancelled: false, deckSpace: null },
+      { time: '9:20 AM', cancelled: false, deckSpace: null },
+      { time: '10:35 AM', cancelled: false, deckSpace: null },
+      { time: '11:55 AM', cancelled: false, deckSpace: null },
+      { time: '1:10 PM', cancelled: false, deckSpace: 'Full' },
+      { time: '2:35 PM', cancelled: false, deckSpace: '100%' },
+      { time: '3:55 PM', cancelled: false, deckSpace: '100%' },
+      { time: '5:20 PM', cancelled: false, deckSpace: '100%' },
+      { time: '6:35 PM', cancelled: false, deckSpace: '100%' },
+      { time: '7:50 PM', cancelled: false, deckSpace: '100%' },
+      { time: '8:55 PM', cancelled: false, deckSpace: '100%' },
+      { time: '10:00 PM', cancelled: false, deckSpace: '100%' },
+      { time: '11:00 PM', cancelled: false, deckSpace: '100%' },
+    ],
+    bowenSchedule: [
+      { time: '5:15 AM', cancelled: true },
+      { time: '6:15 AM', cancelled: false },
+      { time: '7:30 AM', cancelled: false },
+      { time: '8:45 AM', cancelled: false },
+      { time: '10:00 AM', cancelled: false },
+      { time: '11:15 AM', cancelled: false },
+      { time: '12:35 PM', cancelled: false },
+      { time: '1:55 PM', cancelled: false },
+      { time: '3:15 PM', cancelled: false },
+      { time: '4:40 PM', cancelled: false },
+      { time: '6:00 PM', cancelled: false },
+      { time: '7:15 PM', cancelled: false },
+      { time: '8:25 PM', cancelled: false },
+      { time: '9:30 PM', cancelled: false },
+      { time: '10:30 PM', cancelled: false },
+      { time: '11:30 PM', cancelled: false },
+    ],
+  }
+
+  const debugNow = () => new Date(NOW_TS)
+  const debugNowPlus1 = () => new Date(NOW_PLUS_1_TS)
+
+  let debugSchedule
+
+  before(() => {
+    const ferryData = ref(DEBUG_FERRY_DATA)
+    debugSchedule = useSchedule(ferryData, debugNow, debugNowPlus1)
+  })
+
+  describe('allPastHSB', () => {
+    it('returns 6 entries (5 matched + 1 skipped, 4:40 AM excluded as cancelled)', () => {
+      const result = debugSchedule.allPastHSB()
+      assert.equal(result.length, 6, `Expected 6, got ${result.length}`)
+    })
+
+    it('first entry is skipped 5:45 AM (no departure in window [5:40, 6:45))', () => {
+      const result = debugSchedule.allPastHSB()
+      const first = result[0]
+      assert.equal(first.shortTime, '5:45am', 'First HSB past should be 5:45 AM')
+      assert.equal(first.skipped, true, '5:45 AM should be skipped')
+      assert.equal(first.diffText, null, 'Skipped entries have no lateness badge')
+    })
+
+    it('6:50 AM matched to 6:48 AM departure (2m early)', () => {
+      const result = debugSchedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '6:48am')
+      assert.ok(entry, '6:48 AM departure should appear in past')
+      assert.equal(entry.diffText, '2m early', '6:48 AM (2 min early) should show early badge')
+    })
+
+    it('8:05 AM matched to 8:04 AM departure (ontime)', () => {
+      const result = debugSchedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '8:04am')
+      assert.ok(entry, '8:04 AM departure should appear in past')
+      assert.equal(entry.ontime, true, '8:04 AM (1 min early) should be ontime')
+    })
+
+    it('9:20 AM matched to 9:19 AM departure (ontime)', () => {
+      const result = debugSchedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '9:19am')
+      assert.ok(entry, '9:19 AM departure should appear in past')
+      assert.equal(entry.ontime, true, '9:19 AM (1 min early) should be ontime')
+    })
+
+    it('10:35 AM matched to 10:38 AM (3m late)', () => {
+      const result = debugSchedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '10:38am')
+      assert.ok(entry, '10:38 AM departure should appear in past')
+      assert.equal(entry.diffText, '3m late', '10:38 AM should be 3m late')
+    })
+
+    it('11:55 AM matched to 12:15 PM (20m late)', () => {
+      const result = debugSchedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '12:15pm')
+      assert.ok(entry, '12:15 PM departure should appear in past')
+      assert.equal(entry.diffText, '20m late', '12:15 PM should be 20m late')
+    })
+  })
+
+  describe('allPastBowen', () => {
+    it('returns 6 entries (5 matched + 1 skipped, 5:15 AM excluded as cancelled)', () => {
+      const result = debugSchedule.allPastBowen()
+      assert.equal(result.length, 6, `Expected 6, got ${result.length}`)
+    })
+
+    it('first entry is skipped 6:15 AM (no departure in window [6:10, 7:25))', () => {
+      const result = debugSchedule.allPastBowen()
+      const first = result[0]
+      assert.equal(first.shortTime, '6:15am', 'First Bowen past should be 6:15 AM')
+      assert.equal(first.skipped, true, '6:15 AM should be skipped')
+      assert.equal(first.diffText, null, 'Skipped entries have no lateness badge')
+    })
+
+    it('7:30 AM matched to 7:30 AM departure (ontime)', () => {
+      const result = debugSchedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '7:30am')
+      assert.ok(entry, '7:30 AM departure should appear in past')
+      assert.equal(entry.ontime, true, '7:30 AM should be ontime')
+    })
+
+    it('8:45 AM matched to 8:45 AM departure (ontime)', () => {
+      const result = debugSchedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '8:45am')
+      assert.ok(entry, '8:45 AM departure should appear in past')
+      assert.equal(entry.ontime, true, '8:45 AM should be ontime')
+    })
+
+    it('10:00 AM matched to 10:00 AM departure (ontime)', () => {
+      const result = debugSchedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '10:00am')
+      assert.ok(entry, '10:00 AM departure should appear in past')
+      assert.equal(entry.ontime, true, '10:00 AM should be ontime')
+    })
+
+    it('11:15 AM matched to 11:27 AM (12m late)', () => {
+      const result = debugSchedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '11:27am')
+      assert.ok(entry, '11:27 AM departure should appear in past')
+      assert.equal(entry.diffText, '12m late', '11:27 AM should be 12m late')
+    })
+
+    it('12:35 PM matched to 1:04 PM (29m late)', () => {
+      const result = debugSchedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '1:04pm')
+      assert.ok(entry, '1:04 PM departure should appear in past')
+      assert.equal(entry.diffText, '29m late', '1:04 PM should be 29m late')
+    })
+  })
+
+  describe('pastSailings', () => {
+    it('returns 12 total entries (6 HSB + 6 Bowen)', () => {
+      const result = debugSchedule.pastSailings()
+      assert.equal(result.length, 12, `Expected 12, got ${result.length}`)
+    })
+
+    it('sorted newest first', () => {
+      const result = debugSchedule.pastSailings()
+      for (let i = 1; i < result.length; i++) {
+        assert.ok(result[i - 1].sortTime >= result[i].sortTime,
+          `Not sorted at index ${i}: ${result[i - 1].shortTime} vs ${result[i].shortTime}`)
+      }
+    })
+  })
+
+  describe('upcomingSailings', () => {
+    it('returns 18 total entries', () => {
+      const result = debugSchedule.upcomingSailings()
+      assert.equal(result.length, 18, `Expected 18, got ${result.length}`)
+    })
+
+    it('includes overdue 1:10 PM HSB as first entry (30m late)', () => {
+      const result = debugSchedule.upcomingSailings()
+      const first = result[0]
+      assert.equal(first.shortTime, '1:10pm', 'First upcoming should be 1:10 PM HSB')
+      assert.equal(first.lateText, '30m late', '1:10 PM should be 30m late')
+    })
+
+    it('limit returns at most the limit', () => {
+      const result = debugSchedule.upcomingSailings(6)
+      assert.equal(result.length, 6)
+    })
+  })
+
+  describe('allUpcomingHSB', () => {
+    it('returns 9 entries (1:10 PM overdue + 8 future)', () => {
+      const result = debugSchedule.allUpcomingHSB()
+      assert.equal(result.length, 9, `Expected 9, got ${result.length}`)
+    })
+
+    it('includes 1:10 PM as overdue first entry', () => {
+      const result = debugSchedule.allUpcomingHSB()
+      assert.equal(result[0].shortTime, '1:10pm', 'First upcoming HSB should be 1:10 PM')
+      assert.equal(result[0].lateText, '30m late')
+    })
+  })
+
+  describe('allUpcomingBowen', () => {
+    it('returns 9 entries (1:55 PM through 11:30 PM)', () => {
+      const result = debugSchedule.allUpcomingBowen()
+      assert.equal(result.length, 9, `Expected 9, got ${result.length}`)
+    })
+
+    it('first entry is 1:55 PM', () => {
+      const result = debugSchedule.allUpcomingBowen()
+      assert.equal(result[0].shortTime, '1:55pm', 'First upcoming Bowen should be 1:55 PM')
+    })
+  })
+})
+
+describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departed)', () => {
+  const NOW_TS = '2026-05-18T20:51:00.000Z'
+  const NOW_PLUS_1_TS = '2026-05-18T20:52:00.000Z'
+
+  const DEBUG2_FERRY_DATA = {
+    recentActivity: [
+      { action: 'Departed', location: 'Horseshoe Bay', time: '1:41:40 PM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '1:23:07 PM' },
+      { action: 'Departed', location: 'Bowen', time: '1:04:30 PM' },
+      { action: 'Arrived', location: 'Bowen', time: '12:35:27 PM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '12:15:03 PM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '11:46:58 AM' },
+      { action: 'Departed', location: 'Bowen', time: '11:27:26 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '10:58:36 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '10:38:47 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '10:19:26 AM' },
+      { action: 'Departed', location: 'Bowen', time: '10:00:26 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '9:37:37 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '9:19:04 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '9:03:37 AM' },
+      { action: 'Departed', location: 'Bowen', time: '8:45:20 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '8:22:58 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '8:04:09 AM' },
+      { action: 'Arrived', location: 'Horseshoe Bay', time: '7:48:28 AM' },
+      { action: 'Departed', location: 'Bowen', time: '7:30:33 AM' },
+      { action: 'Arrived', location: 'Bowen', time: '7:06:58 AM' },
+      { action: 'Departed', location: 'Horseshoe Bay', time: '6:48:14 AM' },
+    ],
+    hsbSchedule: [
+      { time: '4:40 AM', cancelled: true, deckSpace: null },
+      { time: '5:45 AM', cancelled: false, deckSpace: null },
+      { time: '6:50 AM', cancelled: false, deckSpace: null },
+      { time: '8:05 AM', cancelled: false, deckSpace: null },
+      { time: '9:20 AM', cancelled: false, deckSpace: null },
+      { time: '10:35 AM', cancelled: false, deckSpace: null },
+      { time: '11:55 AM', cancelled: false, deckSpace: null },
+      { time: '1:10 PM', cancelled: false, deckSpace: null },
+      { time: '2:35 PM', cancelled: false, deckSpace: '61%' },
+      { time: '3:55 PM', cancelled: false, deckSpace: '100%' },
+      { time: '5:20 PM', cancelled: false, deckSpace: '100%' },
+      { time: '6:35 PM', cancelled: false, deckSpace: '100%' },
+      { time: '7:50 PM', cancelled: false, deckSpace: '100%' },
+      { time: '8:55 PM', cancelled: false, deckSpace: '100%' },
+      { time: '10:00 PM', cancelled: false, deckSpace: '100%' },
+      { time: '11:00 PM', cancelled: false, deckSpace: '100%' },
+    ],
+    bowenSchedule: [
+      { time: '5:15 AM', cancelled: true },
+      { time: '6:15 AM', cancelled: false },
+      { time: '7:30 AM', cancelled: false },
+      { time: '8:45 AM', cancelled: false },
+      { time: '10:00 AM', cancelled: false },
+      { time: '11:15 AM', cancelled: false },
+      { time: '12:35 PM', cancelled: false },
+      { time: '1:55 PM', cancelled: false },
+      { time: '3:15 PM', cancelled: false },
+      { time: '4:40 PM', cancelled: false },
+      { time: '6:00 PM', cancelled: false },
+      { time: '7:15 PM', cancelled: false },
+      { time: '8:25 PM', cancelled: false },
+      { time: '9:30 PM', cancelled: false },
+      { time: '10:30 PM', cancelled: false },
+      { time: '11:30 PM', cancelled: false },
+    ],
+  }
+
+  const debug2Now = () => new Date(NOW_TS)
+  const debug2NowPlus1 = () => new Date(NOW_PLUS_1_TS)
+
+  let debug2Schedule
+
+  before(() => {
+    const ferryData = ref(DEBUG2_FERRY_DATA)
+    debug2Schedule = useSchedule(ferryData, debug2Now, debug2NowPlus1)
+  })
+
+  describe('allPastHSB', () => {
+    it('returns 7 entries (6 matched + 1 skipped, 4:40 AM excluded)', () => {
+      const result = debug2Schedule.allPastHSB()
+      assert.equal(result.length, 7, `Expected 7, got ${result.length}`)
+    })
+
+    it('first entry is skipped 5:45 AM', () => {
+      const result = debug2Schedule.allPastHSB()
+      const first = result[0]
+      assert.equal(first.shortTime, '5:45am')
+      assert.equal(first.skipped, true)
+      assert.equal(first.diffText, null)
+    })
+
+    it('6:50 AM matched to 6:48 AM departure (2m early)', () => {
+      const result = debug2Schedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '6:48am')
+      assert.ok(entry)
+      assert.equal(entry.diffText, '2m early')
+    })
+
+    it('8:05 AM matched to 8:04 AM departure (ontime)', () => {
+      const result = debug2Schedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '8:04am')
+      assert.ok(entry)
+      assert.equal(entry.ontime, true)
+    })
+
+    it('9:20 AM matched to 9:19 AM departure (ontime)', () => {
+      const result = debug2Schedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '9:19am')
+      assert.ok(entry)
+      assert.equal(entry.ontime, true)
+    })
+
+    it('10:35 AM matched to 10:38 AM (3m late)', () => {
+      const result = debug2Schedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '10:38am')
+      assert.ok(entry)
+      assert.equal(entry.diffText, '3m late')
+    })
+
+    it('11:55 AM matched to 12:15 PM (20m late)', () => {
+      const result = debug2Schedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '12:15pm')
+      assert.ok(entry)
+      assert.equal(entry.diffText, '20m late')
+    })
+
+    it('1:10 PM matched to 1:41 PM (31m late)', () => {
+      const result = debug2Schedule.allPastHSB()
+      const entry = result.find(s => s.shortTime === '1:41pm')
+      assert.ok(entry, '1:41 PM departure should appear in past')
+      assert.equal(entry.diffText, '31m late', '1:41 PM should be 31m late')
+    })
+  })
+
+  describe('allPastBowen', () => {
+    it('returns 6 entries (5 matched + 1 skipped, 5:15 AM excluded)', () => {
+      const result = debug2Schedule.allPastBowen()
+      assert.equal(result.length, 6, `Expected 6, got ${result.length}`)
+    })
+
+    it('first entry is skipped 6:15 AM', () => {
+      const result = debug2Schedule.allPastBowen()
+      const first = result[0]
+      assert.equal(first.shortTime, '6:15am')
+      assert.equal(first.skipped, true)
+      assert.equal(first.diffText, null)
+    })
+
+    it('7:30 AM matched to 7:30 AM departure (ontime)', () => {
+      const result = debug2Schedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '7:30am')
+      assert.ok(entry)
+      assert.equal(entry.ontime, true)
+    })
+
+    it('8:45 AM matched to 8:45 AM departure (ontime)', () => {
+      const result = debug2Schedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '8:45am')
+      assert.ok(entry)
+      assert.equal(entry.ontime, true)
+    })
+
+    it('10:00 AM matched to 10:00 AM departure (ontime)', () => {
+      const result = debug2Schedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '10:00am')
+      assert.ok(entry)
+      assert.equal(entry.ontime, true)
+    })
+
+    it('11:15 AM matched to 11:27 AM (12m late)', () => {
+      const result = debug2Schedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '11:27am')
+      assert.ok(entry)
+      assert.equal(entry.diffText, '12m late')
+    })
+
+    it('12:35 PM matched to 1:04 PM (29m late)', () => {
+      const result = debug2Schedule.allPastBowen()
+      const entry = result.find(s => s.shortTime === '1:04pm')
+      assert.ok(entry)
+      assert.equal(entry.diffText, '29m late')
+    })
+  })
+
+  describe('pastSailings', () => {
+    it('returns 13 total entries (7 HSB + 6 Bowen)', () => {
+      const result = debug2Schedule.pastSailings()
+      assert.equal(result.length, 13, `Expected 13, got ${result.length}`)
+    })
+
+    it('sorted newest first', () => {
+      const result = debug2Schedule.pastSailings()
+      for (let i = 1; i < result.length; i++) {
+        assert.ok(result[i - 1].sortTime >= result[i].sortTime,
+          `Not sorted at index ${i}: ${result[i - 1].shortTime} vs ${result[i].shortTime}`)
+      }
+    })
+  })
+
+  describe('upcomingSailings', () => {
+    it('returns 17 total entries (1:55 PM Bowen is first, 1:10 PM now in past)', () => {
+      const result = debug2Schedule.upcomingSailings()
+      assert.equal(result.length, 17, `Expected 17, got ${result.length}`)
+      assert.equal(result[0].shortTime, '1:55pm', 'First upcoming should be 1:55 PM Bowen')
+    })
+  })
+
+  describe('allUpcomingHSB', () => {
+    it('returns 8 entries (no overdue — 1:10 PM now has departed event)', () => {
+      const result = debug2Schedule.allUpcomingHSB()
+      assert.equal(result.length, 8, `Expected 8, got ${result.length}`)
+      assert.equal(result[0].shortTime, '2:35pm', 'First upcoming HSB should be 2:35 PM')
+    })
+  })
+
+  describe('allUpcomingBowen', () => {
+    it('returns 9 entries (1:55 PM through 11:30 PM)', () => {
+      const result = debug2Schedule.allUpcomingBowen()
+      assert.equal(result.length, 9, `Expected 9, got ${result.length}`)
+      assert.equal(result[0].shortTime, '1:55pm', 'First upcoming Bowen should be 1:55 PM')
+    })
+  })
+})
