@@ -1,11 +1,12 @@
 import webpush from 'web-push'
 
-const VAPID_PUBLIC_KEY_STAGING = 'BOjst23Qz_u2WRxwz_CuCsmHS8VP5Bf6opH67-5gO0SeNclUbPdhepKCWv5Qv3sy32pYtrWokPYvhz0zO3vXX3A'
-
-export function configureWebPush(privateKey) {
+export function configureWebPush(publicKey, privateKey) {
+  // TODO: remove after debugging
+  console.log('VAPID_PUBLIC_KEY length:', publicKey?.length, 'endsWith=:', publicKey?.endsWith('='))
+  console.log('VAPID_PRIVATE_KEY length:', privateKey?.length, 'endsWith=:', privateKey?.endsWith('='))
   webpush.setVapidDetails(
     'mailto:tom@intellecti.ca',
-    VAPID_PUBLIC_KEY_STAGING,
+    publicKey,
     privateKey
   )
 }
@@ -16,7 +17,7 @@ export async function sendPushNotification(subscription, payload) {
     return true
   } catch (err) {
     if (err.statusCode === 410) {
-      return false // signal to delete
+      return false
     }
     console.error('Push error:', err.message)
     return true

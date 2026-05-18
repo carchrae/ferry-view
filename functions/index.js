@@ -10,6 +10,7 @@ import { configureWebPush } from './lib/notify.js'
 import { checkLatenessAndNotify } from './lib/lateness.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
+const VAPID_PUBLIC_KEY = defineSecret('VAPID_PUBLIC_KEY')
 
 initializeApp()
 
@@ -18,7 +19,7 @@ const db = getFirestore()
 export const pollFerryStatus = onSchedule(
   {
     schedule: 'every 1 minutes',
-    secrets: [VAPID_PRIVATE_KEY],
+    secrets: [VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY],
   },
   async (context) => {
     console.log('Polling ferry status...')
@@ -136,9 +137,13 @@ export const pollFerryStatus = onSchedule(
       console.log('No changes detected, skipping save')
     }
 
-    configureWebPush(VAPID_PRIVATE_KEY.value())
+    if (VAPID_PUBLIC_KEY.value() && VAPID_PRIVATE_KEY.value()){
+      configureWebPush(VAPID_PUBLIC_KEY.value(), VAPID_PRIVATE_KEY.value())
 
-    await checkLatenessAndNotify(data)
+      await checkLatenessAndNotify(data)
+    }else{
+      console.log('VAPID keys not configured, skipping notification')
+    }
   }
 )
 
