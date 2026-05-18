@@ -80,7 +80,7 @@ export default defineConfig((ctx) => {
       env: {
         VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
         DEV: ctx.dev,
-        PRODUCTION: process.env.PRODUCTION === 'true',
+        PRODUCTION: process.env.PRODUCTION || '',
       },
     },
 

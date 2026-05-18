@@ -25,7 +25,7 @@ const prodConfig = {
 
 let envProduction
 try {
-  envProduction = process.env?.PRODUCTION === 'true'
+  envProduction = process.env.PRODUCTION;
 } catch (e) {
   console.log('envProduction not found',e)
 }
