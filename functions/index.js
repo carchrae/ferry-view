@@ -54,6 +54,22 @@ export const pollFerryStatus = onSchedule(
     if (checkDataChanged(newDataSanitized, existingDataSanitized)) {
       console.log('Data changed, saving...')
 
+      // Enrich schedule entries with the latest capacity info before saving
+      if (data.deckSpace) {
+        for (const entry of data.deckSpace) {
+          const schedule = entry.direction === 'To Bowen' ? data.hsbSchedule : data.bowenSchedule
+          const scheduleEntry = schedule.find(s => s.time === entry.time)
+          if (!scheduleEntry) continue
+          scheduleEntry.lastCapacity = entry.available
+          if (entry.available === 'Full' && !scheduleEntry.filledAt) {
+            const existingSchedule = entry.direction === 'To Bowen'
+              ? existingData?.hsbSchedule : existingData?.bowenSchedule
+            const existingEntry = existingSchedule?.find(s => s.time === entry.time)
+            scheduleEntry.filledAt = existingEntry?.filledAt || new Date().toISOString()
+          }
+        }
+      }
+
       await db
         .collection('ferryStatusHistory')
         .add({
