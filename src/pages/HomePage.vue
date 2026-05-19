@@ -225,6 +225,11 @@
                         dense
                         class="badge-gap"
                       />
+                      <span
+                        v-if="s.filledAt"
+                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                        >{{ formatFilledTime(s.filledAt) }}</span
+                      >
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -255,6 +260,11 @@
                         dense
                         class="badge-gap"
                       />
+                      <span
+                        v-if="s.filledAt"
+                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                        >{{ formatFilledTime(s.filledAt) }}</span
+                      >
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -265,6 +275,7 @@
             </q-card>
           </div>
         </div>
+<!--        <div class="text-caption text-grey-5 text-center">although we try, computers can lie</div>-->
         <q-btn
           no-caps
           dense
@@ -550,6 +561,11 @@
                   dense
                   class="badge-gap"
                 />
+                <span
+                  v-if="s.filledAt"
+                  class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                  >{{ formatFilledTime(s.filledAt) }}</span
+                >
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -573,6 +589,11 @@
                   dense
                   class="badge-gap"
                 />
+                <span
+                  v-if="s.filledAt"
+                  class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                  >{{ formatFilledTime(s.filledAt) }}</span
+                >
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                 None
