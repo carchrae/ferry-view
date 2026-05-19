@@ -1,32 +1,65 @@
 import { normalizeTime, updateSailingStatus } from './helpers.js'
 
 export async function recordCapacityChanges(db, data, existingData) {
-  if (!data.deckSpace || !existingData?.deckSpace) return
   const capacityWrites = []
-  for (const entry of data.deckSpace) {
-    const oldEntry = existingData.deckSpace.find(
-      e => normalizeTime(e.time) === normalizeTime(entry.time) && e.direction === entry.direction
-    )
-    if (!oldEntry || oldEntry.available !== entry.available) {
-      const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${entry.direction}`
+
+  // Record deckSpace array changes
+  if (data.deckSpace && existingData?.deckSpace) {
+    for (const entry of data.deckSpace) {
+      const oldEntry = existingData.deckSpace.find(
+        e => normalizeTime(e.time) === normalizeTime(entry.time) && e.direction === entry.direction
+      )
+      if (!oldEntry || oldEntry.available !== entry.available) {
+        const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${entry.direction}`
+        capacityWrites.push(
+          db.collection('capacityHistory').add({
+            sailingKey,
+            sailingTime: entry.time,
+            direction: entry.direction,
+            date: data.date,
+            capacity: entry.available,
+            recordedAt: new Date().toISOString(),
+          })
+        )
+        capacityWrites.push(
+          updateSailingStatus(sailingKey, entry.time, entry.direction, data.date, db, {
+            lastCapacity: entry.available,
+            filledAt: entry.available === 'Full' ? new Date().toISOString() : null,
+          })
+        )
+      }
+    }
+  }
+
+  // Record schedule entries' own deckSpace "Full" status
+  // (the schedule API reports "Full" directly on entries, separate from the deckSpace array)
+  for (const [direction, schedule] of [['To Bowen', data.hsbSchedule], ['To HSB', data.bowenSchedule]]) {
+    for (const entry of schedule) {
+      if (entry.deckSpace !== 'Full') continue
+      const existingSchedule = direction === 'To Bowen'
+        ? existingData?.hsbSchedule : existingData?.bowenSchedule
+      const existingEntry = existingSchedule?.find(s => normalizeTime(s.time) === normalizeTime(entry.time))
+      if (existingEntry?.deckSpace === 'Full') continue
+      const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${direction}`
       capacityWrites.push(
         db.collection('capacityHistory').add({
           sailingKey,
           sailingTime: entry.time,
-          direction: entry.direction,
+          direction,
           date: data.date,
-          capacity: entry.available,
+          capacity: 'Full',
           recordedAt: new Date().toISOString(),
         })
       )
       capacityWrites.push(
-        updateSailingStatus(sailingKey, entry.time, entry.direction, data.date, db, {
-          lastCapacity: entry.available,
-          filledAt: entry.available === 'Full' ? new Date().toISOString() : null,
+        updateSailingStatus(sailingKey, entry.time, direction, data.date, db, {
+          lastCapacity: 'Full',
+          filledAt: new Date().toISOString(),
         })
       )
     }
   }
+
   if (capacityWrites.length) {
     await Promise.all(capacityWrites)
     console.log(`Recorded ${capacityWrites.length} capacity history entries`)

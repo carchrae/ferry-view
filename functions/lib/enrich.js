@@ -45,6 +45,8 @@ export function enrichDeckCapacity(data, existingData) {
       scheduleEntry.lastCapacity = 'Full'
     } else if (!scheduleEntry.filledAt) {
       scheduleEntry.lastCapacity = entry.available
+    } else {
+      console.warn(`DeckSpace: ${entry.direction} ${entry.time} — skipping capacity update (was full at ${scheduleEntry.filledAt} but now available=${entry.available})`)
     }
     if (entry.available === 'Full' && !scheduleEntry.filledAt) {
       const existingSchedule = entry.direction === 'To Bowen'
@@ -53,9 +55,27 @@ export function enrichDeckCapacity(data, existingData) {
       scheduleEntry.filledAt = existingEntry?.filledAt || new Date().toISOString()
     }
   }
+
+  // Also catch "Full" from schedule entries' own deckSpace field
+  // (the schedule API reports this on the entry directly, separate from the deckSpace array)
+  for (const [direction, schedule] of [['To Bowen', data.hsbSchedule], ['To HSB', data.bowenSchedule]]) {
+    for (const entry of schedule) {
+      if (entry.deckSpace !== 'Full') continue
+      entry.lastCapacity = 'Full'
+      if (!entry.filledAt) {
+        const existingSchedule = direction === 'To Bowen'
+          ? existingData?.hsbSchedule : existingData?.bowenSchedule
+        const existingEntry = existingSchedule?.find(s => normalizeTime(s.time) === normalizeTime(entry.time))
+        entry.filledAt = existingEntry?.filledAt || new Date().toISOString()
+      }
+    }
+  }
 }
 
+const SKIP_CAPACITY_HISTORY_AUGMENT = true
+
 export async function augmentFromCapacityHistory(db, data) {
+  if (SKIP_CAPACITY_HISTORY_AUGMENT) return
   try {
     const historySnap = await db.collection('capacityHistory')
       .where('date', '==', data.date)
@@ -75,8 +95,7 @@ export async function augmentFromCapacityHistory(db, data) {
         if (!records?.length) continue
         records.sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt))
         if (entry.lastCapacity === undefined) {
-          const filledRecord = records.find(r => r.capacity === 'Full')
-          entry.lastCapacity = filledRecord ? 'Full' : records[records.length - 1].capacity
+          entry.lastCapacity = records[records.length - 1].capacity
         }
         if (!entry.filledAt) {
           const filledRecord = records.find(r => r.capacity === 'Full')
