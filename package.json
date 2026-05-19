@@ -10,6 +10,7 @@
     "lint": "eslint -c ./eslint.config.js \"./src*/**/*.{js,cjs,mjs,vue}\"",
     "format": "prettier --write \"**/*.{js,vue,css,scss,html,md,json}\" --ignore-path .gitignore",
     "test": "echo \"No test specified\" && exit 0",
+    "deploy:webapp": "git push origin main",
     "deploy:webapp:production": "git push origin main:production",
     "deploy:rules": "npx firebase deploy --project bowen-ferry-staging --only firestore:rules",
     "deploy:functions": "npx firebase deploy --project bowen-ferry-staging --only functions",
