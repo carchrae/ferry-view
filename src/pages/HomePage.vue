@@ -73,10 +73,10 @@
         </q-card>
       </div>
 
-<!--      &lt;!&ndash; Push notifications &ndash;&gt;-->
-<!--      <div class="col-12">-->
-<!--        <NotificationSettings />-->
-<!--      </div>-->
+      <!--      &lt;!&ndash; Push notifications &ndash;&gt;-->
+      <!--      <div class="col-12">-->
+      <!--        <NotificationSettings />-->
+      <!--      </div>-->
 
       <!-- Sailings (one col-md-6 block) -->
       <div v-if="ferryData" class="col-12 col-md-6">
@@ -95,71 +95,182 @@
             </div>
           </q-card-section>
         </q-card>
+        <div
+          v-if="lastSailing && !lastSailing.skipped"
+          class="text-center text-caption text-grey-7 q-mb-xs"
+        >
+          <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
+            last sailing was
+            <q-badge rounded :color="lastSailing.diffColor" class="badge-gap" dense>{{
+              lastSailing.diffText
+            }}</q-badge>
+          </template>
+          <template v-else-if="lastSailing.ontime">
+            last sailing was
+            <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
+            on-time
+          </template>
+        </div>
+
         <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col-12">
             <q-card flat bordered>
               <q-card-section class="q-pa-sm">
-                <div v-if="homeHasOntime" class="text-right text-caption text-grey-7 q-mb-xs">
-                  <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
-                  on-time
-                </div>
                 <div class="row items-start q-col-gutter-sm q-mb-md">
                   <div class="col">
-                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Horseshoe Bay</div>
-                    <div v-for="(event, i) in allPastHSB.slice(-3)" :key="'ph'+i" class="row items-center no-wrap q-mt-xs">
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ event.shortTime }}</div>
-                      <span v-if="event.filledAt" class="text-caption text-grey-7 text-no-wrap q-ml-xs">{{ formatFilledTime(event.filledAt) }}</span>
-                      <q-space />
-                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense>?</q-badge>
-                      <q-badge rounded v-else-if="event.diffText" :color="event.diffColor" class="badge-gap" dense>{{ shortText(event.diffText, $q.screen.xs) }}</q-badge>
-                      <q-badge rounded v-if="event.lastCapacity" :color="getDeckColor(event.lastCapacity)" class="badge-gap" dense>{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}</q-badge>
+                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">
+                      Horseshoe Bay
                     </div>
-                    <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+                    <div
+                      v-for="(event, i) in allPastHSB.slice(-3)"
+                      :key="'ph' + i"
+                      class="row items-center no-wrap q-mt-xs"
+                    >
+                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                        {{ event.shortTime }}
+                      </div>
+                      <span
+                        v-if="event.filledAt"
+                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                        >{{ formatFilledTime(event.filledAt) }}</span
+                      >
+                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
+                        >?</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-else-if="event.diffText"
+                        :color="event.diffColor"
+                        class="badge-gap"
+                        dense
+                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-if="event.lastCapacity"
+                        :color="getDeckColor(event.lastCapacity)"
+                        class="badge-gap"
+                        dense
+                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}</q-badge
+                      >
+                    </div>
+                    <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
+                      None
+                    </div>
                   </div>
                   <div class="col">
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
-                    <div v-for="(event, i) in allPastBowen.slice(-3)" :key="'pb'+i" class="row items-center no-wrap q-mt-xs">
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ event.shortTime }}</div>
-                      <span v-if="event.filledAt" class="text-caption text-grey-7 text-no-wrap q-ml-xs">{{ formatFilledTime(event.filledAt) }}</span>
-                      <q-space />
-                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense>?</q-badge>
-                      <q-badge rounded v-else-if="event.diffText" :color="event.diffColor" class="badge-gap" dense>{{ shortText(event.diffText, $q.screen.xs) }}</q-badge>
-                      <q-badge rounded v-if="event.lastCapacity" :color="getDeckColor(event.lastCapacity)" class="badge-gap" dense>{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}</q-badge>
+                    <div
+                      v-for="(event, i) in allPastBowen.slice(-3)"
+                      :key="'pb' + i"
+                      class="row items-center no-wrap q-mt-xs"
+                    >
+                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                        {{ event.shortTime }}
+                      </div>
+                      <span
+                        v-if="event.filledAt"
+                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                        >{{ formatFilledTime(event.filledAt) }}</span
+                      >
+                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
+                        >?</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-else-if="event.diffText"
+                        :color="event.diffColor"
+                        class="badge-gap"
+                        dense
+                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-if="event.lastCapacity"
+                        :color="getDeckColor(event.lastCapacity)"
+                        class="badge-gap"
+                        dense
+                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}</q-badge
+                      >
                     </div>
-                    <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+                    <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
+                      None
+                    </div>
                   </div>
                 </div>
                 <div class="text-center text-grey-8 q-my-sm">upcoming</div>
                 <div class="row items-end q-col-gutter-sm">
                   <div class="col">
-                    <div v-for="(s, i) in allUpcomingHSB.slice(0, 3)" :key="'uh'+i" class="row items-center no-wrap q-mt-xs">
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ s.shortTime }}</div>
-                      <q-space />
-                      <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>{{ shortText(s.lateText, $q.screen.xs) }}</q-badge>
-                      <q-badge rounded v-if="s.deckSpace" :color="getDeckColor(s.deckSpace)" :label="s.full" dense class="badge-gap" />
+                    <div
+                      v-for="(s, i) in allUpcomingHSB.slice(0, 3)"
+                      :key="'uh' + i"
+                      class="row items-center no-wrap q-mt-xs"
+                    >
+                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                        {{ s.shortTime }}
+                      </div>
+                      <q-badge
+                        rounded
+                        v-if="s.lateText"
+                        :color="s.lateColor"
+                        class="badge-gap"
+                        dense
+                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-if="s.deckSpace"
+                        :color="getDeckColor(s.deckSpace)"
+                        :label="s.full"
+                        dense
+                        class="badge-gap"
+                      />
                     </div>
-                    <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+                    <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
+                      None
+                    </div>
                   </div>
                   <div class="col">
-                    <div v-for="(s, i) in allUpcomingBowen.slice(0, 3)" :key="'ub'+i" class="row items-center no-wrap q-mt-xs">
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ s.shortTime }}</div>
-                      <q-space />
-                      <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>{{ shortText(s.lateText, $q.screen.xs) }}</q-badge>
-                      <q-badge rounded v-if="s.deckSpace" :color="getDeckColor(s.deckSpace)" :label="s.full" dense class="badge-gap" />
+                    <div
+                      v-for="(s, i) in allUpcomingBowen.slice(0, 3)"
+                      :key="'ub' + i"
+                      class="row items-center no-wrap q-mt-xs"
+                    >
+                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                        {{ s.shortTime }}
+                      </div>
+                      <q-badge
+                        rounded
+                        v-if="s.lateText"
+                        :color="s.lateColor"
+                        class="badge-gap"
+                        dense
+                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-if="s.deckSpace"
+                        :color="getDeckColor(s.deckSpace)"
+                        :label="s.full"
+                        dense
+                        class="badge-gap"
+                      />
                     </div>
-                    <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+                    <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
+                      None
+                    </div>
                   </div>
                 </div>
               </q-card-section>
             </q-card>
           </div>
         </div>
-          <q-btn
-           no-caps
-           dense
-           flat
-           color="primary"
-           icon="calendar_today"
+        <q-btn
+          no-caps
+          dense
+          flat
+          color="primary"
+          icon="calendar_today"
           label="Today's Sailings"
           class="full-width q-mt-xs q-mb-sm"
           @click="showFullDialog = true"
@@ -171,18 +282,18 @@
               <div class="text-body2 text-grey-7">
                 Need a ride from the ferry? Or have room in your car?
               </div>
-               <q-btn
-                 color="primary"
-                 no-caps
-                 dense
-                 label="Offer or Request a Ride"
-                 icon="img:app-icon.png"
-                 to="/rides/post"
-                  class="q-mt-sm"
-                />
-             </q-card-section>
-           </q-card>
-           <q-card v-if="sortedRides.length" flat bordered class="q-mt-sm">
+              <q-btn
+                color="primary"
+                no-caps
+                dense
+                label="Offer or Request a Ride"
+                icon="img:app-icon.png"
+                to="/rides/post"
+                class="q-mt-sm"
+              />
+            </q-card-section>
+          </q-card>
+          <q-card v-if="sortedRides.length" flat bordered class="q-mt-sm">
             <q-card-section class="q-pa-sm">
               <RideCard
                 v-for="ride in sortedRides"
@@ -266,10 +377,26 @@
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
         <img :src="fullscreenSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 2">
-          <q-btn round flat icon="close" color="white" size="lg" aria-label="Close fullscreen" @click="fullscreen = false" />
+          <q-btn
+            round
+            flat
+            icon="close"
+            color="white"
+            size="lg"
+            aria-label="Close fullscreen"
+            @click="fullscreen = false"
+          />
         </div>
         <div class="absolute-bottom row justify-center q-pa-md q-gutter-sm" style="z-index: 1">
-          <q-btn round flat icon="chevron_left" color="white" size="lg" aria-label="Previous webcam" @click.stop="prevCam" />
+          <q-btn
+            round
+            flat
+            icon="chevron_left"
+            color="white"
+            size="lg"
+            aria-label="Previous webcam"
+            @click.stop="prevCam"
+          />
           <q-btn
             round
             flat
@@ -279,7 +406,15 @@
             aria-label="Refresh webcam"
             @click.stop="refreshFullscreen"
           />
-          <q-btn round flat icon="chevron_right" color="white" size="lg" aria-label="Next webcam" @click.stop="nextCam" />
+          <q-btn
+            round
+            flat
+            icon="chevron_right"
+            color="white"
+            size="lg"
+            aria-label="Next webcam"
+            @click.stop="nextCam"
+          />
         </div>
         <div
           class="absolute-top q-pa-sm text-white text-subtitle1"
@@ -292,7 +427,13 @@
 
     <!-- Full schedule dialog -->
     <q-dialog v-model="showFullDialog">
-      <q-card :style="{ minWidth: $q.screen.gt.xs ? '400px' : '95vw', maxWidth: '95vw', maxHeight: '90vh' }">
+      <q-card
+        :style="{
+          minWidth: $q.screen.gt.xs ? '400px' : '95vw',
+          maxWidth: '95vw',
+          maxHeight: '90vh',
+        }"
+      >
         <q-card-section class="row items-center q-pb-none">
           <div class="text-h6">Today's Sailings</div>
           <q-space />
@@ -300,29 +441,36 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <div v-if="hasOntime" class="text-right text-caption text-grey-7 q-mb-xs">
-            <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
-            on-time
+          <div
+            v-if="lastSailing && !lastSailing.skipped"
+            class="text-right text-caption text-grey-7 q-mb-xs"
+          >
+            <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
+              last sailing
+              <q-badge rounded :color="lastSailing.diffColor" class="badge-gap" dense>{{
+                lastSailing.diffText
+              }}</q-badge>
+            </template>
+            <template v-else-if="lastSailing.ontime">
+              <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
+              on-time
+            </template>
           </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">
             <div class="col">
               <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Horseshoe Bay</div>
-              <div v-for="(event, i) in allPastHSB" :key="'ph'+i" class="row items-center no-wrap q-mt-xs">
+              <div
+                v-for="(event, i) in allPastHSB"
+                :key="'ph' + i"
+                class="row items-center no-wrap q-mt-xs"
+              >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                   {{ event.shortTime }}
                 </div>
-                <span
-                  v-if="event.filledAt"
-                  class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                <span v-if="event.filledAt" class="text-caption text-grey-7 text-no-wrap q-ml-xs"
                   >{{ formatFilledTime(event.filledAt) }}
                 </span>
-                <q-space />
-                <q-badge
-                  rounded
-                  v-if="event.skipped"
-                  color="grey"
-                  class="badge-gap"
-                  dense
+                <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                   >?
                 </q-badge>
                 <q-badge
@@ -346,22 +494,18 @@
             </div>
             <div class="col">
               <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
-              <div v-for="(event, i) in allPastBowen" :key="'pb'+i" class="row items-center no-wrap q-mt-xs">
+              <div
+                v-for="(event, i) in allPastBowen"
+                :key="'pb' + i"
+                class="row items-center no-wrap q-mt-xs"
+              >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                   {{ event.shortTime }}
                 </div>
-                <span
-                  v-if="event.filledAt"
-                  class="text-caption text-grey-7 text-no-wrap q-ml-xs"
+                <span v-if="event.filledAt" class="text-caption text-grey-7 text-no-wrap q-ml-xs"
                   >{{ formatFilledTime(event.filledAt) }}
                 </span>
-                <q-space />
-                <q-badge
-                  rounded
-                  v-if="event.skipped"
-                  color="grey"
-                  class="badge-gap"
-                  dense
+                <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                   >?
                 </q-badge>
                 <q-badge
@@ -387,9 +531,14 @@
           <div class="text-center text-grey-8 q-my-sm">upcoming</div>
           <div class="row items-end q-col-gutter-sm">
             <div class="col">
-              <div v-for="(s, i) in allUpcomingHSB" :key="'uh'+i" class="row items-center no-wrap q-mt-xs">
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ s.shortTime }}</div>
-                <q-space />
+              <div
+                v-for="(s, i) in allUpcomingHSB"
+                :key="'uh' + i"
+                class="row items-center no-wrap q-mt-xs"
+              >
+                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                  {{ s.shortTime }}
+                </div>
                 <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
                   {{ shortText(s.lateText, $q.screen.xs) }}
                 </q-badge>
@@ -401,26 +550,33 @@
                   dense
                   class="badge-gap"
                 />
-               </div>
-               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
-             </div>
-             <div class="col">
-               <div v-for="(s, i) in allUpcomingBowen" :key="'ub'+i" class="row items-center no-wrap q-mt-xs">
-                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ s.shortTime }}</div>
-                 <q-space />
-                 <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
-                   {{ shortText(s.lateText, $q.screen.xs) }}
-                 </q-badge>
-                 <q-badge
-                   rounded
-                   v-if="s.deckSpace"
-                   :color="getDeckColor(s.deckSpace)"
-                   :label="s.full"
-                   dense
-                   class="badge-gap"
-                 />
               </div>
-              <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+              <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+            </div>
+            <div class="col">
+              <div
+                v-for="(s, i) in allUpcomingBowen"
+                :key="'ub' + i"
+                class="row items-center no-wrap q-mt-xs"
+              >
+                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                  {{ s.shortTime }}
+                </div>
+                <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
+                  {{ shortText(s.lateText, $q.screen.xs) }}
+                </q-badge>
+                <q-badge
+                  rounded
+                  v-if="s.deckSpace"
+                  :color="getDeckColor(s.deckSpace)"
+                  :label="s.full"
+                  dense
+                  class="badge-gap"
+                />
+              </div>
+              <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
+                None
+              </div>
             </div>
           </div>
         </q-card-section>
@@ -474,7 +630,8 @@ function captureDebugData() {
       allPastBowen: JSON.parse(JSON.stringify(allPastBowen.value)),
     },
   }
-  navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+  navigator.clipboard
+    .writeText(JSON.stringify(payload, null, 2))
     .then(() => alert('Debug data copied to clipboard'))
     .catch(() => alert('Failed to copy to clipboard'))
 }
@@ -496,7 +653,7 @@ function delayDepartures() {
   if (isNaN(mins) || mins <= 0) return
 
   const events = ferryData.value.recentActivity
-  const departed = events.filter(e => e.action === 'Departed')
+  const departed = events.filter((e) => e.action === 'Departed')
   const sorted = [...departed].sort((a, b) => {
     const ta = parseTimeToday(a.time)
     const tb = parseTimeToday(b.time)
@@ -521,13 +678,15 @@ const allUpcomingHSB = computed(() => schedule.allUpcomingHSB())
 const allUpcomingBowen = computed(() => schedule.allUpcomingBowen())
 const allPastHSB = computed(() => schedule.allPastHSB())
 const allPastBowen = computed(() => schedule.allPastBowen())
-const hasOntime = computed(() => {
-  return allPastHSB.value.some((s) => s.ontime) || allPastBowen.value.some((s) => s.ontime)
-})
-const homeHasOntime = computed(() => {
-  const hsb = allPastHSB.value.slice(-3)
-  const bowen = allPastBowen.value.slice(-3)
-  return hsb.some((s) => s.ontime) || bowen.some((s) => s.ontime)
+const lastSailing = computed(() => {
+  const hsb = allPastHSB.value
+  const bowen = allPastBowen.value
+  const a = hsb[hsb.length - 1]
+  const b = bowen[bowen.length - 1]
+  if (!a && !b) return null
+  if (!a) return b
+  if (!b) return a
+  return a.sortTime > b.sortTime ? a : b
 })
 const sortedRides = computed(() => {
   const todayStr = new Date().toISOString().slice(0, 10)

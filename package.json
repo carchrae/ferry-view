@@ -15,7 +15,7 @@
     "deploy:functions": "npx firebase deploy --project bowen-ferry-staging --only functions",
     "deploy:rules:production": "npx firebase deploy --project bowen-ferry --only firestore:rules",
     "deploy:functions:production": "npx firebase deploy --project bowen-ferry --only functions",
-    "dev": "quasar dev -m pwa",
+    "dev": "quasar dev -m spa",
     "build": "quasar build -m pwa",
     "postinstall": "quasar prepare",
     "firebase-config": "bash scripts/get-firebase-config.sh",
