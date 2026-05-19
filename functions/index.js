@@ -15,6 +15,7 @@ import {
   augmentFromFilledStatus,
 } from './lib/enrich.js'
 import { recordCapacityChanges, recordDepartureTimes } from './lib/record.js'
+import { captureBowenWebcam } from './lib/webcam.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
 const VAPID_PUBLIC_KEY = defineSecret('VAPID_PUBLIC_KEY')
@@ -71,6 +72,13 @@ export const pollFerryStatus = onSchedule(
 
     await recordCapacityChanges(db, data, existingData)
     await recordDepartureTimes(db, data, hsbPast, bowenPast)
+
+    for (const entry of bowenPast) {
+      if (!entry._hasDep) continue
+      const sailingKey = `${data.date}_${entry.time}_To HSB`
+      captureBowenWebcam(db, sailingKey, entry.time, data.date)
+        .catch(e => console.error(`Webcam capture failed for ${sailingKey}:`, e))
+    }
 
     await maybeSendNotifications(data)
   }
