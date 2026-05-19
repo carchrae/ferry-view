@@ -38,23 +38,21 @@ export const pollFerryStatus = onSchedule(
     try {
       const statusSnap = await db.collection('sailingStatus')
         .where('date', '==', data.date)
-        .where('actualDepartureTime', '!=', null)
         .get()
-      if (!statusSnap.empty) {
-        const seen = new Set(data.recentActivity.map(e => `${e.time}_${e.location}`))
-        let added = 0
-        statusSnap.forEach(doc => {
-          const s = doc.data()
-          const location = s.direction === 'To Bowen' ? 'Horseshoe Bay' : 'Bowen'
-          const key = `${s.actualDepartureTime}_${location}`
-          if (!seen.has(key)) {
-            data.recentActivity.push({ action: 'Departed', location, time: s.actualDepartureTime })
-            seen.add(key)
-            added++
-          }
-        })
-        if (added) console.log(`Augmented recentActivity with ${added} historical departure(s) from sailingStatus`)
-      }
+      const seen = new Set(data.recentActivity.map(e => `${e.time}_${e.location}`))
+      let added = 0
+      statusSnap.forEach(doc => {
+        const s = doc.data()
+        if (!s.actualDepartureTime) return
+        const location = s.direction === 'To Bowen' ? 'Horseshoe Bay' : 'Bowen'
+        const key = `${s.actualDepartureTime}_${location}`
+        if (!seen.has(key)) {
+          data.recentActivity.push({ action: 'Departed', location, time: s.actualDepartureTime })
+          seen.add(key)
+          added++
+        }
+      })
+      if (added) console.log(`Augmented recentActivity with ${added} historical departure(s) from sailingStatus`)
     } catch (e) {
       console.error('Failed to query sailingStatus for augmentation:', e)
     }
