@@ -129,11 +129,6 @@
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                         {{ event.shortTime }}
                       </div>
-                      <span
-                        v-if="event.filledAt"
-                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                        >{{ formatFilledTime(event.filledAt) }}</span
-                      >
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                         >?</q-badge
                       >
@@ -151,7 +146,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}</q-badge
+                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span></q-badge
                       >
                     </div>
                     <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
@@ -168,11 +163,6 @@
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                         {{ event.shortTime }}
                       </div>
-                      <span
-                        v-if="event.filledAt"
-                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                        >{{ formatFilledTime(event.filledAt) }}</span
-                      >
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                         >?</q-badge
                       >
@@ -190,7 +180,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}</q-badge
+                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span></q-badge
                       >
                     </div>
                     <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -221,14 +211,9 @@
                         rounded
                         v-if="s.deckSpace"
                         :color="getDeckColor(s.deckSpace)"
-                        :label="s.full"
                         dense
                         class="badge-gap"
-                      />
-                      <span
-                        v-if="s.filledAt"
-                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                        >{{ formatFilledTime(s.filledAt) }}</span
+                      >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
                       >
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
@@ -256,14 +241,9 @@
                         rounded
                         v-if="s.deckSpace"
                         :color="getDeckColor(s.deckSpace)"
-                        :label="s.full"
                         dense
                         class="badge-gap"
-                      />
-                      <span
-                        v-if="s.filledAt"
-                        class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                        >{{ formatFilledTime(s.filledAt) }}</span
+                      >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
                       >
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -478,9 +458,6 @@
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                   {{ event.shortTime }}
                 </div>
-                <span v-if="event.filledAt" class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                  >{{ formatFilledTime(event.filledAt) }}
-                </span>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                   >?
                 </q-badge>
@@ -489,16 +466,16 @@
                   v-else-if="event.diffText"
                   :color="event.diffColor"
                   class="badge-gap"
-                  dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
-                </q-badge>
+                   dense
+                   >{{ shortText(event.diffText, $q.screen.xs) }}
+                 </q-badge>
                 <q-badge
                   rounded
                   v-if="event.lastCapacity"
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}
+                  >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span>
                 </q-badge>
               </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -513,9 +490,6 @@
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                   {{ event.shortTime }}
                 </div>
-                <span v-if="event.filledAt" class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                  >{{ formatFilledTime(event.filledAt) }}
-                </span>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                   >?
                 </q-badge>
@@ -524,16 +498,16 @@
                   v-else-if="event.diffText"
                   :color="event.diffColor"
                   class="badge-gap"
-                  dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
-                </q-badge>
+                   dense
+                   >{{ shortText(event.diffText, $q.screen.xs) }}
+                 </q-badge>
                 <q-badge
                   rounded
                   v-if="event.lastCapacity"
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}
+                  >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span>
                 </q-badge>
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -557,14 +531,9 @@
                   rounded
                   v-if="s.deckSpace"
                   :color="getDeckColor(s.deckSpace)"
-                  :label="s.full"
                   dense
                   class="badge-gap"
-                />
-                <span
-                  v-if="s.filledAt"
-                  class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                  >{{ formatFilledTime(s.filledAt) }}</span
+                >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
                 >
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -585,14 +554,9 @@
                   rounded
                   v-if="s.deckSpace"
                   :color="getDeckColor(s.deckSpace)"
-                  :label="s.full"
                   dense
                   class="badge-gap"
-                />
-                <span
-                  v-if="s.filledAt"
-                  class="text-caption text-grey-7 text-no-wrap q-ml-xs"
-                  >{{ formatFilledTime(s.filledAt) }}</span
+                >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
                 >
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -854,10 +818,9 @@ function formatFilledTime(isoStr) {
   const d = new Date(isoStr)
   let hours = d.getHours()
   const mins = d.getMinutes()
-  const ampm = hours >= 12 ? 'pm' : 'am'
   if (hours > 12) hours -= 12
   if (hours === 0) hours = 12
-  return `@${hours}:${String(mins).padStart(2, '0')}${ampm}`
+  return `@${hours}:${String(mins).padStart(2, '0')}`
 }
 
 const isSailing = computed(() => {
