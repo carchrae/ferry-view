@@ -12,12 +12,11 @@ export function parseTimeToday(timeStr) {
   return d
 }
 
-export function formatLateness(diffMins) {
-  if (diffMins === null) return { diffText: null, diffColor: 'grey' }
-  if (Math.abs(diffMins) <= 4) return { diffText: '✓', diffColor: 'positive', ontime: true }
-  if (diffMins > 0) return { diffText: `${diffMins}m late`, diffColor: diffMins > 5 ? 'negative' : 'warning' }
-  return { diffText: `${Math.abs(diffMins)}m early`, diffColor: 'positive' }
-}
+import {
+  formatLateness,
+  isUpcomingLate,
+  getUpcomingLateColor,
+} from './constants.js'
 
 export function parseDeckSpace(deckSpace, label) {
   if (label === 'Bowen') return { deckSpace: null, full: null }
@@ -140,8 +139,8 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
         full,
         shortTime: formatSailingTime(s.time),
         sortTime: t,
-        lateText: lateMins >= 1 ? `${lateMins}m late` : null,
-        lateColor: lateMins > 5 ? 'negative' : 'warning',
+        lateText: isUpcomingLate(lateMins) ? `${lateMins}m late` : null,
+        lateColor: getUpcomingLateColor(lateMins),
       }
     })
     .sort((a, b) => a.sortTime - b.sortTime)

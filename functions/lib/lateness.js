@@ -1,7 +1,6 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
-
-
 import { sendPushNotification } from './notify.js'
+import { LATE_NOTIFY_DEFAULT } from './constants.js'
 
 export async function checkLatenessAndNotify(ferryData) {
   const db = getFirestore()
@@ -16,7 +15,7 @@ export async function checkLatenessAndNotify(ferryData) {
 
   for (const doc of subscribers.docs) {
     const sub = doc.data()
-    const threshold = sub.latenessThreshold || 5
+    const threshold = sub.latenessThreshold || LATE_NOTIFY_DEFAULT
     const wasNotified = sub.lastNotifiedAt
 
     if (currentLateness >= threshold && !wasNotified) {

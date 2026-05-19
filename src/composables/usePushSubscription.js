@@ -1,6 +1,7 @@
 import { ref, onMounted } from 'vue'
 import { doc, setDoc, deleteDoc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from 'boot/firebase'
+import { LATE_NOTIFY_DEFAULT } from '../../functions/lib/constants.js'
 
 const VAPID_KEY = import.meta.env.VAPID_PUBLIC_KEY || ''
 
@@ -68,7 +69,7 @@ async function subscribe(options = {}) {
     const endpointHash = getEndpointHash(subJson.endpoint)
 
     const userAgent = navigator.userAgent
-    const latenessThreshold = options.latenessThreshold ?? 5
+    const latenessThreshold = options.latenessThreshold ?? LATE_NOTIFY_DEFAULT
 
     const docRef = doc(db, 'pushSubscriptions', endpointHash)
     await setDoc(docRef, {

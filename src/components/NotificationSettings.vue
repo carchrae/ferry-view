@@ -100,6 +100,7 @@
 import { ref, watch, defineExpose } from 'vue'
 import { usePushSubscription } from 'src/composables/usePushSubscription'
 import { useInstall } from 'src/composables/useInstall'
+import { LATE_NOTIFY_DEFAULT, LATE_NOTIFY_OPTIONS } from '../../functions/lib/constants.js'
 
 const { permission, subscriptionSettings, isLoading, subscribe, unsubscribe } = usePushSubscription()
 const { isStandalone, isIOS } = useInstall()
@@ -110,23 +111,20 @@ defineExpose({
   show: () => { localDialog.value = true },
 })
 
-const thresholdOptions = [
-  { label: '5 minutes late', value: 5 },
-  { label: '10 minutes late', value: 10 },
-  { label: '15 minutes late', value: 15 },
-  { label: '20 minutes late', value: 20 },
-  { label: '30 minutes late', value: 30 },
-]
+const thresholdOptions = LATE_NOTIFY_OPTIONS.map(v => ({
+  label: `${v} minutes late`,
+  value: v,
+}))
 
 const localSettings = ref({
-  latenessThreshold: 5,
+  latenessThreshold: LATE_NOTIFY_DEFAULT,
   topics: ['delays', 'rides', 'full'],
 })
 
 watch(subscriptionSettings, (settings) => {
   if (settings) {
     localSettings.value = {
-      latenessThreshold: settings.latenessThreshold ?? 5,
+      latenessThreshold: settings.latenessThreshold ?? LATE_NOTIFY_DEFAULT,
       topics: settings.topics ?? ['delays'],
     }
   }
