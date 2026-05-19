@@ -14,7 +14,7 @@ export function parseTimeToday(timeStr) {
 
 export function formatLateness(diffMins) {
   if (diffMins === null) return { diffText: null, diffColor: 'grey' }
-  if (Math.abs(diffMins) <= 1) return { diffText: '✓', diffColor: 'positive', ontime: true }
+  if (Math.abs(diffMins) <= 4) return { diffText: '✓', diffColor: 'positive', ontime: true }
   if (diffMins > 0) return { diffText: `${diffMins}m late`, diffColor: diffMins > 5 ? 'negative' : 'warning' }
   return { diffText: `${Math.abs(diffMins)}m early`, diffColor: 'positive' }
 }
