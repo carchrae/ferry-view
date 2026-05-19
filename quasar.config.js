@@ -83,6 +83,9 @@ export default defineConfig((ctx) => {
             return args
           })
         }
+        // if (ctx.dev) {
+        //   chain.watchOptions({ poll: 1000 })
+        // }
       },
 
       env: {
