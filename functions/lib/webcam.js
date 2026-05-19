@@ -40,7 +40,18 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, date) {
 
   const blobPath = `webcams/bowen/${date}/${sailingKey}.jpg`
   const bucket = getStorage().bucket()
-  await bucket.file(blobPath).save(best, { contentType: 'image/jpeg' })
+  const file = bucket.file(blobPath)
+  await file.save(best, { contentType: 'image/jpeg' })
+  await file.makePublic()
+
+  const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
+  await db.collection('snapshots').doc('latestBowenDeparture').set({
+    imageUrl,
+    sailingKey,
+    sailingTime,
+    date,
+    recordedAt: new Date().toISOString(),
+  })
 
   await statusRef.set({ webcamSnapshotPath: blobPath }, { merge: true })
   console.log(`Saved webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)

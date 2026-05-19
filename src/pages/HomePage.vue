@@ -323,6 +323,19 @@
 
       <!-- Cameras Grid -->
       <div class="col-12 col-md-6">
+        <div v-if="departureSnapshot && !snapshotRated" class="q-mb-sm">
+          <q-card flat bordered>
+            <q-img :src="departureSnapshot.imageUrl" ratio="16/9" spinner-color="primary" />
+            <q-card-section class="q-pa-sm">
+              <div class="text-subtitle2">Departure from Bowen — {{ departureSnapshot.sailingTime }}</div>
+              <div class="text-caption text-grey-7 q-mt-sm">Was this an overload?</div>
+              <div class="row q-mt-sm q-gutter-sm">
+                <q-btn no-caps dense color="negative" label="Yes" @click="rateOverload(true)" />
+                <q-btn no-caps dense flat color="grey-7" label="No" @click="rateOverload(false)" />
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
         <div class="row q-col-gutter-sm">
           <div v-for="(cam, index) in displayCams" :key="index" class="col-6">
             <q-card
@@ -414,6 +427,23 @@
           {{ allCamLabels[fullscreenIndex] }}
         </div>
       </div>
+    </q-dialog>
+
+    <!-- Overload dialog -->
+    <q-dialog v-model="showOverloadDialog">
+      <q-card style="min-width: 300px">
+        <q-card-section>
+          <div class="text-h6">Overload Detected?</div>
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <p>This photo was taken just after the ferry left Bowen.</p>
+          <p>If you can see <strong>many cars turning back</strong> from the terminal, it was likely an overload.</p>
+          <p>If you only see a single car, someone probably just missed the ferry.</p>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn no-caps flat label="Got it" color="primary" v-close-overlay @click="dismissOverload" />
+        </q-card-actions>
+      </q-card>
     </q-dialog>
 
     <!-- Full schedule dialog -->
@@ -587,7 +617,8 @@ import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryList
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
-import { isStaging } from 'src/boot/firebase'
+import { isStaging, db } from 'src/boot/firebase'
+import { doc, onSnapshot } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
 
 const { ferryData, loading, error } = useFirestoreFerryListener()
@@ -600,6 +631,40 @@ const oneMinuteFromNowDate = () => new Date(Date.now() + 1000 * 60 + TIME_OFFSET
 const nowMs = () => Date.now() + TIME_OFFSET_MS
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
+
+const departureSnapshot = ref(null)
+const showOverloadDialog = ref(false)
+let lastSnapshotKey = null
+const snapshotRated = ref(false)
+
+let unsubSnapshot = null
+onMounted(() => {
+  unsubSnapshot = onSnapshot(doc(db, 'snapshots', 'latestBowenDeparture'), (snap) => {
+    if (!snap.exists()) return
+    const data = snap.data()
+    if (data.sailingKey !== lastSnapshotKey) {
+      lastSnapshotKey = data.sailingKey
+      snapshotRated.value = false
+    }
+    departureSnapshot.value = data
+  })
+})
+onUnmounted(() => {
+  if (unsubSnapshot) unsubSnapshot()
+})
+
+function rateOverload(isOverload) {
+  if (isOverload) {
+    showOverloadDialog.value = true
+  } else {
+    snapshotRated.value = true
+  }
+}
+
+function dismissOverload() {
+  showOverloadDialog.value = false
+  snapshotRated.value = true
+}
 
 function captureDebugData() {
   const payload = {
