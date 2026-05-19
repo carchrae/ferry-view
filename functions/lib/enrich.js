@@ -72,7 +72,7 @@ export function enrichDeckCapacity(data, existingData) {
   }
 }
 
-const SKIP_CAPACITY_HISTORY_AUGMENT = true
+const SKIP_CAPACITY_HISTORY_AUGMENT = false
 
 export async function augmentFromCapacityHistory(db, data) {
   if (SKIP_CAPACITY_HISTORY_AUGMENT) return
