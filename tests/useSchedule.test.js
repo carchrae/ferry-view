@@ -309,9 +309,9 @@ describe('useSchedule — morning sample (5:15 AM should NOT appear in upcoming)
       { time: '11:30 PM', cancelled: false },
     ],
   }
-  // Capture time 8:18 AM PDT = 15:18 UTC
-  const morningNow = () => new Date('2026-05-18T15:18:00.000Z')
-  const morningNowPlus1 = () => new Date('2026-05-18T15:19:00.000Z')
+  // Capture time 8:18 AM PDT
+  const morningNow = () => makeNow(8, 18)
+  const morningNowPlus1 = () => makeNow(8, 19)
 
   let morningSchedule
 
@@ -376,9 +376,6 @@ describe('useSchedule — morning sample (5:15 AM should NOT appear in upcoming)
 })
 
 describe('useSchedule — live debug data (1:40 PM)', () => {
-  const NOW_TS = '2026-05-18T20:40:00.000Z'
-  const NOW_PLUS_1_TS = '2026-05-18T20:41:00.000Z'
-
   const DEBUG_FERRY_DATA = {
     recentActivity: [
       { action: 'Arrived', location: 'Horseshoe Bay', time: '1:23:07 PM' },
@@ -440,8 +437,8 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
     ],
   }
 
-  const debugNow = () => new Date(NOW_TS)
-  const debugNowPlus1 = () => new Date(NOW_PLUS_1_TS)
+  const debugNow = () => makeNow(13, 40)
+  const debugNowPlus1 = () => makeNow(13, 41)
 
   let debugSchedule
 
@@ -468,7 +465,8 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
       const result = debugSchedule.allPastHSB()
       const entry = result.find(s => s.shortTime === '6:48am')
       assert.ok(entry, '6:48 AM departure should appear in past')
-      assert.equal(entry.diffText, '2m early', '6:48 AM (2 min early) should show early badge')
+      assert.equal(entry.diffText, '✓', '6:48 AM (2 min early) should be on time')
+      assert.equal(entry.ontime, true, '6:48 AM should be ontime')
     })
 
     it('8:05 AM matched to 8:04 AM departure (ontime)', () => {
@@ -489,7 +487,8 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
       const result = debugSchedule.allPastHSB()
       const entry = result.find(s => s.shortTime === '10:38am')
       assert.ok(entry, '10:38 AM departure should appear in past')
-      assert.equal(entry.diffText, '3m late', '10:38 AM should be 3m late')
+      assert.equal(entry.diffText, '✓', '10:38 AM (3 min late) should be on time')
+      assert.equal(entry.ontime, true, '10:38 AM should be ontime')
     })
 
     it('11:55 AM matched to 12:15 PM (20m late)', () => {
@@ -611,9 +610,6 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
 })
 
 describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departed)', () => {
-  const NOW_TS = '2026-05-18T20:51:00.000Z'
-  const NOW_PLUS_1_TS = '2026-05-18T20:52:00.000Z'
-
   const DEBUG2_FERRY_DATA = {
     recentActivity: [
       { action: 'Departed', location: 'Horseshoe Bay', time: '1:41:40 PM' },
@@ -676,8 +672,8 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
     ],
   }
 
-  const debug2Now = () => new Date(NOW_TS)
-  const debug2NowPlus1 = () => new Date(NOW_PLUS_1_TS)
+  const debug2Now = () => makeNow(13, 51)
+  const debug2NowPlus1 = () => makeNow(13, 52)
 
   let debug2Schedule
 
@@ -704,7 +700,8 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
       const result = debug2Schedule.allPastHSB()
       const entry = result.find(s => s.shortTime === '6:48am')
       assert.ok(entry)
-      assert.equal(entry.diffText, '2m early')
+      assert.equal(entry.diffText, '✓')
+      assert.equal(entry.ontime, true)
     })
 
     it('8:05 AM matched to 8:04 AM departure (ontime)', () => {
@@ -725,7 +722,8 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
       const result = debug2Schedule.allPastHSB()
       const entry = result.find(s => s.shortTime === '10:38am')
       assert.ok(entry)
-      assert.equal(entry.diffText, '3m late')
+      assert.equal(entry.diffText, '✓')
+      assert.equal(entry.ontime, true)
     })
 
     it('11:55 AM matched to 12:15 PM (20m late)', () => {
