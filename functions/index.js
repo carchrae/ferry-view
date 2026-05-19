@@ -80,20 +80,57 @@ export const pollFerryStatus = onSchedule(
     if (checkDataChanged(newDataSanitized, existingDataSanitized)) {
       console.log('Data changed, saving...')
 
-      // Enrich schedule entries with the latest capacity info before saving
+      // Enrich schedule entries with the latest capacity info from deckSpace data
+      // (covers current/upcoming sailings the API is still tracking)
       if (data.deckSpace) {
         for (const entry of data.deckSpace) {
           const schedule = entry.direction === 'To Bowen' ? data.hsbSchedule : data.bowenSchedule
-          const scheduleEntry = schedule.find(s => s.time === entry.time)
+          const scheduleEntry = schedule.find(s => normalizeTime(s.time) === normalizeTime(entry.time))
           if (!scheduleEntry) continue
           scheduleEntry.lastCapacity = entry.available
           if (entry.available === 'Full' && !scheduleEntry.filledAt) {
             const existingSchedule = entry.direction === 'To Bowen'
               ? existingData?.hsbSchedule : existingData?.bowenSchedule
-            const existingEntry = existingSchedule?.find(s => s.time === entry.time)
+            const existingEntry = existingSchedule?.find(s => normalizeTime(s.time) === normalizeTime(entry.time))
             scheduleEntry.filledAt = existingEntry?.filledAt || new Date().toISOString()
           }
         }
+      }
+
+      // Augment schedule entries with capacity data from capacityHistory
+      // (covers past sailings whose deckSpace data has rolled off the API)
+      try {
+        const historySnap = await db.collection('capacityHistory')
+          .where('date', '==', data.date)
+          .get()
+        if (!historySnap.empty) {
+          const capacityByKey = {}
+          historySnap.forEach(doc => {
+            const r = doc.data()
+            if (!capacityByKey[r.sailingKey]) capacityByKey[r.sailingKey] = []
+            capacityByKey[r.sailingKey].push({ capacity: r.capacity, recordedAt: r.recordedAt })
+          })
+          let enriched = 0
+          for (const [direction, schedule] of [['To Bowen', data.hsbSchedule], ['To HSB', data.bowenSchedule]]) {
+            for (const entry of schedule) {
+              const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${direction}`
+              const records = capacityByKey[sailingKey]
+              if (!records?.length) continue
+              records.sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt))
+              if (entry.lastCapacity === undefined) {
+                entry.lastCapacity = records[records.length - 1].capacity
+              }
+              if (!entry.filledAt) {
+                const filledRecord = records.find(r => r.capacity === 'Full')
+                if (filledRecord) entry.filledAt = filledRecord.recordedAt
+              }
+              enriched++
+            }
+          }
+          if (enriched) console.log(`Augmented ${enriched} schedule entries with capacity from capacityHistory`)
+        }
+      } catch (e) {
+        console.error('Failed to query capacityHistory for augmentation:', e)
       }
 
       await db
@@ -112,10 +149,10 @@ export const pollFerryStatus = onSchedule(
         const capacityWrites = []
         for (const entry of data.deckSpace) {
           const oldEntry = existingData.deckSpace.find(
-            e => e.time === entry.time && e.direction === entry.direction
+            e => normalizeTime(e.time) === normalizeTime(entry.time) && e.direction === entry.direction
           )
           if (!oldEntry || oldEntry.available !== entry.available) {
-            const sailingKey = `${data.date}_${entry.time}_${entry.direction}`
+            const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${entry.direction}`
             capacityWrites.push(
               db.collection('capacityHistory').add({
                 sailingKey,
@@ -182,6 +219,11 @@ export const getFerryStatus = onRequest(async (req, res) => {
 
   res.json(doc.data())
 })
+
+function normalizeTime(t) {
+  if (!t) return t
+  return t.toLowerCase().replace(/\s+/g, ' ').trim()
+}
 
 async function updateSailingStatus(sailingKey, sailingTime, direction, date, db, overrides) {
   const docRef = db.collection('sailingStatus').doc(sailingKey)
