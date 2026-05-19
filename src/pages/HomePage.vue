@@ -146,7 +146,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span></q-badge
+                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
                       >
                     </div>
                     <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
@@ -180,7 +180,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span></q-badge
+                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
                       >
                     </div>
                     <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -213,7 +213,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                      >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
+                        >{{ formatDeckBadge(s) }}</q-badge
                       >
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
@@ -243,7 +243,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                      >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
+                        >{{ formatDeckBadge(s) }}</q-badge
                       >
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -255,7 +255,7 @@
             </q-card>
           </div>
         </div>
-<!--        <div class="text-caption text-grey-5 text-center">although we try, computers can lie</div>-->
+        <!--        <div class="text-caption text-grey-5 text-center">although we try, computers can lie</div>-->
         <q-btn
           no-caps
           dense
@@ -327,7 +327,9 @@
           <q-card flat bordered>
             <q-img :src="departureSnapshot.imageUrl" ratio="16/9" spinner-color="primary" />
             <q-card-section class="q-pa-sm">
-              <div class="text-subtitle2">Departure from Bowen — {{ departureSnapshot.sailingTime }}</div>
+              <div class="text-subtitle2">
+                Departure from Bowen — {{ departureSnapshot.sailingTime }}
+              </div>
               <div class="text-caption text-grey-7 q-mt-sm">Was this an overload?</div>
               <div class="row q-mt-sm q-gutter-sm">
                 <q-btn no-caps dense color="negative" label="Yes" @click="rateOverload(true)" />
@@ -437,11 +439,21 @@
         </q-card-section>
         <q-card-section class="q-pt-none">
           <p>This photo was taken just after the ferry left Bowen.</p>
-          <p>If you can see <strong>many cars turning back</strong> from the terminal, it was likely an overload.</p>
+          <p>
+            If you can see <strong>many cars turning back</strong> from the terminal, it was likely
+            an overload.
+          </p>
           <p>If you only see a single car, someone probably just missed the ferry.</p>
         </q-card-section>
         <q-card-actions align="right">
-          <q-btn no-caps flat label="Got it" color="primary" v-close-overlay @click="dismissOverload" />
+          <q-btn
+            no-caps
+            flat
+            label="Got it"
+            color="primary"
+            v-close-overlay
+            @click="dismissOverload"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -496,18 +508,17 @@
                   v-else-if="event.diffText"
                   :color="event.diffColor"
                   class="badge-gap"
-                   dense
-                   >{{ shortText(event.diffText, $q.screen.xs) }}
-                 </q-badge>
+                  dense
+                  >{{ shortText(event.diffText, $q.screen.xs) }}
+                </q-badge>
                 <q-badge
                   rounded
                   v-if="event.lastCapacity"
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span>
-                </q-badge>
-              </div>
+                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge>
+                </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
             <div class="col">
@@ -528,17 +539,16 @@
                   v-else-if="event.diffText"
                   :color="event.diffColor"
                   class="badge-gap"
-                   dense
-                   >{{ shortText(event.diffText, $q.screen.xs) }}
-                 </q-badge>
+                  dense
+                  >{{ shortText(event.diffText, $q.screen.xs) }}
+                </q-badge>
                 <q-badge
                   rounded
                   v-if="event.lastCapacity"
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatCapacity(event.lastCapacity, $q.screen.xs) }}<span v-if="event.filledAt" class="">{{ formatFilledTime(event.filledAt) }}</span>
-                </q-badge>
+                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge>
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -563,7 +573,7 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
+                  >{{ formatDeckBadge(s) }}</q-badge
                 >
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -586,7 +596,7 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                >{{ s.full }}<span v-if="s.filledAt" class="">{{ formatFilledTime(s.filledAt) }}</span></q-badge
+                  >{{ formatDeckBadge(s) }}</q-badge
                 >
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -862,12 +872,24 @@ function getDeckColor(available) {
   return 'negative'
 }
 
-function formatCapacity(available, short) {
-  if (available === 'Full') return 'Full'
-  const pct = parseInt(available)
-  if (isNaN(pct)) return ''
-  const v = `${100 - pct}%`
-  return short ? v : `${v} full`
+function formatDeckBadge(event, short) {
+  let text = ''
+  if (event.lastCapacity) {
+    if (event.lastCapacity === 'Full') {
+      text = 'Full'
+    } else {
+      const pct = parseInt(event.lastCapacity)
+      if (!isNaN(pct)) {
+        const v = `${100 - pct}%`
+        text = short ? v : `${v} full`
+      }
+    }
+  } else if (event.full) {
+    text = event.full
+  }
+  return event.filledAt && text==='Full'
+    ? text + formatFilledTime(event.filledAt)
+    : text
 }
 
 function shortText(text, isMobile) {
