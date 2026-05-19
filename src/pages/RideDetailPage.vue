@@ -2,100 +2,64 @@
   <q-page class="q-pa-sm">
     <q-card v-if="ride" flat bordered>
       <q-card-section>
-        <div class="row items-center q-mb-sm">
+        <div class="row items-center no-wrap">
           <q-badge
             :color="ride.type === 'offer' ? 'positive' : 'info'"
-            :label="ride.type === 'offer' ? 'Ride Offer' : 'Ride Request'"
+            :label="ride.type === 'offer' ? 'Offer' : 'Request'"
             class="q-mr-sm"
           />
           <q-badge
             outline
             :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
-            :label="ride.direction === 'on-bowen' ? 'On Bowen' : 'On Mainland'"
+            :label="ride.direction === 'on-bowen' ? 'Bowen' : 'Mainland'"
           />
           <q-space />
           <q-btn
             v-if="canEdit"
-            no-caps dense
+            no-caps dense flat
             icon="edit"
-            label="Edit"
-            color="primary"
+            color="grey-7"
             :to="`/rides/${ride.id}/edit`"
           />
         </div>
 
-        <div class="text-h6 q-mb-sm">{{ ride.description }}</div>
+        <div class="text-body1 q-mt-sm">{{ ride.authorName }}</div>
+        <div class="text-body2 text-grey-7 q-mb-sm">
+          {{ ride.type === 'offer' ? 'Offering' : 'Seeking' }}
+          a ride
+          <template v-if="ride.date">on {{ formatDate(ride.date) }}</template>
+          <template v-if="ride.sailing">at {{ ride.sailing }}</template>
+        </div>
 
-        <q-list dense>
-          <q-item v-if="ride.date">
-            <q-item-section avatar><q-icon name="event" color="primary" /></q-item-section>
-            <q-item-section>
-              <q-item-label>Date</q-item-label>
-              <q-item-label caption>{{ formatDate(ride.date) }}</q-item-label>
-            </q-item-section>
-          </q-item>
+        <q-separator />
 
-          <q-item v-if="ride.sailing">
-            <q-item-section avatar><q-icon name="schedule" color="primary" /></q-item-section>
-            <q-item-section>
-              <q-item-label>Sailing</q-item-label>
-              <q-item-label caption>{{ ride.sailing }}</q-item-label>
-            </q-item-section>
-          </q-item>
+        <!-- Message -->
+        <div class="text-overline text-grey-7 q-mt-sm q-mb-xs">Message</div>
+        <div class="text-body1 q-mb-sm" style="white-space: pre-wrap">{{ ride.description }}</div>
 
-          <q-item v-if="ride.recurring">
-            <q-item-section avatar><q-icon name="repeat" color="primary" /></q-item-section>
-            <q-item-section>
-              <q-item-label>Schedule</q-item-label>
-              <q-item-label caption>{{ ride.schedule || 'Recurring' }}</q-item-label>
-            </q-item-section>
-          </q-item>
+        <q-separator />
 
-          <q-item>
-            <q-item-section avatar><q-icon name="person" color="primary" /></q-item-section>
-            <q-item-section>
-              <q-item-label>Posted by</q-item-label>
-              <q-item-label caption>{{ ride.authorName }}</q-item-label>
-            </q-item-section>
-          </q-item>
+        <!-- Contact info -->
+        <div class="text-overline text-grey-7 q-mt-sm q-mb-xs">Contact</div>
+        <div v-if="ride.contactMethod === 'email' && ride.authorEmail">
+          <a :href="'mailto:' + ride.authorEmail" class="text-body1 text-primary">{{ ride.authorEmail }}</a>
+        </div>
+        <div v-else-if="ride.contactMethod === 'sms' && ride.contactInfo">
+          <a :href="'sms:' + ride.contactInfo" class="text-body1">{{ ride.contactInfo }}</a>
+        </div>
+        <div v-else-if="ride.contactMethod === 'other' && ride.contactInfo" class="text-body1">
+          {{ ride.contactInfo }}
+        </div>
+        <div v-else class="text-caption text-grey-5">
+          No contact info provided
+        </div>
 
-          <q-item v-if="ride.createdAt">
-            <q-item-section avatar><q-icon name="access_time" color="primary" /></q-item-section>
-            <q-item-section>
-              <q-item-label>Posted</q-item-label>
-              <q-item-label caption>{{ formatDateTime(ride.createdAt) }}</q-item-label>
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-card-section>
+        <q-separator class="q-mt-sm" />
 
-      <q-separator />
-
-      <!-- Contact info: sign-in required -->
-      <q-card-section v-if="user">
-        <div class="text-overline text-grey-7 q-mb-xs">Contact</div>
-        <q-list dense>
-          <q-item v-if="ride.authorEmail">
-            <q-item-section avatar><q-icon name="email" color="primary" /></q-item-section>
-            <q-item-section>
-              <q-item-label><a :href="'mailto:' + ride.authorEmail">{{ ride.authorEmail }}</a></q-item-label>
-            </q-item-section>
-          </q-item>
-          <q-item v-if="ride.authorPhone">
-            <q-item-section avatar><q-icon name="phone" color="primary" /></q-item-section>
-            <q-item-section>
-              <q-item-label><a :href="'tel:' + ride.authorPhone">{{ ride.authorPhone }}</a></q-item-label>
-            </q-item-section>
-          </q-item>
-          <div v-if="!ride.authorEmail && !ride.authorPhone" class="text-caption text-grey-5">
-            No contact info provided
-          </div>
-        </q-list>
-      </q-card-section>
-
-      <q-card-section v-else>
-        <div class="text-body2 text-grey-7 q-mb-sm text-center">Sign in to see contact details</div>
-        <SignInOptions />
+        <!-- Footer -->
+        <div class="text-caption text-grey-6 q-mt-sm">
+          Posted {{ formatDateTime(ride.createdAt) }}
+        </div>
       </q-card-section>
     </q-card>
 
@@ -129,7 +93,7 @@ import { useRoute } from 'vue-router'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
-import SignInOptions from 'src/components/SignInOptions.vue'
+
 
 const route = useRoute()
 const { user } = useAuth()

@@ -42,7 +42,7 @@
               v-model="form.direction"
               spread no-caps dense
               toggle-color="primary"
-              :options="[{label: 'On Bowen', value: 'on-bowen'}, {label: 'On Mainland', value: 'on-mainland'}]"
+              :options="[{label: 'Bowen', value: 'on-bowen'}, {label: 'Mainland', value: 'on-mainland'}]"
             />
           </div>
         </div>
@@ -244,9 +244,19 @@ function dateFn(date) {
   return date >= today
 }
 
+function normalizeSailingTime(t) {
+  if (!t) return t
+  return t
+    .trim()
+    .replace(/(\d)\.(\d)/g, '$1:$2')
+    .replace(/(\d)([ap]m)/i, '$1 $2')
+    .replace(/([ap]m)/i, s => s.toUpperCase())
+}
+
 async function save() {
   saving.value = true
   try {
+    form.value.sailing = normalizeSailingTime(form.value.sailing)
     const name = form.value.authorName.trim()
     if (!user.value?.displayName || user.value.displayName !== name) {
       await updateProfile(auth.currentUser, { displayName: name })

@@ -689,6 +689,8 @@ function captureDebugData() {
       allPastHSB: JSON.parse(JSON.stringify(allPastHSB.value)),
       allPastBowen: JSON.parse(JSON.stringify(allPastBowen.value)),
     },
+    rides: JSON.parse(JSON.stringify(rides.value)),
+    sortedRides: JSON.parse(JSON.stringify(sortedRides.value)),
   }
   navigator.clipboard
     .writeText(JSON.stringify(payload, null, 2))
@@ -755,7 +757,7 @@ const sortedRides = computed(() => {
   return [...rides.value]
     .map((r) => {
       const isToday = !r.recurring && r.date === todayStr
-      const isUpcoming = !!(r.sailing && upcoming.has(r.sailing.trim().toUpperCase()))
+      const isUpcoming = isToday && !!(r.sailing && upcoming.has(r.sailing.trim().toUpperCase()))
       return { ...r, isToday, isUpcoming }
     })
     .sort((a, b) => {
