@@ -432,64 +432,44 @@
       </div>
     </q-dialog>
 
-    <!-- Overload dialog -->
-    <q-dialog v-model="showOverloadDialog">
-      <q-card style="min-width: 300px">
-        <q-card-section>
-          <div class="text-h6">Overload Detected?</div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <p>This photo was taken just after the ferry left Bowen.</p>
-          <p>
-            If you can see <strong>many cars turning back</strong> from the terminal, it was likely
-            an overload.
-          </p>
-          <p>If you only see a single car, someone probably just missed the ferry.</p>
-        </q-card-section>
-        <q-card-actions align="right">
-          <q-btn
-            no-caps
-            flat
-            label="Got it"
-            color="primary"
-            @click="dismissOverload"
-          />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
-
     <!-- Snapshot dialog -->
     <q-dialog v-model="showSnapshotDialog">
       <q-card style="min-width: 300px; max-width: 95vw">
-        <template v-if="departureSnapshot">
-          <img
-            :src="departureSnapshot.imageUrl"
-            style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 4px 4px 0 0;"
-            @error="onSnapshotError"
-          />
-          <q-card-section>
-            <div class="text-subtitle2">
-              Departure from Bowen — {{ departureSnapshot.sailingTime }}
-            </div>
-          </q-card-section>
-        </template>
-        <template v-if="arrivalSnapshot">
-          <img
-            :src="arrivalSnapshot.imageUrl"
-            style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;"
-            @error="onSnapshotError"
-          />
-          <q-card-section>
-            <div class="text-subtitle2">
-              Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}
-            </div>
-          </q-card-section>
-        </template>
+        <div class="row">
+          <div v-if="departureSnapshot" class="col-12 col-md-6">
+            <img
+              :src="departureSnapshot.imageUrl"
+              style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 4px 4px 0 0;"
+              @error="onSnapshotError"
+            />
+            <q-card-section>
+              <div class="text-subtitle2">
+                Departure from Bowen — {{ departureSnapshot.sailingTime }}
+              </div>
+            </q-card-section>
+          </div>
+          <div v-if="arrivalSnapshot" class="col-12 col-md-6">
+            <img
+              :src="arrivalSnapshot.imageUrl"
+              style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 4px 4px 0 0;"
+              @error="onSnapshotError"
+            />
+            <q-card-section>
+              <div class="text-subtitle2">
+                Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}
+              </div>
+            </q-card-section>
+          </div>
+        </div>
         <q-card-section v-if="departureSnapshot">
-          <div class="text-caption text-grey-7 q-mt-sm">Was this an overload?</div>
+          <div class="text-caption text-grey-7 q-mt-sm">
+            This photo was taken just after the ferry left Bowen.
+            If you can see <strong>many cars turning back</strong> from the terminal, it was likely
+            an overload. If you only see a single car, someone probably just missed the ferry.
+          </div>
           <div class="row q-mt-sm q-gutter-sm">
-            <q-btn no-caps dense color="negative" label="Yes" @click="rateOverload(true)" />
-            <q-btn no-caps dense flat color="grey-7" label="No" @click="showSnapshotDialog = false" />
+            <q-btn no-caps dense color="negative" label="Overload" @click="rateOverload(true)" />
+            <q-btn no-caps dense flat color="grey-7" label="Not Overload" @click="showSnapshotDialog = false" />
           </div>
         </q-card-section>
       </q-card>
@@ -665,8 +645,9 @@ import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
 import { isStaging, db } from 'src/boot/firebase'
-import { doc, onSnapshot } from 'firebase/firestore'
+import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
+import { useAuth } from 'src/composables/useAuth'
 
 const { ferryData, loading, error } = useFirestoreFerryListener()
 const { rides } = useRides()
@@ -679,10 +660,11 @@ const nowMs = () => Date.now() + TIME_OFFSET_MS
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 
+const { user, signInWithGoogle } = useAuth()
+
 const departureSnapshot = ref(null)
 const arrivalSnapshot = ref(null)
 const showSnapshotDialog = ref(false)
-const showOverloadDialog = ref(false)
 let lastSnapshotKey = null
 let lastArrivalKey = null
 
@@ -720,16 +702,22 @@ function onSnapshotError(err) {
 }
 
 function rateOverload(isOverload) {
-  if (isOverload) {
-    showSnapshotDialog.value = false
-    showOverloadDialog.value = true
-  } else {
-    showSnapshotDialog.value = false
+  if (isOverload && departureSnapshot.value) {
+    if (!user.value) {
+      signInWithGoogle()
+      return
+    }
+    addDoc(collection(db, 'capacityHistory'), {
+      sailingKey: departureSnapshot.value.sailingKey,
+      sailingTime: departureSnapshot.value.sailingTime,
+      direction: 'To HSB',
+      date: departureSnapshot.value.date,
+      capacity: 'Full',
+      recordedAt: new Date().toISOString(),
+      userUid: user.value.uid,
+    })
   }
-}
-
-function dismissOverload() {
-  showOverloadDialog.value = false
+  showSnapshotDialog.value = false
 }
 
 function captureDebugData() {
