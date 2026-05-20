@@ -657,6 +657,8 @@ onMounted(() => {
       snapshotRated.value = false
     }
     departureSnapshot.value = data
+  }, (err) => {
+    console.error('Departure snapshot listener error:', err)
   })
 })
 onUnmounted(() => {
