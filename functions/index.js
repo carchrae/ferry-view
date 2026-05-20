@@ -15,7 +15,7 @@ import {
   augmentFromFilledStatus,
 } from './lib/enrich.js'
 import { recordCapacityChanges, recordDepartureTimes } from './lib/record.js'
-import { captureBowenWebcam } from './lib/webcam.js'
+import { captureBowenWebcam, captureBowenCommunityWebcam, cleanupOldWebcams } from './lib/webcam.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
 const VAPID_PUBLIC_KEY = defineSecret('VAPID_PUBLIC_KEY')
@@ -80,6 +80,16 @@ export const pollFerryStatus = onSchedule(
         .catch(e => console.error(`Webcam capture failed for ${sailingKey}:`, e))
     }
 
+    // Capture Bowen community webcam when the ferry arrives at Bowen
+    const bowenArrivals = data.recentActivity.filter(
+      e => e.action === 'Arrived' && e.location === 'Bowen'
+    )
+    if (bowenArrivals.length > 0) {
+      const latest = bowenArrivals[bowenArrivals.length - 1]
+      captureBowenCommunityWebcam(db, latest.time, data.date)
+        .catch(e => console.error('Community webcam capture failed:', e))
+    }
+
     await maybeSendNotifications(data)
   }
 )
@@ -103,3 +113,14 @@ export const getFerryStatus = onRequest(async (req, res) => {
 
   res.json(doc.data())
 })
+
+export const cleanupWebcams = onSchedule(
+  {
+    schedule: 'every day 00:00',
+    timeZone: 'America/Vancouver',
+  },
+  async () => {
+    console.log('Running webcam cleanup...')
+    await cleanupOldWebcams()
+  }
+)
