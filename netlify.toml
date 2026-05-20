@@ -13,3 +13,19 @@
 
 [context.production]
   environment = { PRODUCTION = "true" }
+  [[context.production.redirects]]
+    from = "/webcam/*"
+    to = "https://storage.googleapis.com/bowen-ferry.firebasestorage.app/webcams/:splat"
+    status = 200
+
+[context.branch-deploy]
+  [[context.branch-deploy.redirects]]
+    from = "/webcam/*"
+    to = "https://storage.googleapis.com/bowen-ferry-staging.firebasestorage.app/webcams/:splat"
+    status = 200
+
+[context.deploy-preview]
+  [[context.deploy-preview.redirects]]
+    from = "/webcam/*"
+    to = "https://storage.googleapis.com/bowen-ferry-staging.firebasestorage.app/webcams/:splat"
+    status = 200

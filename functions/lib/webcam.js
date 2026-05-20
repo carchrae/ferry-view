@@ -44,6 +44,7 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, date) {
   await file.save(best, { contentType: 'image/jpeg' })
   await file.makePublic()
 
+  // const imageUrl = `/webcam/${blobPath}`
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
   await db.collection('snapshots').doc('latestBowenDeparture').set({
     imageUrl,
