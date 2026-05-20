@@ -76,7 +76,7 @@ export const pollFerryStatus = onSchedule(
     for (const entry of bowenPast) {
       if (!entry._hasDep) continue
       const sailingKey = `${data.date}_${entry.time}_To HSB`
-      captureBowenWebcam(db, sailingKey, entry.time, data.date)
+      captureBowenWebcam(db, sailingKey, entry.time, data.date, entry._depDisplay || entry.time)
         .catch(e => console.error(`Webcam capture failed for ${sailingKey}:`, e))
     }
 

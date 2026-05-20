@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
+import { normalizeTime } from './helpers.js'
 
 const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
@@ -52,8 +53,8 @@ function pickBestFrame(samples) {
   return dupes ? dupes[0] : samples.sort((a, b) => b.length - a.length)[0]
 }
 
-export async function captureBowenWebcam(db, sailingKey, sailingTime, date) {
-  if (!isRecent(sailingTime, 10 * 60 * 1000)) return
+export async function captureBowenWebcam(db, sailingKey, sailingTime, date, recentTime) {
+  if (!isRecent(recentTime || sailingTime, 10 * 60 * 1000)) return
   const statusRef = db.collection('sailingStatus').doc(sailingKey)
   const snap = await statusRef.get()
   if (!snap.exists) return
@@ -74,9 +75,10 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, date) {
   await file.makePublic()
 
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
+  const snapshotKey = `${date}_${normalizeTime(sailingTime)}_To HSB`
   await db.collection('snapshots').doc('latestBowenDeparture').set({
     imageUrl,
-    sailingKey,
+    sailingKey: snapshotKey,
     sailingTime,
     date,
     recordedAt: new Date().toISOString(),
@@ -108,9 +110,11 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, date) {
   await file.makePublic()
 
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
+  const snapshotKey = `${date}_${normalizeTime(arrivalTime)}_Arrival`
   await arrivalRef.set({
     imageUrl,
     arrivalTime,
+    sailingKey: snapshotKey,
     date,
     recordedAt: now.toISOString(),
   })

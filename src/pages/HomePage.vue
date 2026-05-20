@@ -435,43 +435,82 @@
     <!-- Snapshot dialog -->
     <q-dialog v-model="showSnapshotDialog">
       <q-card style="min-width: 300px; max-width: 95vw">
+        <q-card-section>
+          <div class="text-body2 text-weight-medium">
+            These photos capture how full the last sailing from Bowen was.
+          </div>
+        </q-card-section>
         <div class="row">
           <div v-if="departureSnapshot" class="col-12 col-md-6">
             <img
               :src="departureSnapshot.imageUrl"
-              style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 4px 4px 0 0;"
+              style="
+                width: 100%;
+                aspect-ratio: 16 / 9;
+                object-fit: cover;
+                display: block;
+                border-radius: 4px 4px 0 0;
+              "
               @error="onSnapshotError"
             />
             <q-card-section>
               <div class="text-subtitle2">
                 Departure from Bowen — {{ departureSnapshot.sailingTime }}
               </div>
+              <div class="text-caption text-grey-7 q-mt-sm">
+                <strong>Full</strong> — if there are many cars in the lineup after the ferry loaded,
+                this is likely an overload.
+              </div>
+              <div class="row q-mt-sm q-gutter-sm">
+                <q-btn
+                  no-caps
+                  dense
+                  color="negative"
+                  label="Full"
+                  @click="saveRating('Full', 'departure')"
+                />
+              </div>
             </q-card-section>
           </div>
           <div v-if="arrivalSnapshot" class="col-12 col-md-6">
             <img
               :src="arrivalSnapshot.imageUrl"
-              style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 4px 4px 0 0;"
+              style="
+                width: 100%;
+                aspect-ratio: 16 / 9;
+                object-fit: cover;
+                display: block;
+                border-radius: 4px 4px 0 0;
+              "
               @error="onSnapshotError"
             />
             <q-card-section>
-              <div class="text-subtitle2">
-                Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}
+              <div class="text-subtitle2">Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}</div>
+              <div class="text-caption text-grey-7 q-mt-sm">
+                <strong>75% Full</strong> — are there cars on the hill but not all the way up?
+                <br/>
+                <strong>90% Full</strong> — does the community photo show cars as far as you can
+                see?
+              </div>
+              <div class="row q-mt-sm q-gutter-sm">
+                <q-btn
+                  no-caps
+                  dense
+                  color="amber-8"
+                  label="75% Full"
+                  @click="saveRating('25%', 'arrival')"
+                />
+                <q-btn
+                  no-caps
+                  dense
+                  color="warning"
+                  label="90% Full"
+                  @click="saveRating('10%', 'arrival')"
+                />
               </div>
             </q-card-section>
           </div>
         </div>
-        <q-card-section v-if="departureSnapshot">
-          <div class="text-caption text-grey-7 q-mt-sm">
-            This photo was taken just after the ferry left Bowen.
-            If you can see <strong>many cars turning back</strong> from the terminal, it was likely
-            an overload. If you only see a single car, someone probably just missed the ferry.
-          </div>
-          <div class="row q-mt-sm q-gutter-sm">
-            <q-btn no-caps dense color="negative" label="Overload" @click="rateOverload(true)" />
-            <q-btn no-caps dense flat color="grey-7" label="Not Overload" @click="showSnapshotDialog = false" />
-          </div>
-        </q-card-section>
       </q-card>
     </q-dialog>
 
@@ -534,8 +573,9 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge>
-                </div>
+                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
+                >
+              </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
             <div class="col">
@@ -565,7 +605,8 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge>
+                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
+                >
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -671,26 +712,34 @@ let lastArrivalKey = null
 let unsubDeparture = null
 let unsubArrival = null
 onMounted(() => {
-  unsubDeparture = onSnapshot(doc(db, 'snapshots', 'latestBowenDeparture'), (snap) => {
-    if (!snap.exists()) return
-    const data = snap.data()
-    if (data.sailingKey !== lastSnapshotKey) {
-      lastSnapshotKey = data.sailingKey
-    }
-    departureSnapshot.value = data
-  }, (err) => {
-    console.error('Departure snapshot listener error:', err)
-  })
-  unsubArrival = onSnapshot(doc(db, 'snapshots', 'latestBowenArrival'), (snap) => {
-    if (!snap.exists()) return
-    const data = snap.data()
-    if (data.arrivalTime !== lastArrivalKey) {
-      lastArrivalKey = data.arrivalTime
-    }
-    arrivalSnapshot.value = data
-  }, (err) => {
-    console.error('Arrival snapshot listener error:', err)
-  })
+  unsubDeparture = onSnapshot(
+    doc(db, 'snapshots', 'latestBowenDeparture'),
+    (snap) => {
+      if (!snap.exists()) return
+      const data = snap.data()
+      if (data.sailingKey !== lastSnapshotKey) {
+        lastSnapshotKey = data.sailingKey
+      }
+      departureSnapshot.value = data
+    },
+    (err) => {
+      console.error('Departure snapshot listener error:', err)
+    },
+  )
+  unsubArrival = onSnapshot(
+    doc(db, 'snapshots', 'latestBowenArrival'),
+    (snap) => {
+      if (!snap.exists()) return
+      const data = snap.data()
+      if (data.arrivalTime !== lastArrivalKey) {
+        lastArrivalKey = data.arrivalTime
+      }
+      arrivalSnapshot.value = data
+    },
+    (err) => {
+      console.error('Arrival snapshot listener error:', err)
+    },
+  )
 })
 onUnmounted(() => {
   if (unsubDeparture) unsubDeparture()
@@ -701,22 +750,21 @@ function onSnapshotError(err) {
   console.error('Snapshot image error:', err)
 }
 
-function rateOverload(isOverload) {
-  if (isOverload && departureSnapshot.value) {
-    if (!user.value) {
-      signInWithGoogle()
-      return
-    }
-    addDoc(collection(db, 'capacityHistory'), {
-      sailingKey: departureSnapshot.value.sailingKey,
-      sailingTime: departureSnapshot.value.sailingTime,
-      direction: 'To HSB',
-      date: departureSnapshot.value.date,
-      capacity: 'Full',
-      recordedAt: new Date().toISOString(),
-      userUid: user.value.uid,
-    })
+function saveRating(capacity, source) {
+  const snap = source === 'arrival' ? arrivalSnapshot.value : departureSnapshot.value
+  if (!snap) return
+  if (!user.value) {
+    signInWithGoogle()
+    return
   }
+  addDoc(collection(db, 'capacityHistory'), {
+    sailingKey: snap.sailingKey,
+    sailingTime: snap.sailingTime || snap.arrivalTime,
+    date: snap.date,
+    capacity,
+    recordedAt: new Date().toISOString(),
+    userUid: user.value.uid,
+  })
   showSnapshotDialog.value = false
 }
 
@@ -933,9 +981,7 @@ function formatDeckBadge(event, short) {
   } else if (event.full) {
     text = event.full
   }
-  return event.filledAt && text==='Full'
-    ? text + formatFilledTime(event.filledAt)
-    : text
+  return event.filledAt && text === 'Full' ? text + formatFilledTime(event.filledAt) : text
 }
 
 function shortText(text, isMobile) {

@@ -24,9 +24,12 @@ service cloud.firestore {
         && request.auth.uid == resource.data.authorUid;
     }
 
-    // Capacity history collection (server-write only)
+    // Capacity history collection (server and authenticated users)
     match /capacityHistory/{docId} {
       allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['sailingKey', 'sailingTime', 'capacity', 'userUid'])
+        && request.resource.data.userUid == request.auth.uid;
       allow write: if false;
     }
 

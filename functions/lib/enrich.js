@@ -81,26 +81,43 @@ export async function augmentFromCapacityHistory(db, data) {
       .where('date', '==', data.date)
       .get()
     if (historySnap.empty) return
-    const capacityByKey = {}
+    const serverRecords = {}
+    const userRecords = {}
     historySnap.forEach(doc => {
       const r = doc.data()
-      if (!capacityByKey[r.sailingKey]) capacityByKey[r.sailingKey] = []
-      capacityByKey[r.sailingKey].push({ capacity: r.capacity, recordedAt: r.recordedAt })
+      const bucket = r.userUid ? userRecords : serverRecords
+      if (!bucket[r.sailingKey]) bucket[r.sailingKey] = []
+      bucket[r.sailingKey].push({ capacity: r.capacity, recordedAt: r.recordedAt })
     })
     let enriched = 0
     for (const [direction, schedule] of [['To Bowen', data.hsbSchedule], ['To HSB', data.bowenSchedule]]) {
       for (const entry of schedule) {
         const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${direction}`
-        const records = capacityByKey[sailingKey]
-        if (!records?.length) continue
-        records.sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt))
-        if (entry.lastCapacity === undefined) {
-          entry.lastCapacity = records[records.length - 1].capacity
+        const sRecords = serverRecords[sailingKey]
+        const uRecords = userRecords[sailingKey]
+        if (!sRecords?.length && !uRecords?.length) continue
+
+        // Apply server records (API data) — only fill gaps
+        if (sRecords?.length) {
+          sRecords.sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt))
+          if (entry.lastCapacity === undefined) {
+            entry.lastCapacity = sRecords[sRecords.length - 1].capacity
+          }
+          if (!entry.filledAt) {
+            const filledRecord = sRecords.find(r => r.capacity === 'Full')
+            if (filledRecord) entry.filledAt = filledRecord.recordedAt
+          }
         }
-        if (!entry.filledAt) {
-          const filledRecord = records.find(r => r.capacity === 'Full')
-          if (filledRecord) entry.filledAt = filledRecord.recordedAt
+
+        // Apply user records — override unconditionally
+        if (uRecords?.length) {
+          const latest = uRecords.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0]
+          entry.lastCapacity = latest.capacity
+          if (latest.capacity === 'Full') {
+            entry.filledAt = latest.recordedAt
+          }
         }
+
         enriched++
       }
     }
