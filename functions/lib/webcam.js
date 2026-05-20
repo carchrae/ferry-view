@@ -7,6 +7,25 @@ const SAMPLE_COUNT = 3
 const SAMPLE_DELAY_MS = 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
+function parseTimeToday(timeStr) {
+  if (!timeStr) return null
+  const m = timeStr.match(/(\d+):(\d{2})\s*(AM|PM)/i)
+  if (!m) return null
+  let h = parseInt(m[1])
+  const min = parseInt(m[2])
+  if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12
+  if (m[3].toUpperCase() === 'AM' && h === 12) h = 0
+  const d = new Date()
+  d.setHours(h, min, 0, 0)
+  return d
+}
+
+function isRecent(timeStr, maxAgeMs) {
+  const t = parseTimeToday(timeStr)
+  if (!t) return false
+  return (Date.now() - t.getTime()) < maxAgeMs
+}
+
 async function captureSamples(url) {
   const samples = []
   for (let i = 0; i < SAMPLE_COUNT; i++) {
@@ -34,6 +53,7 @@ function pickBestFrame(samples) {
 }
 
 export async function captureBowenWebcam(db, sailingKey, sailingTime, date) {
+  if (!isRecent(sailingTime, 10 * 60 * 1000)) return
   const statusRef = db.collection('sailingStatus').doc(sailingKey)
   const snap = await statusRef.get()
   if (!snap.exists) return
@@ -67,6 +87,7 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, date) {
 }
 
 export async function captureBowenCommunityWebcam(db, arrivalTime, date) {
+  if (!isRecent(arrivalTime, 10 * 60 * 1000)) return
   const arrivalRef = db.collection('snapshots').doc('latestBowenArrival')
   const snap = await arrivalRef.get()
   if (snap.exists && snap.data().arrivalTime === arrivalTime) return
@@ -78,7 +99,8 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, date) {
   }
 
   const best = pickBestFrame(samples)
-  const timestamp = Date.now()
+  const now = new Date()
+  const timestamp = now.getTime()
   const blobPath = `webcams/community/${date}/${arrivalTime}_${timestamp}.jpg`
   const bucket = getStorage().bucket()
   const file = bucket.file(blobPath)
@@ -90,7 +112,7 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, date) {
     imageUrl,
     arrivalTime,
     date,
-    recordedAt: new Date().toISOString(),
+    recordedAt: now.toISOString(),
   })
 
   console.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)

@@ -85,7 +85,7 @@ export const pollFerryStatus = onSchedule(
       e => e.action === 'Arrived' && e.location === 'Bowen'
     )
     if (bowenArrivals.length > 0) {
-      const latest = bowenArrivals[bowenArrivals.length - 1]
+      const latest = bowenArrivals[0]
       captureBowenCommunityWebcam(db, latest.time, data.date)
         .catch(e => console.error('Community webcam capture failed:', e))
     }

@@ -256,16 +256,32 @@
           </div>
         </div>
         <!--        <div class="text-caption text-grey-5 text-center">although we try, computers can lie</div>-->
-        <q-btn
-          no-caps
-          dense
-          flat
-          color="primary"
-          icon="calendar_today"
-          label="Today's Sailings"
-          class="full-width q-mt-xs q-mb-sm"
-          @click="showFullDialog = true"
-        />
+        <div class="row q-mt-xs q-mb-sm q-col-gutter-sm">
+          <div class="col">
+            <q-btn
+              no-caps
+              dense
+              flat
+              color="primary"
+              icon="calendar_today"
+              label="Today's Sailings"
+              class="full-width"
+              @click="showFullDialog = true"
+            />
+          </div>
+          <div class="col" v-if="departureSnapshot || arrivalSnapshot">
+            <q-btn
+              no-caps
+              dense
+              flat
+              color="primary"
+              icon="photo_camera"
+              label="BI Powered"
+              class="full-width"
+              @click="showSnapshotDialog = true"
+            />
+          </div>
+        </div>
         <!-- Rides -->
         <div class="col-12 col-md-6">
           <q-card flat bordered>
@@ -323,21 +339,6 @@
 
       <!-- Cameras Grid -->
       <div class="col-12 col-md-6">
-        <div v-if="departureSnapshot && !snapshotRated" class="q-mb-sm">
-          <q-card flat bordered>
-            <q-img :src="departureSnapshot.imageUrl" ratio="16/9" spinner-color="primary" />
-            <q-card-section class="q-pa-sm">
-              <div class="text-subtitle2">
-                Departure from Bowen — {{ departureSnapshot.sailingTime }}
-              </div>
-              <div class="text-caption text-grey-7 q-mt-sm">Was this an overload?</div>
-              <div class="row q-mt-sm q-gutter-sm">
-                <q-btn no-caps dense color="negative" label="Yes" @click="rateOverload(true)" />
-                <q-btn no-caps dense flat color="grey-7" label="No" @click="rateOverload(false)" />
-              </div>
-            </q-card-section>
-          </q-card>
-        </div>
         <div class="row q-col-gutter-sm">
           <div v-for="(cam, index) in displayCams" :key="index" class="col-6">
             <q-card
@@ -451,10 +452,46 @@
             flat
             label="Got it"
             color="primary"
-            v-close-overlay
             @click="dismissOverload"
           />
         </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Snapshot dialog -->
+    <q-dialog v-model="showSnapshotDialog">
+      <q-card style="min-width: 300px; max-width: 95vw">
+        <template v-if="departureSnapshot">
+          <img
+            :src="departureSnapshot.imageUrl"
+            style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 4px 4px 0 0;"
+            @error="onSnapshotError"
+          />
+          <q-card-section>
+            <div class="text-subtitle2">
+              Departure from Bowen — {{ departureSnapshot.sailingTime }}
+            </div>
+          </q-card-section>
+        </template>
+        <template v-if="arrivalSnapshot">
+          <img
+            :src="arrivalSnapshot.imageUrl"
+            style="width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;"
+            @error="onSnapshotError"
+          />
+          <q-card-section>
+            <div class="text-subtitle2">
+              Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}
+            </div>
+          </q-card-section>
+        </template>
+        <q-card-section v-if="departureSnapshot">
+          <div class="text-caption text-grey-7 q-mt-sm">Was this an overload?</div>
+          <div class="row q-mt-sm q-gutter-sm">
+            <q-btn no-caps dense color="negative" label="Yes" @click="rateOverload(true)" />
+            <q-btn no-caps dense flat color="grey-7" label="No" @click="showSnapshotDialog = false" />
+          </div>
+        </q-card-section>
       </q-card>
     </q-dialog>
 
@@ -643,39 +680,56 @@ const nowMs = () => Date.now() + TIME_OFFSET_MS
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 
 const departureSnapshot = ref(null)
+const arrivalSnapshot = ref(null)
+const showSnapshotDialog = ref(false)
 const showOverloadDialog = ref(false)
 let lastSnapshotKey = null
-const snapshotRated = ref(false)
+let lastArrivalKey = null
 
-let unsubSnapshot = null
+let unsubDeparture = null
+let unsubArrival = null
 onMounted(() => {
-  unsubSnapshot = onSnapshot(doc(db, 'snapshots', 'latestBowenDeparture'), (snap) => {
+  unsubDeparture = onSnapshot(doc(db, 'snapshots', 'latestBowenDeparture'), (snap) => {
     if (!snap.exists()) return
     const data = snap.data()
     if (data.sailingKey !== lastSnapshotKey) {
       lastSnapshotKey = data.sailingKey
-      snapshotRated.value = false
     }
     departureSnapshot.value = data
   }, (err) => {
     console.error('Departure snapshot listener error:', err)
   })
+  unsubArrival = onSnapshot(doc(db, 'snapshots', 'latestBowenArrival'), (snap) => {
+    if (!snap.exists()) return
+    const data = snap.data()
+    if (data.arrivalTime !== lastArrivalKey) {
+      lastArrivalKey = data.arrivalTime
+    }
+    arrivalSnapshot.value = data
+  }, (err) => {
+    console.error('Arrival snapshot listener error:', err)
+  })
 })
 onUnmounted(() => {
-  if (unsubSnapshot) unsubSnapshot()
+  if (unsubDeparture) unsubDeparture()
+  if (unsubArrival) unsubArrival()
 })
+
+function onSnapshotError(err) {
+  console.error('Snapshot image error:', err)
+}
 
 function rateOverload(isOverload) {
   if (isOverload) {
+    showSnapshotDialog.value = false
     showOverloadDialog.value = true
   } else {
-    snapshotRated.value = true
+    showSnapshotDialog.value = false
   }
 }
 
 function dismissOverload() {
   showOverloadDialog.value = false
-  snapshotRated.value = true
 }
 
 function captureDebugData() {
