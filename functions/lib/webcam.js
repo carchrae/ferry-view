@@ -101,7 +101,7 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, date) {
   const best = pickBestFrame(samples)
   const now = new Date()
   const timestamp = now.getTime()
-  const blobPath = `webcams/community/${date}/${arrivalTime}_${timestamp}.jpg`
+  const blobPath = `webcams/community/${date}/${arrivalTime}_Arrival_${timestamp}.jpg`
   const bucket = getStorage().bucket()
   const file = bucket.file(blobPath)
   await file.save(best, { contentType: 'image/jpeg' })
