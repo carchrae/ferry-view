@@ -36,6 +36,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Snapshots collection (server-write only)
+    match /snapshots/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Default: deny all other access
     match /{document=**} {
       allow read, write: if false;
