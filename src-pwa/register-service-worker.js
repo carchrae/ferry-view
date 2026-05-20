@@ -1,41 +1,22 @@
 import { register } from 'register-service-worker'
 
-// The ready(), registered(), cached(), updatefound() and updated()
-// events passes a ServiceWorkerRegistration instance in their arguments.
-// ServiceWorkerRegistration: https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration
-
-register(process.env.SERVICE_WORKER_FILE, {
-  // The registrationOptions object will be passed as the second argument
-  // to ServiceWorkerContainer.register()
-  // https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/register#Parameter
-
-  // registrationOptions: { scope: './' },
-
-  ready (/* registration */) {
-    // console.log('Service worker is active.')
-  },
-
-  registered (/* registration */) {
-    // console.log('Service worker has been registered.')
-  },
-
-  cached (/* registration */) {
-    // console.log('Content has been cached for offline use.')
-  },
-
-  updatefound (/* registration */) {
-    // console.log('New content is downloading.')
-  },
-
-  updated (/* registration */) {
-    // console.log('New content is available; please refresh.')
-  },
-
-  offline () {
-    // console.log('No internet connection found. App is running in offline mode.')
-  },
-
-  error (/* err */) {
-    // console.error('Error during service worker registration:', err)
-  }
-})
+if (process.env.DEV) {
+  navigator.serviceWorker?.getRegistrations().then(regs => {
+    for (const reg of regs) reg.unregister()
+  })
+} else {
+  register(process.env.SERVICE_WORKER_FILE, {
+    ready () {},
+    registered () {},
+    cached () {},
+    updatefound () {},
+    updated (registration) {
+      registration.waiting?.postMessage({ type: 'SKIP_WAITING' })
+      window.location.reload()
+    },
+    offline () {},
+    error (err) {
+      console.error('SW registration error:', err)
+    },
+  })
+}
