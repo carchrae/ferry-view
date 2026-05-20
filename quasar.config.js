@@ -83,9 +83,10 @@ export default defineConfig((ctx) => {
             return args
           })
         }
-        // if (ctx.dev) {
-        //   chain.watchOptions({ poll: 1000 })
-        // }
+        if (ctx.dev) {
+          console.log('watch poll 1000ms, ignore node_modules')
+          chain.watchOptions({ poll: 1000, ignored: '**/node_modules' })
+        }
       },
 
       env: {
