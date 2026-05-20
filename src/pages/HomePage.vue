@@ -256,16 +256,16 @@
           </div>
         </div>
         <!--        <div class="text-caption text-grey-5 text-center">although we try, computers can lie</div>-->
-        <div class="row q-mt-xs q-mb-sm q-col-gutter-sm">
+        <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col">
             <q-btn
               no-caps
               dense
-              flat
+              outline
               color="primary"
               icon="calendar_today"
               label="Today's Sailings"
-              class="full-width"
+              class="full-width no-wrap"
               @click="showFullDialog = true"
             />
           </div>
@@ -273,11 +273,11 @@
             <q-btn
               no-caps
               dense
-              flat
+              outline
               color="primary"
               icon="photo_camera"
-              label="BI Powered"
-              class="full-width"
+              label="Last Bowen Sailing"
+              class="full-width no-wrap"
               @click="showSnapshotDialog = true"
             />
           </div>
@@ -433,84 +433,95 @@
     </q-dialog>
 
     <!-- Snapshot dialog -->
-    <q-dialog v-model="showSnapshotDialog">
-      <q-card style="min-width: 300px; max-width: 95vw">
-        <q-card-section>
+    <q-dialog v-model="showSnapshotDialog" position="top">
+      <q-card
+        :style="{
+          minWidth: $q.screen.gt.xs ? '400px' : '95vw',
+          maxWidth: '95vw',
+          maxHeight: '100vh',
+        }"
+      >
+        <q-card-section class="row items-start q-pb-none">
           <div class="text-body2 text-weight-medium">
             These photos capture how full the last sailing from Bowen was.
           </div>
+          <q-space />
+          <q-btn flat dense icon="close" aria-label="Close" @click="showSnapshotDialog = false" />
         </q-card-section>
-        <div class="row">
-          <div v-if="departureSnapshot" class="col-12 col-md-6">
-            <img
-              :src="departureSnapshot.imageUrl"
-              style="
-                width: 100%;
-                aspect-ratio: 16 / 9;
-                object-fit: cover;
-                display: block;
-                border-radius: 4px 4px 0 0;
-              "
-              @error="onSnapshotError"
-            />
-            <q-card-section>
-              <div class="text-subtitle2">
-                Departure from Bowen — {{ departureSnapshot.sailingTime }}
-              </div>
-              <div class="text-caption text-grey-7 q-mt-sm">
-                <strong>Full</strong> — if there are many cars in the lineup after the ferry loaded,
-                this is likely an overload.
-              </div>
-              <div class="row q-mt-sm q-gutter-sm">
-                <q-btn
-                  no-caps
-                  dense
-                  color="negative"
-                  label="Full"
-                  @click="saveRating('Full', 'departure')"
-                />
-              </div>
-            </q-card-section>
+        <q-separator />
+        <q-card-section class="q-pa-sm" style="overflow-y: auto">
+          <div class="row">
+            <div v-if="departureSnapshot" class="col-12 col-md-6">
+              <img
+                :src="departureSnapshot.imageUrl"
+                style="
+                  width: 100%;
+                  aspect-ratio: 16 / 9;
+                  object-fit: cover;
+                  display: block;
+                  border-radius: 4px 4px 0 0;
+                "
+                @error="onSnapshotError"
+              />
+              <q-card-section>
+                <div class="text-subtitle2">
+                  Departure from Bowen — {{ departureSnapshot.sailingTime }}
+                </div>
+                <div class="text-caption text-grey-7 q-mt-sm">
+                  <strong>Full</strong> — if there are many cars in the lineup after the ferry loaded,
+                  this is likely an overload.
+                </div>
+                <div class="row q-mt-sm q-gutter-sm">
+                  <q-btn
+                    no-caps
+                    dense
+                    color="negative"
+                    label="Full"
+                    @click="saveRating('Full', 'departure')"
+                  />
+                </div>
+              </q-card-section>
+            </div>
+            <div v-if="arrivalSnapshot" class="col-12 col-md-6">
+              <img
+                :src="arrivalSnapshot.imageUrl"
+                style="
+                  width: 100%;
+                  aspect-ratio: 16 / 9;
+                  object-fit: cover;
+                  display: block;
+                  border-radius: 4px 4px 0 0;
+                "
+                @error="onSnapshotError"
+              />
+              <q-card-section>
+                <div class="text-subtitle2">Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}</div>
+                <div class="text-caption text-grey-7 q-mt-sm">
+                  <strong>75% Full</strong> — are there cars on the hill but not all the way up?
+                  <br/>
+                  <strong>90% Full</strong> — does the community photo show cars as far as you can
+                  see?
+                </div>
+                <div class="row q-mt-sm q-gutter-sm">
+                  <q-btn
+                    no-caps
+                    dense
+                    color="amber-8"
+                    label="75% Full"
+                    @click="saveRating('25%', 'arrival')"
+                  />
+                  <q-btn
+                    no-caps
+                    dense
+                    color="warning"
+                    label="90% Full"
+                    @click="saveRating('10%', 'arrival')"
+                  />
+                </div>
+              </q-card-section>
+            </div>
           </div>
-          <div v-if="arrivalSnapshot" class="col-12 col-md-6">
-            <img
-              :src="arrivalSnapshot.imageUrl"
-              style="
-                width: 100%;
-                aspect-ratio: 16 / 9;
-                object-fit: cover;
-                display: block;
-                border-radius: 4px 4px 0 0;
-              "
-              @error="onSnapshotError"
-            />
-            <q-card-section>
-              <div class="text-subtitle2">Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}</div>
-              <div class="text-caption text-grey-7 q-mt-sm">
-                <strong>75% Full</strong> — are there cars on the hill but not all the way up?
-                <br/>
-                <strong>90% Full</strong> — does the community photo show cars as far as you can
-                see?
-              </div>
-              <div class="row q-mt-sm q-gutter-sm">
-                <q-btn
-                  no-caps
-                  dense
-                  color="amber-8"
-                  label="75% Full"
-                  @click="saveRating('25%', 'arrival')"
-                />
-                <q-btn
-                  no-caps
-                  dense
-                  color="warning"
-                  label="90% Full"
-                  @click="saveRating('10%', 'arrival')"
-                />
-              </div>
-            </q-card-section>
-          </div>
-        </div>
+        </q-card-section>
       </q-card>
     </q-dialog>
 
@@ -523,7 +534,7 @@
           maxHeight: '90vh',
         }"
       >
-        <q-card-section class="row items-center q-pb-none">
+        <q-card-section class="row items-start q-pb-none">
           <div class="text-h6">Today's Sailings</div>
           <q-space />
           <q-btn flat dense icon="close" aria-label="Close" @click="showFullDialog = false" />
@@ -676,6 +687,8 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <SignInDialog v-model="showSignInDialog" />
   </q-page>
 </template>
 
@@ -688,6 +701,7 @@ import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
 import { isStaging, db } from 'src/boot/firebase'
 import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
+import SignInDialog from 'src/components/SignInDialog.vue'
 import { useAuth } from 'src/composables/useAuth'
 
 const { ferryData, loading, error } = useFirestoreFerryListener()
@@ -701,7 +715,9 @@ const nowMs = () => Date.now() + TIME_OFFSET_MS
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 
-const { user, signInWithGoogle } = useAuth()
+const { user } = useAuth()
+
+const showSignInDialog = ref(false)
 
 const departureSnapshot = ref(null)
 const arrivalSnapshot = ref(null)
@@ -754,7 +770,7 @@ function saveRating(capacity, source) {
   const snap = source === 'arrival' ? arrivalSnapshot.value : departureSnapshot.value
   if (!snap) return
   if (!user.value) {
-    signInWithGoogle()
+    showSignInDialog.value = true
     return
   }
   addDoc(collection(db, 'capacityHistory'), {
@@ -992,9 +1008,10 @@ function shortText(text, isMobile) {
   return text
 }
 
-function formatFilledTime(isoStr) {
-  if (!isoStr) return ''
-  const d = new Date(isoStr)
+function formatFilledTime(val) {
+  if (!val) return ''
+  if (val === 'user_reported') return ' (reported)'
+  const d = new Date(val)
   let hours = d.getHours()
   const mins = d.getMinutes()
   if (hours > 12) hours -= 12

@@ -10,7 +10,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 function parseTimeToday(timeStr) {
   if (!timeStr) return null
-  const m = timeStr.match(/(\d+):(\d{2})\s*(AM|PM)/i)
+  const m = timeStr.match(/(\d+):(\d{2})(?::\d{2})?\s*(AM|PM)/i)
   if (!m) return null
   let h = parseInt(m[1])
   const min = parseInt(m[2])

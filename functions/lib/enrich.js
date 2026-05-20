@@ -114,7 +114,7 @@ export async function augmentFromCapacityHistory(db, data) {
           const latest = uRecords.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0]
           entry.lastCapacity = latest.capacity
           if (latest.capacity === 'Full') {
-            entry.filledAt = latest.recordedAt
+            entry.filledAt = 'user_reported'
           }
         }
 
