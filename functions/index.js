@@ -25,7 +25,7 @@ initializeApp()
 
 const db = getFirestore()
 
-async function refreshFerryData(db) {
+async function refreshFerryData(db, {forceUpdate = false} = {}) {
   const data = await fetchFerryData()
   if (!data) return null
 
@@ -36,7 +36,7 @@ async function refreshFerryData(db) {
 
   const newDataSanitized = sanitizeForCompare(data)
   const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
-  const dataChanged = checkDataChanged(newDataSanitized, existingDataSanitized)
+  const dataChanged = forceUpdate || checkDataChanged(newDataSanitized, existingDataSanitized)
 
   await augmentRecentActivity(db, data)
   const { hsbPast, bowenPast } = matchDepartures(data, now)
@@ -101,7 +101,6 @@ export const pollFerryStatus = onSchedule(
       return
     }
 
-
     await maybeSendNotifications(data)
   },
 )
@@ -119,7 +118,7 @@ async function maybeSendNotifications(data) {
 }
 
 export const getFerryStatus = onRequest(async (req, res) => {
-  const result = await refreshFerryData(db)
+  const result = await refreshFerryData(db, {forceUpdate: true})
   if (!result) {
     res.status(500).json({ error: 'Failed to fetch ferry data' })
     return
