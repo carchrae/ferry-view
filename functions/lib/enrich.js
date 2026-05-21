@@ -124,8 +124,8 @@ export async function augmentFromCapacityHistory(db, data) {
               entry.filledAt = 'user_reported'
               enriched++
             } else {
-              if (r.capacity === 'Full' && r.filledAt) {
-                entry.filledAt = r.filledAt
+              if (r.capacity === 'Full') {
+                entry.filledAt = r.filledAt || r.recordedAt
               }
             }
             enriched++
