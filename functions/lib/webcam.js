@@ -70,8 +70,8 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, dateIso, r
   logger.log(`Saved webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
-export async function captureBowenCommunityWebcam(db, arrivalTime, dateIso) {
-  if (!isRecent(arrivalTime, 10 * 60 * 1000)) return
+export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arrivalTime) {
+  if (!isRecent(sailingTime, 10 * 60 * 1000)) return
   const arrivalRef = db.collection('snapshots').doc('latestBowenArrival')
   const snap = await arrivalRef.get()
   if (snap.exists && snap.data().arrivalTime === arrivalTime) return
@@ -84,14 +84,14 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, dateIso) {
 
   const best = pickBestFrame(samples)
   const timestamp = Date.now()
-  const blobPath = `webcams/community/${dateIso}/${arrivalTime}_Arrival_${timestamp}.jpg`
+  const blobPath = `webcams/community/${dateIso}/${sailingTime}_To HSB_${timestamp}.jpg`
   const bucket = getStorage().bucket()
   const file = bucket.file(blobPath)
   await file.save(best, { contentType: 'image/jpeg' })
   await file.makePublic()
 
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
-  const snapshotKey = `${dateIso}_${arrivalTime}_Arrival`
+  const snapshotKey = `${dateIso}_${sailingTime}_To HSB`
   await arrivalRef.set({
     imageUrl,
     arrivalTime,

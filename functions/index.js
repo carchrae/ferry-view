@@ -73,7 +73,20 @@ function captureWebcams(bowenPast, data) {
   )
   if (bowenArrivals.length > 0) {
     const latest = bowenArrivals[0]
-    captureBowenCommunityWebcam(db, latest.time, data.dateIso).catch((e) =>
+    const lastMatched = data.bowenSchedule
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) => s.matchedDepartureTime)
+      .pop()
+    if (!lastMatched) {
+      logger.error('No matched Bowen departure found for community webcam capture')
+      return
+    }
+    const nextDep = data.bowenSchedule[lastMatched.i + 1]
+    if (!nextDep) {
+      logger.error('No upcoming Bowen departure for community webcam capture')
+      return
+    }
+    captureBowenCommunityWebcam(db, nextDep.time, data.dateIso, latest.time).catch((e) =>
       logger.error('Community webcam capture failed:', e),
     )
   }
