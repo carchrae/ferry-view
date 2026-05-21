@@ -146,7 +146,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
+                        >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                       >
                     </div>
                     <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
@@ -180,7 +180,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
+                        >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                       >
                     </div>
                     <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -213,7 +213,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s) }}</q-badge
+                        >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                       >
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
@@ -243,7 +243,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s) }}</q-badge
+                        >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                       >
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -465,16 +465,16 @@
               />
               <q-card-section>
                 <div class="text-subtitle2">
-                  Departure from Bowen — {{ departureSnapshot.sailingTime }}
+                  Taken when ferry Departed at {{ formatTime12h(departureSnapshot.sailingTime) }}
                 </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
-                  <strong>Full</strong> — if there are many cars in the lineup after the ferry loaded,
-                  this is likely an overload.
+                  <strong>Full</strong> — if there are many cars in the photo after the ferry
+                  loaded, this was likely an overload.  If it is one car, they may just be unlucky.
                 </div>
                 <div class="row q-mt-sm q-gutter-sm">
                   <q-btn
                     no-caps
-                    dense
+                    outlined
                     color="negative"
                     label="Full"
                     @click="saveRating('Full', 'departure')"
@@ -495,24 +495,24 @@
                 @error="onSnapshotError"
               />
               <q-card-section>
-                <div class="text-subtitle2">Arrival at Bowen — {{ formatTime12h(arrivalSnapshot.arrivalTime) }}</div>
+                <div class="text-subtitle2">
+                  Taken when ferry arrived at {{ formatTime12h(arrivalSnapshot.arrivalTime) }}
+                </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
                   <strong>75% Full</strong> — are there cars on the hill but not all the way up?
-                  <br/>
+                  <br />
                   <strong>90% Full</strong> — does the community photo show cars as far as you can
                   see?
                 </div>
                 <div class="row q-mt-sm q-gutter-sm">
                   <q-btn
                     no-caps
-                    dense
                     color="amber-8"
                     label="75% Full"
                     @click="saveRating('25%', 'arrival')"
                   />
                   <q-btn
                     no-caps
-                    dense
                     color="warning"
                     label="90% Full"
                     @click="saveRating('10%', 'arrival')"
@@ -584,7 +584,7 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
+                  >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                 >
               </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -616,7 +616,7 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
+                  >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                 >
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -642,7 +642,7 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s) }}</q-badge
+                  >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                 >
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -665,7 +665,7 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s) }}</q-badge
+                  >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
                 >
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -773,11 +773,19 @@ function saveRating(capacity, source) {
     showSignInDialog.value = true
     return
   }
+  const sailingKey = snap.sailingKey
+  const userUid = user.value.uid
+  if (!sailingKey || !userUid) {
+    console.error('Missing required fields', { sailingKey, userUid })
+    return
+  }
   addDoc(collection(db, 'capacityHistory'), {
-    sailingKey: snap.sailingKey,
+    sailingKey,
     capacity,
     recordedAt: Date.now(),
-    userUid: user.value.uid,
+    userUid,
+  }).catch((err) => {
+    console.error('Failed to save capacity rating:', err)
   })
   showSnapshotDialog.value = false
 }
@@ -839,8 +847,12 @@ const allUpcomingHSB = computed(() => schedule.allUpcomingHSB())
 const allUpcomingBowen = computed(() => schedule.allUpcomingBowen())
 const allPastHSB = computed(() => schedule.allPastHSB())
 const allPastBowen = computed(() => schedule.allPastBowen())
-const recentPastHSB = computed(() => allPastHSB.value.filter(e => e.diffText !== null || e.skipped))
-const recentPastBowen = computed(() => allPastBowen.value.filter(e => e.diffText !== null || e.skipped))
+const recentPastHSB = computed(() =>
+  allPastHSB.value.filter((e) => e.diffText !== null || e.skipped),
+)
+const recentPastBowen = computed(() =>
+  allPastBowen.value.filter((e) => e.diffText !== null || e.skipped),
+)
 const lastSailing = computed(() => {
   const hsb = recentPastHSB.value
   const bowen = recentPastBowen.value
@@ -1003,7 +1015,7 @@ function shortText(text, isMobile) {
 
 function formatFilledTime(val) {
   if (!val) return ''
-  if (val === 'user_reported') return ' (reported)'
+  if (val === 'user_reported') return ''
   return `@${dayjs(val).tz(TZ).format('h:mm')}`
 }
 

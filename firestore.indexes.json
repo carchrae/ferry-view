@@ -1,3 +1,12 @@
 {
-
+  "indexes": [
+    {
+      "collectionGroup": "capacityHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sailingKey", "order": "ASCENDING" },
+        { "fieldPath": "recordedAt", "order": "DESCENDING" }
+      ]
+    }
+  ]
 }
