@@ -785,12 +785,18 @@ function saveRating(capacity, source) {
     recordedAt: Date.now(),
     userUid,
   })
-    // .then(() => {
-    //   const url = `https://us-central1-${app.options.projectId}.cloudfunctions.net/getFerryStatus`
-    //   fetch(url, { method: 'POST' }).catch((err) =>
-    //     console.error('Failed to refresh ferry data:', err),
-    //   )
-    // })
+    .then(() => {
+      const m = sailingKey.match(/^\d{4}-\d{2}-\d{2}_(.+)_(To\s.+)$/)
+      if (m && ferryData.value) {
+        const [, time, direction] = m
+        const schedule = direction === 'To HSB' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
+        const entry = schedule?.find((e) => e.time === time)
+        if (entry) {
+          entry.lastCapacity = capacity
+          entry.filledAt = 'user_reported'
+        }
+      }
+    })
     .catch((err) => {
       console.error('Failed to save capacity rating:', err)
     })
