@@ -468,7 +468,7 @@
                   Taken when ferry Departed at {{ formatTime12h(departureSnapshot.sailingTime) }}
                 </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
-                  <strong>Full</strong> — if there are many cars in the photo after the ferry
+                  <strong>Select Full</strong> — if there are many cars in the photo after the ferry
                   loaded, this was likely an overload.  If it is one car, they may just be unlucky.
                 </div>
                 <div class="row q-mt-sm q-gutter-sm">
@@ -499,9 +499,9 @@
                   Taken when ferry arrived at {{ formatTime12h(arrivalSnapshot.arrivalTime) }}
                 </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
-                  <strong>75% Full</strong> — are there cars on the hill but not all the way up?
+                  <strong>Select 75% Full</strong> — are there cars on the hill but not all the way up?
                   <br />
-                  <strong>90% Full</strong> — does the community photo show cars as far as you can
+                  <strong>Select 90% Full</strong> — does the community photo show cars as far as you can
                   see?
                 </div>
                 <div class="row q-mt-sm q-gutter-sm">
