@@ -448,29 +448,30 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <div class="row">
+          <div class="row q-col-gutter-sm">
             <div v-if="departureSnapshot" class="col-12 col-md-6">
-              <img
-                :src="departureSnapshot.imageUrl"
-                style="
-                  width: 100%;
-                  aspect-ratio: 16 / 9;
-                  object-fit: cover;
-                  display: block;
-                  border-radius: 4px 4px 0 0;
-                "
-                @error="onSnapshotError"
-              />
-              <q-card-section>
-                <div class="text-subtitle2">
-                  Taken when ferry left at {{ formatTime12h(departureSnapshot.sailingTime) }}
-                </div>
-                <div class="text-caption text-grey-7 q-mt-sm">
-                  <strong>Select Full</strong> — if there are many cars in the photo after the ferry
-                  loaded, this was likely an overload. If it is one car, they may have left home 30
-                  seconds too late.
-                </div>
-                <div class="row q-mt-sm q-gutter-sm">
+               <q-card flat bordered>
+                <q-img
+                  :src="departureSnapshot.imageUrl"
+                  :ratio="16 / 9"
+                  spinner-color="primary"
+                  @error="onSnapshotError"
+                >
+                  <template v-slot:error>
+                    <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
+                      <q-icon name="videocam_off" size="24px" />
+                    </div>
+                  </template>
+                </q-img>
+                <q-card-actions class="q-py-sm q-px-sm column items-stretch">
+                  <div class="text-subtitle2 q-mb-xs">
+                    Departure — {{ formatTime12h(departureSnapshot.sailingTime) }}
+                  </div>
+                  <div class="text-caption text-grey-7 q-mb-sm">
+                    Select <strong>Full</strong> — if there are many cars in the photo after the ferry
+                    loaded, this was likely an overload. If it is one car, they may have left home 30
+                    seconds too late.
+                  </div>
                   <q-btn
                     no-caps
                     outlined
@@ -478,47 +479,54 @@
                     label="Full"
                     @click="saveRating('Full', 'departure')"
                   />
-                </div>
-              </q-card-section>
+                </q-card-actions>
+              </q-card>
             </div>
             <div v-if="arrivalSnapshot" class="col-12 col-md-6">
-              <img
-                :src="arrivalSnapshot.imageUrl"
-                style="
-                  width: 100%;
-                  aspect-ratio: 16 / 9;
-                  object-fit: cover;
-                  display: block;
-                  border-radius: 4px 4px 0 0;
-                "
-                @error="onSnapshotError"
-              />
-              <q-card-section>
-                <div class="text-subtitle2">
-                  Taken when ferry arrived at {{ formatTime12h(arrivalSnapshot.arrivalTime) }}
-                </div>
-                <div class="text-caption text-grey-7 q-mt-sm">
-                  <strong>Select 75% Full</strong> — are there cars on the hill but not all the way
-                  up?
-                  <br />
-                  <strong>Select 90% Full</strong> — does the community photo show cars as far as
-                  you can see?
-                </div>
-                <div class="row q-mt-sm q-gutter-sm">
-                  <q-btn
-                    no-caps
-                    color="amber-8"
-                    label="75% Full"
-                    @click="saveRating('25%', 'arrival')"
-                  />
-                  <q-btn
-                    no-caps
-                    color="warning"
-                    label="90% Full"
-                    @click="saveRating('10%', 'arrival')"
-                  />
-                </div>
-              </q-card-section>
+               <q-card flat bordered>
+                <q-img
+                  :src="arrivalSnapshot.imageUrl"
+                  :ratio="16 / 9"
+                  spinner-color="primary"
+                  @error="onSnapshotError"
+                >
+                  <template v-slot:error>
+                    <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
+                      <q-icon name="videocam_off" size="24px" />
+                    </div>
+                  </template>
+                </q-img>
+                <q-card-actions class="q-py-sm q-px-sm column items-stretch">
+                  <div class="text-subtitle2 q-mb-xs">
+                    Arrival — {{ formatTime12h(arrivalSnapshot.arrivalTime) }}
+                  </div>
+                  <div class="text-caption text-grey-7 q-mb-sm">
+                    Select <strong>75% Full</strong> — are there cars on the hill but not all the way
+                    up?
+                    <br />
+                    Select <strong>90% Full</strong> — does the community photo show cars as far as
+                    you can see?
+                  </div>
+                  <div class="row q-gutter-sm">
+                    <q-btn
+                      no-caps
+                      outlined
+                      class="col"
+                      color="amber-8"
+                      label="75% Full"
+                      @click="saveRating('25%', 'arrival')"
+                    />
+                    <q-btn
+                      no-caps
+                      outlined
+                      class="col"
+                      color="warning"
+                      label="90% Full"
+                      @click="saveRating('10%', 'arrival')"
+                    />
+                  </div>
+                </q-card-actions>
+              </q-card>
             </div>
           </div>
         </q-card-section>
@@ -1109,11 +1117,6 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 .webcam-card {
-  transition: transform 0.2s;
-
-  &:hover {
-    transform: translateY(-2px);
-  }
 }
 
 .fullscreen-viewer {
