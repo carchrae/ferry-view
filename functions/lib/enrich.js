@@ -118,11 +118,11 @@ export async function augmentFromCapacityHistory(db, data) {
             continue
           }
           if (!serverSnap.empty) {
-            logger.log('found snap for', sailingKey)
             const r = serverSnap.docs[0].data()
-            entry.lastCapacity = r.capacity
             if (r.userUid) {
+              entry.lastCapacity = r.capacity
               entry.filledAt = 'user_reported'
+              enriched++
             } else {
               if (r.capacity === 'Full' && r.filledAt) {
                 entry.filledAt = r.filledAt
