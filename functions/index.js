@@ -92,13 +92,14 @@ export const pollFerryStatus = onSchedule(
       )
     }
 
-    if (process.env.NOTIFY_ENABLED === 'true') {
-      await maybeSendNotifications(data)
-    }
+    await maybeSendNotifications(data)
   },
 )
 
 async function maybeSendNotifications(data) {
+  if (process.env.NOTIFY_ENABLED !== 'true') {
+    return
+  }
   if (!VAPID_PUBLIC_KEY.value() || !VAPID_PRIVATE_KEY.value()) {
     logger.log('VAPID keys not configured, skipping notification')
     return
