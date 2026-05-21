@@ -17,6 +17,7 @@ export async function recordCapacityChanges(db, data, existingData) {
           db.collection('capacityHistory').add({
             sailingKey,
             capacity: entry.available,
+            filledAt: entry.available === 'Full' ? Date.now() : null,
             recordedAt: Date.now(),
           })
         )
@@ -44,6 +45,7 @@ export async function recordCapacityChanges(db, data, existingData) {
         db.collection('capacityHistory').add({
           sailingKey,
           capacity: 'Full',
+          filledAt: Date.now(),
           recordedAt: Date.now(),
         })
       )
