@@ -1,4 +1,5 @@
-import { normalizeTime, timeToDate, nowInVancouver } from './time.js'
+import diff from 'microdiff'
+import { normalizeTime, nowInVancouver } from './time.js'
 import { calculateLateness } from './matching.js'
 
 const API_URL = 'https://bowenferry.ca/Production/AISPositionsData3'
@@ -94,16 +95,13 @@ function parseFerryData(data) {
 
 function checkDataChanged(newData, existingData) {
   if (!existingData) return true
-  
-  const excludeFields = ['fetchedAt', 'lastUpdate']
-  
-  for (const key of Object.keys(newData)) {
-    if (excludeFields.includes(key)) continue
-    if (JSON.stringify(newData[key]) !== JSON.stringify(existingData[key])) {
-      return true
-    }
+
+  const excludeFields = new Set(['fetchedAt', 'lastUpdate'])
+  const changes = diff(newData, existingData).filter((d) => !excludeFields.has(d.path[0]))
+  if (changes.length > 0) {
+    console.log('Data changed:', JSON.stringify(changes))
   }
-  return false
+  return changes.length > 0
 }
 
 const ENRICHMENT_FIELDS = ['matchedDepartureTime', 'latenessMinutes', 'lastCapacity', 'filledAt']

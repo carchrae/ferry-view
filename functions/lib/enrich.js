@@ -104,14 +104,20 @@ export async function augmentFromCapacityHistory(db, data) {
 
         // Get most recent server record
         if (entry.lastCapacity === undefined) {
-          const serverSnap = await db
-            .collection('capacityHistory')
-            .where('sailingKey', '==', sailingKey)
-            .orderBy('recordedAt', 'desc')
-            .limit(1)
-            .get()
+          let serverSnap
+          try {
+            serverSnap = await db
+              .collection('capacityHistory')
+              .where('sailingKey', '==', sailingKey)
+              .orderBy('recordedAt', 'desc')
+              .limit(1)
+              .get()
+          } catch (e) {
+            console.error(`capacityHistory query failed for sailingKey "${sailingKey}":`, e)
+            continue
+          }
           if (!serverSnap.empty) {
-            console.log('found snap ', {sailingKey, entry, r})
+            console.log('found snap for', sailingKey)
             const r = serverSnap.docs[0].data()
             entry.lastCapacity = r.capacity
             if (r.userUid) {
