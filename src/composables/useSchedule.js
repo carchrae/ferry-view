@@ -14,7 +14,7 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     const past = buildPast(schedule, ferryData.value.recentActivity, eventLocation, now, label)
     // Only schedule-based entries consume their schedule time (orphans and skipped don't)
     const consumedArr = past
-      .filter(e => !e.skipped && e.time && e.sortTime)
+      .filter(e => !e.skipped && e._hasDep && e.sortTime)
       .map(e => e.sortTime.valueOf())
     const consumedTimes = new Set(consumedArr)
     const lastConsumedTime = consumedArr.length > 0 ? dayjs(Math.max(...consumedArr)) : null
