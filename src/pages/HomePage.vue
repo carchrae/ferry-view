@@ -438,13 +438,14 @@
           maxHeight: '100vh',
         }"
       >
-        <q-card-section class="row items-start q-pb-none">
-          <div class="text-body2 text-weight-medium">
-            These photos capture how full the last sailing from Bowen was. You can record how full
-            the ferry was!
+        <q-card-section class="q-pb-none">
+          <div class="row items-start no-wrap">
+            <div class="text-body2 text-weight-medium col">
+              These photos capture how full the last sailing from Bowen was. You can record how full
+              the ferry was!
+            </div>
+            <q-btn flat dense icon="close" aria-label="Close" @click="showSnapshotDialog = false" class="q-ml-sm" />
           </div>
-          <q-space />
-          <q-btn flat dense icon="close" aria-label="Close" @click="showSnapshotDialog = false" />
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
@@ -528,6 +529,9 @@
                 </q-card-actions>
               </q-card>
             </div>
+          </div>
+          <div class="q-mt-md text-center" v-if="$q.screen.xs">
+            <q-btn flat color="grey-7" icon="close" label="Close" @click="showSnapshotDialog = false" />
           </div>
         </q-card-section>
       </q-card>
