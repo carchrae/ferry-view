@@ -25,6 +25,60 @@ initializeApp()
 
 const db = getFirestore()
 
+async function refreshFerryData(db) {
+  const data = await fetchFerryData()
+  if (!data) return null
+
+  const now = nowInVancouver()
+
+  const existingDoc = await db.collection('ferryStatus').doc('current').get()
+  const existingData = existingDoc.exists ? existingDoc.data() : null
+
+  const newDataSanitized = sanitizeForCompare(data)
+  const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
+  const dataChanged = checkDataChanged(newDataSanitized, existingDataSanitized)
+
+  await augmentRecentActivity(db, data)
+  const { hsbPast, bowenPast } = matchDepartures(data, now)
+  enrichDeckCapacity(data, existingData)
+  await augmentFromCapacityHistory(db, data)
+
+  if (dataChanged) {
+    await db.collection('ferryStatus').doc('current').set(data)
+    await recordCapacityChanges(db, data, existingData)
+    await recordDepartureTimes(db, data, hsbPast, bowenPast)
+  } else{
+    logger.debug('No changes detected, skipping save');
+  }
+
+  return { data, hsbPast, bowenPast, dataChanged }
+}
+
+function captureWebcams(bowenPast, data) {
+  for (const entry of bowenPast) {
+    if (!entry._hasDep || !entry.time || !entry._depDisplay) continue
+    const sailingKey = `${data.dateIso}_${entry.time}_To HSB`
+    captureBowenWebcam(
+      db,
+      sailingKey,
+      entry.time,
+      data.dateIso,
+      entry._depDisplay || entry.time,
+    ).catch((e) => logger.error(`Webcam capture failed for ${sailingKey}:`, e))
+  }
+
+  // Capture Bowen community webcam when the ferry arrives at Bowen
+  const bowenArrivals = data.recentActivity.filter(
+    (e) => e.action === 'Arrived' && e.location === 'Bowen',
+  )
+  if (bowenArrivals.length > 0) {
+    const latest = bowenArrivals[0]
+    captureBowenCommunityWebcam(db, latest.time, data.dateIso).catch((e) =>
+      logger.error('Community webcam capture failed:', e),
+    )
+  }
+}
+
 export const pollFerryStatus = onSchedule(
   {
     schedule: 'every 1 minutes',
@@ -32,28 +86,14 @@ export const pollFerryStatus = onSchedule(
   },
   async (context) => {
     logger.log('Polling ferry status...')
-
-    const data = await fetchFerryData()
-    if (!data) {
+    const result = await refreshFerryData(db)
+    if (!result) {
       logger.log('No ferry data fetched')
       return
     }
+    const { data, hsbPast, bowenPast, dataChanged } = result
 
-    const now = nowInVancouver()
-
-    // Compare raw API data BEFORE enrichment mutates it
-    const existingDoc = await db.collection('ferryStatus').doc('current').get()
-    const existingData = existingDoc.exists ? existingDoc.data() : null
-
-    const newDataSanitized = sanitizeForCompare(data)
-    const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
-    const dataChanged = checkDataChanged(newDataSanitized, existingDataSanitized)
-
-    // Now enrich (mutates data in place)
-    await augmentRecentActivity(db, data)
-    const { hsbPast, bowenPast } = matchDepartures(data, now)
-    enrichDeckCapacity(data, existingData)
-    await augmentFromCapacityHistory(db, data)
+    captureWebcams(bowenPast, data)
 
     if (!dataChanged) {
       logger.log('No changes detected, skipping save')
@@ -61,36 +101,6 @@ export const pollFerryStatus = onSchedule(
       return
     }
 
-    logger.log('Data changed, saving...')
-
-    await db.collection('ferryStatus').doc('current').set(data)
-    logger.log('Saved ferry status to Firestore')
-
-    await recordCapacityChanges(db, data, existingData)
-    await recordDepartureTimes(db, data, hsbPast, bowenPast)
-
-    for (const entry of bowenPast) {
-      if (!entry._hasDep || !entry.time || !entry._depDisplay) continue
-      const sailingKey = `${data.dateIso}_${entry.time}_To HSB`
-      captureBowenWebcam(
-        db,
-        sailingKey,
-        entry.time,
-        data.dateIso,
-        entry._depDisplay || entry.time,
-      ).catch((e) => logger.error(`Webcam capture failed for ${sailingKey}:`, e))
-    }
-
-    // Capture Bowen community webcam when the ferry arrives at Bowen
-    const bowenArrivals = data.recentActivity.filter(
-      (e) => e.action === 'Arrived' && e.location === 'Bowen',
-    )
-    if (bowenArrivals.length > 0) {
-      const latest = bowenArrivals[0]
-      captureBowenCommunityWebcam(db, latest.time, data.dateIso).catch((e) =>
-        logger.error('Community webcam capture failed:', e),
-      )
-    }
 
     await maybeSendNotifications(data)
   },
@@ -109,14 +119,12 @@ async function maybeSendNotifications(data) {
 }
 
 export const getFerryStatus = onRequest(async (req, res) => {
-  const doc = await db.collection('ferryStatus').doc('current').get()
-
-  if (!doc.exists) {
-    res.status(404).json({ error: 'No data available' })
+  const result = await refreshFerryData(db)
+  if (!result) {
+    res.status(500).json({ error: 'Failed to fetch ferry data' })
     return
   }
-
-  res.json(doc.data())
+  res.json(result.data)
 })
 
 export const cleanupWebcams = onSchedule(

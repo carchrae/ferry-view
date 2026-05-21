@@ -34,7 +34,7 @@ export const isStaging = !isProduction
 
 const firebaseConfig = isProduction ? prodConfig : stagingConfig
 
-const app = initializeApp(firebaseConfig)
+export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const messaging = getMessaging(app)

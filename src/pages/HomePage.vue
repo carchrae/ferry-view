@@ -700,7 +700,7 @@ import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
 import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
-import { isStaging, db } from 'src/boot/firebase'
+import { isStaging, db, app } from 'src/boot/firebase'
 import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
@@ -785,9 +785,16 @@ function saveRating(capacity, source) {
     capacity,
     recordedAt: Date.now(),
     userUid,
-  }).catch((err) => {
-    console.error('Failed to save capacity rating:', err)
   })
+    .then(() => {
+      const url = `https://us-central1-${app.options.projectId}.cloudfunctions.net/getFerryStatus`
+      fetch(url, { method: 'POST' }).catch((err) =>
+        console.error('Failed to refresh ferry data:', err),
+      )
+    })
+    .catch((err) => {
+      console.error('Failed to save capacity rating:', err)
+    })
   showSnapshotDialog.value = false
 }
 
