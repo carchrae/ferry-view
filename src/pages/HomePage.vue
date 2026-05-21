@@ -465,7 +465,7 @@
               />
               <q-card-section>
                 <div class="text-subtitle2">
-                  Taken when ferry Departed at {{ formatTime12h(departureSnapshot.sailingTime) }}
+                  Taken when ferry left at {{ formatTime12h(departureSnapshot.sailingTime) }}
                 </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
                   <strong>Select Full</strong> — if there are many cars in the photo after the ferry
