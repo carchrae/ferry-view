@@ -17,9 +17,6 @@
       <div class="col-12">
         <q-banner dense class="bg-negative text-white rounded-borders">
           Failed to load: {{ error }}
-          <template v-slot:action>
-            <q-btn flat label="Retry" @click="fetchFerryData" />
-          </template>
         </q-banner>
       </div>
     </div>
