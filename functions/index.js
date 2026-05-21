@@ -12,7 +12,6 @@ import {
   matchDepartures,
   enrichDeckCapacity,
   augmentFromCapacityHistory,
-  augmentFromFilledStatus,
 } from './lib/enrich.js'
 import { recordCapacityChanges, recordDepartureTimes } from './lib/record.js'
 import { captureBowenWebcam, captureBowenCommunityWebcam, cleanupOldWebcams } from './lib/webcam.js'
@@ -54,7 +53,6 @@ export const pollFerryStatus = onSchedule(
     const { hsbPast, bowenPast } = matchDepartures(data, now)
     enrichDeckCapacity(data, existingData)
     await augmentFromCapacityHistory(db, data)
-    await augmentFromFilledStatus(db, data)
 
     if (!dataChanged) {
       console.log('No changes detected, skipping save')
@@ -73,22 +71,30 @@ export const pollFerryStatus = onSchedule(
     for (const entry of bowenPast) {
       if (!entry._hasDep || !entry.time || !entry._depDisplay) continue
       const sailingKey = `${data.dateIso}_${entry.time}_To HSB`
-      captureBowenWebcam(db, sailingKey, entry.time, data.dateIso, entry._depDisplay || entry.time)
-        .catch(e => console.error(`Webcam capture failed for ${sailingKey}:`, e))
+      captureBowenWebcam(
+        db,
+        sailingKey,
+        entry.time,
+        data.dateIso,
+        entry._depDisplay || entry.time,
+      ).catch((e) => console.error(`Webcam capture failed for ${sailingKey}:`, e))
     }
 
     // Capture Bowen community webcam when the ferry arrives at Bowen
     const bowenArrivals = data.recentActivity.filter(
-      e => e.action === 'Arrived' && e.location === 'Bowen'
+      (e) => e.action === 'Arrived' && e.location === 'Bowen',
     )
     if (bowenArrivals.length > 0) {
       const latest = bowenArrivals[0]
-      captureBowenCommunityWebcam(db, latest.time, data.dateIso)
-        .catch(e => console.error('Community webcam capture failed:', e))
+      captureBowenCommunityWebcam(db, latest.time, data.dateIso).catch((e) =>
+        console.error('Community webcam capture failed:', e),
+      )
     }
 
-    await maybeSendNotifications(data)
-  }
+    if (process.env.NOTIFY_ENABLED === 'true') {
+      await maybeSendNotifications(data)
+    }
+  },
 )
 
 async function maybeSendNotifications(data) {
@@ -119,5 +125,5 @@ export const cleanupWebcams = onSchedule(
   async () => {
     console.log('Running webcam cleanup...')
     await cleanupOldWebcams()
-  }
+  },
 )
