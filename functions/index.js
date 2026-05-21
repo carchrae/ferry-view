@@ -93,13 +93,13 @@ export const pollFerryStatus = onSchedule(
     }
     const { data, hsbPast, bowenPast, dataChanged } = result
 
-    captureWebcams(bowenPast, data)
-
     if (!dataChanged) {
       logger.log('No changes detected, skipping save')
       await maybeSendNotifications(data)
       return
     }
+
+    captureWebcams(bowenPast, data)
 
     await maybeSendNotifications(data)
   },
