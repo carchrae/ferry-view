@@ -143,8 +143,13 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                      >
+                        >{{ formatDeckBadge(event, $q.screen.xs)
+                        }}<q-icon
+                          v-if="event.filledAt === 'user_reported'"
+                          name="person"
+                          size="xs"
+                          class="q-ml-xs"
+                      /></q-badge>
                     </div>
                     <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -177,8 +182,13 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                      >
+                        >{{ formatDeckBadge(event, $q.screen.xs)
+                        }}<q-icon
+                          v-if="event.filledAt === 'user_reported'"
+                          name="person"
+                          size="xs"
+                          class="q-ml-xs"
+                      /></q-badge>
                     </div>
                     <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -210,8 +220,13 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                      >
+                        >{{ formatDeckBadge(s)
+                        }}<q-icon
+                          v-if="s.filledAt === 'user_reported'"
+                          name="person"
+                          size="xs"
+                          class="q-ml-xs"
+                      /></q-badge>
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -240,8 +255,13 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                      >
+                        >{{ formatDeckBadge(s)
+                        }}<q-icon
+                          v-if="s.filledAt === 'user_reported'"
+                          name="person"
+                          size="xs"
+                          class="q-ml-xs"
+                      /></q-badge>
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -440,7 +460,8 @@
       >
         <q-card-section class="row items-start q-pb-none">
           <div class="text-body2 text-weight-medium">
-            These photos capture how full the last sailing from Bowen was.  You can record how full the ferry was!
+            These photos capture how full the last sailing from Bowen was. You can record how full
+            the ferry was!
           </div>
           <q-space />
           <q-btn flat dense icon="close" aria-label="Close" @click="showSnapshotDialog = false" />
@@ -466,8 +487,8 @@
                 </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
                   <strong>Select Full</strong> — if there are many cars in the photo after the ferry
-                  loaded, this was likely an overload.
-                  If it is one car, they may have left home 30 seconds too late.
+                  loaded, this was likely an overload. If it is one car, they may have left home 30
+                  seconds too late.
                 </div>
                 <div class="row q-mt-sm q-gutter-sm">
                   <q-btn
@@ -497,10 +518,11 @@
                   Taken when ferry arrived at {{ formatTime12h(arrivalSnapshot.arrivalTime) }}
                 </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
-                  <strong>Select 75% Full</strong> — are there cars on the hill but not all the way up?
+                  <strong>Select 75% Full</strong> — are there cars on the hill but not all the way
+                  up?
                   <br />
-                  <strong>Select 90% Full</strong> — does the community photo show cars as far as you can
-                  see?
+                  <strong>Select 90% Full</strong> — does the community photo show cars as far as
+                  you can see?
                 </div>
                 <div class="row q-mt-sm q-gutter-sm">
                   <q-btn
@@ -582,8 +604,13 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                >
+                  >{{ formatDeckBadge(event, $q.screen.xs)
+                  }}<q-icon
+                    v-if="event.filledAt === 'user_reported'"
+                    name="person"
+                    size="xs"
+                    class="q-ml-xs"
+                /></q-badge>
               </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -614,8 +641,13 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}<q-icon v-if="event.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                >
+                  >{{ formatDeckBadge(event, $q.screen.xs)
+                  }}<q-icon
+                    v-if="event.filledAt === 'user_reported'"
+                    name="person"
+                    size="xs"
+                    class="q-ml-xs"
+                /></q-badge>
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -640,8 +672,13 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                >
+                  >{{ formatDeckBadge(s)
+                  }}<q-icon
+                    v-if="s.filledAt === 'user_reported'"
+                    name="person"
+                    size="xs"
+                    class="q-ml-xs"
+                /></q-badge>
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -663,8 +700,13 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s) }}<q-icon v-if="s.filledAt === 'user_reported'" name="person" size="xs" class="q-ml-xs" /></q-badge
-                >
+                  >{{ formatDeckBadge(s)
+                  }}<q-icon
+                    v-if="s.filledAt === 'user_reported'"
+                    name="person"
+                    size="xs"
+                    class="q-ml-xs"
+                /></q-badge>
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                 None
@@ -783,12 +825,12 @@ function saveRating(capacity, source) {
     recordedAt: Date.now(),
     userUid,
   })
-    .then(() => {
-      const url = `https://us-central1-${app.options.projectId}.cloudfunctions.net/getFerryStatus`
-      fetch(url, { method: 'POST' }).catch((err) =>
-        console.error('Failed to refresh ferry data:', err),
-      )
-    })
+    // .then(() => {
+    //   const url = `https://us-central1-${app.options.projectId}.cloudfunctions.net/getFerryStatus`
+    //   fetch(url, { method: 'POST' }).catch((err) =>
+    //     console.error('Failed to refresh ferry data:', err),
+    //   )
+    // })
     .catch((err) => {
       console.error('Failed to save capacity rating:', err)
     })
