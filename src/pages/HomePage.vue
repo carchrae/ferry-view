@@ -698,7 +698,7 @@ import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryList
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
-import { formatTime12h } from '../../functions/lib/time.js'
+import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 import { isStaging, db } from 'src/boot/firebase'
 import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
@@ -709,10 +709,9 @@ const { ferryData, loading, error } = useFirestoreFerryListener()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
 
-const TIME_OFFSET_MS = 0
-const nowDate = () => new Date(Date.now() + TIME_OFFSET_MS)
-const oneMinuteFromNowDate = () => new Date(Date.now() + 1000 * 60 + TIME_OFFSET_MS)
-const nowMs = () => Date.now() + TIME_OFFSET_MS
+const nowDate = () => nowInVancouver()
+const oneMinuteFromNowDate = () => nowInVancouver().add(1, 'minute')
+const nowMs = () => Date.now()
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 
@@ -785,7 +784,7 @@ function saveRating(capacity, source) {
 
 function captureDebugData() {
   const payload = {
-    capturedAt: new Date().toISOString(),
+    capturedAt: nowInVancouver().toISOString(),
     now: nowDate().toISOString(),
     ferryData: JSON.parse(JSON.stringify(ferryData.value)),
     computed: {
@@ -805,10 +804,8 @@ function captureDebugData() {
     .catch(() => alert('Failed to copy to clipboard'))
 }
 
-function formatTime(date) {
-  const h = String(date.getHours()).padStart(2, '0')
-  const m = String(date.getMinutes()).padStart(2, '0')
-  return `${h}:${m}`
+function formatTime(d) {
+  return `${String(d.hour()).padStart(2, '0')}:${String(d.minute()).padStart(2, '0')}`
 }
 
 function delayDepartures() {
@@ -828,8 +825,7 @@ function delayDepartures() {
   sorted.forEach((event, i) => {
     const parsed = timeToDate(event.time)
     if (!parsed) return
-    parsed.setMinutes(parsed.getMinutes() + mins * (i + 1))
-    event.time = formatTime(parsed)
+    event.time = formatTime(parsed.add(mins * (i + 1), 'minute'))
   })
 
   // Trigger reactivity
@@ -854,7 +850,7 @@ const lastSailing = computed(() => {
   return a.sortTime > b.sortTime ? a : b
 })
 const sortedRides = computed(() => {
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = nowInVancouver().format('YYYY-MM-DD')
   const upcoming = upcomingSailingTimes.value
 
   return [...rides.value]
@@ -1006,12 +1002,7 @@ function shortText(text, isMobile) {
 function formatFilledTime(val) {
   if (!val) return ''
   if (val === 'user_reported') return ' (reported)'
-  const d = new Date(val)
-  let hours = d.getHours()
-  const mins = d.getMinutes()
-  if (hours > 12) hours -= 12
-  if (hours === 0) hours = 12
-  return `@${hours}:${String(mins).padStart(2, '0')}`
+  return `@${dayjs(val).tz(TZ).format('h:mm')}`
 }
 
 const isSailing = computed(() => {

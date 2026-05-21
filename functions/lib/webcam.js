@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
-import { isRecent } from './time.js'
+import { isRecent, nowInVancouver, dayjs } from './time.js'
 
 const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
@@ -104,14 +104,14 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, dateIso) {
 
 export async function cleanupOldWebcams() {
   const bucket = getStorage().bucket()
-  const cutoff = new Date(Date.now() - ONE_DAY_MS)
+  const cutoff = nowInVancouver().subtract(1, 'day')
   let deleted = 0
   let failed = 0
 
   const [files] = await bucket.getFiles({ prefix: 'webcams/' })
   for (const file of files) {
     const [meta] = await file.getMetadata()
-    if (meta.timeCreated && new Date(meta.timeCreated) < cutoff) {
+    if (meta.timeCreated && dayjs(meta.timeCreated) < cutoff) {
       try {
         await file.delete()
         deleted++

@@ -9,11 +9,13 @@ export async function augmentRecentActivity(db, data) {
   let added = 0
   statusSnap.forEach(doc => {
     const s = doc.data()
-    if (!s.actualDepartureTime) return
+    const depTime = s.actualDepartureTime ||
+      (s.lastCapacity || s.filledAt ? s.sailingTime : null)
+    if (!depTime) return
     const location = s.direction === 'To Bowen' ? 'Horseshoe Bay' : 'Bowen'
-    const key = `${s.actualDepartureTime}_${location}`
+    const key = `${depTime}_${location}`
     if (!seen.has(key)) {
-      data.recentActivity.push({ action: 'Departed', location, time: s.actualDepartureTime })
+      data.recentActivity.push({ action: 'Departed', location, time: depTime })
       seen.add(key)
       added++
     }

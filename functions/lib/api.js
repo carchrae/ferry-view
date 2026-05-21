@@ -1,4 +1,4 @@
-import { normalizeTime, timeToDate } from './time.js'
+import { normalizeTime, timeToDate, nowInVancouver } from './time.js'
 import { calculateLateness } from './matching.js'
 
 const API_URL = 'https://bowenferry.ca/Production/AISPositionsData3'
@@ -11,7 +11,7 @@ function parseApiDate(str) {
   const month = MONTHS[m[2].toLowerCase()]
   if (!month) return str
   const day = String(parseInt(m[3])).padStart(2, '0')
-  const year = new Date().getFullYear()
+  const year = nowInVancouver().year()
   return `${year}-${month}-${day}`
 }
 
@@ -38,7 +38,7 @@ function parseFerryData(data) {
   const schHSB = vessel.schHSB || {}
 
   const rawDate = atberth.date || schBowen.date
-  const dateIso = rawDate ? parseApiDate(rawDate) : new Date().toISOString().slice(0, 10)
+  const dateIso = rawDate ? parseApiDate(rawDate) : nowInVancouver().format('YYYY-MM-DD')
 
   const recentActivity = (atberth.times?.[0] || []).map(entry => ({
     action: entry[0],

@@ -3,6 +3,7 @@ import {
   collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, Timestamp
 } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
+import { nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 
 export function useRides() {
   const rides = ref([])
@@ -25,17 +26,14 @@ export function useRides() {
     if (unsubscribe) unsubscribe()
   })
 
+  function computeExpiresAt(data) {
+    if (data.recurring) return nowInVancouver().add(7, 'day')
+    if (data.date) return dayjs.tz(data.date + ' 23:59:59', TZ)
+    return nowInVancouver().endOf('day')
+  }
+
   async function createRide(user, data) {
-    const now = new Date()
-    let expiresAt
-    if (data.recurring) {
-      expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // 7 days
-    } else {
-      // End of the selected date
-      const rideDate = data.date ? new Date(data.date + 'T23:59:59') : new Date(now)
-      rideDate.setHours(23, 59, 59, 999)
-      expiresAt = rideDate
-    }
+    const expiresAt = computeExpiresAt(data)
 
     await addDoc(collection(db, 'rides'), {
       type: data.type,
@@ -51,20 +49,12 @@ export function useRides() {
       contactMethod: data.contactMethod || null,
       contactInfo: data.contactInfo || null,
       createdAt: Timestamp.now(),
-      expiresAt: Timestamp.fromDate(expiresAt),
+      expiresAt: Timestamp.fromMillis(expiresAt.valueOf()),
     })
   }
 
   async function updateRide(id, data) {
-    const now = new Date()
-    let expiresAt
-    if (data.recurring) {
-      expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-    } else {
-      const rideDate = data.date ? new Date(data.date + 'T23:59:59') : new Date(now)
-      rideDate.setHours(23, 59, 59, 999)
-      expiresAt = rideDate
-    }
+    const expiresAt = computeExpiresAt(data)
     await updateDoc(doc(db, 'rides', id), {
       type: data.type,
       recurring: data.recurring,
@@ -76,7 +66,7 @@ export function useRides() {
       authorName: data.authorName || null,
       contactMethod: data.contactMethod || null,
       contactInfo: data.contactInfo || null,
-      expiresAt: Timestamp.fromDate(expiresAt),
+      expiresAt: Timestamp.fromMillis(expiresAt.valueOf()),
     })
   }
 

@@ -16,6 +16,7 @@ import {
 } from './lib/enrich.js'
 import { recordCapacityChanges, recordDepartureTimes } from './lib/record.js'
 import { captureBowenWebcam, captureBowenCommunityWebcam, cleanupOldWebcams } from './lib/webcam.js'
+import { nowInVancouver } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
 const VAPID_PUBLIC_KEY = defineSecret('VAPID_PUBLIC_KEY')
@@ -38,7 +39,7 @@ export const pollFerryStatus = onSchedule(
       return
     }
 
-    const now = new Date()
+    const now = nowInVancouver()
 
     await augmentRecentActivity(db, data)
 

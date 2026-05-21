@@ -148,7 +148,7 @@ import { db, auth } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
 import SignInOptions from 'src/components/SignInOptions.vue'
-import { normalizeTime } from '../../functions/lib/time.js'
+import { normalizeTime, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -159,7 +159,7 @@ const { createRide, updateRide, deleteRide } = useRides()
 const editId = computed(() => route.params.id || null)
 const isEdit = computed(() => !!editId.value)
 
-const today = new Date().toISOString().slice(0, 10)
+const today = nowInVancouver().format('YYYY-MM-DD')
 const saving = ref(false)
 const deleting = ref(false)
 const showDate = ref(false)
@@ -189,13 +189,11 @@ const submitLabel = computed(() => {
 
 const displayDate = computed(() => {
   if (!form.value.date) return ''
-  const d = new Date(form.value.date + 'T00:00:00')
-  const now = new Date()
-  if (d.toDateString() === now.toDateString()) return 'Today'
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+  const d = dayjs.tz(form.value.date, TZ)
+  const now = nowInVancouver()
+  if (d.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')) return 'Today'
+  if (d.format('YYYY-MM-DD') === now.add(1, 'day').format('YYYY-MM-DD')) return 'Tomorrow'
+  return d.format('ddd, MMM D')
 })
 
 const nameLabel = computed(() => user.value?.displayName ? 'Your name' : 'Your name *')

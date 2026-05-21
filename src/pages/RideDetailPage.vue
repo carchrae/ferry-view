@@ -93,7 +93,7 @@ import { useRoute } from 'vue-router'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
-import { formatTime12h } from '../../functions/lib/time.js'
+import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 
 const route = useRoute()
 const { user } = useAuth()
@@ -119,18 +119,15 @@ onUnmounted(() => {
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
-  const d = new Date(dateStr + 'T00:00:00')
-  const now = new Date()
-  if (d.toDateString() === now.toDateString()) return 'Today'
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+  const d = dayjs.tz(dateStr, TZ)
+  const now = nowInVancouver()
+  if (d.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')) return 'Today'
+  if (d.format('YYYY-MM-DD') === now.add(1, 'day').format('YYYY-MM-DD')) return 'Tomorrow'
+  return d.format('ddd, MMM D')
 }
 
 function formatDateTime(ts) {
-  if (!ts?.toDate) return ''
-  const d = ts.toDate()
-  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  if (!ts?.toMillis) return ''
+  return dayjs(ts.toMillis()).tz(TZ).format('MMM D, h:mm A')
 }
 </script>

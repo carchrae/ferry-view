@@ -1,4 +1,4 @@
-import { timeToDate } from './time.js'
+import { timeToDate, dayjs } from './time.js'
 
 import {
   formatLateness,
@@ -26,8 +26,8 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => t && t <= now)
     .map((item, i, arr) => {
-      const rawEnd = arr[i + 1]?.t || new Date(item.t.getTime() + 90 * 60 * 1000)
-      const windowEnd = new Date(rawEnd.getTime() - 5 * 60 * 1000)
+      const rawEnd = arr[i + 1]?.t || item.t.add(90, 'minute')
+      const windowEnd = rawEnd.subtract(5, 'minute')
       return { ...item, windowEnd }
     })
 
@@ -45,7 +45,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
         latenessMins = Math.round((depTime - t) / 60000)
       }
     } else {
-      const windowStart = new Date(t.getTime() - 5 * 60 * 1000)
+      const windowStart = t.subtract(5, 'minute')
       for (const d of departedEvents) {
         if (usedDisplays.has(d.display)) continue
         if (d.time < windowStart || d.time >= windowEnd) continue
@@ -79,8 +79,8 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
   const matched = scheduleEntries.filter(e => e._hasDep)
   const unmatched = scheduleEntries.filter(e => !e._hasDep)
 
-  const consumedMs = matched.filter(e => e.sortTime).map(e => e.sortTime.getTime())
-  const lastConsumedTime = consumedMs.length > 0 ? new Date(Math.max(...consumedMs)) : null
+  const consumedMs = matched.filter(e => e.sortTime).map(e => e.sortTime.valueOf())
+  const lastConsumedTime = consumedMs.length > 0 ? dayjs(Math.max(...consumedMs)) : null
   const skipped = unmatched
     .filter(e => e.sortTime && lastConsumedTime && e.sortTime < lastConsumedTime)
     .map(e => ({ ...e, skipped: true }))
@@ -105,8 +105,9 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
     .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => {
       if (!t) return false
-      if (consumedTimes.has(t.getTime())) return false
+      if (consumedTimes.has(t.valueOf())) return false
       if (lastConsumedTime && t < lastConsumedTime) return false
+      if (t <= now) return false
       return true
     })
     .map(({ s, t }) => {

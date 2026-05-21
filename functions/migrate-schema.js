@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { nowInVancouver } from './lib/time.js'
 
 const SRC = '/Users/restricted/ferry-view/backup/bowen-ferry'
 const DST = 'tmp/backup/bowen-ferry-migrated'
@@ -13,7 +14,7 @@ function parseApiDate(str) {
   const month = MONTHS[m[2].toLowerCase()]
   if (!month) return str
   const day = String(parseInt(m[3])).padStart(2, '0')
-  const year = new Date().getFullYear()
+  const year = nowInVancouver().year()
   return `${year}-${month}-${day}`
 }
 

@@ -5,7 +5,7 @@ import timezone from 'dayjs/plugin/timezone.js'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-const TZ = 'America/Vancouver'
+export const TZ = 'America/Vancouver'
 
 const TIME_RE = /(\d+):(\d{2})(?::\d{2})?\s*(AM|PM)/i
 
@@ -25,18 +25,24 @@ export function timeToDate(str) {
   const [h, m] = str.split(':').map(Number)
   if (isNaN(h) || isNaN(m)) return null
   const today = dayjs().tz(TZ).format('YYYY-MM-DD')
-  return dayjs.tz(`${today} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, TZ).toDate()
+  return dayjs.tz(`${today} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, TZ)
 }
 
 export function isRecent(str, maxAgeMs) {
   const t = timeToDate(str)
   if (!t) return false
-  return (Date.now() - t.getTime()) < maxAgeMs
+  return (Date.now() - t.valueOf()) < maxAgeMs
 }
 
 export function formatTime12h(str) {
   if (!str) return str || ''
   const t = timeToDate(str)
   if (!t) return str
-  return dayjs(t).tz(TZ).format('h:mma')
+  return t.format('h:mma')
 }
+
+export function nowInVancouver() {
+  return dayjs().tz(TZ)
+}
+
+export { dayjs }

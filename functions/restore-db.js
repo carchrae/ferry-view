@@ -46,7 +46,7 @@ const COLLECTIONS = ['ferryStatus', 'ferryStatusHistory', 'sailingStatus', 'capa
 function deserializeData(data) {
   if (data === null || data === undefined || typeof data !== 'object') return data
   if (Array.isArray(data)) return data.map(deserializeData)
-  if (data.__type === 'Date') return new Date(data.value)
+  if (data.__type === 'Date') return Timestamp.fromMillis(data.value)
   if (data.__type === 'Timestamp') return new Timestamp(data.seconds, data.nanoseconds)
   const obj = {}
   for (const [k, v] of Object.entries(data)) {
