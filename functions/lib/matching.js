@@ -102,7 +102,6 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
       if (!t) return false
       if (consumedTimes.has(t.valueOf())) return false
       if (lastConsumedTime && t < lastConsumedTime) return false
-      if (t <= now) return false
       return true
     })
     .map(({ s, t }) => {
