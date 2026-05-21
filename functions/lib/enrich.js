@@ -1,21 +1,22 @@
 import { buildPast } from './matching.js'
-import { normalizeTime } from './time.js'
+import { normalizeTime, timeToDate, nowInVancouver } from './time.js'
 
 export async function augmentRecentActivity(db, data) {
   const statusSnap = await db.collection('sailingStatus')
     .where('dateIso', '==', data.dateIso)
     .get()
   const seen = new Set(data.recentActivity.map(e => `${e.time}_${e.location}`))
+  const now = nowInVancouver()
   let added = 0
   statusSnap.forEach(doc => {
     const s = doc.data()
-    const depTime = s.actualDepartureTime ||
-      (s.lastCapacity || s.filledAt ? s.sailingTime : null)
-    if (!depTime) return
+    if (!s.actualDepartureTime) return
+    const depDate = timeToDate(s.actualDepartureTime)
+    if (!depDate || depDate > now) return
     const location = s.direction === 'To Bowen' ? 'Horseshoe Bay' : 'Bowen'
-    const key = `${depTime}_${location}`
+    const key = `${s.actualDepartureTime}_${location}`
     if (!seen.has(key)) {
-      data.recentActivity.push({ action: 'Departed', location, time: depTime })
+      data.recentActivity.push({ action: 'Departed', location, time: s.actualDepartureTime })
       seen.add(key)
       added++
     }

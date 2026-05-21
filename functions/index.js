@@ -41,27 +41,28 @@ export const pollFerryStatus = onSchedule(
 
     const now = nowInVancouver()
 
-    await augmentRecentActivity(db, data)
-
-    const { hsbPast, bowenPast } = matchDepartures(data, now)
-
+    // Compare raw API data BEFORE enrichment mutates it
     const existingDoc = await db.collection('ferryStatus').doc('current').get()
     const existingData = existingDoc.exists ? existingDoc.data() : null
 
     const newDataSanitized = sanitizeForCompare(data)
     const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
+    const dataChanged = checkDataChanged(newDataSanitized, existingDataSanitized)
 
-    if (!checkDataChanged(newDataSanitized, existingDataSanitized)) {
+    // Now enrich (mutates data in place)
+    await augmentRecentActivity(db, data)
+    const { hsbPast, bowenPast } = matchDepartures(data, now)
+    enrichDeckCapacity(data, existingData)
+    await augmentFromCapacityHistory(db, data)
+    await augmentFromFilledStatus(db, data)
+
+    if (!dataChanged) {
       console.log('No changes detected, skipping save')
       await maybeSendNotifications(data)
       return
     }
 
     console.log('Data changed, saving...')
-
-    enrichDeckCapacity(data, existingData)
-    await augmentFromCapacityHistory(db, data)
-    await augmentFromFilledStatus(db, data)
 
     await db.collection('ferryStatus').doc('current').set(data)
     console.log('Saved ferry status to Firestore')

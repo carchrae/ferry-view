@@ -122,7 +122,7 @@
                       Horseshoe Bay
                     </div>
                     <div
-                      v-for="(event, i) in allPastHSB.slice(-3)"
+                      v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
                       class="row items-center no-wrap q-mt-xs"
                     >
@@ -149,14 +149,14 @@
                         >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
                       >
                     </div>
-                    <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
+                    <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
                   <div class="col">
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
                     <div
-                      v-for="(event, i) in allPastBowen.slice(-3)"
+                      v-for="(event, i) in recentPastBowen.slice(-3)"
                       :key="'pb' + i"
                       class="row items-center no-wrap q-mt-xs"
                     >
@@ -183,7 +183,7 @@
                         >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
                       >
                     </div>
-                    <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
+                    <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
@@ -839,9 +839,11 @@ const allUpcomingHSB = computed(() => schedule.allUpcomingHSB())
 const allUpcomingBowen = computed(() => schedule.allUpcomingBowen())
 const allPastHSB = computed(() => schedule.allPastHSB())
 const allPastBowen = computed(() => schedule.allPastBowen())
+const recentPastHSB = computed(() => allPastHSB.value.filter(e => e.diffText !== null || e.skipped))
+const recentPastBowen = computed(() => allPastBowen.value.filter(e => e.diffText !== null || e.skipped))
 const lastSailing = computed(() => {
-  const hsb = allPastHSB.value
-  const bowen = allPastBowen.value
+  const hsb = recentPastHSB.value
+  const bowen = recentPastBowen.value
   const a = hsb[hsb.length - 1]
   const b = bowen[bowen.length - 1]
   if (!a && !b) return null

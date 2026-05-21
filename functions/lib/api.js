@@ -106,9 +106,24 @@ function checkDataChanged(newData, existingData) {
   return false
 }
 
+const ENRICHMENT_FIELDS = ['matchedDepartureTime', 'latenessMinutes', 'lastCapacity', 'filledAt']
+
+function stripEnrichmentFields(schedule) {
+  if (!Array.isArray(schedule)) return schedule
+  return schedule.map(entry => {
+    const clean = { ...entry }
+    for (const field of ENRICHMENT_FIELDS) delete clean[field]
+    return clean
+  })
+}
+
 function sanitizeForCompare(data) {
-  const { fetchedAt, lastUpdate, ...rest } = data
-  return rest
+  const { fetchedAt, lastUpdate, recentActivity, ...rest } = data
+  return {
+    ...rest,
+    bowenSchedule: stripEnrichmentFields(rest.bowenSchedule),
+    hsbSchedule: stripEnrichmentFields(rest.hsbSchedule),
+  }
 }
 
 export { checkDataChanged, sanitizeForCompare }

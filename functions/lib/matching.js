@@ -85,18 +85,13 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     .filter(e => e.sortTime && lastConsumedTime && e.sortTime < lastConsumedTime)
     .map(e => ({ ...e, skipped: true }))
 
-  const orphanEntries = departedEvents
-    .filter(d => !usedDisplays.has(d.display))
-    .map(d => ({
-      label,
-      shortTime: d.display,
-      sortTime: d.time,
-      diffText: null,
-      diffColor: 'grey',
-      _hasDep: true,
-    }))
+  // Orphan departures (events that don't match any schedule entry) are logged
+  // but not returned — they have no schedule time and would create invalid
+  // sailingKeys if they reached the recording pipeline.
+  const orphanCount = departedEvents.filter(d => !usedDisplays.has(d.display) && d.time <= now).length
+  if (orphanCount) console.log(`${label}: ${orphanCount} orphan departure(s) not matching any schedule`)
 
-  return [...matched, ...skipped, ...orphanEntries]
+  return [...matched, ...skipped]
 }
 
 export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime) {
