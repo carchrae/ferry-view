@@ -144,12 +144,7 @@
                         class="badge-gap"
                         dense
                         >{{ formatDeckBadge(event, $q.screen.xs)
-                        }}<q-icon
-                          v-if="event.filledAt === 'user_reported'"
-                          name="person"
-                          size="xs"
-                          class="q-ml-xs"
-                      /></q-badge>
+                        }}</q-badge>
                     </div>
                     <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -182,13 +177,9 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs)
-                        }}<q-icon
-                          v-if="event.filledAt === 'user_reported'"
-                          name="person"
-                          size="xs"
-                          class="q-ml-xs"
-                      /></q-badge>
+                        >
+                        {{ formatDeckBadge(event, $q.screen.xs) }}
+                      </q-badge>
                     </div>
                     <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -220,13 +211,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s)
-                        }}<q-icon
-                          v-if="s.filledAt === 'user_reported'"
-                          name="person"
-                          size="xs"
-                          class="q-ml-xs"
-                      /></q-badge>
+                        >{{ formatDeckBadge(s)}}</q-badge>
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -256,12 +241,7 @@
                         dense
                         class="badge-gap"
                         >{{ formatDeckBadge(s)
-                        }}<q-icon
-                          v-if="s.filledAt === 'user_reported'"
-                          name="person"
-                          size="xs"
-                          class="q-ml-xs"
-                      /></q-badge>
+                        }}</q-badge>
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -605,12 +585,7 @@
                   class="badge-gap"
                   dense
                   >{{ formatDeckBadge(event, $q.screen.xs)
-                  }}<q-icon
-                    v-if="event.filledAt === 'user_reported'"
-                    name="person"
-                    size="xs"
-                    class="q-ml-xs"
-                /></q-badge>
+                  }}</q-badge>
               </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -642,12 +617,7 @@
                   class="badge-gap"
                   dense
                   >{{ formatDeckBadge(event, $q.screen.xs)
-                  }}<q-icon
-                    v-if="event.filledAt === 'user_reported'"
-                    name="person"
-                    size="xs"
-                    class="q-ml-xs"
-                /></q-badge>
+                  }}</q-badge>
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -673,12 +643,7 @@
                   dense
                   class="badge-gap"
                   >{{ formatDeckBadge(s)
-                  }}<q-icon
-                    v-if="s.filledAt === 'user_reported'"
-                    name="person"
-                    size="xs"
-                    class="q-ml-xs"
-                /></q-badge>
+                  }}</q-badge>
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -701,12 +666,7 @@
                   dense
                   class="badge-gap"
                   >{{ formatDeckBadge(s)
-                  }}<q-icon
-                    v-if="s.filledAt === 'user_reported'"
-                    name="person"
-                    size="xs"
-                    class="q-ml-xs"
-                /></q-badge>
+                  }}</q-badge>
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                 None
