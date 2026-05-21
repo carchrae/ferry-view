@@ -103,8 +103,8 @@ export async function augmentFromCapacityHistory(db, data) {
       for (const entry of schedule) {
         const sailingKey = `${data.dateIso}_${normalizeTime(entry.time)}_${direction}`
 
-        // Get most recent server record
         if (entry.lastCapacity === undefined) {
+          // Get most recent server record
           let serverSnap
           try {
             serverSnap = await db
@@ -119,8 +119,8 @@ export async function augmentFromCapacityHistory(db, data) {
           }
           if (!serverSnap.empty) {
             const r = serverSnap.docs[0].data()
+            entry.lastCapacity = r.capacity
             if (r.userUid) {
-              entry.lastCapacity = r.capacity
               entry.filledAt = 'user_reported'
               enriched++
             } else {
