@@ -1,9 +1,9 @@
 import { buildPast } from './matching.js'
-import { normalizeTime } from './helpers.js'
+import { normalizeTime } from './time.js'
 
 export async function augmentRecentActivity(db, data) {
   const statusSnap = await db.collection('sailingStatus')
-    .where('date', '==', data.date)
+    .where('dateIso', '==', data.dateIso)
     .get()
   const seen = new Set(data.recentActivity.map(e => `${e.time}_${e.location}`))
   let added = 0
@@ -52,7 +52,7 @@ export function enrichDeckCapacity(data, existingData) {
       const existingSchedule = entry.direction === 'To Bowen'
         ? existingData?.hsbSchedule : existingData?.bowenSchedule
       const existingEntry = existingSchedule?.find(s => normalizeTime(s.time) === normalizeTime(entry.time))
-      scheduleEntry.filledAt = existingEntry?.filledAt || new Date().toISOString()
+      scheduleEntry.filledAt = existingEntry?.filledAt || Date.now()
     }
   }
 
@@ -66,7 +66,7 @@ export function enrichDeckCapacity(data, existingData) {
         const existingSchedule = direction === 'To Bowen'
           ? existingData?.hsbSchedule : existingData?.bowenSchedule
         const existingEntry = existingSchedule?.find(s => normalizeTime(s.time) === normalizeTime(entry.time))
-        entry.filledAt = existingEntry?.filledAt || new Date().toISOString()
+        entry.filledAt = existingEntry?.filledAt || Date.now()
       }
     }
   }
@@ -78,7 +78,7 @@ export async function augmentFromCapacityHistory(db, data) {
   if (SKIP_CAPACITY_HISTORY_AUGMENT) return
   try {
     const historySnap = await db.collection('capacityHistory')
-      .where('date', '==', data.date)
+      .where('dateIso', '==', data.dateIso)
       .get()
     if (historySnap.empty) return
     const serverRecords = {}
@@ -92,14 +92,14 @@ export async function augmentFromCapacityHistory(db, data) {
     let enriched = 0
     for (const [direction, schedule] of [['To Bowen', data.hsbSchedule], ['To HSB', data.bowenSchedule]]) {
       for (const entry of schedule) {
-        const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${direction}`
+        const sailingKey = `${data.dateIso}_${normalizeTime(entry.time)}_${direction}`
         const sRecords = serverRecords[sailingKey]
         const uRecords = userRecords[sailingKey]
         if (!sRecords?.length && !uRecords?.length) continue
 
         // Apply server records (API data) — only fill gaps
         if (sRecords?.length) {
-          sRecords.sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt))
+          sRecords.sort((a, b) => a.recordedAt - b.recordedAt)
           if (entry.lastCapacity === undefined) {
             entry.lastCapacity = sRecords[sRecords.length - 1].capacity
           }
@@ -111,7 +111,7 @@ export async function augmentFromCapacityHistory(db, data) {
 
         // Apply user records — override unconditionally
         if (uRecords?.length) {
-          const latest = uRecords.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt))[0]
+          const latest = uRecords.sort((a, b) => b.recordedAt - a.recordedAt)[0]
           entry.lastCapacity = latest.capacity
           if (latest.capacity === 'Full') {
             entry.filledAt = 'user_reported'
@@ -130,7 +130,7 @@ export async function augmentFromCapacityHistory(db, data) {
 export async function augmentFromFilledStatus(db, data) {
   try {
     const statusSnap = await db.collection('sailingStatus')
-      .where('date', '==', data.date)
+      .where('dateIso', '==', data.dateIso)
       .get()
     if (statusSnap.empty) return
     const filledByKey = {}
@@ -142,7 +142,7 @@ export async function augmentFromFilledStatus(db, data) {
     for (const [direction, schedule] of [['To Bowen', data.hsbSchedule], ['To HSB', data.bowenSchedule]]) {
       for (const entry of schedule) {
         if (entry.filledAt) continue
-        const sailingKey = `${data.date}_${normalizeTime(entry.time)}_${direction}`
+        const sailingKey = `${data.dateIso}_${normalizeTime(entry.time)}_${direction}`
         if (filledByKey[sailingKey]) {
           entry.filledAt = filledByKey[sailingKey]
           enriched++

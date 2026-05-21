@@ -29,7 +29,7 @@
         >When: {{ formatDate(ride.date) }}</span
       >
       <span v-if="ride.sailing" class="text-caption text-grey-7 q-ml-xs"
-        >at {{ ride.sailing }}</span
+        >at {{ formatTime12h(ride.sailing) }}</span
       >
     </div>
     <div class="row items-center no-wrap">
@@ -49,6 +49,7 @@
 import { computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuth } from 'src/composables/useAuth'
+import { formatTime12h } from '../../functions/lib/time.js'
 
 const $q = useQuasar()
 const isMobile = computed(() => $q.screen.lt.sm)

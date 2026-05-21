@@ -1,12 +1,7 @@
-export function normalizeTime(t) {
-  if (!t) return t
-  return t.toLowerCase().replace(/\s+/g, ' ').trim()
-}
-
-export async function updateSailingStatus(sailingKey, sailingTime, direction, date, db, overrides) {
+export async function updateSailingStatus(sailingKey, sailingTime, direction, dateIso, db, overrides) {
   const docRef = db.collection('sailingStatus').doc(sailingKey)
   const snap = await docRef.get()
-  const updates = { sailingKey, sailingTime, direction, date }
+  const updates = { sailingKey, sailingTime, direction, dateIso }
 
   if (overrides.lastCapacity !== undefined) {
     updates.lastCapacity = overrides.lastCapacity

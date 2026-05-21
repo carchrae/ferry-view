@@ -1,31 +1,12 @@
 import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
-import { normalizeTime } from './helpers.js'
+import { isRecent } from './time.js'
 
 const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
 const SAMPLE_COUNT = 3
 const SAMPLE_DELAY_MS = 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
-
-function parseTimeToday(timeStr) {
-  if (!timeStr) return null
-  const m = timeStr.match(/(\d+):(\d{2})(?::\d{2})?\s*(AM|PM)/i)
-  if (!m) return null
-  let h = parseInt(m[1])
-  const min = parseInt(m[2])
-  if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12
-  if (m[3].toUpperCase() === 'AM' && h === 12) h = 0
-  const d = new Date()
-  d.setHours(h, min, 0, 0)
-  return d
-}
-
-function isRecent(timeStr, maxAgeMs) {
-  const t = parseTimeToday(timeStr)
-  if (!t) return false
-  return (Date.now() - t.getTime()) < maxAgeMs
-}
 
 async function captureSamples(url) {
   const samples = []
@@ -53,7 +34,7 @@ function pickBestFrame(samples) {
   return dupes ? dupes[0] : samples.sort((a, b) => b.length - a.length)[0]
 }
 
-export async function captureBowenWebcam(db, sailingKey, sailingTime, date, recentTime) {
+export async function captureBowenWebcam(db, sailingKey, sailingTime, dateIso, recentTime) {
   if (!isRecent(recentTime || sailingTime, 10 * 60 * 1000)) return
   const statusRef = db.collection('sailingStatus').doc(sailingKey)
   const snap = await statusRef.get()
@@ -68,27 +49,27 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, date, rece
 
   const best = pickBestFrame(samples)
   const timestamp = Date.now()
-  const blobPath = `webcams/bowen/${date}/${sailingKey}_${timestamp}.jpg`
+  const blobPath = `webcams/bowen/${dateIso}/${sailingKey}_${timestamp}.jpg`
   const bucket = getStorage().bucket()
   const file = bucket.file(blobPath)
   await file.save(best, { contentType: 'image/jpeg' })
   await file.makePublic()
 
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
-  const snapshotKey = `${date}_${normalizeTime(sailingTime)}_To HSB`
+  const snapshotKey = `${dateIso}_${sailingTime}_To HSB`
   await db.collection('snapshots').doc('latestBowenDeparture').set({
     imageUrl,
     sailingKey: snapshotKey,
     sailingTime,
-    date,
-    recordedAt: new Date().toISOString(),
+    dateIso,
+    recordedAt: Date.now(),
   })
 
   await statusRef.set({ webcamSnapshotPath: blobPath }, { merge: true })
   console.log(`Saved webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
-export async function captureBowenCommunityWebcam(db, arrivalTime, date) {
+export async function captureBowenCommunityWebcam(db, arrivalTime, dateIso) {
   if (!isRecent(arrivalTime, 10 * 60 * 1000)) return
   const arrivalRef = db.collection('snapshots').doc('latestBowenArrival')
   const snap = await arrivalRef.get()
@@ -101,22 +82,21 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, date) {
   }
 
   const best = pickBestFrame(samples)
-  const now = new Date()
-  const timestamp = now.getTime()
-  const blobPath = `webcams/community/${date}/${arrivalTime}_Arrival_${timestamp}.jpg`
+  const timestamp = Date.now()
+  const blobPath = `webcams/community/${dateIso}/${arrivalTime}_Arrival_${timestamp}.jpg`
   const bucket = getStorage().bucket()
   const file = bucket.file(blobPath)
   await file.save(best, { contentType: 'image/jpeg' })
   await file.makePublic()
 
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
-  const snapshotKey = `${date}_${normalizeTime(arrivalTime)}_Arrival`
+  const snapshotKey = `${dateIso}_${arrivalTime}_Arrival`
   await arrivalRef.set({
     imageUrl,
     arrivalTime,
     sailingKey: snapshotKey,
-    date,
-    recordedAt: now.toISOString(),
+    dateIso,
+    recordedAt: Date.now(),
   })
 
   console.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)

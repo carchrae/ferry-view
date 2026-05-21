@@ -1,16 +1,4 @@
-export function parseTimeToday(timeStr) {
-  if (!timeStr) return null
-  const match = timeStr.match(/(\d+):(\d+):?(\d+)?\s*(AM|PM)/i)
-  if (!match) return null
-  let hours = parseInt(match[1])
-  const mins = parseInt(match[2])
-  const ampm = match[4].toUpperCase()
-  if (ampm === 'PM' && hours !== 12) hours += 12
-  if (ampm === 'AM' && hours === 12) hours = 0
-  const d = new Date()
-  d.setHours(hours, mins, 0, 0)
-  return d
-}
+import { timeToDate } from './time.js'
 
 import {
   formatLateness,
@@ -27,22 +15,15 @@ export function parseDeckSpace(deckSpace, label) {
   return { deckSpace: pct, full: `${100 - pct}% full` }
 }
 
-export function formatSailingTime(timeStr) {
-  return timeStr
-    .replace(/(\d+:\d{2}):\d{2}\s*/, '$1')
-    .replace(/\s+(am|pm)/i, '$1')
-    .toLowerCase()
-}
-
 export function buildPast(scheduleItems, recentActivity, eventLocation, now, label) {
   const departedEvents = recentActivity
     .filter((e) => e.action === 'Departed' && e.location === eventLocation)
-    .map((e) => ({ time: parseTimeToday(e.time), display: e.time }))
+    .map((e) => ({ time: timeToDate(e.time), display: e.time }))
     .filter(d => d.time)
 
   const schedulesWithEnd = scheduleItems
     .filter((s) => !s.cancelled)
-    .map((s) => ({ s, t: parseTimeToday(s.time) }))
+    .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => t && t <= now)
     .map((item, i, arr) => {
       const rawEnd = arr[i + 1]?.t || new Date(item.t.getTime() + 90 * 60 * 1000)
@@ -57,7 +38,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     let latenessMins = null
 
     if (s.matchedDepartureTime) {
-      const depTime = parseTimeToday(s.matchedDepartureTime)
+      const depTime = timeToDate(s.matchedDepartureTime)
       if (depTime && !usedDisplays.has(s.matchedDepartureTime)) {
         matchedDep = { time: depTime, display: s.matchedDepartureTime }
         usedDisplays.add(s.matchedDepartureTime)
@@ -87,7 +68,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
       ...s,
       label,
       ...lateness,
-      shortTime: matchedDep ? formatSailingTime(matchedDep.display) : formatSailingTime(s.time),
+      shortTime: matchedDep ? matchedDep.display : s.time,
       sortTime: t,
       _hasDep: !!matchedDep,
       _depDisplay: matchedDep ? matchedDep.display : null,
@@ -108,7 +89,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     .filter(d => !usedDisplays.has(d.display))
     .map(d => ({
       label,
-      shortTime: formatSailingTime(d.display),
+      shortTime: d.display,
       sortTime: d.time,
       diffText: null,
       diffColor: 'grey',
@@ -121,7 +102,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
 export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime) {
   return scheduleItems
     .filter((s) => !s.cancelled)
-    .map((s) => ({ s, t: parseTimeToday(s.time) }))
+    .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => {
       if (!t) return false
       if (consumedTimes.has(t.getTime())) return false
@@ -137,7 +118,7 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
         label,
         deckSpace,
         full,
-        shortTime: formatSailingTime(s.time),
+        shortTime: s.time,
         sortTime: t,
         lateText: isUpcomingLate(lateMins) ? `${lateMins}m late` : null,
         lateColor: getUpcomingLateColor(lateMins),
@@ -147,7 +128,7 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
 }
 
 export function calculateLateness(event, bowenSchedule, hsbSchedule, location) {
-  const eventTime = parseTimeToday(event.time)
+  const eventTime = timeToDate(event.time)
   if (!eventTime) return null
 
   const schedule = location === 'Bowen' ? bowenSchedule : hsbSchedule
@@ -158,7 +139,7 @@ export function calculateLateness(event, bowenSchedule, hsbSchedule, location) {
   const direction = location === 'Bowen' ? 'to HSB' : 'to Bowen'
 
   for (const entry of schedule) {
-    const schTime = parseTimeToday(entry.time)
+    const schTime = timeToDate(entry.time)
     if (!schTime) continue
     const diff = Math.abs(eventTime - schTime)
     if (diff < minDiff) {

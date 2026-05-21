@@ -28,7 +28,7 @@
           {{ ride.type === 'offer' ? 'Offering' : 'Seeking' }}
           a ride
           <template v-if="ride.date">on {{ formatDate(ride.date) }}</template>
-          <template v-if="ride.sailing">at {{ ride.sailing }}</template>
+          <template v-if="ride.sailing">at {{ formatTime12h(ride.sailing) }}</template>
         </div>
 
         <q-separator />
@@ -93,7 +93,7 @@ import { useRoute } from 'vue-router'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
-
+import { formatTime12h } from '../../functions/lib/time.js'
 
 const route = useRoute()
 const { user } = useAuth()

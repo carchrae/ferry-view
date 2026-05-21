@@ -148,6 +148,7 @@ import { db, auth } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
 import SignInOptions from 'src/components/SignInOptions.vue'
+import { normalizeTime } from '../../functions/lib/time.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -245,12 +246,7 @@ function dateFn(date) {
 }
 
 function normalizeSailingTime(t) {
-  if (!t) return t
-  return t
-    .trim()
-    .replace(/(\d)\.(\d)/g, '$1:$2')
-    .replace(/(\d)([ap]m)/i, '$1 $2')
-    .replace(/([ap]m)/i, s => s.toUpperCase())
+  return normalizeTime(t)
 }
 
 async function save() {

@@ -1,10 +1,10 @@
 import {
-  parseTimeToday,
   buildPast,
   buildUpcoming,
 } from '../../functions/lib/matching.js'
+import { timeToDate } from '../../functions/lib/time.js'
 
-export { parseTimeToday }
+export { timeToDate }
 
 export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
   function buildForLocation(schedule, eventLocation, label) {

@@ -62,11 +62,6 @@ export const pollFerryStatus = onSchedule(
     await augmentFromCapacityHistory(db, data)
     await augmentFromFilledStatus(db, data)
 
-    await db.collection('ferryStatusHistory').add({
-      ...data,
-      recordedAt: new Date().toISOString(),
-    })
-
     await db.collection('ferryStatus').doc('current').set(data)
     console.log('Saved ferry status to Firestore')
 
@@ -74,9 +69,9 @@ export const pollFerryStatus = onSchedule(
     await recordDepartureTimes(db, data, hsbPast, bowenPast)
 
     for (const entry of bowenPast) {
-      if (!entry._hasDep) continue
-      const sailingKey = `${data.date}_${entry.time}_To HSB`
-      captureBowenWebcam(db, sailingKey, entry.time, data.date, entry._depDisplay || entry.time)
+      if (!entry._hasDep || !entry.time || !entry._depDisplay) continue
+      const sailingKey = `${data.dateIso}_${entry.time}_To HSB`
+      captureBowenWebcam(db, sailingKey, entry.time, data.dateIso, entry._depDisplay || entry.time)
         .catch(e => console.error(`Webcam capture failed for ${sailingKey}:`, e))
     }
 
@@ -86,7 +81,7 @@ export const pollFerryStatus = onSchedule(
     )
     if (bowenArrivals.length > 0) {
       const latest = bowenArrivals[0]
-      captureBowenCommunityWebcam(db, latest.time, data.date)
+      captureBowenCommunityWebcam(db, latest.time, data.dateIso)
         .catch(e => console.error('Community webcam capture failed:', e))
     }
 

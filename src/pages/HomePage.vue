@@ -91,7 +91,7 @@
             <q-space />
             <div class="text-caption text-grey-6">
               Last Update <br />
-              {{ ferryData.lastUpdate }}
+              {{ formatTime12h(ferryData.lastUpdate) }}
             </div>
           </q-card-section>
         </q-card>
@@ -127,7 +127,7 @@
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ event.shortTime }}
+                        {{ formatTime12h(event.shortTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                         >?</q-badge
@@ -161,7 +161,7 @@
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ event.shortTime }}
+                        {{ formatTime12h(event.shortTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                         >?</q-badge
@@ -197,7 +197,7 @@
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ s.shortTime }}
+                        {{ formatTime12h(s.shortTime) }}
                       </div>
                       <q-badge
                         rounded
@@ -227,7 +227,7 @@
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ s.shortTime }}
+                        {{ formatTime12h(s.shortTime) }}
                       </div>
                       <q-badge
                         rounded
@@ -495,7 +495,7 @@
                 @error="onSnapshotError"
               />
               <q-card-section>
-                <div class="text-subtitle2">Arrival at Bowen — {{ arrivalSnapshot.arrivalTime }}</div>
+                <div class="text-subtitle2">Arrival at Bowen — {{ formatTime12h(arrivalSnapshot.arrivalTime) }}</div>
                 <div class="text-caption text-grey-7 q-mt-sm">
                   <strong>75% Full</strong> — are there cars on the hill but not all the way up?
                   <br/>
@@ -565,7 +565,7 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ event.shortTime }}
+                  {{ formatTime12h(event.shortTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                   >?
@@ -597,7 +597,7 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ event.shortTime }}
+                  {{ formatTime12h(event.shortTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                   >?
@@ -631,7 +631,7 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ s.shortTime }}
+                  {{ formatTime12h(s.shortTime) }}
                 </div>
                 <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
                   {{ shortText(s.lateText, $q.screen.xs) }}
@@ -654,7 +654,7 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ s.shortTime }}
+                  {{ formatTime12h(s.shortTime) }}
                 </div>
                 <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
                   {{ shortText(s.lateText, $q.screen.xs) }}
@@ -697,7 +697,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
-import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
+import { useSchedule, timeToDate } from 'src/composables/useSchedule'
+import { formatTime12h } from '../../functions/lib/time.js'
 import { isStaging, db } from 'src/boot/firebase'
 import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
@@ -775,10 +776,8 @@ function saveRating(capacity, source) {
   }
   addDoc(collection(db, 'capacityHistory'), {
     sailingKey: snap.sailingKey,
-    sailingTime: snap.sailingTime || snap.arrivalTime,
-    date: snap.date,
     capacity,
-    recordedAt: new Date().toISOString(),
+    recordedAt: Date.now(),
     userUid: user.value.uid,
   })
   showSnapshotDialog.value = false
@@ -807,13 +806,9 @@ function captureDebugData() {
 }
 
 function formatTime(date) {
-  let hours = date.getHours()
-  const mins = String(date.getMinutes()).padStart(2, '0')
-  const secs = String(date.getSeconds()).padStart(2, '0')
-  const ampm = hours >= 12 ? 'PM' : 'AM'
-  if (hours > 12) hours -= 12
-  if (hours === 0) hours = 12
-  return `${hours}:${mins}:${secs} ${ampm}`
+  const h = String(date.getHours()).padStart(2, '0')
+  const m = String(date.getMinutes()).padStart(2, '0')
+  return `${h}:${m}`
 }
 
 function delayDepartures() {
@@ -825,13 +820,13 @@ function delayDepartures() {
   const events = ferryData.value.recentActivity
   const departed = events.filter((e) => e.action === 'Departed')
   const sorted = [...departed].sort((a, b) => {
-    const ta = parseTimeToday(a.time)
-    const tb = parseTimeToday(b.time)
+    const ta = timeToDate(a.time)
+    const tb = timeToDate(b.time)
     return ta - tb
   })
 
   sorted.forEach((event, i) => {
-    const parsed = parseTimeToday(event.time)
+    const parsed = timeToDate(event.time)
     if (!parsed) return
     parsed.setMinutes(parsed.getMinutes() + mins * (i + 1))
     event.time = formatTime(parsed)
@@ -882,12 +877,12 @@ const upcomingSailingTimes = computed(() => {
   const now = nowDate()
   const times = new Set()
   for (const s of ferryData.value.hsbSchedule) {
-    if (!s.cancelled && parseTimeToday(s.time) > now) {
+    if (!s.cancelled && timeToDate(s.time) > now) {
       times.add(s.time.trim().toUpperCase())
     }
   }
   for (const s of ferryData.value.bowenSchedule) {
-    if (!s.cancelled && parseTimeToday(s.time) > now) {
+    if (!s.cancelled && timeToDate(s.time) > now) {
       times.add(s.time.trim().toUpperCase())
     }
   }
@@ -1031,7 +1026,7 @@ const speedText = computed(() => {
   const mostRecent = ferryData.value.recentActivity[0]
   if (!mostRecent) return ''
 
-  const evtTime = parseTimeToday(mostRecent.time)
+  const evtTime = timeToDate(mostRecent.time)
   if (!evtTime) return ''
 
   const mins = Math.round((nowMs() - evtTime) / 60000)

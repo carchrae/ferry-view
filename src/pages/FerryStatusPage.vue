@@ -36,7 +36,7 @@
                 <q-item-section>
                   <q-item-label>Last Update</q-item-label>
                   <q-item-label caption>
-                    {{ ferryData.lastUpdate }}
+                    {{ formatTime12h(ferryData.lastUpdate) }}
                     <q-badge :color="ferryData.isFresh ? 'positive' : 'warning'" class="q-ml-sm">
                       {{ ferryData.isFresh ? 'Live' : 'Stale' }}
                     </q-badge>
@@ -81,7 +81,7 @@
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>{{ event.action }} {{ event.location }}</q-item-label>
-                  <q-item-label caption>{{ event.time }}</q-item-label>
+                  <q-item-label caption>{{ formatTime12h(event.time) }}</q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>
@@ -108,7 +108,7 @@
             <q-list separator>
               <q-item v-for="(slot, i) in ferryData.deckSpace" :key="i">
                 <q-item-section>
-                  <q-item-label>{{ slot.time }}</q-item-label>
+                  <q-item-label>{{ formatTime12h(slot.time) }}</q-item-label>
                 </q-item-section>
                 <q-item-section side>
                   <q-badge
@@ -149,7 +149,7 @@
                       <q-icon name="schedule" :color="sailing.cancelled ? 'negative' : 'primary'" />
                     </q-item-section>
                     <q-item-section>
-                      <q-item-label>{{ sailing.time }}</q-item-label>
+                      <q-item-label>{{ formatTime12h(sailing.time) }}</q-item-label>
                     </q-item-section>
                     <q-item-section side v-if="sailing.deckSpace">
                       <q-badge :color="getDeckColor(sailing.deckSpace)">{{ sailing.deckSpace }}</q-badge>
@@ -167,7 +167,7 @@
                       <q-icon name="schedule" :color="sailing.cancelled ? 'negative' : 'primary'" />
                     </q-item-section>
                     <q-item-section>
-                      <q-item-label>{{ sailing.time }}</q-item-label>
+                      <q-item-label>{{ formatTime12h(sailing.time) }}</q-item-label>
                     </q-item-section>
                     <q-item-section side v-if="sailing.cancelled">
                       <q-badge color="negative">Cancelled</q-badge>
@@ -186,6 +186,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
+import { formatTime12h } from '../../functions/lib/time.js'
 
 const { ferryData, loading, error } = useFirestoreFerryListener()
 const scheduleTab = ref('hsb')
