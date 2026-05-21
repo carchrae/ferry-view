@@ -443,7 +443,7 @@
       >
         <q-card-section class="row items-start q-pb-none">
           <div class="text-body2 text-weight-medium">
-            These photos capture how full the last sailing from Bowen was.
+            These photos capture how full the last sailing from Bowen was.  You can record how full the ferry was!
           </div>
           <q-space />
           <q-btn flat dense icon="close" aria-label="Close" @click="showSnapshotDialog = false" />
@@ -469,7 +469,8 @@
                 </div>
                 <div class="text-caption text-grey-7 q-mt-sm">
                   <strong>Select Full</strong> — if there are many cars in the photo after the ferry
-                  loaded, this was likely an overload.  If it is one car, they may just be unlucky.
+                  loaded, this was likely an overload.
+                  If it is one car, they may have left home 30 seconds too late.
                 </div>
                 <div class="row q-mt-sm q-gutter-sm">
                   <q-btn
