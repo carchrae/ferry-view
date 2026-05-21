@@ -99,8 +99,8 @@
           <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
             last sailing was
             <q-badge rounded :color="lastSailing.diffColor" class="badge-gap" dense>{{
-              lastSailing.diffText
-            }}</q-badge>
+                lastSailing.diffText
+              }}</q-badge>
           </template>
           <template v-else-if="lastSailing.ontime">
             last sailing was
@@ -127,7 +127,7 @@
                         {{ formatTime12h(event.shortTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                        >?</q-badge
+                      >?</q-badge
                       >
                       <q-badge
                         rounded
@@ -135,7 +135,7 @@
                         :color="event.diffColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -143,7 +143,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs)
+                      >{{ formatDeckBadge(event, $q.screen.xs)
                         }}</q-badge>
                     </div>
                     <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
@@ -161,7 +161,7 @@
                         {{ formatTime12h(event.shortTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                        >?</q-badge
+                      >?</q-badge
                       >
                       <q-badge
                         rounded
@@ -169,7 +169,7 @@
                         :color="event.diffColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -177,7 +177,7 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >
+                      >
                         {{ formatDeckBadge(event, $q.screen.xs) }}
                       </q-badge>
                     </div>
@@ -203,7 +203,7 @@
                         :color="s.lateColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -211,7 +211,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s)}}</q-badge>
+                      >{{ formatDeckBadge(s)}}</q-badge>
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -232,7 +232,7 @@
                         :color="s.lateColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -240,7 +240,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s)
+                      >{{ formatDeckBadge(s)
                         }}</q-badge>
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -451,7 +451,7 @@
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
           <div class="row q-col-gutter-sm">
             <div v-if="departureSnapshot" class="col-12 col-md-6">
-               <q-card flat bordered>
+              <q-card flat bordered>
                 <q-img
                   :src="departureSnapshot.imageUrl"
                   :ratio="16 / 9"
@@ -484,7 +484,7 @@
               </q-card>
             </div>
             <div v-if="arrivalSnapshot" class="col-12 col-md-6">
-               <q-card flat bordered>
+              <q-card flat bordered>
                 <q-img
                   :src="arrivalSnapshot.imageUrl"
                   :ratio="16 / 9"
@@ -560,8 +560,8 @@
             <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
               last sailing
               <q-badge rounded :color="lastSailing.diffColor" class="badge-gap" dense>{{
-                lastSailing.diffText
-              }}</q-badge>
+                  lastSailing.diffText
+                }}</q-badge>
             </template>
             <template v-else-if="lastSailing.ontime">
               <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
@@ -580,7 +580,7 @@
                   {{ formatTime12h(event.shortTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                  >?
+                >?
                 </q-badge>
                 <q-badge
                   rounded
@@ -588,7 +588,7 @@
                   :color="event.diffColor"
                   class="badge-gap"
                   dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
+                >{{ shortText(event.diffText, $q.screen.xs) }}
                 </q-badge>
                 <q-badge
                   rounded
@@ -596,7 +596,7 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs)
+                >{{ formatDeckBadge(event, $q.screen.xs)
                   }}</q-badge>
               </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -612,7 +612,7 @@
                   {{ formatTime12h(event.shortTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                  >?
+                >?
                 </q-badge>
                 <q-badge
                   rounded
@@ -620,7 +620,7 @@
                   :color="event.diffColor"
                   class="badge-gap"
                   dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
+                >{{ shortText(event.diffText, $q.screen.xs) }}
                 </q-badge>
                 <q-badge
                   rounded
@@ -628,7 +628,7 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs)
+                >{{ formatDeckBadge(event, $q.screen.xs)
                   }}</q-badge>
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -654,7 +654,7 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s)
+                >{{ formatDeckBadge(s)
                   }}</q-badge>
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -677,7 +677,7 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s)
+                >{{ formatDeckBadge(s)
                   }}</q-badge>
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
