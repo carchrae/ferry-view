@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/logger'
 import { buildPast } from './matching.js'
 import { normalizeTime, timeToDate, nowInVancouver } from './time.js'
 
@@ -8,25 +9,25 @@ export async function augmentRecentActivity(db, data) {
   let added = 0
   statusSnap.forEach((doc) => {
     const s = doc.data()
-    console.log('checking sailing status', s)
+    logger.log('checking sailing status', s)
     let departureTime = s.actualDepartureTime || s.sailingTime
     if (!departureTime) return
     const depDate = timeToDate(departureTime)
-    console.log('depDate', { depDate, depDateGtnow: depDate > now })
+    logger.log('depDate', { depDate, depDateGtnow: depDate > now })
     if (!depDate || depDate > now) return
     const location = s.direction === 'To Bowen' ? 'Horseshoe Bay' : 'Bowen'
     const key = `${departureTime}_${location}`
     if (!seen.has(key)) {
       data.recentActivity.push({ action: 'Departed', location, time: departureTime })
       seen.add(key)
-      console.log('added', { key, a: data.recentActivity[data.recentActivity.length - 1] })
+      logger.log('added', { key, a: data.recentActivity[data.recentActivity.length - 1] })
       added++
     } else {
-      console.log('already seen', { key })
+      logger.log('already seen', { key })
     }
   })
   if (added)
-    console.log(`Augmented recentActivity with ${added} historical departure(s) from sailingStatus`)
+    logger.log(`Augmented recentActivity with ${added} historical departure(s) from sailingStatus`)
 }
 
 export function matchDepartures(data, now) {
@@ -54,7 +55,7 @@ export function enrichDeckCapacity(data, existingData) {
     } else if (!scheduleEntry.filledAt) {
       scheduleEntry.lastCapacity = entry.available
     } else {
-      console.warn(
+      logger.warn(
         `DeckSpace: ${entry.direction} ${entry.time} — skipping capacity update (was full at ${scheduleEntry.filledAt} but now available=${entry.available})`,
       )
     }
@@ -113,11 +114,11 @@ export async function augmentFromCapacityHistory(db, data) {
               .limit(1)
               .get()
           } catch (e) {
-            console.error(`capacityHistory query failed for sailingKey "${sailingKey}":`, e)
+            logger.error(`capacityHistory query failed for sailingKey "${sailingKey}":`, e)
             continue
           }
           if (!serverSnap.empty) {
-            console.log('found snap for', sailingKey)
+            logger.log('found snap for', sailingKey)
             const r = serverSnap.docs[0].data()
             entry.lastCapacity = r.capacity
             if (r.userUid) {
@@ -135,8 +136,8 @@ export async function augmentFromCapacityHistory(db, data) {
       }
     }
     if (enriched)
-      console.log(`Augmented ${enriched} schedule entries with capacity from capacityHistory`)
+      logger.log(`Augmented ${enriched} schedule entries with capacity from capacityHistory`)
   } catch (e) {
-    console.error('Failed to query capacityHistory for augmentation:', e)
+    logger.error('Failed to query capacityHistory for augmentation:', e)
   }
 }

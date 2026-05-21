@@ -1,9 +1,10 @@
+import { logger } from 'firebase-functions/logger'
 import webpush from 'web-push'
 
 export function configureWebPush(publicKey, privateKey) {
   // TODO: remove after debugging
-  console.log('VAPID_PUBLIC_KEY length:', publicKey?.length, 'endsWith=:', publicKey?.endsWith('='), publicKey)
-  console.log('VAPID_PRIVATE_KEY length:', privateKey?.length, 'endsWith=:', privateKey?.endsWith('='))
+  logger.log('VAPID_PUBLIC_KEY length:', publicKey?.length, 'endsWith=:', publicKey?.endsWith('='), publicKey)
+  logger.log('VAPID_PRIVATE_KEY length:', privateKey?.length, 'endsWith=:', privateKey?.endsWith('='))
   webpush.setVapidDetails(
     'mailto:tom@intellecti.ca',
     publicKey,
@@ -19,7 +20,7 @@ export async function sendPushNotification(subscription, payload) {
     if (err.statusCode === 410) {
       return false
     }
-    console.error('Push error:', err.message)
+    logger.error('Push error:', err.message)
     return true
   }
 }

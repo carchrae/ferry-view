@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/logger'
 import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
 import { isRecent, nowInVancouver, dayjs } from './time.js'
@@ -17,7 +18,7 @@ async function captureSamples(url) {
       const buf = Buffer.from(await res.arrayBuffer())
       samples.push(buf)
     } catch (e) {
-      console.warn(`Webcam sample ${i} failed:`, e.message)
+      logger.warn(`Webcam sample ${i} failed:`, e.message)
     }
   }
   return samples
@@ -43,7 +44,7 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, dateIso, r
 
   const samples = await captureSamples(WEBCAM_URL)
   if (samples.length === 0) {
-    console.error('All webcam samples failed for', sailingKey)
+    logger.error('All webcam samples failed for', sailingKey)
     return
   }
 
@@ -66,7 +67,7 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, dateIso, r
   })
 
   await statusRef.set({ webcamSnapshotPath: blobPath }, { merge: true })
-  console.log(`Saved webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
+  logger.log(`Saved webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
 export async function captureBowenCommunityWebcam(db, arrivalTime, dateIso) {
@@ -77,7 +78,7 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, dateIso) {
 
   const samples = await captureSamples(COMMUNITY_WEBCAM_URL)
   if (samples.length === 0) {
-    console.error('All community webcam samples failed')
+    logger.error('All community webcam samples failed')
     return
   }
 
@@ -99,7 +100,7 @@ export async function captureBowenCommunityWebcam(db, arrivalTime, dateIso) {
     recordedAt: Date.now(),
   })
 
-  console.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
+  logger.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
 export async function cleanupOldWebcams() {
@@ -116,11 +117,11 @@ export async function cleanupOldWebcams() {
         await file.delete()
         deleted++
       } catch (e) {
-        console.error(`Failed to delete ${file.name}:`, e.message)
+        logger.error(`Failed to delete ${file.name}:`, e.message)
         failed++
       }
     }
   }
 
-  console.log(`Webcam cleanup: deleted ${deleted}, failed ${failed}, remaining ${files.length - deleted}`)
+  logger.log(`Webcam cleanup: deleted ${deleted}, failed ${failed}, remaining ${files.length - deleted}`)
 }

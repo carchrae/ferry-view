@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/logger'
 import { normalizeTime } from './time.js'
 import { updateSailingStatus } from './helpers.js'
 
@@ -57,7 +58,7 @@ export async function recordCapacityChanges(db, data, existingData) {
 
   if (capacityWrites.length) {
     await Promise.all(capacityWrites)
-    console.log(`Recorded ${capacityWrites.length} capacity history entries`)
+    logger.log(`Recorded ${capacityWrites.length} capacity history entries`)
   }
 }
 
@@ -76,6 +77,6 @@ export async function recordDepartureTimes(db, data, hsbPast, bowenPast) {
   }
   if (departureWrites.length) {
     await Promise.all(departureWrites)
-    console.log(`Recorded ${departureWrites.length} departure times`)
+    logger.log(`Recorded ${departureWrites.length} departure times`)
   }
 }

@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/logger'
 import diff from 'microdiff'
 import { normalizeTime, nowInVancouver } from './time.js'
 import { calculateLateness } from './matching.js'
@@ -96,10 +97,10 @@ function parseFerryData(data) {
 function checkDataChanged(newData, existingData) {
   if (!existingData) return true
 
-  const excludeFields = new Set(['fetchedAt', 'lastUpdate'])
+  const excludeFields = new Set(['isFresh', 'fetchedAt', 'lastUpdate'])
   const changes = diff(newData, existingData).filter((d) => !excludeFields.has(d.path[0]))
   if (changes.length > 0) {
-    console.log('Data changed:', JSON.stringify(changes))
+    logger.log('Data changed:', JSON.stringify(changes))
   }
   return changes.length > 0
 }

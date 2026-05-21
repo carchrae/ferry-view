@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/logger'
 import { initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
@@ -30,11 +31,11 @@ export const pollFerryStatus = onSchedule(
     secrets: [VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY],
   },
   async (context) => {
-    console.log('Polling ferry status...')
+    logger.log('Polling ferry status...')
 
     const data = await fetchFerryData()
     if (!data) {
-      console.log('No ferry data fetched')
+      logger.log('No ferry data fetched')
       return
     }
 
@@ -55,15 +56,15 @@ export const pollFerryStatus = onSchedule(
     await augmentFromCapacityHistory(db, data)
 
     if (!dataChanged) {
-      console.log('No changes detected, skipping save')
+      logger.log('No changes detected, skipping save')
       await maybeSendNotifications(data)
       return
     }
 
-    console.log('Data changed, saving...')
+    logger.log('Data changed, saving...')
 
     await db.collection('ferryStatus').doc('current').set(data)
-    console.log('Saved ferry status to Firestore')
+    logger.log('Saved ferry status to Firestore')
 
     await recordCapacityChanges(db, data, existingData)
     await recordDepartureTimes(db, data, hsbPast, bowenPast)
@@ -77,7 +78,7 @@ export const pollFerryStatus = onSchedule(
         entry.time,
         data.dateIso,
         entry._depDisplay || entry.time,
-      ).catch((e) => console.error(`Webcam capture failed for ${sailingKey}:`, e))
+      ).catch((e) => logger.error(`Webcam capture failed for ${sailingKey}:`, e))
     }
 
     // Capture Bowen community webcam when the ferry arrives at Bowen
@@ -87,7 +88,7 @@ export const pollFerryStatus = onSchedule(
     if (bowenArrivals.length > 0) {
       const latest = bowenArrivals[0]
       captureBowenCommunityWebcam(db, latest.time, data.dateIso).catch((e) =>
-        console.error('Community webcam capture failed:', e),
+        logger.error('Community webcam capture failed:', e),
       )
     }
 
@@ -99,7 +100,7 @@ export const pollFerryStatus = onSchedule(
 
 async function maybeSendNotifications(data) {
   if (!VAPID_PUBLIC_KEY.value() || !VAPID_PRIVATE_KEY.value()) {
-    console.log('VAPID keys not configured, skipping notification')
+    logger.log('VAPID keys not configured, skipping notification')
     return
   }
   configureWebPush(VAPID_PUBLIC_KEY.value(), VAPID_PRIVATE_KEY.value())
@@ -123,7 +124,7 @@ export const cleanupWebcams = onSchedule(
     timeZone: 'America/Vancouver',
   },
   async () => {
-    console.log('Running webcam cleanup...')
+    logger.log('Running webcam cleanup...')
     await cleanupOldWebcams()
   },
 )

@@ -1,3 +1,4 @@
+import { logger } from 'firebase-functions/logger'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { sendPushNotification } from './notify.js'
 import { LATE_NOTIFY_DEFAULT } from './constants.js'
@@ -7,7 +8,7 @@ export async function checkLatenessAndNotify(ferryData) {
   const currentLateness = ferryData.currentLateness
   if (currentLateness === null) return
 
-  console.log(`Current lateness: ${currentLateness} minutes`)
+  logger.log(`Current lateness: ${currentLateness} minutes`)
 
   const subscribers = await db.collection('pushSubscriptions')
     .where('topics', 'array-contains', 'delays')
@@ -19,7 +20,7 @@ export async function checkLatenessAndNotify(ferryData) {
     const wasNotified = sub.lastNotifiedAt
 
     if (currentLateness >= threshold && !wasNotified) {
-      console.log(`Notifying user ${doc.id}: ${currentLateness}m late`)
+      logger.log(`Notifying user ${doc.id}: ${currentLateness}m late`)
 
       const payload = {
         title: 'Ferry Delayed',
@@ -40,7 +41,7 @@ export async function checkLatenessAndNotify(ferryData) {
         await doc.ref.update({ lastNotifiedAt: currentLateness })
       }
     } else if (currentLateness < threshold && wasNotified) {
-      console.log(`Notifying user ${doc.id}: recovered`)
+      logger.log(`Notifying user ${doc.id}: recovered`)
 
       const payload = {
         title: 'Ferry On Time',
