@@ -351,6 +351,25 @@
                 @error="handleCamError(cam.globalIndex)"
                 @load="handleCamLoad(cam.globalIndex)"
               >
+                <div
+                  class="debugcss absolute-bottom transparent text-center q-ma-none q-pa-xs"
+                  v-if="cam.globalIndex === 5 && communitySailingEntry"
+                  @click.stop
+                >
+                  <q-btn
+                    v-if="!communityWebcamFull"
+                    no-caps
+                    outline
+                    dense
+                    color="negative"
+                    label="Does that look full?"
+                    class="bg-white full-width"
+                    @click="markCommunityFull"
+                  />
+                  <div v-else class="bg-white text-positive q-pa-xs rounded-borders text-caption">
+                    <q-icon name="check" /> Marked as Full
+                  </div>
+                </div>
                 <template v-slot:error>
                   <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
                     <q-icon name="videocam_off" size="24px" />
@@ -526,6 +545,7 @@
                       @click="saveRating('10%', 'arrival')"
                     />
                   </div>
+
                 </q-card-actions>
               </q-card>
             </div>
@@ -778,7 +798,7 @@ function onSnapshotError(err) {
   console.error('Snapshot image error:', err)
 }
 
-function saveRating(capacity, source) {
+function saveRating(capacity, source, filledAt) {
   const snap = source === 'arrival' ? arrivalSnapshot.value : departureSnapshot.value
   if (!snap) return
   if (!user.value) {
@@ -794,6 +814,7 @@ function saveRating(capacity, source) {
   addDoc(collection(db, 'capacityHistory'), {
     sailingKey,
     capacity,
+    filledAt: filledAt || null,
     recordedAt: Date.now(),
     userUid,
   })
@@ -805,7 +826,7 @@ function saveRating(capacity, source) {
         const entry = schedule?.find((e) => e.time === time)
         if (entry) {
           entry.lastCapacity = capacity
-          entry.filledAt = 'user_reported'
+          entry.filledAt = filledAt || 'user_reported'
         }
       }
     })
@@ -813,6 +834,29 @@ function saveRating(capacity, source) {
       console.error('Failed to save capacity rating:', err)
     })
   showSnapshotDialog.value = false
+}
+
+function markCommunityFull() {
+  const entry = communitySailingEntry.value
+  if (!entry) return
+  if (!user.value) {
+    showSignInDialog.value = true
+    return
+  }
+  const dateIso = nowInVancouver().format('YYYY-MM-DD')
+  const sailingKey = `${dateIso}_${entry.time}_To HSB`
+  addDoc(collection(db, 'capacityHistory'), {
+    sailingKey,
+    capacity: 'Full',
+    filledAt: Date.now(),
+    recordedAt: Date.now(),
+    userUid: user.value.uid,
+  })
+    .then(() => {
+      entry.lastCapacity = 'Full'
+      entry.filledAt = Date.now()
+    })
+    .catch((err) => console.error('Failed to mark community full:', err))
 }
 
 function captureDebugData() {
@@ -977,6 +1021,18 @@ const displayCams = computed(() =>
     globalIndex: i,
   })),
 )
+
+const communitySailingEntry = computed(() => {
+  if (!ferryData.value) return null
+  const now = nowDate()
+  return ferryData.value.bowenSchedule
+    .filter(s => !s.cancelled && timeToDate(s.time))
+    .find(s => timeToDate(s.time) > now) || null
+})
+const communityWebcamFull = computed(() => {
+  const e = communitySailingEntry.value
+  return e?.lastCapacity === 'Full' && !!e?.filledAt
+})
 
 const fullscreen = ref(false)
 const fullscreenIndex = ref(0)
