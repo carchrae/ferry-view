@@ -10,7 +10,7 @@ export async function augmentRecentActivity(db, data) {
   statusSnap.forEach((doc) => {
     const s = doc.data()
     logger.log('checking sailing status', s)
-    let departureTime = s.actualDepartureTime || s.sailingTime
+    let departureTime = s.actualDepartureTime
     if (!departureTime) return
     const depDate = timeToDate(departureTime)
     logger.log('depDate', { depDate, depDateGtnow: depDate > now })

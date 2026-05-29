@@ -2,6 +2,7 @@ import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import diff from 'microdiff'
 
 function detectProjectId() {
   const flag = process.argv.indexOf('--project')
@@ -55,6 +56,24 @@ function deserializeData(data) {
   return obj
 }
 
+function serializeData(data) {
+  if (data === null || data === undefined || typeof data !== 'object') return data
+  if (data instanceof Timestamp) return { __type: 'Timestamp', seconds: data.seconds, nanoseconds: data.nanoseconds }
+  if (data instanceof Date) return { __type: 'Date', value: data.getTime() }
+  if (Array.isArray(data)) return data.map(serializeData)
+  const obj = {}
+  for (const [k, v] of Object.entries(data)) {
+    obj[k] = serializeData(v)
+  }
+  return obj
+}
+
+function isEqual(a, b) {
+  return diff(serializeData(a), serializeData(b)).length === 0
+}
+
+const MAX_BATCH_SIZE = 400
+
 async function restoreCollection(name) {
   const filePath = join(BACKUP_DIR, `${name}.json`)
   if (!existsSync(filePath)) {
@@ -63,13 +82,32 @@ async function restoreCollection(name) {
   }
   const docs = JSON.parse(readFileSync(filePath, 'utf-8'))
   if (!docs.length) return 0
-  const batch = db.batch()
-  for (const { id, data } of docs) {
-    const ref = db.collection(name).doc(id)
-    batch.set(ref, deserializeData(data))
+  let restored = 0, skipped = 0
+  for (let i = 0; i < docs.length; i += MAX_BATCH_SIZE) {
+    const chunk = docs.slice(i, i + MAX_BATCH_SIZE)
+    const refs = chunk.map(({ id }) => db.collection(name).doc(id))
+    const existing = (await db.getAll(...refs)).reduce((acc, snap) => {
+      if (snap.exists) acc[snap.id] = snap.data()
+      return acc
+    }, {})
+
+    const batch = db.batch()
+    let writes = 0
+    for (const { id, data } of chunk) {
+      const desired = deserializeData(data)
+      if (existing[id] && isEqual(existing[id], desired)) {
+        skipped++
+        continue
+      }
+      batch.set(db.collection(name).doc(id), desired)
+      writes++
+    }
+    if (writes) await batch.commit()
+    restored += writes
+    const done = Math.min(i + MAX_BATCH_SIZE, docs.length)
+    console.log(`  ${name}: ${done}/${docs.length}  (${restored} written, ${skipped} skipped)`)
   }
-  await batch.commit()
-  return docs.length
+  return restored
 }
 
 async function main() {
@@ -77,7 +115,7 @@ async function main() {
   let total = 0
   for (const name of COLLECTIONS) {
     const count = await restoreCollection(name)
-    if (count) console.log(`  ${name}: ${count} doc(s) restored`)
+    if (count) console.log(`  ${name}: ${count} doc(s) written`)
     total += count
   }
   console.log(`Done. ${total} document(s) restored.`)

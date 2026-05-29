@@ -38,20 +38,44 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
   const dataChanged = forceUpdate || checkDataChanged(newDataSanitized, existingDataSanitized)
 
-  await augmentRecentActivity(db, data)
+  // Match against raw API recentActivity (no backfill yet)
   const { hsbPast, bowenPast } = matchDepartures(data, now)
-  enrichDeckCapacity(data, existingData)
-  await augmentFromCapacityHistory(db, data)
 
+  // Enrich and persist departure/capacity records before backfill,
+  // so that sailingStatus docs have the correct actualDepartureTime
+  // before augmentRecentActivity reads them.
+  enrichDeckCapacity(data, existingData)
   if (dataChanged) {
-    await db.collection('ferryStatus').doc('current').set(data)
     await recordCapacityChanges(db, data, existingData)
     await recordDepartureTimes(db, data, hsbPast, bowenPast)
-  } else{
-    logger.debug('No changes detected, skipping save');
+  } else {
+    logger.debug('No changes detected, skipping save')
   }
 
-  return { data, hsbPast, bowenPast, dataChanged }
+  // Now backfill — reads freshly-corrected sailingStatus docs
+  await augmentRecentActivity(db, data)
+  await augmentFromCapacityHistory(db, data)
+
+  // Clear first-match artifacts from schedule so the second match
+  // re-evaluates from scratch with the (now augmented) recentActivity.
+  for (const entry of data.hsbSchedule) {
+    delete entry.matchedDepartureTime
+    delete entry.latenessMinutes
+  }
+  for (const entry of data.bowenSchedule) {
+    delete entry.matchedDepartureTime
+    delete entry.latenessMinutes
+  }
+
+  // Re-match for the frontend response (picks up any backfilled events)
+  const { hsbPast: hsbPast2, bowenPast: bowenPast2 } = matchDepartures(data, now)
+
+  // Save the fully-enriched data to Firestore
+  if (dataChanged) {
+    await db.collection('ferryStatus').doc('current').set(data)
+  }
+
+  return { data, hsbPast: hsbPast2, bowenPast: bowenPast2, dataChanged }
 }
 
 function captureWebcams(bowenPast, data) {

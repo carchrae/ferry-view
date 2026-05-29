@@ -352,8 +352,8 @@
                 @load="handleCamLoad(cam.globalIndex)"
               >
                 <div
-                  class="debugcss absolute-bottom transparent text-center q-ma-none q-pa-xs"
-                  v-if="cam.globalIndex === 5 && communitySailingEntry"
+                  class="absolute-bottom transparent text-center q-ma-none q-pa-xs"
+                  v-if="cam.globalIndex === 5 && communitySailingEntry && !hideCommunityWebcamFullButton"
                   @click.stop
                 >
                   <q-btn
@@ -1029,6 +1029,8 @@ const communitySailingEntry = computed(() => {
     .filter(s => !s.cancelled && timeToDate(s.time))
     .find(s => timeToDate(s.time) > now) || null
 })
+
+const hideCommunityWebcamFullButton = true;
 const communityWebcamFull = computed(() => {
   const e = communitySailingEntry.value
   return e?.lastCapacity === 'Full' && !!e?.filledAt

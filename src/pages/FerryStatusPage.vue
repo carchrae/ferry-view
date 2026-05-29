@@ -1,20 +1,54 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="text-h5 q-mb-sm">Historical Sailing Data</div>
+    <div class="row items-center q-mb-sm">
+      <div class="col">
+        <div class="text-h5">Historical Sailing Data</div>
+      </div>
+      <div class="col-auto gt-sm">
+        <div class="row q-col-gutter-sm items-end">
+          <div class="col-auto" style="width: 120px">
+            <q-input
+              v-model.number="weeksBack"
+              type="number"
+              label="Weeks"
+              min="1"
+              max="52"
+              outlined
+              dense
+            />
+          </div>
+          <div class="col-auto">
+            <q-btn
+              label="Refresh"
+              color="primary"
+              icon="refresh"
+              :loading="loading"
+              @click="fetchData"
+            />
+          </div>
+          <div class="col-auto">
+            <q-checkbox v-if="SHOW_HOLIDAY_UI" v-model="excludeHolidays" label="Exclude holidays" dense />
+          </div>
+        </div>
+      </div>
+      <div class="col-auto lt-md">
+        <q-btn flat round icon="settings" @click="showMobileSettings = !showMobileSettings" />
+      </div>
+    </div>
 
-    <div class="row q-col-gutter-sm q-mb-md items-end">
-      <div class="col-6 col-md-3">
+    <div v-if="showMobileSettings" class="lt-md row q-col-gutter-sm q-mb-md items-end">
+      <div class="col-6">
         <q-input
           v-model.number="weeksBack"
           type="number"
-          label="Weeks of data"
+          label="Weeks"
           min="1"
           max="52"
           outlined
           dense
         />
       </div>
-      <div class="col-6 col-md-3">
+      <div class="col-6">
         <q-btn
           label="Refresh"
           color="primary"
@@ -24,13 +58,12 @@
           class="full-width"
         />
       </div>
-      <div class="col-12 col-md-6">
-        <q-checkbox v-model="excludeHolidays" label="Exclude holiday-impacted dates" />
+      <div class="col-12">
+        <q-checkbox v-if="SHOW_HOLIDAY_UI" v-model="excludeHolidays" label="Exclude holiday-impacted dates" dense />
       </div>
     </div>
 
-    <div
-      v-if="excludeHolidays && impactedDates.length"
+    <div v-if="SHOW_HOLIDAY_UI"
       class="text-caption text-grey-6 q-mb-sm"
     >
       Excluding {{ impactedDates.length }} date(s) near holidays:
@@ -63,13 +96,15 @@
 
       <q-tab-panels v-model="directionTab" animated>
         <q-tab-panel v-for="panel in ['hsb', 'bowen']" :key="panel" :name="panel" class="q-pa-none">
-          <div class="row q-col-gutter-md">
+
+          <!-- Desktop: show all 7 days -->
+          <div class="row q-col-gutter-md gt-sm">
             <div
               v-for="day in dayNames"
               :key="day.key"
               class="col-12 col-md-6 col-lg-4"
             >
-              <q-card flat bordered class="full-height">
+              <q-card flat bordered class="full-height" :class="day.key === todayKey ? 'today-card' : ''">
                 <q-card-section class="bg-blue-grey-1 q-py-sm">
                   <div class="text-subtitle2 text-weight-bold">{{ day.label }}</div>
                   <div class="text-caption text-grey-6">{{ weekCount }} week(s)</div>
@@ -86,6 +121,17 @@
                   separator
                   class="q-pa-none"
                 >
+                  <q-item class="bg-grey-2">
+                    <q-item-section class="col-3">
+                      <q-item-label class="text-overline">Time</q-item-label>
+                    </q-item-section>
+                    <q-item-section class="col-5">
+                      <q-item-label class="text-overline">Avg departure</q-item-label>
+                    </q-item-section>
+                    <q-item-section class="col-4 text-right">
+                      <q-item-label class="text-overline">Avg capacity</q-item-label>
+                    </q-item-section>
+                  </q-item>
                   <q-item
                     v-for="[time, info] in sortedEntries(byDayOfWeek[panel]?.[day.key])"
                     :key="time"
@@ -94,15 +140,20 @@
                       <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
                     </q-item-section>
                     <q-item-section class="col-5">
-                      <q-item-label class="text-caption" v-if="info.avgLateness !== null">
-                        {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg
-                      </q-item-label>
+                      <template v-if="info.avgLateness !== null">
+                        <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
+                          {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
+                        </q-item-label>
+                        <q-item-label class="text-caption text-grey-7">
+                          {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
+                        </q-item-label>
+                      </template>
                       <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
                     </q-item-section>
                     <q-item-section class="col-4 text-right">
                       <q-item-label class="text-caption" :class="fullClass(info)">
                         <template v-if="info.fullPct > 0">
-                          Full {{ info.fullPct }}%
+                          {{ fullLabel(info) }}
                         </template>
                         <template v-else-if="info.avgCapacityPct !== null">
                           {{ info.avgCapacityPct }}% free
@@ -110,10 +161,11 @@
                         <template v-else>—</template>
                       </q-item-label>
                       <q-item-label
-                        v-if="info.fullPct > 0 && info.avgFillTime"
-                        class="text-caption text-grey-6"
+                        v-if="info.fullPct > 0"
+                        class="text-caption text-grey-7"
                       >
-                        ≈{{ info.avgFillTime }}
+                        {{ info.fullPct }}%
+                        <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
                       </q-item-label>
                     </q-item-section>
                   </q-item>
@@ -121,6 +173,98 @@
               </q-card>
             </div>
           </div>
+
+          <!-- Mobile: single-day selector -->
+          <div class="lt-md">
+            <div class="row q-col-gutter-sm q-mb-md items-center">
+              <div class="col-auto">
+                <q-btn flat round dense icon="chevron_left" @click="prevDay" />
+              </div>
+              <div class="col">
+                <q-select
+                  v-model="selectedDay"
+                  :options="dayNames"
+                  option-value="key"
+                  option-label="label"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                />
+              </div>
+              <div class="col-auto">
+                <q-btn flat round dense icon="chevron_right" @click="nextDay" />
+              </div>
+            </div>
+            <q-card flat bordered class="full-height" :class="selectedDay === todayKey ? 'today-card' : ''">
+              <q-card-section class="bg-blue-grey-1 q-py-sm">
+                <div class="text-subtitle2 text-weight-bold">{{ dayNames.find(d => d.key === selectedDay)?.label }}</div>
+                <div class="text-caption text-grey-6">{{ weekCount }} week(s)</div>
+              </q-card-section>
+              <q-card-section
+                v-if="!byDayOfWeek[panel]?.[selectedDay]"
+                class="text-center text-grey-5 q-py-md"
+              >
+                No data
+              </q-card-section>
+              <q-list
+                v-else
+                dense
+                separator
+                class="q-pa-none"
+              >
+                <q-item class="bg-grey-2">
+                  <q-item-section class="col-3">
+                    <q-item-label class="text-overline">Time</q-item-label>
+                  </q-item-section>
+                  <q-item-section class="col-5">
+                    <q-item-label class="text-overline">Avg departure</q-item-label>
+                  </q-item-section>
+                  <q-item-section class="col-4 text-right">
+                    <q-item-label class="text-overline">Avg capacity</q-item-label>
+                  </q-item-section>
+                </q-item>
+                <q-item
+                  v-for="[time, info] in sortedEntries(byDayOfWeek[panel]?.[selectedDay])"
+                  :key="time"
+                >
+                  <q-item-section class="col-3">
+                    <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
+                  </q-item-section>
+                  <q-item-section class="col-5">
+                    <template v-if="info.avgLateness !== null">
+                      <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
+                        {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
+                      </q-item-label>
+                      <q-item-label class="text-caption text-grey-7">
+                        {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
+                      </q-item-label>
+                    </template>
+                    <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
+                  </q-item-section>
+                  <q-item-section class="col-4 text-right">
+                    <q-item-label class="text-caption" :class="fullClass(info)">
+                      <template v-if="info.fullPct > 0">
+                        {{ fullLabel(info) }}
+                      </template>
+                      <template v-else-if="info.avgCapacityPct !== null">
+                        {{ info.avgCapacityPct }}% free
+                      </template>
+                      <template v-else>—</template>
+                    </q-item-label>
+                    <q-item-label
+                      v-if="info.fullPct > 0"
+                      class="text-caption text-grey-7"
+                    >
+                      {{ info.fullPct }}%
+                      <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
+                    </q-item-label>
+                  </q-item-section>
+                </q-item>
+              </q-list>
+            </q-card>
+          </div>
+
         </q-tab-panel>
       </q-tab-panels>
     </template>
@@ -139,19 +283,35 @@ const directionTab = ref('hsb')
 const loading = ref(false)
 const error = ref(null)
 const sailingDocs = ref([])
+const showMobileSettings = ref(false)
 
+const selectedDay = ref(nowInVancouver().format('dddd'))
+const todayKey = computed(() => nowInVancouver().format('dddd'))
+const selectedDayIdx = computed(() => dayNames.findIndex(d => d.key === selectedDay.value))
+function prevDay() {
+  selectedDay.value = dayNames[(selectedDayIdx.value + dayNames.length - 1) % dayNames.length].key
+}
+function nextDay() {
+  selectedDay.value = dayNames[(selectedDayIdx.value + 1) % dayNames.length].key
+}
+
+// TODO: Let the user enter holiday dates in the UI. These will be used
+// to exclude impacted sailings from the historical averages. The
+// excludeHolidays checkbox and impacted-dates banner are hidden but
+// kept in source for when this UI is implemented.
+const SHOW_HOLIDAY_UI = false
 const HOLIDAY_DATES = []
 const HOLIDAY_IMPACT_DAYS_BEFORE = 1
 const HOLIDAY_IMPACT_DAYS_AFTER = 0
 
 const dayNames = [
+  { key: 'Sunday', label: 'Sunday' },
   { key: 'Monday', label: 'Monday' },
   { key: 'Tuesday', label: 'Tuesday' },
   { key: 'Wednesday', label: 'Wednesday' },
   { key: 'Thursday', label: 'Thursday' },
   { key: 'Friday', label: 'Friday' },
   { key: 'Saturday', label: 'Saturday' },
-  { key: 'Sunday', label: 'Sunday' },
 ]
 const DOW_MAP = { 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday', 0: 'Sunday' }
 
@@ -174,6 +334,20 @@ function getImpactedDates() {
     }
   }
   return set
+}
+
+function latenessClass(lateness) {
+  if (lateness === null) return 'text-grey-5'
+  if (lateness <= 0) return 'text-positive'
+  if (lateness <= 5) return 'text-warning'
+  return 'text-negative text-weight-bold'
+}
+
+function fullLabel(info) {
+  if (info.fullPct >= 80) return 'Often Full'
+  if (info.fullPct >= 50) return 'Sometimes Full'
+  if (info.fullPct > 0) return 'Seldom Full'
+  return ''
 }
 
 function fullClass(info) {
@@ -265,7 +439,7 @@ const byDayOfWeek = computed(() => {
     }
 
     if (!grp[time]) {
-      grp[time] = { count: 0, latenessMins: [], fullCount: 0, filledAts: [], lastCapacities: [] }
+      grp[time] = { count: 0, latenessMins: [], lateCount: 0, fullCount: 0, filledAts: [], lastCapacities: [] }
     }
     const entry = grp[time]
     entry.count++
@@ -275,6 +449,7 @@ const byDayOfWeek = computed(() => {
       const sched = parseMinutes(time)
       if (dep !== null && sched !== null) {
         entry.latenessMins.push(dep - sched)
+        if (dep - sched >= 2) entry.lateCount++
       }
     }
     if (doc.lastCapacity === 'Full') {
@@ -317,6 +492,9 @@ const byDayOfWeek = computed(() => {
           ? Math.round(numbers.reduce((a, b) => a + b, 0) / numbers.length)
           : null
 
+        const latePct = raw.latenessMins.length
+          ? Math.round((raw.lateCount / raw.latenessMins.length) * 100)
+          : null
         const fullPct = Math.round((raw.fullCount / raw.count) * 100)
         const avgFillTime = raw.filledAts.length
           ? dayjs.tz(Math.round(raw.filledAts.reduce((a, b) => a + b, 0) / raw.filledAts.length), TZ).format('h:mm a')
@@ -325,6 +503,7 @@ const byDayOfWeek = computed(() => {
         result[dir][dayKey][time] = {
           count: raw.count,
           avgLateness,
+          latePct,
           fullPct,
           avgFillTime,
           avgCapacityPct,
@@ -339,3 +518,9 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+.today-card {
+  border: 2px solid var(--q-primary) !important;
+}
+</style>
