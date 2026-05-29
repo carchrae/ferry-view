@@ -17,9 +17,6 @@
       <div class="col-12">
         <q-banner dense class="bg-negative text-white rounded-borders">
           Failed to load: {{ error }}
-          <template v-slot:action>
-            <q-btn flat label="Retry" @click="fetchFerryData" />
-          </template>
         </q-banner>
       </div>
     </div>
@@ -91,7 +88,7 @@
             <q-space />
             <div class="text-caption text-grey-6">
               Last Update <br />
-              {{ ferryData.lastUpdate }}
+              {{ formatTime12h(ferryData.lastUpdate) }}
             </div>
           </q-card-section>
         </q-card>
@@ -102,8 +99,8 @@
           <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
             last sailing was
             <q-badge rounded :color="lastSailing.diffColor" class="badge-gap" dense>{{
-              lastSailing.diffText
-            }}</q-badge>
+                lastSailing.diffText
+              }}</q-badge>
           </template>
           <template v-else-if="lastSailing.ontime">
             last sailing was
@@ -122,15 +119,15 @@
                       Horseshoe Bay
                     </div>
                     <div
-                      v-for="(event, i) in allPastHSB.slice(-3)"
+                      v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ event.shortTime }}
+                        {{ formatTime12h(event.shortTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                        >?</q-badge
+                      >?</q-badge
                       >
                       <q-badge
                         rounded
@@ -138,7 +135,7 @@
                         :color="event.diffColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -146,25 +143,25 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
-                      >
+                      >{{ formatDeckBadge(event, $q.screen.xs)
+                        }}</q-badge>
                     </div>
-                    <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
+                    <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
                   <div class="col">
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
                     <div
-                      v-for="(event, i) in allPastBowen.slice(-3)"
+                      v-for="(event, i) in recentPastBowen.slice(-3)"
                       :key="'pb' + i"
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ event.shortTime }}
+                        {{ formatTime12h(event.shortTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                        >?</q-badge
+                      >?</q-badge
                       >
                       <q-badge
                         rounded
@@ -172,7 +169,7 @@
                         :color="event.diffColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -180,10 +177,11 @@
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
                         dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
                       >
+                        {{ formatDeckBadge(event, $q.screen.xs) }}
+                      </q-badge>
                     </div>
-                    <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
+                    <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
@@ -197,7 +195,7 @@
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ s.shortTime }}
+                        {{ formatTime12h(s.shortTime) }}
                       </div>
                       <q-badge
                         rounded
@@ -205,7 +203,7 @@
                         :color="s.lateColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -213,8 +211,7 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s) }}</q-badge
-                      >
+                      >{{ formatDeckBadge(s)}}</q-badge>
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -227,7 +224,7 @@
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ s.shortTime }}
+                        {{ formatTime12h(s.shortTime) }}
                       </div>
                       <q-badge
                         rounded
@@ -235,7 +232,7 @@
                         :color="s.lateColor"
                         class="badge-gap"
                         dense
-                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
                       >
                       <q-badge
                         rounded
@@ -243,8 +240,8 @@
                         :color="getDeckColor(s.deckSpace)"
                         dense
                         class="badge-gap"
-                        >{{ formatDeckBadge(s) }}</q-badge
-                      >
+                      >{{ formatDeckBadge(s)
+                        }}</q-badge>
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -256,16 +253,32 @@
           </div>
         </div>
         <!--        <div class="text-caption text-grey-5 text-center">although we try, computers can lie</div>-->
-        <q-btn
-          no-caps
-          dense
-          flat
-          color="primary"
-          icon="calendar_today"
-          label="Today's Sailings"
-          class="full-width q-mt-xs q-mb-sm"
-          @click="showFullDialog = true"
-        />
+        <div class="row q-mb-sm q-col-gutter-sm">
+          <div class="col">
+            <q-btn
+              no-caps
+              dense
+              outline
+              color="primary"
+              icon="calendar_today"
+              label="Today's Sailings"
+              class="full-width no-wrap"
+              @click="showFullDialog = true"
+            />
+          </div>
+          <div class="col" v-if="departureSnapshot || arrivalSnapshot">
+            <q-btn
+              no-caps
+              dense
+              outline
+              color="primary"
+              icon="photo_camera"
+              label="Last Bowen Sailing"
+              class="full-width no-wrap"
+              @click="showSnapshotDialog = true"
+            />
+          </div>
+        </div>
         <!-- Rides -->
         <div class="col-12 col-md-6">
           <q-card flat bordered>
@@ -323,21 +336,6 @@
 
       <!-- Cameras Grid -->
       <div class="col-12 col-md-6">
-        <div v-if="departureSnapshot && !snapshotRated" class="q-mb-sm">
-          <q-card flat bordered>
-            <q-img :src="departureSnapshot.imageUrl" ratio="16/9" spinner-color="primary" />
-            <q-card-section class="q-pa-sm">
-              <div class="text-subtitle2">
-                Departure from Bowen — {{ departureSnapshot.sailingTime }}
-              </div>
-              <div class="text-caption text-grey-7 q-mt-sm">Was this an overload?</div>
-              <div class="row q-mt-sm q-gutter-sm">
-                <q-btn no-caps dense color="negative" label="Yes" @click="rateOverload(true)" />
-                <q-btn no-caps dense flat color="grey-7" label="No" @click="rateOverload(false)" />
-              </div>
-            </q-card-section>
-          </q-card>
-        </div>
         <div class="row q-col-gutter-sm">
           <div v-for="(cam, index) in displayCams" :key="index" class="col-6">
             <q-card
@@ -353,6 +351,25 @@
                 @error="handleCamError(cam.globalIndex)"
                 @load="handleCamLoad(cam.globalIndex)"
               >
+                <div
+                  class="absolute-bottom transparent text-center q-ma-none q-pa-xs"
+                  v-if="cam.globalIndex === 5 && communitySailingEntry && !hideCommunityWebcamFullButton"
+                  @click.stop
+                >
+                  <q-btn
+                    v-if="!communityWebcamFull"
+                    no-caps
+                    outline
+                    dense
+                    color="negative"
+                    label="Does that look full?"
+                    class="bg-white full-width"
+                    @click="markCommunityFull"
+                  />
+                  <div v-else class="bg-white text-positive q-pa-xs rounded-borders text-caption">
+                    <q-icon name="check" /> Marked as Full
+                  </div>
+                </div>
                 <template v-slot:error>
                   <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
                     <q-icon name="videocam_off" size="24px" />
@@ -431,30 +448,112 @@
       </div>
     </q-dialog>
 
-    <!-- Overload dialog -->
-    <q-dialog v-model="showOverloadDialog">
-      <q-card style="min-width: 300px">
-        <q-card-section>
-          <div class="text-h6">Overload Detected?</div>
+    <!-- Snapshot dialog -->
+    <q-dialog v-model="showSnapshotDialog" position="top">
+      <q-card
+        :style="{
+          minWidth: $q.screen.gt.xs ? '400px' : '95vw',
+          maxWidth: '95vw',
+          maxHeight: '100vh',
+        }"
+      >
+        <q-card-section class="q-pb-none">
+          <div class="row items-start no-wrap">
+            <div class="text-body2 text-weight-medium col">
+              These photos capture how full the last sailing from Bowen was. You can record how full
+              the ferry was!
+            </div>
+            <q-btn flat dense icon="close" aria-label="Close" @click="showSnapshotDialog = false" class="q-ml-sm" />
+          </div>
         </q-card-section>
-        <q-card-section class="q-pt-none">
-          <p>This photo was taken just after the ferry left Bowen.</p>
-          <p>
-            If you can see <strong>many cars turning back</strong> from the terminal, it was likely
-            an overload.
-          </p>
-          <p>If you only see a single car, someone probably just missed the ferry.</p>
+        <q-separator />
+        <q-card-section class="q-pa-sm" style="overflow-y: auto">
+          <div class="row q-col-gutter-sm">
+            <div v-if="departureSnapshot" class="col-12 col-md-6">
+              <q-card flat bordered>
+                <q-img
+                  :src="departureSnapshot.imageUrl"
+                  :ratio="16 / 9"
+                  spinner-color="primary"
+                  @error="onSnapshotError"
+                >
+                  <template v-slot:error>
+                    <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
+                      <q-icon name="videocam_off" size="24px" />
+                    </div>
+                  </template>
+                </q-img>
+                <q-card-actions class="q-py-sm q-px-sm column items-stretch">
+                  <div class="text-subtitle2 q-mb-xs">
+                    Departure — {{ formatTime12h(departureSnapshot.sailingTime) }}
+                  </div>
+                  <div class="text-caption text-grey-7 q-mb-sm">
+                    Select <strong>Full</strong> — if there are many cars in the photo after the ferry
+                    loaded, this was likely an overload. If it is one car, they may have left home 30
+                    seconds too late.
+                  </div>
+                  <q-btn
+                    no-caps
+                    outlined
+                    color="negative"
+                    label="Full"
+                    @click="saveRating('Full', 'departure')"
+                  />
+                </q-card-actions>
+              </q-card>
+            </div>
+            <div v-if="arrivalSnapshot" class="col-12 col-md-6">
+              <q-card flat bordered>
+                <q-img
+                  :src="arrivalSnapshot.imageUrl"
+                  :ratio="16 / 9"
+                  spinner-color="primary"
+                  @error="onSnapshotError"
+                >
+                  <template v-slot:error>
+                    <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
+                      <q-icon name="videocam_off" size="24px" />
+                    </div>
+                  </template>
+                </q-img>
+                <q-card-actions class="q-py-sm q-px-sm column items-stretch">
+                  <div class="text-subtitle2 q-mb-xs">
+                    Arrival — {{ formatTime12h(arrivalSnapshot.arrivalTime) }}
+                  </div>
+                  <div class="text-caption text-grey-7 q-mb-sm">
+                    Select <strong>75% Full</strong> — are there cars on the hill but not all the way
+                    up?
+                    <br />
+                    Select <strong>90% Full</strong> — does the community photo show cars as far as
+                    you can see?
+                  </div>
+                  <div class="row q-gutter-sm">
+                    <q-btn
+                      no-caps
+                      outlined
+                      class="col"
+                      color="amber-8"
+                      label="75% Full"
+                      @click="saveRating('25%', 'arrival')"
+                    />
+                    <q-btn
+                      no-caps
+                      outlined
+                      class="col"
+                      color="warning"
+                      label="90% Full"
+                      @click="saveRating('10%', 'arrival')"
+                    />
+                  </div>
+
+                </q-card-actions>
+              </q-card>
+            </div>
+          </div>
+          <div class="q-mt-md text-center" v-if="$q.screen.xs">
+            <q-btn flat color="grey-7" icon="close" label="Close" @click="showSnapshotDialog = false" />
+          </div>
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn
-            no-caps
-            flat
-            label="Got it"
-            color="primary"
-            v-close-overlay
-            @click="dismissOverload"
-          />
-        </q-card-actions>
       </q-card>
     </q-dialog>
 
@@ -467,7 +566,7 @@
           maxHeight: '90vh',
         }"
       >
-        <q-card-section class="row items-center q-pb-none">
+        <q-card-section class="row items-start q-pb-none">
           <div class="text-h6">Today's Sailings</div>
           <q-space />
           <q-btn flat dense icon="close" aria-label="Close" @click="showFullDialog = false" />
@@ -481,8 +580,8 @@
             <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
               last sailing
               <q-badge rounded :color="lastSailing.diffColor" class="badge-gap" dense>{{
-                lastSailing.diffText
-              }}</q-badge>
+                  lastSailing.diffText
+                }}</q-badge>
             </template>
             <template v-else-if="lastSailing.ontime">
               <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
@@ -498,10 +597,10 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ event.shortTime }}
+                  {{ formatTime12h(event.shortTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                  >?
+                >?
                 </q-badge>
                 <q-badge
                   rounded
@@ -509,7 +608,7 @@
                   :color="event.diffColor"
                   class="badge-gap"
                   dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
+                >{{ shortText(event.diffText, $q.screen.xs) }}
                 </q-badge>
                 <q-badge
                   rounded
@@ -517,8 +616,9 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge>
-                </div>
+                >{{ formatDeckBadge(event, $q.screen.xs)
+                  }}</q-badge>
+              </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
             <div class="col">
@@ -529,10 +629,10 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ event.shortTime }}
+                  {{ formatTime12h(event.shortTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                  >?
+                >?
                 </q-badge>
                 <q-badge
                   rounded
@@ -540,7 +640,7 @@
                   :color="event.diffColor"
                   class="badge-gap"
                   dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
+                >{{ shortText(event.diffText, $q.screen.xs) }}
                 </q-badge>
                 <q-badge
                   rounded
@@ -548,7 +648,8 @@
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
                   dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge>
+                >{{ formatDeckBadge(event, $q.screen.xs)
+                  }}</q-badge>
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -562,7 +663,7 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ s.shortTime }}
+                  {{ formatTime12h(s.shortTime) }}
                 </div>
                 <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
                   {{ shortText(s.lateText, $q.screen.xs) }}
@@ -573,8 +674,8 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s) }}</q-badge
-                >
+                >{{ formatDeckBadge(s)
+                  }}</q-badge>
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -585,7 +686,7 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ s.shortTime }}
+                  {{ formatTime12h(s.shortTime) }}
                 </div>
                 <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
                   {{ shortText(s.lateText, $q.screen.xs) }}
@@ -596,8 +697,8 @@
                   :color="getDeckColor(s.deckSpace)"
                   dense
                   class="badge-gap"
-                  >{{ formatDeckBadge(s) }}</q-badge
-                >
+                >{{ formatDeckBadge(s)
+                  }}</q-badge>
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                 None
@@ -618,6 +719,8 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <SignInDialog v-model="showSignInDialog" />
   </q-page>
 </template>
 
@@ -626,61 +729,139 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
-import { useSchedule, parseTimeToday } from 'src/composables/useSchedule'
+import { useSchedule, timeToDate } from 'src/composables/useSchedule'
+import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 import { isStaging, db } from 'src/boot/firebase'
-import { doc, onSnapshot } from 'firebase/firestore'
+import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
+import SignInDialog from 'src/components/SignInDialog.vue'
+import { useAuth } from 'src/composables/useAuth'
 
 const { ferryData, loading, error } = useFirestoreFerryListener()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
 
-const TIME_OFFSET_MS = 0
-const nowDate = () => new Date(Date.now() + TIME_OFFSET_MS)
-const oneMinuteFromNowDate = () => new Date(Date.now() + 1000 * 60 + TIME_OFFSET_MS)
-const nowMs = () => Date.now() + TIME_OFFSET_MS
+const nowDate = () => nowInVancouver()
+const oneMinuteFromNowDate = () => nowInVancouver().add(1, 'minute')
+const nowMs = () => Date.now()
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 
-const departureSnapshot = ref(null)
-const showOverloadDialog = ref(false)
-let lastSnapshotKey = null
-const snapshotRated = ref(false)
+const { user } = useAuth()
 
-let unsubSnapshot = null
+const showSignInDialog = ref(false)
+
+const departureSnapshot = ref(null)
+const arrivalSnapshot = ref(null)
+const showSnapshotDialog = ref(false)
+let lastSnapshotKey = null
+let lastArrivalKey = null
+
+let unsubDeparture = null
+let unsubArrival = null
 onMounted(() => {
-  unsubSnapshot = onSnapshot(doc(db, 'snapshots', 'latestBowenDeparture'), (snap) => {
-    if (!snap.exists()) return
-    const data = snap.data()
-    if (data.sailingKey !== lastSnapshotKey) {
-      lastSnapshotKey = data.sailingKey
-      snapshotRated.value = false
-    }
-    departureSnapshot.value = data
-  }, (err) => {
-    console.error('Departure snapshot listener error:', err)
-  })
+  unsubDeparture = onSnapshot(
+    doc(db, 'snapshots', 'latestBowenDeparture'),
+    (snap) => {
+      if (!snap.exists()) return
+      const data = snap.data()
+      if (data.sailingKey !== lastSnapshotKey) {
+        lastSnapshotKey = data.sailingKey
+      }
+      departureSnapshot.value = data
+    },
+    (err) => {
+      console.error('Departure snapshot listener error:', err)
+    },
+  )
+  unsubArrival = onSnapshot(
+    doc(db, 'snapshots', 'latestBowenArrival'),
+    (snap) => {
+      if (!snap.exists()) return
+      const data = snap.data()
+      if (data.arrivalTime !== lastArrivalKey) {
+        lastArrivalKey = data.arrivalTime
+      }
+      arrivalSnapshot.value = data
+    },
+    (err) => {
+      console.error('Arrival snapshot listener error:', err)
+    },
+  )
 })
 onUnmounted(() => {
-  if (unsubSnapshot) unsubSnapshot()
+  if (unsubDeparture) unsubDeparture()
+  if (unsubArrival) unsubArrival()
 })
 
-function rateOverload(isOverload) {
-  if (isOverload) {
-    showOverloadDialog.value = true
-  } else {
-    snapshotRated.value = true
-  }
+function onSnapshotError(err) {
+  console.error('Snapshot image error:', err)
 }
 
-function dismissOverload() {
-  showOverloadDialog.value = false
-  snapshotRated.value = true
+function saveRating(capacity, source, filledAt) {
+  const snap = source === 'arrival' ? arrivalSnapshot.value : departureSnapshot.value
+  if (!snap) return
+  if (!user.value) {
+    showSignInDialog.value = true
+    return
+  }
+  const sailingKey = snap.sailingKey
+  const userUid = user.value.uid
+  if (!sailingKey || !userUid) {
+    console.error('Missing required fields', { sailingKey, userUid })
+    return
+  }
+  addDoc(collection(db, 'capacityHistory'), {
+    sailingKey,
+    capacity,
+    filledAt: filledAt || null,
+    recordedAt: Date.now(),
+    userUid,
+  })
+    .then(() => {
+      const m = sailingKey.match(/^\d{4}-\d{2}-\d{2}_(.+)_(To\s.+)$/)
+      if (m && ferryData.value) {
+        const [, time, direction] = m
+        const schedule = direction === 'To HSB' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
+        const entry = schedule?.find((e) => e.time === time)
+        if (entry) {
+          entry.lastCapacity = capacity
+          entry.filledAt = filledAt || 'user_reported'
+        }
+      }
+    })
+    .catch((err) => {
+      console.error('Failed to save capacity rating:', err)
+    })
+  showSnapshotDialog.value = false
+}
+
+function markCommunityFull() {
+  const entry = communitySailingEntry.value
+  if (!entry) return
+  if (!user.value) {
+    showSignInDialog.value = true
+    return
+  }
+  const dateIso = nowInVancouver().format('YYYY-MM-DD')
+  const sailingKey = `${dateIso}_${entry.time}_To HSB`
+  addDoc(collection(db, 'capacityHistory'), {
+    sailingKey,
+    capacity: 'Full',
+    filledAt: Date.now(),
+    recordedAt: Date.now(),
+    userUid: user.value.uid,
+  })
+    .then(() => {
+      entry.lastCapacity = 'Full'
+      entry.filledAt = Date.now()
+    })
+    .catch((err) => console.error('Failed to mark community full:', err))
 }
 
 function captureDebugData() {
   const payload = {
-    capturedAt: new Date().toISOString(),
+    capturedAt: nowInVancouver().toISOString(),
     now: nowDate().toISOString(),
     ferryData: JSON.parse(JSON.stringify(ferryData.value)),
     computed: {
@@ -700,14 +881,8 @@ function captureDebugData() {
     .catch(() => alert('Failed to copy to clipboard'))
 }
 
-function formatTime(date) {
-  let hours = date.getHours()
-  const mins = String(date.getMinutes()).padStart(2, '0')
-  const secs = String(date.getSeconds()).padStart(2, '0')
-  const ampm = hours >= 12 ? 'PM' : 'AM'
-  if (hours > 12) hours -= 12
-  if (hours === 0) hours = 12
-  return `${hours}:${mins}:${secs} ${ampm}`
+function formatTime(d) {
+  return `${String(d.hour()).padStart(2, '0')}:${String(d.minute()).padStart(2, '0')}`
 }
 
 function delayDepartures() {
@@ -719,16 +894,15 @@ function delayDepartures() {
   const events = ferryData.value.recentActivity
   const departed = events.filter((e) => e.action === 'Departed')
   const sorted = [...departed].sort((a, b) => {
-    const ta = parseTimeToday(a.time)
-    const tb = parseTimeToday(b.time)
+    const ta = timeToDate(a.time)
+    const tb = timeToDate(b.time)
     return ta - tb
   })
 
   sorted.forEach((event, i) => {
-    const parsed = parseTimeToday(event.time)
+    const parsed = timeToDate(event.time)
     if (!parsed) return
-    parsed.setMinutes(parsed.getMinutes() + mins * (i + 1))
-    event.time = formatTime(parsed)
+    event.time = formatTime(parsed.add(mins * (i + 1), 'minute'))
   })
 
   // Trigger reactivity
@@ -742,9 +916,15 @@ const allUpcomingHSB = computed(() => schedule.allUpcomingHSB())
 const allUpcomingBowen = computed(() => schedule.allUpcomingBowen())
 const allPastHSB = computed(() => schedule.allPastHSB())
 const allPastBowen = computed(() => schedule.allPastBowen())
+const recentPastHSB = computed(() =>
+  allPastHSB.value.filter((e) => e.diffText !== null || e.skipped),
+)
+const recentPastBowen = computed(() =>
+  allPastBowen.value.filter((e) => e.diffText !== null || e.skipped),
+)
 const lastSailing = computed(() => {
-  const hsb = allPastHSB.value
-  const bowen = allPastBowen.value
+  const hsb = recentPastHSB.value
+  const bowen = recentPastBowen.value
   const a = hsb[hsb.length - 1]
   const b = bowen[bowen.length - 1]
   if (!a && !b) return null
@@ -753,7 +933,7 @@ const lastSailing = computed(() => {
   return a.sortTime > b.sortTime ? a : b
 })
 const sortedRides = computed(() => {
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = nowInVancouver().format('YYYY-MM-DD')
   const upcoming = upcomingSailingTimes.value
 
   return [...rides.value]
@@ -776,12 +956,12 @@ const upcomingSailingTimes = computed(() => {
   const now = nowDate()
   const times = new Set()
   for (const s of ferryData.value.hsbSchedule) {
-    if (!s.cancelled && parseTimeToday(s.time) > now) {
+    if (!s.cancelled && timeToDate(s.time) > now) {
       times.add(s.time.trim().toUpperCase())
     }
   }
   for (const s of ferryData.value.bowenSchedule) {
-    if (!s.cancelled && parseTimeToday(s.time) > now) {
+    if (!s.cancelled && timeToDate(s.time) > now) {
       times.add(s.time.trim().toUpperCase())
     }
   }
@@ -842,6 +1022,20 @@ const displayCams = computed(() =>
   })),
 )
 
+const communitySailingEntry = computed(() => {
+  if (!ferryData.value) return null
+  const now = nowDate()
+  return ferryData.value.bowenSchedule
+    .filter(s => !s.cancelled && timeToDate(s.time))
+    .find(s => timeToDate(s.time) > now) || null
+})
+
+const hideCommunityWebcamFullButton = true;
+const communityWebcamFull = computed(() => {
+  const e = communitySailingEntry.value
+  return e?.lastCapacity === 'Full' && !!e?.filledAt
+})
+
 const fullscreen = ref(false)
 const fullscreenIndex = ref(0)
 const showFullDialog = ref(false)
@@ -891,9 +1085,7 @@ function formatDeckBadge(event, short) {
   } else if (event.full) {
     text = event.full
   }
-  return event.filledAt && text==='Full'
-    ? text + formatFilledTime(event.filledAt)
-    : text
+  return event.filledAt && text === 'Full' ? text + formatFilledTime(event.filledAt) : text
 }
 
 function shortText(text, isMobile) {
@@ -904,14 +1096,10 @@ function shortText(text, isMobile) {
   return text
 }
 
-function formatFilledTime(isoStr) {
-  if (!isoStr) return ''
-  const d = new Date(isoStr)
-  let hours = d.getHours()
-  const mins = d.getMinutes()
-  if (hours > 12) hours -= 12
-  if (hours === 0) hours = 12
-  return `@${hours}:${String(mins).padStart(2, '0')}`
+function formatFilledTime(val) {
+  if (!val) return ''
+  if (val === 'user_reported') return ''
+  return `@${dayjs(val).tz(TZ).format('h:mm')}`
 }
 
 const isSailing = computed(() => {
@@ -926,7 +1114,7 @@ const speedText = computed(() => {
   const mostRecent = ferryData.value.recentActivity[0]
   if (!mostRecent) return ''
 
-  const evtTime = parseTimeToday(mostRecent.time)
+  const evtTime = timeToDate(mostRecent.time)
   if (!evtTime) return ''
 
   const mins = Math.round((nowMs() - evtTime) / 60000)
@@ -991,11 +1179,6 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 .webcam-card {
-  transition: transform 0.2s;
-
-  &:hover {
-    transform: translateY(-2px);
-  }
 }
 
 .fullscreen-viewer {

@@ -1,10 +1,10 @@
 import {
-  parseTimeToday,
   buildPast,
   buildUpcoming,
 } from '../../functions/lib/matching.js'
+import { timeToDate, dayjs } from '../../functions/lib/time.js'
 
-export { parseTimeToday }
+export { timeToDate }
 
 export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
   function buildForLocation(schedule, eventLocation, label) {
@@ -14,10 +14,10 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     const past = buildPast(schedule, ferryData.value.recentActivity, eventLocation, now, label)
     // Only schedule-based entries consume their schedule time (orphans and skipped don't)
     const consumedArr = past
-      .filter(e => !e.skipped && e.time && e.sortTime)
-      .map(e => e.sortTime.getTime())
+      .filter(e => !e.skipped && e._hasDep && e.sortTime)
+      .map(e => e.sortTime.valueOf())
     const consumedTimes = new Set(consumedArr)
-    const lastConsumedTime = consumedArr.length > 0 ? new Date(Math.max(...consumedArr)) : null
+    const lastConsumedTime = consumedArr.length > 0 ? dayjs(Math.max(...consumedArr)) : null
 
     const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime)
     return { past, upcoming, consumedTimes }

@@ -4,6 +4,7 @@
  *
  */
 
+import { normalizeTime } from '../../functions/lib/time.js'
 import {ref} from 'vue'
 
 // use netlify proxy for local development
@@ -65,10 +66,11 @@ export function useFerryApi() {
     }))
 
     // Parse deck space for upcoming sailings from HSB
+    const hsbTimes = new Set(hsbSchedule.map(e => normalizeTime(e.time)))
     const deckSpaceInfo = (deckSpace.times?.[0] || []).map(entry => ({
       time: entry[0],
       available: entry[1],
-      direction: parseInt(entry[2]) === 0 ? 'To Bowen' : 'To HSB',
+      direction: hsbTimes.has(normalizeTime(entry[0])) ? 'To Bowen' : 'To HSB',
     }))
 
     // Parse Bowen departures schedule

@@ -1,16 +1,4 @@
-export function parseTimeToday(timeStr) {
-  if (!timeStr) return null
-  const match = timeStr.match(/(\d+):(\d+):?(\d+)?\s*(AM|PM)/i)
-  if (!match) return null
-  let hours = parseInt(match[1])
-  const mins = parseInt(match[2])
-  const ampm = match[4].toUpperCase()
-  if (ampm === 'PM' && hours !== 12) hours += 12
-  if (ampm === 'AM' && hours === 12) hours = 0
-  const d = new Date()
-  d.setHours(hours, mins, 0, 0)
-  return d
-}
+import { timeToDate, dayjs } from './time.js'
 
 import {
   formatLateness,
@@ -27,26 +15,19 @@ export function parseDeckSpace(deckSpace, label) {
   return { deckSpace: pct, full: `${100 - pct}% full` }
 }
 
-export function formatSailingTime(timeStr) {
-  return timeStr
-    .replace(/(\d+:\d{2}):\d{2}\s*/, '$1')
-    .replace(/\s+(am|pm)/i, '$1')
-    .toLowerCase()
-}
-
 export function buildPast(scheduleItems, recentActivity, eventLocation, now, label) {
   const departedEvents = recentActivity
     .filter((e) => e.action === 'Departed' && e.location === eventLocation)
-    .map((e) => ({ time: parseTimeToday(e.time), display: e.time }))
+    .map((e) => ({ time: timeToDate(e.time), display: e.time }))
     .filter(d => d.time)
 
   const schedulesWithEnd = scheduleItems
     .filter((s) => !s.cancelled)
-    .map((s) => ({ s, t: parseTimeToday(s.time) }))
+    .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => t && t <= now)
     .map((item, i, arr) => {
-      const rawEnd = arr[i + 1]?.t || new Date(item.t.getTime() + 90 * 60 * 1000)
-      const windowEnd = new Date(rawEnd.getTime() - 5 * 60 * 1000)
+      const rawEnd = arr[i + 1]?.t || item.t.add(90, 'minute')
+      const windowEnd = rawEnd.subtract(5, 'minute')
       return { ...item, windowEnd }
     })
 
@@ -57,14 +38,14 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     let latenessMins = null
 
     if (s.matchedDepartureTime) {
-      const depTime = parseTimeToday(s.matchedDepartureTime)
+      const depTime = timeToDate(s.matchedDepartureTime)
       if (depTime && !usedDisplays.has(s.matchedDepartureTime)) {
         matchedDep = { time: depTime, display: s.matchedDepartureTime }
         usedDisplays.add(s.matchedDepartureTime)
         latenessMins = Math.round((depTime - t) / 60000)
       }
     } else {
-      const windowStart = new Date(t.getTime() - 5 * 60 * 1000)
+      const windowStart = t.subtract(5, 'minute')
       for (const d of departedEvents) {
         if (usedDisplays.has(d.display)) continue
         if (d.time < windowStart || d.time >= windowEnd) continue
@@ -87,7 +68,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
       ...s,
       label,
       ...lateness,
-      shortTime: matchedDep ? formatSailingTime(matchedDep.display) : formatSailingTime(s.time),
+      shortTime: matchedDep ? matchedDep.display : s.time,
       sortTime: t,
       _hasDep: !!matchedDep,
       _depDisplay: matchedDep ? matchedDep.display : null,
@@ -98,33 +79,31 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
   const matched = scheduleEntries.filter(e => e._hasDep)
   const unmatched = scheduleEntries.filter(e => !e._hasDep)
 
-  const consumedMs = matched.filter(e => e.sortTime).map(e => e.sortTime.getTime())
-  const lastConsumedTime = consumedMs.length > 0 ? new Date(Math.max(...consumedMs)) : null
+  const consumedMs = matched.filter(e => e.sortTime).map(e => e.sortTime.valueOf())
+  const lastConsumedTime = consumedMs.length > 0 ? dayjs(Math.max(...consumedMs)) : null
   const skipped = unmatched
     .filter(e => e.sortTime && lastConsumedTime && e.sortTime < lastConsumedTime)
     .map(e => ({ ...e, skipped: true }))
 
-  const orphanEntries = departedEvents
-    .filter(d => !usedDisplays.has(d.display))
-    .map(d => ({
-      label,
-      shortTime: formatSailingTime(d.display),
-      sortTime: d.time,
-      diffText: null,
-      diffColor: 'grey',
-      _hasDep: true,
-    }))
+  // Orphan departures (events that don't match any schedule entry) are logged
+  // but not returned — they have no schedule time and would create invalid
+  // sailingKeys if they reached the recording pipeline.
+  const orphans = departedEvents.filter(d => !usedDisplays.has(d.display) && d.time <= now)
+  if (orphans.length) {
+    const times = orphans.map(d => d.display).join(', ')
+    console.log(`${label}: ${orphans.length} orphan departure(s): ${times}`)
+  }
 
-  return [...matched, ...skipped, ...orphanEntries]
+  return [...matched, ...skipped]
 }
 
 export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime) {
   return scheduleItems
     .filter((s) => !s.cancelled)
-    .map((s) => ({ s, t: parseTimeToday(s.time) }))
+    .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => {
       if (!t) return false
-      if (consumedTimes.has(t.getTime())) return false
+      if (consumedTimes.has(t.valueOf())) return false
       if (lastConsumedTime && t < lastConsumedTime) return false
       return true
     })
@@ -137,7 +116,7 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
         label,
         deckSpace,
         full,
-        shortTime: formatSailingTime(s.time),
+        shortTime: s.time,
         sortTime: t,
         lateText: isUpcomingLate(lateMins) ? `${lateMins}m late` : null,
         lateColor: getUpcomingLateColor(lateMins),
@@ -147,7 +126,7 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
 }
 
 export function calculateLateness(event, bowenSchedule, hsbSchedule, location) {
-  const eventTime = parseTimeToday(event.time)
+  const eventTime = timeToDate(event.time)
   if (!eventTime) return null
 
   const schedule = location === 'Bowen' ? bowenSchedule : hsbSchedule
@@ -158,7 +137,7 @@ export function calculateLateness(event, bowenSchedule, hsbSchedule, location) {
   const direction = location === 'Bowen' ? 'to HSB' : 'to Bowen'
 
   for (const entry of schedule) {
-    const schTime = parseTimeToday(entry.time)
+    const schTime = timeToDate(entry.time)
     if (!schTime) continue
     const diff = Math.abs(eventTime - schTime)
     if (diff < minDiff) {

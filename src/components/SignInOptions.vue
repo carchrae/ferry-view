@@ -4,15 +4,17 @@
     <div class="row q-gutter-sm">
       <q-btn
         no-caps
+        no-wrap
         class="col"
         icon="login"
         label="Google"
         :outline="authMethod !== 'google'"
         color="primary"
-        @click="authMethod = 'google'; signInWithGoogle()"
+        @click="handleGoogleSignIn"
       />
       <q-btn
         no-caps
+        no-wrap
         class="col"
         icon="email"
         label="Email"
@@ -23,6 +25,7 @@
       <q-btn
         aria-describedby="phone"
         no-caps
+        no-wrap
         class="col"
         id="phone"
         icon="phone"
@@ -82,6 +85,19 @@ const authError = ref(null)
 const phoneCodeSent = ref(false)
 const emailForm = reactive({ email: '', password: '', name: '', isSignUp: false })
 const phoneForm = reactive({ number: '', code: '' })
+
+async function handleGoogleSignIn() {
+  authMethod.value = 'google'
+  authLoading.value = true
+  authError.value = null
+  try {
+    await signInWithGoogle()
+  } catch (e) {
+    authError.value = e.message.replace('Firebase: ', '')
+  } finally {
+    authLoading.value = false
+  }
+}
 
 async function handleEmailAuth() {
   authLoading.value = true

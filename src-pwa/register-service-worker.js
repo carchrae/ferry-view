@@ -7,7 +7,13 @@ if (process.env.DEV) {
 } else {
   register(process.env.SERVICE_WORKER_FILE, {
     ready () {},
-    registered () {},
+    registered (registration) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          registration.update()
+        }
+      })
+    },
     cached () {},
     updatefound () {},
     updated (registration) {
