@@ -19,7 +19,7 @@
         <!-- Desktop nav tabs -->
         <q-tabs v-model="currentTab" shrink stretch class="gt-sm">
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
-          <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
+          <q-route-tab name="status" label="History" icon="history" to="/status" />
           <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
           <q-route-tab name="map" label="Map" icon="map" to="/map" />
         </q-tabs>
@@ -154,7 +154,7 @@
     <q-footer class="gt-sm-hide lt-md bg-primary text-white shadow-up-3">
       <q-tabs v-model="currentTab" active-color="white" indicator-color="white" class="text-grey-4">
         <q-route-tab name="home" label="Home" icon="home" to="/" exact />
-        <q-route-tab name="status" label="Status" icon="directions_boat" to="/status" />
+        <q-route-tab name="status" label="History" icon="history" to="/status" />
         <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
         <q-route-tab name="map" label="Map" icon="map" to="/map" />
       </q-tabs>
