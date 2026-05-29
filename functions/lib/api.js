@@ -72,6 +72,8 @@ function parseFerryData(data) {
     }
   }
 
+  const hsbTimes = new Set(hsbSchedule.map(e => e.time))
+
   return {
     vesselName: props.name,
     speed: props.SOG,
@@ -83,7 +85,7 @@ function parseFerryData(data) {
     deckSpace: (deckSpace.times?.[0] || []).map(entry => ({
       time: normalizeTime(entry[0]),
       available: entry[1],
-      direction: parseInt(entry[2]) === 0 ? 'To Bowen' : 'To HSB',
+      direction: hsbTimes.has(normalizeTime(entry[0])) ? 'To Bowen' : 'To HSB',
     })),
     deckSpaceLastUpdated: normalizeTime(deckSpace.lastUpdated),
     bowenSchedule,
