@@ -50,3 +50,9 @@ credentials.json
 
 # Temp
 .tmp/
+/functions/backup/bowen-ferry/capacityHistory.json
+/functions/backup/bowen-ferry/ferryStatus.json
+/functions/backup/bowen-ferry/ferryStatusHistory.json
+/functions/backup/bowen-ferry/rides.json
+/functions/backup/bowen-ferry/sailingStatus.json
+/functions/backup/bowen-ferry/snapshots.json

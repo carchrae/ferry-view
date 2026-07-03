@@ -1,20 +1,19 @@
 import { logger } from 'firebase-functions/logger'
 import diff from 'microdiff'
-import { normalizeTime, nowInVancouver } from './time.js'
+import { dayjs, normalizeTime, nowInVancouver } from './time.js'
 import { calculateLateness } from './matching.js'
 
 const API_URL = 'https://bowenferry.ca/Production/AISPositionsData3'
-const MONTHS = { january:'01', february:'02', march:'03', april:'04', may:'05', june:'06',
-                 july:'07', august:'08', september:'09', october:'10', november:'11', december:'12' }
 
-function parseApiDate(str) {
-  const m = str.match(/(\w+)\s+(\w+)\s+(\d{1,2})/i)
-  if (!m) return str
-  const month = MONTHS[m[2].toLowerCase()]
-  if (!month) return str
-  const day = String(parseInt(m[3])).padStart(2, '0')
-  const year = nowInVancouver().year()
-  return `${year}-${month}-${day}`
+// Formats the API returns, e.g. "Friday Jul 3rd" or "Friday July 3"
+const API_DATE_FORMATS = ['dddd MMM Do', 'dddd MMMM Do', 'dddd MMM D', 'dddd MMMM D']
+
+export function parseApiDate(str, year = nowInVancouver().year()) {
+  for (const fmt of API_DATE_FORMATS) {
+    const parsed = dayjs(str, fmt, true)
+    if (parsed.isValid()) return parsed.year(year).format('YYYY-MM-DD')
+  }
+  throw new Error('could not parse date '+str);
 }
 
 export async function fetchFerryData() {
