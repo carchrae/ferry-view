@@ -121,53 +121,17 @@
                   separator
                   class="q-pa-none"
                 >
-                  <q-item class="bg-grey-2">
-                    <q-item-section class="col-3">
-                      <q-item-label class="text-overline">Time</q-item-label>
-                    </q-item-section>
-                    <q-item-section class="col-5">
-                      <q-item-label class="text-overline">Avg departure</q-item-label>
-                    </q-item-section>
-                    <q-item-section class="col-4 text-right">
-                      <q-item-label class="text-overline">Avg capacity</q-item-label>
-                    </q-item-section>
-                  </q-item>
                   <template
                     v-for="[time, info] in sortedEntries(byDayOfWeek[panel]?.[day.key])"
                     :key="time"
                   >
                     <q-item clickable @click="toggleRow(panel, day.key, time)">
-                      <q-item-section class="col-3">
-                        <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
+                      <q-item-section class="col-auto time-col">
+                        <div class="text-weight-medium text-body2">{{ time }}</div>
                       </q-item-section>
-                      <q-item-section class="col-5">
-                        <template v-if="info.avgLateness !== null">
-                          <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
-                            {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
-                          </q-item-label>
-                          <q-item-label class="text-caption text-grey-7">
-                            {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
-                          </q-item-label>
-                        </template>
-                        <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
-                      </q-item-section>
-                      <q-item-section class="col-4 text-right">
-                        <q-item-label class="text-caption" :class="fullClass(info)">
-                          <template v-if="info.fullPct > 0">
-                            {{ fullLabel(info) }}
-                          </template>
-                          <template v-else-if="info.avgCapacityPct !== null">
-                            {{ info.avgCapacityPct }}% free
-                          </template>
-                          <template v-else>—</template>
-                        </q-item-label>
-                        <q-item-label
-                          v-if="info.fullPct > 0"
-                          class="text-caption text-grey-7"
-                        >
-                          {{ info.fullPct }}%
-                          <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
-                        </q-item-label>
+                      <q-item-section class="col">
+                        <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
+                        <div v-if="fullText(info)" class="text-body2" :class="busyClass(info)">● {{ fullText(info) }}</div>
                       </q-item-section>
                       <q-item-section side>
                         <q-icon :name="isExpanded(panel, day.key, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
@@ -175,13 +139,14 @@
                     </q-item>
                     <q-item v-if="isExpanded(panel, day.key, time)" class="bg-grey-1 q-pa-none">
                       <q-item-section>
+                        <div class="detail-summary text-caption text-grey-7">{{ detailSummary(info) }}</div>
                         <table class="date-detail-table">
                           <thead>
                             <tr>
                               <th>Date</th>
                               <th>Actual dep</th>
                               <th>+/- min</th>
-                              <th>Capacity</th>
+                              <th>Full</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -191,7 +156,7 @@
                               <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
                                 {{ d.lateness === null ? '—' : (d.lateness >= 0 ? '+' : '') + d.lateness }}
                               </td>
-                              <td>{{ d.capacity || '—' }}</td>
+                              <td>{{ capacityLabel(d.capacity) }}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -242,53 +207,17 @@
                 separator
                 class="q-pa-none"
               >
-                <q-item class="bg-grey-2">
-                  <q-item-section class="col-3">
-                    <q-item-label class="text-overline">Time</q-item-label>
-                  </q-item-section>
-                  <q-item-section class="col-5">
-                    <q-item-label class="text-overline">Avg departure</q-item-label>
-                  </q-item-section>
-                  <q-item-section class="col-4 text-right">
-                    <q-item-label class="text-overline">Avg capacity</q-item-label>
-                  </q-item-section>
-                </q-item>
                 <template
                   v-for="[time, info] in sortedEntries(byDayOfWeek[panel]?.[selectedDay])"
                   :key="time"
                 >
                   <q-item clickable @click="toggleRow(panel, selectedDay, time)">
-                    <q-item-section class="col-3">
-                      <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
+                    <q-item-section class="col-auto time-col">
+                      <div class="text-weight-medium text-body2">{{ time }}</div>
                     </q-item-section>
-                    <q-item-section class="col-5">
-                      <template v-if="info.avgLateness !== null">
-                        <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
-                          {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
-                        </q-item-label>
-                        <q-item-label class="text-caption text-grey-7">
-                          {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
-                        </q-item-label>
-                      </template>
-                      <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
-                    </q-item-section>
-                    <q-item-section class="col-4 text-right">
-                      <q-item-label class="text-caption" :class="fullClass(info)">
-                        <template v-if="info.fullPct > 0">
-                          {{ fullLabel(info) }}
-                        </template>
-                        <template v-else-if="info.avgCapacityPct !== null">
-                          {{ info.avgCapacityPct }}% free
-                        </template>
-                        <template v-else>—</template>
-                      </q-item-label>
-                      <q-item-label
-                        v-if="info.fullPct > 0"
-                        class="text-caption text-grey-7"
-                      >
-                        {{ info.fullPct }}%
-                        <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
-                      </q-item-label>
+                    <q-item-section class="col">
+                      <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
+                      <div v-if="fullText(info)" class="text-body2" :class="busyClass(info)">● {{ fullText(info) }}</div>
                     </q-item-section>
                     <q-item-section side>
                       <q-icon :name="isExpanded(panel, selectedDay, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
@@ -296,13 +225,14 @@
                   </q-item>
                   <q-item v-if="isExpanded(panel, selectedDay, time)" class="bg-grey-1 q-pa-none">
                     <q-item-section>
+                      <div class="detail-summary text-caption text-grey-7">{{ detailSummary(info) }}</div>
                       <table class="date-detail-table">
                         <thead>
                           <tr>
                             <th>Date</th>
                             <th>Actual dep</th>
                             <th>+/- min</th>
-                            <th>Capacity</th>
+                            <th>Full</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -312,7 +242,7 @@
                             <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
                               {{ d.lateness === null ? '—' : (d.lateness >= 0 ? '+' : '') + d.lateness }}
                             </td>
-                            <td>{{ d.capacity || '—' }}</td>
+                            <td>{{ capacityLabel(d.capacity) }}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -392,6 +322,35 @@ function parseMinutes(timeStr) {
   return h * 60 + m
 }
 
+// filledAt is stored inconsistently: epoch-ms numbers, ISO strings, Firestore
+// Timestamps, or the sentinel 'user_reported'. Reduce any of them to minutes
+// past midnight (in TZ) so fill times can be averaged as time-of-day. Averaging
+// the raw absolute timestamps is wrong — dates spread across the range shift the
+// mean by whole/half days, corrupting the clock time.
+function parseFilledMinutes(v) {
+  if (v === null || v === undefined || v === 'user_reported') return null
+  let dj
+  if (typeof v === 'number') {
+    dj = dayjs(v).tz(TZ)
+  } else if (v && typeof v === 'object' && typeof v.seconds === 'number') {
+    dj = dayjs(v.seconds * 1000).tz(TZ) // Firestore Timestamp
+  } else if (typeof v === 'string') {
+    const n = Number(v)
+    dj = !isNaN(n) && v.trim() !== '' ? dayjs(n).tz(TZ) : dayjs(v).tz(TZ)
+  } else {
+    return null
+  }
+  return dj && dj.isValid() ? dj.hour() * 60 + dj.minute() : null
+}
+
+function minutesToLabel(mins) {
+  const h = Math.floor(mins / 60)
+  const m = Math.round(mins % 60)
+  const ampm = h < 12 ? 'am' : 'pm'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
 function getImpactedDates() {
   const set = new Set()
   for (const h of HOLIDAY_DATES) {
@@ -410,6 +369,23 @@ function latenessClass(lateness) {
   return 'text-negative text-weight-bold'
 }
 
+// How often something happens, as a plain word (drives the coloured row text).
+function freqWord(pct) {
+  if (pct === null) return ''
+  if (pct >= 60) return 'Usually'
+  if (pct >= 30) return 'Often'
+  if (pct > 0) return 'Sometimes'
+  return 'Rarely'
+}
+
+// Coloured lateness line: how likely it is to be late, and by how much.
+function latenessText(info) {
+  if (info.avgLateness === null) return 'No departure data'
+  if (info.avgLateness <= 0) return 'Usually on time'
+  const freq = info.latePct !== null ? freqWord(info.latePct) : ''
+  return `${freq ? freq + ' ' : ''}late · +${info.avgLateness}m`
+}
+
 function fullLabel(info) {
   if (info.fullPct >= 80) return 'Often Full'
   if (info.fullPct >= 50) return 'Sometimes Full'
@@ -417,11 +393,50 @@ function fullLabel(info) {
   return ''
 }
 
-function fullClass(info) {
+// Coloured capacity line: how likely to be full (and when it fills), or how busy.
+function fullText(info) {
+  if (info.fullPct > 0) {
+    const label = fullLabel(info)
+    return info.avgFillTime ? `${label} · by ${info.avgFillTime}` : label
+  }
+  if (info.avgCapacityPct !== null) return `~${100 - info.avgCapacityPct}% full`
+  return null
+}
+
+function busyClass(info) {
   if (info.fullPct >= 80) return 'text-negative text-weight-bold'
   if (info.fullPct >= 50) return 'text-warning text-weight-bold'
   if (info.fullPct > 0) return 'text-orange'
+  if (info.avgCapacityPct !== null) {
+    const busy = 100 - info.avgCapacityPct
+    if (busy >= 70) return 'text-warning'
+    if (busy >= 40) return 'text-orange'
+    return 'text-positive'
+  }
   return 'text-grey-6'
+}
+
+// Per-date capacity shown as "% full" (stored value is % available/free).
+function capacityLabel(raw) {
+  if (!raw) return '—'
+  if (raw === 'Full') return 'Full'
+  const n = parseInt(raw)
+  return isNaN(n) ? raw : `${100 - n}%`
+}
+
+// Grey summary line shown at the top of the expanded detail.
+function detailSummary(info) {
+  const parts = [`${info.count} departure${info.count === 1 ? '' : 's'}`]
+  if (info.avgLateness !== null) {
+    const avg = `${info.avgLateness >= 0 ? '+' : ''}${info.avgLateness}m avg`
+    parts.push(info.latePct !== null ? `${avg} · ${info.latePct}% late` : avg)
+  }
+  if (info.fullPct > 0) {
+    parts.push(info.avgFillTime ? `full ${info.fullPct}% · fills by ${info.avgFillTime}` : `full ${info.fullPct}%`)
+  } else if (info.avgCapacityPct !== null) {
+    parts.push(`avg ${100 - info.avgCapacityPct}% full`)
+  }
+  return parts.join(' · ')
 }
 
 function sortedEntries(data) {
@@ -506,7 +521,7 @@ const byDayOfWeek = computed(() => {
     }
 
     if (!grp[time]) {
-      grp[time] = { count: 0, latenessMins: [], lateCount: 0, fullCount: 0, filledAts: [], lastCapacities: [], dates: [] }
+      grp[time] = { count: 0, latenessMins: [], lateCount: 0, fullCount: 0, filledMinutes: [], lastCapacities: [], dates: [] }
     }
     const entry = grp[time]
     entry.count++
@@ -523,9 +538,8 @@ const byDayOfWeek = computed(() => {
     }
     if (doc.lastCapacity === 'Full') {
       entry.fullCount++
-      if (doc.filledAt) {
-        entry.filledAts.push(doc.filledAt)
-      }
+      const fm = parseFilledMinutes(doc.filledAt)
+      if (fm !== null) entry.filledMinutes.push(fm)
     } else if (doc.lastCapacity) {
       entry.lastCapacities.push(doc.lastCapacity)
     }
@@ -572,8 +586,8 @@ const byDayOfWeek = computed(() => {
           ? Math.round((raw.lateCount / raw.latenessMins.length) * 100)
           : null
         const fullPct = Math.round((raw.fullCount / raw.count) * 100)
-        const avgFillTime = raw.filledAts.length
-          ? dayjs.tz(Math.round(raw.filledAts.reduce((a, b) => a + b, 0) / raw.filledAts.length), TZ).format('h:mm a')
+        const avgFillTime = raw.filledMinutes.length
+          ? minutesToLabel(raw.filledMinutes.reduce((a, b) => a + b, 0) / raw.filledMinutes.length)
           : null
 
         result[dir][dayKey][time] = {
@@ -600,6 +614,9 @@ onMounted(() => {
 .today-card {
   border: 2px solid var(--q-primary) !important;
 }
+.time-col { min-width: 44px; }
+.detail-summary { padding: 4px 8px 0; }
+
 .date-detail-table {
   width: 100%;
   border-collapse: collapse;
