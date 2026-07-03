@@ -1,19 +1,10 @@
 <template>
   <q-page class="q-pa-sm">
-    <!-- Loading state -->
-    <div v-if="loading && !ferryData" class="row q-col-gutter-sm q-mb-sm">
-      <div class="col-12">
-        <q-card flat bordered>
-          <q-card-section class="q-pa-sm">
-            <q-skeleton type="text" width="60%" />
-            <q-skeleton type="text" width="40%" />
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
+    <!-- Loading state: hold back the whole page until the ferry data is ready -->
+    <q-inner-loading :showing="!ferryData && !error" color="primary" />
 
     <!-- Error state -->
-    <div v-else-if="error && !ferryData" class="row q-col-gutter-sm q-mb-sm">
+    <div v-if="error && !ferryData" class="row q-col-gutter-sm q-mb-sm">
       <div class="col-12">
         <q-banner dense class="bg-negative text-white rounded-borders">
           Failed to load: {{ error }}
@@ -22,7 +13,7 @@
     </div>
 
     <!-- Staging-only debug tools -->
-    <div v-if="isStaging" class="row q-mb-sm">
+    <div v-if="isStaging && ferryData" class="row q-mb-sm">
       <div class="col-12 staging-tools">
         <q-btn
           flat
@@ -46,7 +37,7 @@
     </div>
 
     <!-- All content in one flowing row -->
-    <div class="row q-col-gutter-sm">
+    <div v-if="ferryData" class="row q-col-gutter-sm">
       <!-- Install prompt -->
       <div v-if="canInstall" class="col-12">
         <q-card flat bordered class="bg-blue-1">
@@ -788,7 +779,7 @@ import {
 } from 'src/composables/useHistoricalStats'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 
-const { ferryData, loading, error } = useFirestoreFerryListener()
+const { ferryData, error } = useFirestoreFerryListener()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
 
