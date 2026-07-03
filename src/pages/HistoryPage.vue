@@ -27,7 +27,7 @@
             />
           </div>
           <div class="col-auto">
-            <q-checkbox v-if="SHOW_HOLIDAY_UI" v-model="excludeHolidays" label="Exclude holidays" dense />
+            <q-checkbox v-model="excludeHolidays" label="Exclude holidays" dense />
           </div>
         </div>
       </div>
@@ -59,15 +59,19 @@
         />
       </div>
       <div class="col-12">
-        <q-checkbox v-if="SHOW_HOLIDAY_UI" v-model="excludeHolidays" label="Exclude holiday-impacted dates" dense />
+        <q-checkbox v-model="excludeHolidays" label="Exclude holiday-impacted dates" dense />
       </div>
     </div>
 
-    <div v-if="SHOW_HOLIDAY_UI"
+    <div v-if="excludeHolidays && impactedDates.length"
       class="text-caption text-grey-6 q-mb-sm"
     >
-      Excluding {{ impactedDates.length }} date(s) near holidays:
-      {{ impactedDates.join(', ') }}
+      Excluding {{ impactedDates.length }} holiday-impacted date(s) from averages.
+    </div>
+
+    <div class="text-caption text-grey-6 q-mb-sm row items-center">
+      <q-icon name="warning" size="xs" color="amber-8" class="q-mr-xs" />
+      Rare one-off delays (breakdowns, holds) are marked as exceptions and left out of the averages.
     </div>
 
     <div v-if="loading" class="row q-col-gutter-md">
@@ -134,7 +138,18 @@
                         <div v-if="fullText(info)" class="text-body2" :class="busyClass(info)">● {{ fullText(info) }}</div>
                       </q-item-section>
                       <q-item-section side>
-                        <q-icon :name="isExpanded(panel, day.key, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
+                        <div class="row items-center no-wrap">
+                          <q-icon
+                            v-if="info.exceptionCount"
+                            name="warning"
+                            size="xs"
+                            color="amber-8"
+                            class="q-mr-xs"
+                          >
+                            <q-tooltip>{{ exceptionTooltip(info) }}</q-tooltip>
+                          </q-icon>
+                          <q-icon :name="isExpanded(panel, day.key, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
+                        </div>
                       </q-item-section>
                     </q-item>
                     <q-item v-if="isExpanded(panel, day.key, time)" class="bg-grey-1 q-pa-none">
@@ -143,6 +158,7 @@
                         <table class="date-detail-table">
                           <thead>
                             <tr>
+                              <th></th>
                               <th>Date</th>
                               <th>Actual dep</th>
                               <th>+/- min</th>
@@ -150,7 +166,12 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="d in info.dates" :key="d.dateIso">
+                            <tr v-for="d in info.dates" :key="d.dateIso" :class="d.isException ? 'exception-row' : ''">
+                              <td class="exception-cell">
+                                <q-icon v-if="d.isException" name="warning" size="xs" color="amber-8">
+                                  <q-tooltip>Exception — excluded from averages ({{ d.exceptionReason }})</q-tooltip>
+                                </q-icon>
+                              </td>
                               <td>{{ d.dateIso }}</td>
                               <td>{{ d.actualDep || '—' }}</td>
                               <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
@@ -220,7 +241,18 @@
                       <div v-if="fullText(info)" class="text-body2" :class="busyClass(info)">● {{ fullText(info) }}</div>
                     </q-item-section>
                     <q-item-section side>
-                      <q-icon :name="isExpanded(panel, selectedDay, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
+                      <div class="row items-center no-wrap">
+                        <q-icon
+                          v-if="info.exceptionCount"
+                          name="warning"
+                          size="xs"
+                          color="amber-8"
+                          class="q-mr-xs"
+                        >
+                          <q-tooltip>{{ exceptionTooltip(info) }}</q-tooltip>
+                        </q-icon>
+                        <q-icon :name="isExpanded(panel, selectedDay, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
+                      </div>
                     </q-item-section>
                   </q-item>
                   <q-item v-if="isExpanded(panel, selectedDay, time)" class="bg-grey-1 q-pa-none">
@@ -229,6 +261,7 @@
                       <table class="date-detail-table">
                         <thead>
                           <tr>
+                            <th></th>
                             <th>Date</th>
                             <th>Actual dep</th>
                             <th>+/- min</th>
@@ -236,7 +269,12 @@
                           </tr>
                         </thead>
                         <tbody>
-                          <tr v-for="d in info.dates" :key="d.dateIso">
+                          <tr v-for="d in info.dates" :key="d.dateIso" :class="d.isException ? 'exception-row' : ''">
+                            <td class="exception-cell">
+                              <q-icon v-if="d.isException" name="warning" size="xs" color="amber-8">
+                                <q-tooltip>Exception — excluded from averages ({{ d.exceptionReason }})</q-tooltip>
+                              </q-icon>
+                            </td>
                             <td>{{ d.dateIso }}</td>
                             <td>{{ d.actualDep || '—' }}</td>
                             <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
@@ -260,18 +298,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive } from 'vue'
-import { collection, query, where, getDocs } from 'firebase/firestore'
-import { db } from 'boot/firebase'
-import { dayjs, TZ, normalizeTime, nowInVancouver } from '../../functions/lib/time.js'
+import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { dayjs, TZ, nowInVancouver } from '../../functions/lib/time.js'
+import { useHistoricalStats, DAY_KEYS } from 'src/composables/useHistoricalStats'
 
 const weeksBack = ref(4)
 const excludeHolidays = ref(true)
 const directionTab = ref('hsb')
-const loading = ref(false)
-const error = ref(null)
-const sailingDocs = ref([])
 const showMobileSettings = ref(false)
+
+const { loading, error, byDayOfWeek, impactedDates, fetchStats } = useHistoricalStats()
 
 const expandedRows = reactive(new Set())
 function rowKey(dir, dayKey, time) { return `${dir}|${dayKey}|${time}` }
@@ -292,75 +328,7 @@ function nextDay() {
   selectedDay.value = dayNames[(selectedDayIdx.value + 1) % dayNames.length].key
 }
 
-// TODO: Let the user enter holiday dates in the UI. These will be used
-// to exclude impacted sailings from the historical averages. The
-// excludeHolidays checkbox and impacted-dates banner are hidden but
-// kept in source for when this UI is implemented.
-const SHOW_HOLIDAY_UI = false
-const HOLIDAY_DATES = []
-const HOLIDAY_IMPACT_DAYS_BEFORE = 1
-const HOLIDAY_IMPACT_DAYS_AFTER = 0
-
-const dayNames = [
-  { key: 'Sunday', label: 'Sunday' },
-  { key: 'Monday', label: 'Monday' },
-  { key: 'Tuesday', label: 'Tuesday' },
-  { key: 'Wednesday', label: 'Wednesday' },
-  { key: 'Thursday', label: 'Thursday' },
-  { key: 'Friday', label: 'Friday' },
-  { key: 'Saturday', label: 'Saturday' },
-]
-const DOW_MAP = { 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday', 0: 'Sunday' }
-
-function parseMinutes(timeStr) {
-  if (!timeStr) return null
-  const parts = String(timeStr).split(':')
-  if (parts.length < 2) return null
-  const h = parseInt(parts[0])
-  const m = parseInt(parts[1])
-  if (isNaN(h) || isNaN(m)) return null
-  return h * 60 + m
-}
-
-// filledAt is stored inconsistently: epoch-ms numbers, ISO strings, Firestore
-// Timestamps, or the sentinel 'user_reported'. Reduce any of them to minutes
-// past midnight (in TZ) so fill times can be averaged as time-of-day. Averaging
-// the raw absolute timestamps is wrong — dates spread across the range shift the
-// mean by whole/half days, corrupting the clock time.
-function parseFilledMinutes(v) {
-  if (v === null || v === undefined || v === 'user_reported') return null
-  let dj
-  if (typeof v === 'number') {
-    dj = dayjs(v).tz(TZ)
-  } else if (v && typeof v === 'object' && typeof v.seconds === 'number') {
-    dj = dayjs(v.seconds * 1000).tz(TZ) // Firestore Timestamp
-  } else if (typeof v === 'string') {
-    const n = Number(v)
-    dj = !isNaN(n) && v.trim() !== '' ? dayjs(n).tz(TZ) : dayjs(v).tz(TZ)
-  } else {
-    return null
-  }
-  return dj && dj.isValid() ? dj.hour() * 60 + dj.minute() : null
-}
-
-function minutesToLabel(mins) {
-  const h = Math.floor(mins / 60)
-  const m = Math.round(mins % 60)
-  const ampm = h < 12 ? 'am' : 'pm'
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
-}
-
-function getImpactedDates() {
-  const set = new Set()
-  for (const h of HOLIDAY_DATES) {
-    const d = dayjs.tz(h, TZ)
-    for (let offset = -HOLIDAY_IMPACT_DAYS_BEFORE; offset <= HOLIDAY_IMPACT_DAYS_AFTER; offset++) {
-      set.add(d.add(offset, 'day').format('YYYY-MM-DD'))
-    }
-  }
-  return set
-}
+const dayNames = DAY_KEYS.map(key => ({ key, label: key }))
 
 function latenessClass(lateness) {
   if (lateness === null) return 'text-grey-5'
@@ -424,9 +392,14 @@ function capacityLabel(raw) {
   return isNaN(n) ? raw : `${100 - n}%`
 }
 
+function exceptionTooltip(info) {
+  const n = info.exceptionCount
+  return `${n} exception${n === 1 ? '' : 's'} excluded from averages`
+}
+
 // Grey summary line shown at the top of the expanded detail.
 function detailSummary(info) {
-  const parts = [`${info.count} departure${info.count === 1 ? '' : 's'}`]
+  const parts = [`${info.count} typical departure${info.count === 1 ? '' : 's'}`]
   if (info.avgLateness !== null) {
     const avg = `${info.avgLateness >= 0 ? '+' : ''}${info.avgLateness}m avg`
     parts.push(info.latePct !== null ? `${avg} · ${info.latePct}% late` : avg)
@@ -436,6 +409,9 @@ function detailSummary(info) {
   } else if (info.avgCapacityPct !== null) {
     parts.push(`avg ${100 - info.avgCapacityPct}% full`)
   }
+  if (info.exceptionCount) {
+    parts.push(`${info.exceptionCount} exception${info.exceptionCount === 1 ? '' : 's'} excluded`)
+  }
   return parts.join(' · ')
 }
 
@@ -443,11 +419,6 @@ function sortedEntries(data) {
   if (!data) return []
   return Object.entries(data).sort((a, b) => a[0].localeCompare(b[0]))
 }
-
-const impactedDates = computed(() => {
-  if (!excludeHolidays.value || !HOLIDAY_DATES.length) return []
-  return [...getImpactedDates()].sort()
-})
 
 const startDate = computed(() => nowInVancouver().subtract(weeksBack.value, 'week').format('YYYY-MM-DD'))
 const endDate = computed(() => nowInVancouver().subtract(1, 'day').format('YYYY-MM-DD'))
@@ -457,153 +428,11 @@ const weekCount = computed(() => {
   return Math.max(end.diff(start, 'week'), 1)
 })
 
-async function fetchData() {
-  loading.value = true
-  error.value = null
-  try {
-    const start = startDate.value
-    const end = endDate.value
-    console.log('[HistoricalPage] Query range:', { start, end })
-    const impacted = excludeHolidays.value ? getImpactedDates() : new Set()
-    const q = query(
-      collection(db, 'sailingStatus'),
-      where('dateIso', '>=', start),
-      where('dateIso', '<=', end),
-    )
-    const snap = await getDocs(q)
-    console.log('[HistoricalPage] Raw docs count:', snap.size)
-    const docs = []
-    snap.forEach(doc => {
-      const data = doc.data()
-      if (impacted.has(data.dateIso)) return
-      docs.push(data)
-    })
-    console.log('[HistoricalPage] Docs after holiday filter:', docs.length)
-    sailingDocs.value = docs
-  } catch (e) {
-    console.error('[HistoricalPage] Failed to fetch sailing data:', e)
-    error.value = e.message
-  }
-  loading.value = false
+function fetchData() {
+  fetchStats({ weeksBack: weeksBack.value, excludeHolidays: excludeHolidays.value })
 }
 
-const byDayOfWeek = computed(() => {
-  console.log('[HistoricalPage] Processing', sailingDocs.value.length, 'docs in byDayOfWeek')
-
-  const HSB_TIMES = new Set(['04:40','05:45','06:50','08:05','09:20','10:35','11:55','13:10','14:35','15:55','17:20','18:35','19:50','20:55','22:00','23:00'])
-  const BOWEN_TIMES = new Set(['05:15','06:15','07:30','08:45','10:00','11:15','12:35','13:55','15:15','16:40','18:00','19:15','20:25','21:30','22:30','23:30'])
-  const EXPECTED_DIR = {}
-  for (const t of HSB_TIMES) EXPECTED_DIR[t] = 'To Bowen'
-  for (const t of BOWEN_TIMES) EXPECTED_DIR[t] = 'To HSB'
-
-  const phantomDocs = []
-  const groups = { hsb: {}, bowen: {} }
-  let skippedDir = 0, skippedDay = 0, skippedTime = 0, skippedPhantom = 0
-  for (const doc of sailingDocs.value) {
-    const dow = dayjs.tz(doc.dateIso, TZ).day()
-    const dayKey = DOW_MAP[dow]
-    if (!dayKey) { skippedDay++; continue }
-
-    const dir = doc.direction === 'To Bowen' ? 'hsb' : doc.direction === 'To HSB' ? 'bowen' : null
-    if (!dir) { skippedDir++; continue }
-
-    if (!groups[dir][dayKey]) groups[dir][dayKey] = {}
-    const grp = groups[dir][dayKey]
-
-    const time = normalizeTime(doc.sailingTime)
-    if (!time) { skippedTime++; continue }
-
-    const expected = EXPECTED_DIR[time]
-    if (expected && expected !== doc.direction) {
-      phantomDocs.push({ dateIso: doc.dateIso, sailingTime: time, direction: doc.direction, sailingKey: doc.sailingKey })
-      skippedPhantom++
-      continue
-    }
-
-    if (!grp[time]) {
-      grp[time] = { count: 0, latenessMins: [], lateCount: 0, fullCount: 0, filledMinutes: [], lastCapacities: [], dates: [] }
-    }
-    const entry = grp[time]
-    entry.count++
-
-    let lateness = null
-    if (doc.actualDepartureTime) {
-      const dep = parseMinutes(normalizeTime(doc.actualDepartureTime))
-      const sched = parseMinutes(time)
-      if (dep !== null && sched !== null) {
-        lateness = dep - sched
-        entry.latenessMins.push(lateness)
-        if (lateness >= 2) entry.lateCount++
-      }
-    }
-    if (doc.lastCapacity === 'Full') {
-      entry.fullCount++
-      const fm = parseFilledMinutes(doc.filledAt)
-      if (fm !== null) entry.filledMinutes.push(fm)
-    } else if (doc.lastCapacity) {
-      entry.lastCapacities.push(doc.lastCapacity)
-    }
-    entry.dates.push({
-      dateIso: doc.dateIso,
-      actualDep: doc.actualDepartureTime ? normalizeTime(doc.actualDepartureTime) : null,
-      lateness,
-      capacity: doc.lastCapacity || null,
-      filledAt: doc.filledAt || null,
-    })
-  }
-  if (phantomDocs.length) {
-    console.log(`[HistoricalPage] Filtered ${phantomDocs.length} phantom docs (likely from old recordDepartureTimes bug):`)
-    const byDate = {}
-    for (const p of phantomDocs) {
-      if (!byDate[p.dateIso]) byDate[p.dateIso] = []
-      byDate[p.dateIso].push(`${p.sailingTime}_${p.direction}`)
-    }
-    for (const [date, entries] of Object.entries(byDate).sort()) {
-      console.log(`  ${date}: ${entries.join(', ')}`)
-    }
-  }
-  console.log('[HistoricalPage] Grouping skipped: direction=', skippedDir, 'day=', skippedDay, 'time=', skippedTime, 'phantom=', skippedPhantom)
-
-  const result = { hsb: {}, bowen: {} }
-  for (const dir of ['hsb', 'bowen']) {
-    for (const dayKey of dayNames.map(d => d.key)) {
-      const grp = groups[dir][dayKey]
-      if (!grp) continue
-      if (!result[dir][dayKey]) result[dir][dayKey] = {}
-      for (const [time, raw] of Object.entries(grp)) {
-        const avgLateness = raw.latenessMins.length
-          ? Math.round(raw.latenessMins.reduce((a, b) => a + b, 0) / raw.latenessMins.length)
-          : null
-
-        const numbers = raw.lastCapacities
-          .map(c => parseInt(c))
-          .filter(n => !isNaN(n) && n <= 100)
-        const avgCapacityPct = numbers.length
-          ? Math.round(numbers.reduce((a, b) => a + b, 0) / numbers.length)
-          : null
-
-        const latePct = raw.latenessMins.length
-          ? Math.round((raw.lateCount / raw.latenessMins.length) * 100)
-          : null
-        const fullPct = Math.round((raw.fullCount / raw.count) * 100)
-        const avgFillTime = raw.filledMinutes.length
-          ? minutesToLabel(raw.filledMinutes.reduce((a, b) => a + b, 0) / raw.filledMinutes.length)
-          : null
-
-        result[dir][dayKey][time] = {
-          count: raw.count,
-          avgLateness,
-          latePct,
-          fullPct,
-          avgFillTime,
-          avgCapacityPct,
-          dates: [...raw.dates].sort((a, b) => a.dateIso.localeCompare(b.dateIso)),
-        }
-      }
-    }
-  }
-  return result
-})
+watch(excludeHolidays, () => fetchData())
 
 onMounted(() => {
   fetchData()
@@ -636,4 +465,7 @@ onMounted(() => {
   padding: 2px 6px;
   border-bottom: 1px solid #f0f0f0;
 }
+.exception-cell { width: 18px; text-align: center; padding: 2px 2px; }
+.exception-row td { color: #b0a06a; }
+.exception-row td:nth-child(4) { text-decoration: line-through; }
 </style>

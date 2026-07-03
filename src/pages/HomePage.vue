@@ -187,32 +187,49 @@
                   </div>
                 </div>
                 <div class="text-center text-grey-8 q-my-sm">upcoming</div>
+                <div
+                  v-if="holidayContext.impacted"
+                  class="text-center text-caption text-deep-orange q-mb-sm"
+                >
+                  <q-icon name="celebration" size="xs" />
+                  {{ holidayContext.onHoliday ? holidayContext.name : `${holidayContext.name} weekend` }} —
+                  expect heavier traffic than typical
+                </div>
                 <div class="row items-end q-col-gutter-sm">
                   <div class="col">
                     <div
                       v-for="(s, i) in allUpcomingBowen.slice(0, 3)"
                       :key="'ub' + i"
-                      class="row items-center no-wrap q-mt-xs"
+                      class="q-mt-xs"
                     >
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ formatTime12h(s.shortTime) }}
+                      <div class="row items-center no-wrap">
+                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                          {{ formatTime12h(s.shortTime) }}
+                        </div>
+                        <q-badge
+                          rounded
+                          v-if="s.lateText"
+                          :color="s.lateColor"
+                          class="badge-gap"
+                          dense
+                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                        >
+                        <q-badge
+                          rounded
+                          v-if="s.deckSpace"
+                          :color="getDeckColor(s.deckSpace)"
+                          dense
+                          class="badge-gap"
+                        >{{ formatDeckBadge(s)
+                          }}</q-badge>
                       </div>
-                      <q-badge
-                        rounded
-                        v-if="s.lateText"
-                        :color="s.lateColor"
-                        class="badge-gap"
-                        dense
-                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      <div
+                        v-if="sailingHints(s)"
+                        class="typical-hint text-caption"
+                        :class="'text-' + sailingHints(s).color"
                       >
-                      <q-badge
-                        rounded
-                        v-if="s.deckSpace"
-                        :color="getDeckColor(s.deckSpace)"
-                        dense
-                        class="badge-gap"
-                      >{{ formatDeckBadge(s)
-                        }}</q-badge>
+                        {{ sailingHints(s).text }}
+                      </div>
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -222,26 +239,35 @@
                     <div
                       v-for="(s, i) in allUpcomingHSB.slice(0, 3)"
                       :key="'uh' + i"
-                      class="row items-center no-wrap q-mt-xs"
+                      class="q-mt-xs"
                     >
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ formatTime12h(s.shortTime) }}
+                      <div class="row items-center no-wrap">
+                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                          {{ formatTime12h(s.shortTime) }}
+                        </div>
+                        <q-badge
+                          rounded
+                          v-if="s.lateText"
+                          :color="s.lateColor"
+                          class="badge-gap"
+                          dense
+                        >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                        >
+                        <q-badge
+                          rounded
+                          v-if="s.deckSpace"
+                          :color="getDeckColor(s.deckSpace)"
+                          dense
+                          class="badge-gap"
+                        >{{ formatDeckBadge(s)}}</q-badge>
                       </div>
-                      <q-badge
-                        rounded
-                        v-if="s.lateText"
-                        :color="s.lateColor"
-                        class="badge-gap"
-                        dense
-                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      <div
+                        v-if="sailingHints(s)"
+                        class="typical-hint text-caption"
+                        :class="'text-' + sailingHints(s).color"
                       >
-                      <q-badge
-                        rounded
-                        v-if="s.deckSpace"
-                        :color="getDeckColor(s.deckSpace)"
-                        dense
-                        class="badge-gap"
-                      >{{ formatDeckBadge(s)}}</q-badge>
+                        {{ sailingHints(s).text }}
+                      </div>
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -660,22 +686,31 @@
               <div
                 v-for="(s, i) in allUpcomingBowen"
                 :key="'ub' + i"
-                class="row items-center no-wrap q-mt-xs"
+                class="q-mt-xs"
               >
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ formatTime12h(s.shortTime) }}
+                <div class="row items-center no-wrap">
+                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                    {{ formatTime12h(s.shortTime) }}
+                  </div>
+                  <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
+                    {{ shortText(s.lateText, $q.screen.xs) }}
+                  </q-badge>
+                  <q-badge
+                    rounded
+                    v-if="s.deckSpace"
+                    :color="getDeckColor(s.deckSpace)"
+                    dense
+                    class="badge-gap"
+                  >{{ formatDeckBadge(s)
+                    }}</q-badge>
                 </div>
-                <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
-                  {{ shortText(s.lateText, $q.screen.xs) }}
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-if="s.deckSpace"
-                  :color="getDeckColor(s.deckSpace)"
-                  dense
-                  class="badge-gap"
-                >{{ formatDeckBadge(s)
-                  }}</q-badge>
+                <div
+                  v-if="sailingHints(s)"
+                  class="typical-hint text-caption"
+                  :class="'text-' + sailingHints(s).color"
+                >
+                  {{ sailingHints(s).text }}
+                </div>
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                 None
@@ -685,22 +720,31 @@
               <div
                 v-for="(s, i) in allUpcomingHSB"
                 :key="'uh' + i"
-                class="row items-center no-wrap q-mt-xs"
+                class="q-mt-xs"
               >
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ formatTime12h(s.shortTime) }}
+                <div class="row items-center no-wrap">
+                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                    {{ formatTime12h(s.shortTime) }}
+                  </div>
+                  <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
+                    {{ shortText(s.lateText, $q.screen.xs) }}
+                  </q-badge>
+                  <q-badge
+                    rounded
+                    v-if="s.deckSpace"
+                    :color="getDeckColor(s.deckSpace)"
+                    dense
+                    class="badge-gap"
+                  >{{ formatDeckBadge(s)
+                    }}</q-badge>
                 </div>
-                <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
-                  {{ shortText(s.lateText, $q.screen.xs) }}
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-if="s.deckSpace"
-                  :color="getDeckColor(s.deckSpace)"
-                  dense
-                  class="badge-gap"
-                >{{ formatDeckBadge(s)
-                  }}</q-badge>
+                <div
+                  v-if="sailingHints(s)"
+                  class="typical-hint text-caption"
+                  :class="'text-' + sailingHints(s).color"
+                >
+                  {{ sailingHints(s).text }}
+                </div>
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -736,6 +780,13 @@ import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import { useAuth } from 'src/composables/useAuth'
+import {
+  useHistoricalStats,
+  getTypical,
+  typicalHints,
+  labelToPanel,
+} from 'src/composables/useHistoricalStats'
+import { getHolidayContext } from '../../functions/lib/holidays.js'
 
 const { ferryData, loading, error } = useFirestoreFerryListener()
 const { rides } = useRides()
@@ -908,6 +959,23 @@ function delayDepartures() {
   // Trigger reactivity
   ferryData.value = { ...ferryData.value }
   alert(`Added ${mins} min cumulative delay to ${sorted.length} departures`)
+}
+
+// Historical "typical" stats, used to hint that an upcoming sailing is normally
+// late or full. Day-of-week specific; holiday-impacted dates are excluded from
+// the baseline (and flagged separately via holidayContext).
+const { byDayOfWeek: historyByDayOfWeek, fetchStats: fetchHistory } = useHistoricalStats()
+onMounted(() => fetchHistory({ weeksBack: 8, excludeHolidays: true }))
+
+const todayIso = computed(() => nowInVancouver().format('YYYY-MM-DD'))
+const todayDow = computed(() => nowInVancouver().format('dddd'))
+const holidayContext = computed(() => getHolidayContext(todayIso.value))
+
+// Typical-history hints for an upcoming sailing (empty when unremarkable).
+function sailingHints(s) {
+  const panel = labelToPanel(s.label)
+  const info = getTypical(historyByDayOfWeek.value, panel, todayDow.value, s.shortTime)
+  return typicalHints(info)
 }
 
 const upcomingSailings = computed(() => schedule.upcomingSailings(6))
@@ -1203,6 +1271,12 @@ onUnmounted(() => {
 
 .badge-gap {
   margin-left: 2px;
+}
+
+.typical-hint {
+  line-height: 1.1;
+  padding-left: 2px;
+  margin-top: 1px;
 }
 
 .staging-tools {

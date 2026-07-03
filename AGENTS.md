@@ -29,6 +29,8 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 - `functions/lib/record.js`: `recordCapacityChanges`, `recordDepartureTimes` — both generate sailingKeys with inconsistent format.
 - `functions/lib/webcam.js`: `captureBowenWebcam`, `captureBowenCommunityWebcam` — multi-sample capture, Firebase Storage upload, snapshot doc update.
 - `functions/lib/lateness.js`: notification logic.
+- `functions/lib/holidays.js`: BC statutory holiday computation (`getBcHolidays`, `holidayName`, `getImpactedDates`, `getHolidayContext`) — long-weekend awareness; holiday-impacted dates excluded from historical baselines.
+- `src/composables/useHistoricalStats.js`: shared history aggregation. `aggregateSailings` groups sailingStatus by direction/day-of-week/time, detects lateness **exceptions** (median+MAD outliers, excluded from averages but retained/flagged), and exposes `getTypical`/`typicalHints` for the home page. Used by both HistoryPage and HomePage.
 - `src/pages/HomePage.vue`: `formatDeckBadge`, snapshot dialog with "BI Powered" button (shows departure + arrival snapshots), ride sorting, webcam grid.
 - `src/pages/RideDetailPage.vue`: contact info display (no sign-in, supports email/SMS/other).
 - `src/pages/PostRidePage.vue`: sailing time normalization on save.
