@@ -132,43 +132,72 @@
                       <q-item-label class="text-overline">Avg capacity</q-item-label>
                     </q-item-section>
                   </q-item>
-                  <q-item
+                  <template
                     v-for="[time, info] in sortedEntries(byDayOfWeek[panel]?.[day.key])"
                     :key="time"
                   >
-                    <q-item-section class="col-3">
-                      <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
-                    </q-item-section>
-                    <q-item-section class="col-5">
-                      <template v-if="info.avgLateness !== null">
-                        <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
-                          {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
-                        </q-item-label>
-                        <q-item-label class="text-caption text-grey-7">
-                          {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
-                        </q-item-label>
-                      </template>
-                      <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
-                    </q-item-section>
-                    <q-item-section class="col-4 text-right">
-                      <q-item-label class="text-caption" :class="fullClass(info)">
-                        <template v-if="info.fullPct > 0">
-                          {{ fullLabel(info) }}
+                    <q-item clickable @click="toggleRow(panel, day.key, time)">
+                      <q-item-section class="col-3">
+                        <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
+                      </q-item-section>
+                      <q-item-section class="col-5">
+                        <template v-if="info.avgLateness !== null">
+                          <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
+                            {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
+                          </q-item-label>
+                          <q-item-label class="text-caption text-grey-7">
+                            {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
+                          </q-item-label>
                         </template>
-                        <template v-else-if="info.avgCapacityPct !== null">
-                          {{ info.avgCapacityPct }}% free
-                        </template>
-                        <template v-else>—</template>
-                      </q-item-label>
-                      <q-item-label
-                        v-if="info.fullPct > 0"
-                        class="text-caption text-grey-7"
-                      >
-                        {{ info.fullPct }}%
-                        <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
-                      </q-item-label>
-                    </q-item-section>
-                  </q-item>
+                        <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
+                      </q-item-section>
+                      <q-item-section class="col-4 text-right">
+                        <q-item-label class="text-caption" :class="fullClass(info)">
+                          <template v-if="info.fullPct > 0">
+                            {{ fullLabel(info) }}
+                          </template>
+                          <template v-else-if="info.avgCapacityPct !== null">
+                            {{ info.avgCapacityPct }}% free
+                          </template>
+                          <template v-else>—</template>
+                        </q-item-label>
+                        <q-item-label
+                          v-if="info.fullPct > 0"
+                          class="text-caption text-grey-7"
+                        >
+                          {{ info.fullPct }}%
+                          <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
+                        </q-item-label>
+                      </q-item-section>
+                      <q-item-section side>
+                        <q-icon :name="isExpanded(panel, day.key, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
+                      </q-item-section>
+                    </q-item>
+                    <q-item v-if="isExpanded(panel, day.key, time)" class="bg-grey-1 q-pa-none">
+                      <q-item-section>
+                        <table class="date-detail-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Actual dep</th>
+                              <th>+/- min</th>
+                              <th>Capacity</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="d in info.dates" :key="d.dateIso">
+                              <td>{{ d.dateIso }}</td>
+                              <td>{{ d.actualDep || '—' }}</td>
+                              <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
+                                {{ d.lateness === null ? '—' : (d.lateness >= 0 ? '+' : '') + d.lateness }}
+                              </td>
+                              <td>{{ d.capacity || '—' }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </q-item-section>
+                    </q-item>
+                  </template>
                 </q-list>
               </q-card>
             </div>
@@ -224,43 +253,72 @@
                     <q-item-label class="text-overline">Avg capacity</q-item-label>
                   </q-item-section>
                 </q-item>
-                <q-item
+                <template
                   v-for="[time, info] in sortedEntries(byDayOfWeek[panel]?.[selectedDay])"
                   :key="time"
                 >
-                  <q-item-section class="col-3">
-                    <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
-                  </q-item-section>
-                  <q-item-section class="col-5">
-                    <template v-if="info.avgLateness !== null">
-                      <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
-                        {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
-                      </q-item-label>
-                      <q-item-label class="text-caption text-grey-7">
-                        {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
-                      </q-item-label>
-                    </template>
-                    <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
-                  </q-item-section>
-                  <q-item-section class="col-4 text-right">
-                    <q-item-label class="text-caption" :class="fullClass(info)">
-                      <template v-if="info.fullPct > 0">
-                        {{ fullLabel(info) }}
+                  <q-item clickable @click="toggleRow(panel, selectedDay, time)">
+                    <q-item-section class="col-3">
+                      <q-item-label class="text-weight-medium">{{ time }}</q-item-label>
+                    </q-item-section>
+                    <q-item-section class="col-5">
+                      <template v-if="info.avgLateness !== null">
+                        <q-item-label class="text-caption" :class="latenessClass(info.avgLateness)">
+                          {{ info.avgLateness <= 0 ? 'On Time' : info.avgLateness <= 5 ? 'Slightly Late' : 'Very Late' }}
+                        </q-item-label>
+                        <q-item-label class="text-caption text-grey-7">
+                          {{ info.avgLateness >= 0 ? '+' : '' }}{{ info.avgLateness }}m avg<template v-if="info.latePct !== null"> · Late {{ info.latePct }}%</template> · {{ info.count }} dep
+                        </q-item-label>
                       </template>
-                      <template v-else-if="info.avgCapacityPct !== null">
-                        {{ info.avgCapacityPct }}% free
-                      </template>
-                      <template v-else>—</template>
-                    </q-item-label>
-                    <q-item-label
-                      v-if="info.fullPct > 0"
-                      class="text-caption text-grey-7"
-                    >
-                      {{ info.fullPct }}%
-                      <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
-                    </q-item-label>
-                  </q-item-section>
-                </q-item>
+                      <q-item-label v-else class="text-caption text-grey-5">—</q-item-label>
+                    </q-item-section>
+                    <q-item-section class="col-4 text-right">
+                      <q-item-label class="text-caption" :class="fullClass(info)">
+                        <template v-if="info.fullPct > 0">
+                          {{ fullLabel(info) }}
+                        </template>
+                        <template v-else-if="info.avgCapacityPct !== null">
+                          {{ info.avgCapacityPct }}% free
+                        </template>
+                        <template v-else>—</template>
+                      </q-item-label>
+                      <q-item-label
+                        v-if="info.fullPct > 0"
+                        class="text-caption text-grey-7"
+                      >
+                        {{ info.fullPct }}%
+                        <template v-if="info.avgFillTime"> ≈{{ info.avgFillTime }}</template> · {{ info.count }} dep
+                      </q-item-label>
+                    </q-item-section>
+                    <q-item-section side>
+                      <q-icon :name="isExpanded(panel, selectedDay, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
+                    </q-item-section>
+                  </q-item>
+                  <q-item v-if="isExpanded(panel, selectedDay, time)" class="bg-grey-1 q-pa-none">
+                    <q-item-section>
+                      <table class="date-detail-table">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Actual dep</th>
+                            <th>+/- min</th>
+                            <th>Capacity</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="d in info.dates" :key="d.dateIso">
+                            <td>{{ d.dateIso }}</td>
+                            <td>{{ d.actualDep || '—' }}</td>
+                            <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
+                              {{ d.lateness === null ? '—' : (d.lateness >= 0 ? '+' : '') + d.lateness }}
+                            </td>
+                            <td>{{ d.capacity || '—' }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </q-item-section>
+                  </q-item>
+                </template>
               </q-list>
             </q-card>
           </div>
@@ -272,7 +330,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from 'boot/firebase'
 import { dayjs, TZ, normalizeTime, nowInVancouver } from '../../functions/lib/time.js'
@@ -284,6 +342,15 @@ const loading = ref(false)
 const error = ref(null)
 const sailingDocs = ref([])
 const showMobileSettings = ref(false)
+
+const expandedRows = reactive(new Set())
+function rowKey(dir, dayKey, time) { return `${dir}|${dayKey}|${time}` }
+function toggleRow(dir, dayKey, time) {
+  const k = rowKey(dir, dayKey, time)
+  if (expandedRows.has(k)) expandedRows.delete(k)
+  else expandedRows.add(k)
+}
+function isExpanded(dir, dayKey, time) { return expandedRows.has(rowKey(dir, dayKey, time)) }
 
 const selectedDay = ref(nowInVancouver().format('dddd'))
 const todayKey = computed(() => nowInVancouver().format('dddd'))
@@ -439,17 +506,19 @@ const byDayOfWeek = computed(() => {
     }
 
     if (!grp[time]) {
-      grp[time] = { count: 0, latenessMins: [], lateCount: 0, fullCount: 0, filledAts: [], lastCapacities: [] }
+      grp[time] = { count: 0, latenessMins: [], lateCount: 0, fullCount: 0, filledAts: [], lastCapacities: [], dates: [] }
     }
     const entry = grp[time]
     entry.count++
 
+    let lateness = null
     if (doc.actualDepartureTime) {
       const dep = parseMinutes(normalizeTime(doc.actualDepartureTime))
       const sched = parseMinutes(time)
       if (dep !== null && sched !== null) {
-        entry.latenessMins.push(dep - sched)
-        if (dep - sched >= 2) entry.lateCount++
+        lateness = dep - sched
+        entry.latenessMins.push(lateness)
+        if (lateness >= 2) entry.lateCount++
       }
     }
     if (doc.lastCapacity === 'Full') {
@@ -460,6 +529,13 @@ const byDayOfWeek = computed(() => {
     } else if (doc.lastCapacity) {
       entry.lastCapacities.push(doc.lastCapacity)
     }
+    entry.dates.push({
+      dateIso: doc.dateIso,
+      actualDep: doc.actualDepartureTime ? normalizeTime(doc.actualDepartureTime) : null,
+      lateness,
+      capacity: doc.lastCapacity || null,
+      filledAt: doc.filledAt || null,
+    })
   }
   if (phantomDocs.length) {
     console.log(`[HistoricalPage] Filtered ${phantomDocs.length} phantom docs (likely from old recordDepartureTimes bug):`)
@@ -507,6 +583,7 @@ const byDayOfWeek = computed(() => {
           fullPct,
           avgFillTime,
           avgCapacityPct,
+          dates: [...raw.dates].sort((a, b) => a.dateIso.localeCompare(b.dateIso)),
         }
       }
     }
@@ -522,5 +599,24 @@ onMounted(() => {
 <style scoped>
 .today-card {
   border: 2px solid var(--q-primary) !important;
+}
+.date-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+}
+.date-detail-table th {
+  text-align: left;
+  color: #888;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-bottom: 1px solid #e0e0e0;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+}
+.date-detail-table td {
+  padding: 2px 6px;
+  border-bottom: 1px solid #f0f0f0;
 }
 </style>
