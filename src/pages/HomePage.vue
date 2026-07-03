@@ -601,7 +601,7 @@
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
           <div
             v-if="lastSailing && !lastSailing.skipped"
-            class="text-right text-caption text-grey-7 q-mb-xs"
+            class="text-center text-caption text-grey-7 q-mb-xs"
           >
             <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
               last sailing
