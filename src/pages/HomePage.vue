@@ -186,7 +186,7 @@
                   {{ holidayContext.onHoliday ? holidayContext.name : `${holidayContext.name} weekend` }} —
                   expect heavier traffic than typical
                 </div>
-                <div class="row items-end q-col-gutter-sm">
+                <div class="row items-start q-col-gutter-sm">
                   <div class="col">
                     <div
                       v-for="(s, i) in allUpcomingBowen.slice(0, 3)"
@@ -672,7 +672,7 @@
             </div>
           </div>
           <div class="text-center text-grey-8 q-my-sm">upcoming</div>
-          <div class="row items-end q-col-gutter-sm">
+          <div class="row items-start  q-col-gutter-sm">
             <div class="col">
               <div
                 v-for="(s, i) in allUpcomingBowen"
