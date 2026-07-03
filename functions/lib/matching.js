@@ -69,6 +69,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
       label,
       ...lateness,
       shortTime: matchedDep ? matchedDep.display : s.time,
+      scheduledTime: s.time,
       sortTime: t,
       _hasDep: !!matchedDep,
       _depDisplay: matchedDep ? matchedDep.display : null,

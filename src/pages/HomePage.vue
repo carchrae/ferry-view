@@ -115,42 +115,6 @@
               <q-card-section class="q-pa-sm">
                 <div class="row items-start q-col-gutter-sm q-mb-md">
                   <div class="col">
-                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">
-                      Horseshoe Bay
-                    </div>
-                    <div
-                      v-for="(event, i) in recentPastHSB.slice(-3)"
-                      :key="'ph' + i"
-                      class="row items-center no-wrap q-mt-xs"
-                    >
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ formatTime12h(event.shortTime) }}
-                      </div>
-                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                      >?</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-else-if="event.diffText"
-                        :color="event.diffColor"
-                        class="badge-gap"
-                        dense
-                      >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-if="event.lastCapacity"
-                        :color="getDeckColor(event.lastCapacity)"
-                        class="badge-gap"
-                        dense
-                      >{{ formatDeckBadge(event, $q.screen.xs)
-                        }}</q-badge>
-                    </div>
-                    <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
-                      None
-                    </div>
-                  </div>
-                  <div class="col">
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
                     <div
                       v-for="(event, i) in recentPastBowen.slice(-3)"
@@ -158,7 +122,7 @@
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ formatTime12h(event.shortTime) }}
+                        {{ formatTime12h(event.scheduledTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                       >?</q-badge
@@ -185,38 +149,45 @@
                       None
                     </div>
                   </div>
-                </div>
-                <div class="text-center text-grey-8 q-my-sm">upcoming</div>
-                <div class="row items-end q-col-gutter-sm">
                   <div class="col">
+                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">
+                      Horseshoe Bay
+                    </div>
                     <div
-                      v-for="(s, i) in allUpcomingHSB.slice(0, 3)"
-                      :key="'uh' + i"
+                      v-for="(event, i) in recentPastHSB.slice(-3)"
+                      :key="'ph' + i"
                       class="row items-center no-wrap q-mt-xs"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ formatTime12h(s.shortTime) }}
+                        {{ formatTime12h(event.scheduledTime) }}
                       </div>
-                      <q-badge
-                        rounded
-                        v-if="s.lateText"
-                        :color="s.lateColor"
-                        class="badge-gap"
-                        dense
-                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
+                      >?</q-badge
                       >
                       <q-badge
                         rounded
-                        v-if="s.deckSpace"
-                        :color="getDeckColor(s.deckSpace)"
-                        dense
+                        v-else-if="event.diffText"
+                        :color="event.diffColor"
                         class="badge-gap"
-                      >{{ formatDeckBadge(s)}}</q-badge>
+                        dense
+                      >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-if="event.lastCapacity"
+                        :color="getDeckColor(event.lastCapacity)"
+                        class="badge-gap"
+                        dense
+                      >{{ formatDeckBadge(event, $q.screen.xs)
+                        }}</q-badge>
                     </div>
-                    <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
+                    <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
+                </div>
+                <div class="text-center text-grey-8 q-my-sm">upcoming</div>
+                <div class="row items-end q-col-gutter-sm">
                   <div class="col">
                     <div
                       v-for="(s, i) in allUpcomingBowen.slice(0, 3)"
@@ -244,6 +215,35 @@
                         }}</q-badge>
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
+                      None
+                    </div>
+                  </div>
+                  <div class="col">
+                    <div
+                      v-for="(s, i) in allUpcomingHSB.slice(0, 3)"
+                      :key="'uh' + i"
+                      class="row items-center no-wrap q-mt-xs"
+                    >
+                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                        {{ formatTime12h(s.shortTime) }}
+                      </div>
+                      <q-badge
+                        rounded
+                        v-if="s.lateText"
+                        :color="s.lateColor"
+                        class="badge-gap"
+                        dense
+                      >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
+                      >
+                      <q-badge
+                        rounded
+                        v-if="s.deckSpace"
+                        :color="getDeckColor(s.deckSpace)"
+                        dense
+                        class="badge-gap"
+                      >{{ formatDeckBadge(s)}}</q-badge>
+                    </div>
+                    <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
@@ -590,38 +590,6 @@
           </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">
             <div class="col">
-              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Horseshoe Bay</div>
-              <div
-                v-for="(event, i) in allPastHSB"
-                :key="'ph' + i"
-                class="row items-center no-wrap q-mt-xs"
-              >
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ formatTime12h(event.shortTime) }}
-                </div>
-                <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                >?
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-else-if="event.diffText"
-                  :color="event.diffColor"
-                  class="badge-gap"
-                  dense
-                >{{ shortText(event.diffText, $q.screen.xs) }}
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-if="event.lastCapacity"
-                  :color="getDeckColor(event.lastCapacity)"
-                  class="badge-gap"
-                  dense
-                >{{ formatDeckBadge(event, $q.screen.xs)
-                  }}</q-badge>
-              </div>
-              <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
-            </div>
-            <div class="col">
               <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
               <div
                 v-for="(event, i) in allPastBowen"
@@ -629,7 +597,7 @@
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ formatTime12h(event.shortTime) }}
+                  {{ formatTime12h(event.scheduledTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
                 >?
@@ -653,32 +621,41 @@
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
-          </div>
-          <div class="text-center text-grey-8 q-my-sm">upcoming</div>
-          <div class="row items-end q-col-gutter-sm">
             <div class="col">
+              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Horseshoe Bay</div>
               <div
-                v-for="(s, i) in allUpcomingHSB"
-                :key="'uh' + i"
+                v-for="(event, i) in allPastHSB"
+                :key="'ph' + i"
                 class="row items-center no-wrap q-mt-xs"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ formatTime12h(s.shortTime) }}
+                  {{ formatTime12h(event.scheduledTime) }}
                 </div>
-                <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
-                  {{ shortText(s.lateText, $q.screen.xs) }}
+                <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
+                >?
                 </q-badge>
                 <q-badge
                   rounded
-                  v-if="s.deckSpace"
-                  :color="getDeckColor(s.deckSpace)"
-                  dense
+                  v-else-if="event.diffText"
+                  :color="event.diffColor"
                   class="badge-gap"
-                >{{ formatDeckBadge(s)
+                  dense
+                >{{ shortText(event.diffText, $q.screen.xs) }}
+                </q-badge>
+                <q-badge
+                  rounded
+                  v-if="event.lastCapacity"
+                  :color="getDeckColor(event.lastCapacity)"
+                  class="badge-gap"
+                  dense
+                >{{ formatDeckBadge(event, $q.screen.xs)
                   }}</q-badge>
               </div>
-              <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+              <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
+          </div>
+          <div class="text-center text-grey-8 q-my-sm">upcoming</div>
+          <div class="row items-end q-col-gutter-sm">
             <div class="col">
               <div
                 v-for="(s, i) in allUpcomingBowen"
@@ -703,6 +680,29 @@
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                 None
               </div>
+            </div>
+            <div class="col">
+              <div
+                v-for="(s, i) in allUpcomingHSB"
+                :key="'uh' + i"
+                class="row items-center no-wrap q-mt-xs"
+              >
+                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                  {{ formatTime12h(s.shortTime) }}
+                </div>
+                <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
+                  {{ shortText(s.lateText, $q.screen.xs) }}
+                </q-badge>
+                <q-badge
+                  rounded
+                  v-if="s.deckSpace"
+                  :color="getDeckColor(s.deckSpace)"
+                  dense
+                  class="badge-gap"
+                >{{ formatDeckBadge(s)
+                  }}</q-badge>
+              </div>
+              <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
           </div>
         </q-card-section>
