@@ -1,5 +1,6 @@
 import { logger } from 'firebase-functions/logger'
 import { buildPast } from './matching.js'
+import { updateSailingStatus } from './helpers.js'
 import { normalizeTime, timeToDate, nowInVancouver } from './time.js'
 
 export async function augmentRecentActivity(db, data) {
@@ -96,6 +97,7 @@ export async function augmentFromCapacityHistory(db, data) {
   if (SKIP_CAPACITY_HISTORY_AUGMENT) return
   try {
     let enriched = 0
+    const statusWrites = []
     for (const [direction, schedule] of [
       ['To Bowen', data.hsbSchedule],
       ['To HSB', data.bowenSchedule],
@@ -120,21 +122,35 @@ export async function augmentFromCapacityHistory(db, data) {
           if (!serverSnap.empty) {
             const r = serverSnap.docs[0].data()
             entry.lastCapacity = r.capacity
+            // filledAt for the persisted historical record: only a real
+            // timestamp is meaningful (HistoryPage averages numeric fill times).
+            const filledAt = r.capacity === 'Full' ? r.filledAt || r.recordedAt : null
             if (r.userUid) {
               entry.filledAt = 'user_reported'
               enriched++
             } else {
               if (r.capacity === 'Full') {
-                entry.filledAt = r.filledAt || r.recordedAt
+                entry.filledAt = filledAt
               }
             }
             enriched++
+            // Persist the capacity to sailingStatus so the historical view
+            // (HistoryPage) sees capacityHistory data, including user-contributed
+            // reports — the scrape path writes lastCapacity, but user reports
+            // only land in capacityHistory otherwise.
+            statusWrites.push(
+              updateSailingStatus(sailingKey, normalizeTime(entry.time), direction, data.dateIso, db, {
+                lastCapacity: r.capacity,
+                filledAt,
+              }),
+            )
           } else {
             // console.log('no snap for ', sailingKey)
           }
         }
       }
     }
+    if (statusWrites.length) await Promise.all(statusWrites)
     if (enriched)
       logger.log(`Augmented ${enriched} schedule entries with capacity from capacityHistory`)
   } catch (e) {

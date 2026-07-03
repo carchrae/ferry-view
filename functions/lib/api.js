@@ -5,15 +5,23 @@ import { calculateLateness } from './matching.js'
 
 const API_URL = 'https://bowenferry.ca/Production/AISPositionsData3'
 
-// Formats the API returns, e.g. "Friday Jul 3rd" or "Friday July 3"
-const API_DATE_FORMATS = ['dddd MMM Do', 'dddd MMMM Do', 'dddd MMM D', 'dddd MMMM D']
+// The API returns dates like "Friday Jul 3rd" or "Friday July 3". dayjs strict
+// parsing can't consume weekday names (dddd) or ordinal suffixes (Do), so we
+// strip both before parsing just the "<month> <day>" that remains.
+const API_DATE_FORMATS = ['MMM D', 'MMMM D']
 
 export function parseApiDate(str, year = nowInVancouver().year()) {
-  for (const fmt of API_DATE_FORMATS) {
-    const parsed = dayjs(str, fmt, true)
-    if (parsed.isValid()) return parsed.year(year).format('YYYY-MM-DD')
+  if (str) {
+    const cleaned = str
+      .replace(/(\d+)(st|nd|rd|th)\b/gi, '$1') // "3rd" -> "3"
+      .replace(/^\s*[A-Za-z]+day\b\s*/i, '') // drop leading weekday name
+      .trim()
+    for (const fmt of API_DATE_FORMATS) {
+      const parsed = dayjs(cleaned, fmt, true)
+      if (parsed.isValid()) return parsed.year(year).format('YYYY-MM-DD')
+    }
   }
-  throw new Error('could not parse date '+str);
+  throw new Error('could not parse date ' + str)
 }
 
 export async function fetchFerryData() {
