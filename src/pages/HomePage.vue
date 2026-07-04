@@ -786,7 +786,7 @@
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
           <SailingHistoryDetail v-if="selectedTypical" :info="selectedTypical.info" />
           <div class="text-caption text-grey-5 q-mt-sm q-px-xs">
-            Predictions are just a guess — there's no certainty with the ferry.
+            Predictions are a guess — there's no certainty with the ferry.
           </div>
         </q-card-section>
       </q-card>
