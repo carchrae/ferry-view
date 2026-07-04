@@ -15,6 +15,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const atBowenFixture = JSON.parse(
   readFileSync(join(__dirname, 'fixtures', 'ais-at-bowen.json'), 'utf8'),
 )
+const atHsbFixture = JSON.parse(
+  readFileSync(join(__dirname, 'fixtures', 'ais-at-hsb.json'), 'utf8'),
+)
 
 const BOWEN = TERMINALS.find((t) => t.location === 'Bowen')
 const HSB = TERMINALS.find((t) => t.location === 'Horseshoe Bay')
@@ -71,6 +74,10 @@ describe('ais-position', () => {
 
     it('classifies a stopped vessel at Horseshoe Bay', () => {
       expect(classifyTerminal({ lat: HSB.lat, lon: HSB.lon }, '0.10')).toBe('Horseshoe Bay')
+    })
+
+    it('classifies the observed docked-at-HSB feed sample as Horseshoe Bay', () => {
+      expect(classifyTerminal(extractVesselPosition(atHsbFixture), '0.00')).toBe('Horseshoe Bay')
     })
 
     it('returns null (in transit) when the vessel is moving, even at a dock', () => {
