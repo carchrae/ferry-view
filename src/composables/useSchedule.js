@@ -19,7 +19,14 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     const consumedTimes = new Set(consumedArr)
     const lastConsumedTime = consumedArr.length > 0 ? dayjs(Math.max(...consumedArr)) : null
 
-    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime)
+    // When the vessel is underway, an overdue scheduled departure has already
+    // left even if the arrival/departure log hasn't logged it yet (that log lags
+    // the live AIS feed). Pass this so buildUpcoming can drop those departures
+    // instead of showing them as increasingly-late phantom upcoming sailings.
+    const speed = parseFloat(ferryData.value.speed)
+    const isSailing = !isNaN(speed) && speed > 0.5
+
+    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing)
     return { past, upcoming, consumedTimes }
   }
 

@@ -98,8 +98,8 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
   return [...matched, ...skipped]
 }
 
-export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime) {
-  return scheduleItems
+export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing = false) {
+  const candidates = scheduleItems
     .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => {
@@ -107,6 +107,25 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
       if (consumedTimes.has(t.valueOf())) return false
       if (lastConsumedTime && t < lastConsumedTime) return false
       return true
+    })
+
+  // Latest sailing whose scheduled time has already passed. An overdue sailing
+  // is only credibly "still to come / running late" if it's this leading edge
+  // AND the vessel isn't already sailing. Earlier overdue sailings — or any
+  // overdue sailing while the vessel is underway — have departed; the BC Ferries
+  // arrival/departure log (recentActivity) just hasn't caught up, since it lags
+  // the live AIS feed. Without this, a stale log makes every un-logged departure
+  // pile up as a bogus "204m late" upcoming sailing.
+  const overdue = candidates.filter(({ t }) => t <= now)
+  const latestOverdue = overdue.length
+    ? Math.max(...overdue.map(({ t }) => t.valueOf()))
+    : null
+
+  return candidates
+    .filter(({ t }) => {
+      if (t > now) return true
+      if (isSailing) return false
+      return t.valueOf() === latestOverdue
     })
     .map(({ s, t }) => {
       const isLate = t <= oneMinuteFromNow

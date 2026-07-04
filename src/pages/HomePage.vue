@@ -1238,13 +1238,20 @@ const speedText = computed(() => {
   const mins = Math.round((nowMs() - evtTime) / 60000)
   if (mins < 0 || mins >= 600) return ''
 
-  if (mostRecent.action === 'Departed') {
-    return isSailing.value
+  // recentActivity (BC Ferries' arrival/departure log) lags the live AIS feed.
+  // When the vessel is actually sailing, never render a stale "Docked"/"Stopped"
+  // state from an old event — otherwise a log frozen hours ago reads as e.g.
+  // "Docked at Horseshoe Bay for 221 min" while the ferry is mid-crossing.
+  if (isSailing.value) {
+    return mostRecent.action === 'Departed' && mins < 120
       ? `Left ${mostRecent.location} ${mins} min ago`
-      : `Stopped for ${mins} min`
+      : 'Sailing'
   }
   if (mostRecent.action === 'Arrived') {
     return `Docked at ${mostRecent.location} for ${mins} min`
+  }
+  if (mostRecent.action === 'Departed') {
+    return `Stopped for ${mins} min`
   }
   return ''
 })

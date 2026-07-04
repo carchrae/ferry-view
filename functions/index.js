@@ -16,6 +16,11 @@ import {
 } from './lib/enrich.js'
 import { recordCapacityChanges, recordDepartureTimes } from './lib/record.js'
 import { captureBowenWebcam, captureBowenCommunityWebcam, cleanupOldWebcams } from './lib/webcam.js'
+import {
+  isDepartureLogStale,
+  fetchBowenDepartures,
+  augmentFromBCFerries,
+} from './lib/bcferries-departures.js'
 import { nowInVancouver } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -36,9 +41,27 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
 
   const newDataSanitized = sanitizeForCompare(data)
   const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
-  const dataChanged = forceUpdate || checkDataChanged(newDataSanitized, existingDataSanitized)
+  let dataChanged = forceUpdate || checkDataChanged(newDataSanitized, existingDataSanitized)
 
-  // Match against raw API recentActivity (no backfill yet)
+  // Fallback: if bowenferry.ca's departure log has stalled (live feed fresh but no new
+  // Departed/Arrived events), scrape BC Ferries' page for the real HSB->Bowen departure
+  // times and inject them so matching recovers. Fire-and-log so a scrape failure never
+  // breaks the poll. recentActivity is excluded from checkDataChanged, so any injection
+  // must force a persist to save the recovered matches.
+  if (isDepartureLogStale(data, now)) {
+    try {
+      const scraped = await fetchBowenDepartures()
+      const added = augmentFromBCFerries(data, scraped, now)
+      if (added > 0) {
+        dataChanged = true
+        logger.log(`BC Ferries fallback: recovered ${added} HSB departure(s)`)
+      }
+    } catch (e) {
+      logger.error('BC Ferries departures fallback failed:', e)
+    }
+  }
+
+  // Match against raw API recentActivity (plus any scraped fallback, no DB backfill yet)
   const { hsbPast, bowenPast } = matchDepartures(data, now)
 
   // Enrich and persist departure/capacity records before backfill,
