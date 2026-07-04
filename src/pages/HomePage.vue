@@ -216,10 +216,12 @@
                       </div>
                       <div
                         v-if="sailingHints(s)"
-                        class="typical-hint text-caption"
+                        class="typical-hint text-caption cursor-pointer"
                         :class="'text-' + sailingHints(s).color"
+                        @click="openTypical(s)"
                       >
                         {{ sailingHints(s).text }}
+                        <q-icon name="info_outline" size="12px" />
                       </div>
                     </div>
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -254,16 +256,21 @@
                       </div>
                       <div
                         v-if="sailingHints(s)"
-                        class="typical-hint text-caption"
+                        class="typical-hint text-caption cursor-pointer"
                         :class="'text-' + sailingHints(s).color"
+                        @click="openTypical(s)"
                       >
                         {{ sailingHints(s).text }}
+                        <q-icon name="info_outline" size="12px" />
                       </div>
                     </div>
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
+                </div>
+                <div class="text-center text-caption text-grey-5 q-mt-sm">
+                  Predictions are just a guess — there's no certainty with the ferry.
                 </div>
               </q-card-section>
             </q-card>
@@ -697,10 +704,12 @@
                 </div>
                 <div
                   v-if="sailingHints(s)"
-                  class="typical-hint text-caption"
+                  class="typical-hint text-caption cursor-pointer"
                   :class="'text-' + sailingHints(s).color"
+                  @click="openTypical(s)"
                 >
                   {{ sailingHints(s).text }}
+                  <q-icon name="info_outline" size="12px" />
                 </div>
               </div>
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
@@ -731,10 +740,12 @@
                 </div>
                 <div
                   v-if="sailingHints(s)"
-                  class="typical-hint text-caption"
+                  class="typical-hint text-caption cursor-pointer"
                   :class="'text-' + sailingHints(s).color"
+                  @click="openTypical(s)"
                 >
                   {{ sailingHints(s).text }}
+                  <q-icon name="info_outline" size="12px" />
                 </div>
               </div>
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
@@ -755,12 +766,39 @@
       </q-card>
     </q-dialog>
 
+    <!-- Prediction detail dialog -->
+    <q-dialog v-model="showTypicalDialog" position="top">
+      <q-card
+        :style="{
+          minWidth: $q.screen.gt.xs ? '400px' : '95vw',
+          maxWidth: '95vw',
+          maxHeight: '90vh',
+        }"
+      >
+        <q-card-section class="row items-start q-pb-none">
+          <div class="col">
+            <div class="text-subtitle1">{{ selectedTypical?.title }}</div>
+            <div class="text-caption text-grey-6">Typical, based on recent history</div>
+          </div>
+          <q-btn flat dense icon="close" aria-label="Close" @click="showTypicalDialog = false" />
+        </q-card-section>
+        <q-separator class="q-mt-sm" />
+        <q-card-section class="q-pa-sm" style="overflow-y: auto">
+          <SailingHistoryDetail v-if="selectedTypical" :info="selectedTypical.info" />
+          <div class="text-caption text-grey-5 q-mt-sm q-px-xs">
+            Predictions are just a guess — there's no certainty with the ferry.
+          </div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
     <SignInDialog v-model="showSignInDialog" />
   </q-page>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useQuasar } from 'quasar'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
@@ -770,6 +808,7 @@ import { isStaging, db } from 'src/boot/firebase'
 import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
+import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 import { useAuth } from 'src/composables/useAuth'
 import {
   useHistoricalStats,
@@ -779,6 +818,7 @@ import {
 } from 'src/composables/useHistoricalStats'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 
+const $q = useQuasar()
 const { ferryData, error } = useFirestoreFerryListener()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
@@ -962,11 +1002,30 @@ const todayIso = computed(() => nowInVancouver().format('YYYY-MM-DD'))
 const todayDow = computed(() => nowInVancouver().format('dddd'))
 const holidayContext = computed(() => getHolidayContext(todayIso.value))
 
-// Typical-history hints for an upcoming sailing (empty when unremarkable).
-function sailingHints(s) {
+// Typical stats for an upcoming sailing (day-of-week specific), or null.
+function sailingTypical(s) {
   const panel = labelToPanel(s.label)
-  const info = getTypical(historyByDayOfWeek.value, panel, todayDow.value, s.shortTime)
-  return typicalHints(info)
+  return getTypical(historyByDayOfWeek.value, panel, todayDow.value, s.shortTime)
+}
+
+// Typical-history hints for an upcoming sailing (null when unremarkable).
+// Compact form on mobile to keep the line short.
+function sailingHints(s) {
+  return typicalHints(sailingTypical(s), $q.screen.xs)
+}
+
+// Prediction-detail dialog: shows the historical data behind a prediction.
+const showTypicalDialog = ref(false)
+const selectedTypical = ref(null)
+function openTypical(s) {
+  const info = sailingTypical(s)
+  if (!info) return
+  const dir = s.label === 'HSB' ? 'to Bowen' : 'to Horseshoe Bay'
+  selectedTypical.value = {
+    info,
+    title: `${todayDow.value} ${formatTime12h(s.shortTime)} ${dir}`,
+  }
+  showTypicalDialog.value = true
 }
 
 const upcomingSailings = computed(() => schedule.upcomingSailings(6))

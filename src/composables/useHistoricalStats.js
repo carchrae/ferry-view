@@ -240,37 +240,56 @@ export function getTypical(byDayOfWeek, panel, dayKey, time) {
 // Home-page hint helpers — compact "typically late / full" badges
 // ---------------------------------------------------------------------------
 
+// Frequency adverb for a percentage, or null below the noise floor.
+function freqWord(pct) {
+  if (pct === null || pct === undefined) return null
+  if (pct >= 60) return 'usually'
+  if (pct >= 30) return 'often'
+  if (pct > 0) return 'sometimes'
+  return null
+}
+
 // Returns a single-line { text, color } hint for an upcoming sailing based on
-// its typical history (e.g. "usually +20min and full by 4:15 pm"), or null when
-// nothing noteworthy. Lateness under 3 minutes is not mentioned. Only surfaces
-// signals backed by enough samples.
-export function typicalHints(info) {
+// its typical history (e.g. "often +5min, usually full by 4:15 pm"), or null
+// when nothing noteworthy. Each part carries its own frequency word, but a
+// shared word isn't repeated (e.g. "often +5min, full" — not "often +5min,
+// often full"). Lateness under 3 minutes is not mentioned. Only surfaces
+// signals backed by enough samples. When `compact` (mobile), the fill time
+// drops "by" and its space (e.g. "usually full 4:15pm") to save width.
+export function typicalHints(info, compact = false) {
   if (!info || info.count < EXCEPTION_MIN_SAMPLES) return null
-  const parts = []
+  const segs = []
   let severity = 0 // 0 none, 1 warning, 2 negative
 
   if (info.avgLateness !== null && info.avgLateness >= 3 && info.latePct !== null && info.latePct >= 40) {
-    parts.push(`usually +${info.avgLateness}min`)
+    segs.push({ freq: freqWord(info.latePct), text: `+${info.avgLateness}min` })
     severity = Math.max(severity, info.avgLateness >= 6 ? 2 : 1)
   }
 
   if (info.fullPct >= 40) {
-    // Avoid a second "usually"/"often" when the fill time already implies it
-    // regularly fills; keep the frequency word only when there's no time.
-    parts.push(
-      info.avgFillTime
-        ? `full by ${info.avgFillTime}`
-        : info.fullPct >= 70 ? 'usually full' : 'often full',
-    )
+    let fullText = 'full'
+    if (info.avgFillTime) {
+      fullText = compact ? `full ${info.avgFillTime.replace(' ', '')}` : `full by ${info.avgFillTime}`
+    }
+    segs.push({ freq: freqWord(info.fullPct), text: fullText })
     severity = Math.max(severity, info.fullPct >= 70 ? 2 : 1)
   } else if (info.avgCapacityPct !== null && (100 - info.avgCapacityPct) >= 60) {
-    parts.push(`~${100 - info.avgCapacityPct}% full`)
+    segs.push({ freq: 'usually', text: `~${100 - info.avgCapacityPct}% full` })
     severity = Math.max(severity, 1)
   }
 
-  if (!parts.length) return null
+  if (!segs.length) return null
+
+  let text
+  if (segs.length === 2 && segs[0].freq && segs[0].freq === segs[1].freq) {
+    // Both share a frequency word — state it once, up front.
+    text = `${segs[0].freq} ${segs[0].text}, ${segs[1].text}`
+  } else {
+    text = segs.map((s) => (s.freq ? `${s.freq} ${s.text}` : s.text)).join(', ')
+  }
+
   return {
-    text: parts.join(', '),
+    text,
     color: severity === 2 ? 'negative' : severity === 1 ? 'warning' : 'orange',
   }
 }
