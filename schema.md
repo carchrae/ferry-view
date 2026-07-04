@@ -22,6 +22,8 @@ The current ferry state, overwritten on every data change.
 | `heading` | string | Compass heading |
 | `position` | object? | `{ lat, lon }` — vessel WGS84 coordinates from the AIS feed (excluded from the change diff) |
 | `aisLocation` | string | `"Bowen"` / `"Horseshoe Bay"` / `"transit"` — terminal the vessel is docked at (stopped within dock radius), else in transit. Drives the position-based arrival/departure fallback |
+| `aisLocationSince` | number | Epoch ms when the current `aisLocation` state began (carried forward while unchanged). Lets the frontend show a reliable "Docked for N min" when the atberth log is stale |
+| `statusSource` | string | Which mechanism produced the arrival/departure status: `"atberth"` (live log, primary), `"ais-position"` (lat/long + speed fallback), or `"bcferries-scrape"` (BC Ferries website fallback) |
 | `currentLateness` | number | Minutes late (negative = early) |
 | `latenessDirection` | string | `"to Bowen"` or `"to HSB"` |
 | `lastUpdate` | string | `"15:04"` — latest API position time |

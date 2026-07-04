@@ -47,6 +47,24 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   const existingDoc = await db.collection('ferryStatus').doc('current').get()
   const existingData = existingDoc.exists ? existingDoc.data() : null
 
+  // Track when the current AIS location state began, so the frontend can show a reliable
+  // "Docked for N min" even when the atberth log (recentActivity) has frozen. Carry the
+  // timestamp forward while the classification is unchanged; reset it on a transition.
+  data.aisLocationSince =
+    existingData && existingData.aisLocation === data.aisLocation && existingData.aisLocationSince
+      ? existingData.aisLocationSince
+      : Date.now()
+
+  // Record which mechanism produced the arrival/departure status, so it's persisted
+  // alongside the data:
+  //   'atberth'          — bowenferry.ca's live arrival/departure log (primary source)
+  //   'ais-position'     — lat/long + speed classifier (fallback, live log stale)
+  //   'bcferries-scrape' — BC Ferries website scrape (fallback, no usable AIS position)
+  // Set before the change-diff so a source flip (even without a usingFallback flip)
+  // triggers a persist on its own.
+  const aisUsable = data.isFresh && data.position != null
+  data.statusSource = !usingFallback ? 'atberth' : aisUsable ? 'ais-position' : 'bcferries-scrape'
+
   const newDataSanitized = sanitizeForCompare(data)
   const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
   let dataChanged = forceUpdate || checkDataChanged(newDataSanitized, existingDataSanitized)
@@ -62,7 +80,6 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   // Ferries' website when the AIS position data isn't usable. Both fire-and-log so a
   // failure never breaks the poll.
   if (usingFallback) {
-    const aisUsable = data.isFresh && data.position != null
     if (aisUsable) {
       const added = augmentFromAisPosition(data, existingData, now)
       if (added > 0) {

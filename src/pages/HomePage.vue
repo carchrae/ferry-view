@@ -1237,9 +1237,21 @@ const isSailing = computed(() => {
 const speedText = computed(() => {
   if (!ferryData.value) return 'Waiting for data...'
 
-  // In fallback mode the arrival/departure log is stale, so any "Docked/Sailing for
-  // N min" derived from it is unreliable — don't show it.
-  if (ferryData.value.usingFallback) return ''
+  // In fallback mode the arrival/departure log (recentActivity) is stale, so a
+  // "Docked/Sailing for N min" derived from it is unreliable. Instead use the live
+  // AIS position classification (aisLocation + aisLocationSince), which stays fresh.
+  if (ferryData.value.usingFallback) {
+    if (!ferryData.value.position) return '' // no reliable position to fall back on
+    const loc = ferryData.value.aisLocation
+    if (loc === 'Bowen' || loc === 'Horseshoe Bay') {
+      const since = ferryData.value.aisLocationSince
+      const mins = since ? Math.round((nowMs() - since) / 60000) : null
+      return mins != null && mins >= 0 && mins < 600
+        ? `Docked at ${loc} for ${mins} min`
+        : `Docked at ${loc}`
+    }
+    return 'Sailing'
+  }
 
   const mostRecent = ferryData.value.recentActivity[0]
   if (!mostRecent) return ''

@@ -135,9 +135,10 @@ function stripEnrichmentFields(schedule) {
 
 function sanitizeForCompare(data) {
   // `position` is high-frequency lat/lon telemetry (changes every poll while moving),
-  // like speed; exclude it from the change diff. `aisLocation` (the terminal token) is
-  // low-frequency and meaningful, so it stays and can trigger a persist on its own.
-  const { fetchedAt, lastUpdate, recentActivity, position, ...rest } = data
+  // like speed; exclude it from the change diff. `aisLocationSince` is a derived timestamp
+  // that only moves in lockstep with `aisLocation`, so exclude it too. `aisLocation` (the
+  // terminal token) is low-frequency and meaningful, so it stays and can trigger a persist.
+  const { fetchedAt, lastUpdate, recentActivity, position, aisLocationSince, ...rest } = data
   return {
     ...rest,
     bowenSchedule: stripEnrichmentFields(rest.bowenSchedule),
