@@ -2,6 +2,7 @@ import { logger } from 'firebase-functions/logger'
 import diff from 'microdiff'
 import { dayjs, normalizeTime, nowInVancouver } from './time.js'
 import { calculateLateness } from './matching.js'
+import { extractVesselPosition, classifyTerminal } from './ais-position.js'
 
 const API_URL = 'https://bowenferry.ca/Production/AISPositionsData3'
 
@@ -81,12 +82,19 @@ function parseFerryData(data) {
 
   const hsbTimes = new Set(hsbSchedule.map(e => e.time))
 
+  // AIS position: convert the vessel's coordinates and classify which terminal it's
+  // docked at (if any). Drives the position-based arrival/departure fallback in index.js.
+  const position = extractVesselPosition(data)
+  const atTerminal = classifyTerminal(position, props.SOG)
+
   return {
     vesselName: props.name,
     speed: props.SOG,
     heading: props.heading,
     lastUpdate: normalizeTime(props.LatestUpdate),
     isFresh: props.Fresh === 'True',
+    position,
+    aisLocation: atTerminal || 'transit',
     dateIso,
     recentActivity,
     deckSpace: (deckSpace.times?.[0] || []).map(entry => ({
@@ -126,7 +134,10 @@ function stripEnrichmentFields(schedule) {
 }
 
 function sanitizeForCompare(data) {
-  const { fetchedAt, lastUpdate, recentActivity, ...rest } = data
+  // `position` is high-frequency lat/lon telemetry (changes every poll while moving),
+  // like speed; exclude it from the change diff. `aisLocation` (the terminal token) is
+  // low-frequency and meaningful, so it stays and can trigger a persist on its own.
+  const { fetchedAt, lastUpdate, recentActivity, position, ...rest } = data
   return {
     ...rest,
     bowenSchedule: stripEnrichmentFields(rest.bowenSchedule),

@@ -20,6 +20,8 @@ The current ferry state, overwritten on every data change.
 | `vesselName` | string | Current vessel (e.g. `"QUEEN OF CAPILANO"`) |
 | `speed` | string | `"0.00"` — knots from AIS |
 | `heading` | string | Compass heading |
+| `position` | object? | `{ lat, lon }` — vessel WGS84 coordinates from the AIS feed (excluded from the change diff) |
+| `aisLocation` | string | `"Bowen"` / `"Horseshoe Bay"` / `"transit"` — terminal the vessel is docked at (stopped within dock radius), else in transit. Drives the position-based arrival/departure fallback |
 | `currentLateness` | number | Minutes late (negative = early) |
 | `latenessDirection` | string | `"to Bowen"` or `"to HSB"` |
 | `lastUpdate` | string | `"15:04"` — latest API position time |

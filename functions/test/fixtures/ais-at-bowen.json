@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "QUEEN OF CAPILANO",
+        "SOG": "0.00",
+        "heading": "297",
+        "LatestUpdate": "3:10:55 PM",
+        "Fresh": "True",
+        "pointtype": "Vessel"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-13729177.271892, 6339500.79839849],
+            [-13729178.3690002, 6339482.46865246],
+            [-13729054.0415139, 6339419.12063408],
+            [-13729038.7601936, 6339449.11191369],
+            [-13729163.08768, 6339512.45993206],
+            [-13729177.271892, 6339500.79839849]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "QUEEN OF CAPILANO",
+        "pointtype": "Vessel"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-13729111.8363729, 6339467.45733619]
+      }
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import {
   fetchBowenDepartures,
   augmentFromBCFerries,
 } from './lib/bcferries-departures.js'
+import { augmentFromAisPosition } from './lib/ais-position.js'
 import { nowInVancouver } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -51,20 +52,34 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   let dataChanged = forceUpdate || checkDataChanged(newDataSanitized, existingDataSanitized)
 
   // Fallback: if bowenferry.ca's departure log has stalled (live feed fresh but no new
-  // Departed/Arrived events), scrape BC Ferries' page for the real HSB->Bowen departure
-  // times and inject them so matching recovers. Fire-and-log so a scrape failure never
-  // breaks the poll. recentActivity is excluded from checkDataChanged, so any injection
+  // Departed/Arrived events), recover arrival/departure events another way and inject them
+  // so matching recovers. recentActivity is excluded from checkDataChanged, so any injection
   // must force a persist to save the recovered matches.
+  //
+  // Prefer the AIS position classifier: when the live position feed is fresh and we have
+  // valid coordinates, the vessel's lat/long + speed tell us which terminal it's at, with
+  // no extra network call and covering both directions. Only fall back to scraping BC
+  // Ferries' website when the AIS position data isn't usable. Both fire-and-log so a
+  // failure never breaks the poll.
   if (usingFallback) {
-    try {
-      const scraped = await fetchBowenDepartures()
-      const added = augmentFromBCFerries(data, scraped, now)
+    const aisUsable = data.isFresh && data.position != null
+    if (aisUsable) {
+      const added = augmentFromAisPosition(data, existingData, now)
       if (added > 0) {
         dataChanged = true
-        logger.log(`BC Ferries fallback: recovered ${added} HSB departure(s)`)
+        logger.log(`AIS position fallback: recovered ${added} event(s)`)
       }
-    } catch (e) {
-      logger.error('BC Ferries departures fallback failed:', e)
+    } else {
+      try {
+        const scraped = await fetchBowenDepartures()
+        const added = augmentFromBCFerries(data, scraped, now)
+        if (added > 0) {
+          dataChanged = true
+          logger.log(`BC Ferries fallback: recovered ${added} HSB departure(s)`)
+        }
+      } catch (e) {
+        logger.error('BC Ferries departures fallback failed:', e)
+      }
     }
   }
 
