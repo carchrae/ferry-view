@@ -1237,6 +1237,10 @@ const isSailing = computed(() => {
 const speedText = computed(() => {
   if (!ferryData.value) return 'Waiting for data...'
 
+  // In fallback mode the arrival/departure log is stale, so any "Docked/Sailing for
+  // N min" derived from it is unreliable — don't show it.
+  if (ferryData.value.usingFallback) return ''
+
   const mostRecent = ferryData.value.recentActivity[0]
   if (!mostRecent) return ''
 
