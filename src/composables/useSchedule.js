@@ -11,7 +11,11 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     if (!ferryData.value) return { past: [], upcoming: [], consumedTimes: new Set() }
     const now = nowDate()
     const oneMinuteFromNow = oneMinuteFromNowDate()
-    const past = buildPast(schedule, ferryData.value.recentActivity, eventLocation, now, label)
+    // Fallback mode (server-detected stale departure log): sailings we can't recover an
+    // actual departure time for are shown as past with a '?' the moment their scheduled
+    // time passes, rather than dropped or shown as late.
+    const fallback = !!ferryData.value.usingFallback
+    const past = buildPast(schedule, ferryData.value.recentActivity, eventLocation, now, label, fallback)
     // Only schedule-based entries consume their schedule time (orphans and skipped don't)
     const consumedArr = past
       .filter(e => !e.skipped && e._hasDep && e.sortTime)
@@ -26,7 +30,7 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     const speed = parseFloat(ferryData.value.speed)
     const isSailing = !isNaN(speed) && speed > 0.5
 
-    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing)
+    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing, fallback)
     return { past, upcoming, consumedTimes }
   }
 

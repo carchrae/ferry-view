@@ -272,6 +272,14 @@
                 <div class="text-center text-caption text-grey-5 q-mt-sm">
                   Predictions are just a guess — there's no certainty with the ferry.
                 </div>
+                <div
+                  v-if="ferryData && ferryData.usingFallback"
+                  class="text-center text-caption text-grey-6 q-mt-sm"
+                >
+                  <q-icon name="warning" size="xs" color="negative" class="q-mr-xs" />
+                  Live departure feed delayed — Horseshoe Bay times via BC Ferries; Bowen
+                  departure times unavailable (shown as <q-badge rounded color="grey" dense>?</q-badge>).
+                </div>
               </q-card-section>
             </q-card>
           </div>

@@ -36,6 +36,13 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
 
   const now = nowInVancouver()
 
+  // Detect a stalled departure log up front and record it on the doc, so the frontend
+  // can switch to fallback display (unknown-time '?' for unrecoverable sailings) and
+  // show an indicator. Setting it before the change-diff means a flip in/out of
+  // fallback triggers a persist on its own.
+  const usingFallback = isDepartureLogStale(data, now)
+  data.usingFallback = usingFallback
+
   const existingDoc = await db.collection('ferryStatus').doc('current').get()
   const existingData = existingDoc.exists ? existingDoc.data() : null
 
@@ -48,7 +55,7 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   // times and inject them so matching recovers. Fire-and-log so a scrape failure never
   // breaks the poll. recentActivity is excluded from checkDataChanged, so any injection
   // must force a persist to save the recovered matches.
-  if (isDepartureLogStale(data, now)) {
+  if (usingFallback) {
     try {
       const scraped = await fetchBowenDepartures()
       const added = augmentFromBCFerries(data, scraped, now)

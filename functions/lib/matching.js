@@ -15,7 +15,7 @@ export function parseDeckSpace(deckSpace, label) {
   return { deckSpace: pct, full: `${100 - pct}% full` }
 }
 
-export function buildPast(scheduleItems, recentActivity, eventLocation, now, label) {
+export function buildPast(scheduleItems, recentActivity, eventLocation, now, label, fallback = false) {
   const departedEvents = recentActivity
     .filter((e) => e.action === 'Departed' && e.location === eventLocation)
     .map((e) => ({ time: timeToDate(e.time), display: e.time }))
@@ -82,9 +82,6 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
 
   const consumedMs = matched.filter(e => e.sortTime).map(e => e.sortTime.valueOf())
   const lastConsumedTime = consumedMs.length > 0 ? dayjs(Math.max(...consumedMs)) : null
-  const skipped = unmatched
-    .filter(e => e.sortTime && lastConsumedTime && e.sortTime < lastConsumedTime)
-    .map(e => ({ ...e, skipped: true }))
 
   // Orphan departures (events that don't match any schedule entry) are logged
   // but not returned — they have no schedule time and would create invalid
@@ -95,10 +92,25 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     console.log(`${label}: ${orphans.length} orphan departure(s): ${times}`)
   }
 
+  // Fallback mode: bowenferry.ca's departure log has stalled and the BC Ferries
+  // scraper only recovers the Horseshoe Bay side, so we have no actual departure
+  // time for the un-recovered (typically Bowen) sailings. They DID sail — show them
+  // as past sailings with an unknown-time marker ('?'), never as skipped or late.
+  if (fallback) {
+    const unknown = unmatched
+      .filter(e => e.sortTime)
+      .map(e => ({ ...e, unknownDeparture: true, diffText: '?', diffColor: 'grey' }))
+    return [...matched, ...unknown]
+  }
+
+  const skipped = unmatched
+    .filter(e => e.sortTime && lastConsumedTime && e.sortTime < lastConsumedTime)
+    .map(e => ({ ...e, skipped: true }))
+
   return [...matched, ...skipped]
 }
 
-export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing = false) {
+export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing = false, fallback = false) {
   const candidates = scheduleItems
     .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: timeToDate(s.time) }))
@@ -124,6 +136,9 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
   return candidates
     .filter(({ t }) => {
       if (t > now) return true
+      // In fallback mode every sailing whose scheduled time has passed is treated as
+      // departed (shown in past with a '?'), so none linger in upcoming.
+      if (fallback) return false
       if (isSailing) return false
       return t.valueOf() === latestOverdue
     })
