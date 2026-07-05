@@ -107,9 +107,14 @@ export function classifyTerminal(position, sog) {
  * `existingData.aisLocation` is the previous poll's token. On a real transition we
  * emit a Departed for the terminal just left and/or an Arrived for the terminal just
  * reached, mirroring the atberth log's `{action, location, time}` shape.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.emitHsbDepartures=true] emit `Departed`/`Horseshoe Bay` events.
+ *   Set false when the BC Ferries scrape (the authoritative, self-healing HSB source) is
+ *   working, so this stateful classifier doesn't duplicate/compete with it on the HSB side.
  * @returns {number} count of events added.
  */
-export function augmentFromAisPosition(data, existingData, now) {
+export function augmentFromAisPosition(data, existingData, now, { emitHsbDepartures = true } = {}) {
   const current = data.aisLocation
   const prev = existingData?.aisLocation
   // No usable prior state, or no change -> nothing to emit. (First run just records
@@ -127,7 +132,7 @@ export function augmentFromAisPosition(data, existingData, now) {
     added++
   }
 
-  if (prev !== 'transit') emit('Departed', prev)
+  if (prev !== 'transit' && (prev !== 'Horseshoe Bay' || emitHsbDepartures)) emit('Departed', prev)
   if (current !== 'transit') emit('Arrived', current)
 
   if (added) logger.log(`AIS position fallback: ${prev} -> ${current}, injected ${added} event(s)`)

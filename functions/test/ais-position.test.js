@@ -145,6 +145,47 @@ describe('ais-position', () => {
       expect(augmentFromAisPosition(data, {}, nowAt('10:25'))).toBe(0)
     })
 
+    it('suppresses the Departed HSB event when emitHsbDepartures is false', () => {
+      // Scrape is the authoritative HSB source; AIS shouldn't compete on that side.
+      const data = { aisLocation: 'transit', recentActivity: [] }
+      const added = augmentFromAisPosition(data, { aisLocation: 'Horseshoe Bay' }, nowAt('17:20'), {
+        emitHsbDepartures: false,
+      })
+      expect(added).toBe(0)
+      expect(data.recentActivity).toHaveLength(0)
+    })
+
+    it('still emits Departed Bowen and Arrived HSB when HSB departures are suppressed', () => {
+      // Terminal flips Bowen -> HSB: the Bowen departure and HSB arrival are unaffected;
+      // only a Departed/Horseshoe Bay would be suppressed (and there is none here).
+      const data = { aisLocation: 'Horseshoe Bay', recentActivity: [] }
+      const added = augmentFromAisPosition(data, { aisLocation: 'Bowen' }, nowAt('17:00'), {
+        emitHsbDepartures: false,
+      })
+      expect(added).toBe(2)
+      expect(data.recentActivity).toContainEqual({
+        action: 'Departed',
+        location: 'Bowen',
+        time: '17:00',
+      })
+      expect(data.recentActivity).toContainEqual({
+        action: 'Arrived',
+        location: 'Horseshoe Bay',
+        time: '17:00',
+      })
+    })
+
+    it('still emits Departed HSB by default (backup when the scrape fails)', () => {
+      const data = { aisLocation: 'transit', recentActivity: [] }
+      const added = augmentFromAisPosition(data, { aisLocation: 'Horseshoe Bay' }, nowAt('17:20'))
+      expect(added).toBe(1)
+      expect(data.recentActivity).toContainEqual({
+        action: 'Departed',
+        location: 'Horseshoe Bay',
+        time: '17:20',
+      })
+    })
+
     it('does not duplicate an event already present in recentActivity', () => {
       const data = {
         aisLocation: 'transit',
