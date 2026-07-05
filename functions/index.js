@@ -21,7 +21,7 @@ import {
   fetchBowenDepartures,
   augmentFromBCFerries,
 } from './lib/bcferries-departures.js'
-import { augmentFromAisPosition } from './lib/ais-position.js'
+import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.js'
 import { nowInVancouver } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -65,6 +65,26 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   // triggers a persist on its own.
   const aisUsable = data.isFresh && data.position != null
   data.statusSource = !usingFallback ? 'atberth' : aisUsable ? 'ais-position' : 'bcferries-scrape'
+
+  // Per-poll AIS position diagnostics. Logged every poll (one greppable line) so a missed
+  // or spurious arrival/departure transition can be reconstructed from the log history:
+  // the sequence of `classified` vs `prevAisLocation` around a bad event tells us whether
+  // the vessel was ever classified at the terminal, and whether `prev` was correct when it
+  // left. Filter logs for "AIS-DIAG" and paste the lines around the affected sailing.
+  logger.log(
+    'AIS-DIAG ' +
+      JSON.stringify({
+        now: now.format('HH:mm'),
+        position: data.position,
+        ...classificationDebug(data.position, data.speed),
+        currentAisLocation: data.aisLocation,
+        prevAisLocation: existingData?.aisLocation ?? null,
+        aisLocationSince: data.aisLocationSince,
+        isFresh: data.isFresh,
+        usingFallback,
+        aisUsable,
+      }),
+  )
 
   const newDataSanitized = sanitizeForCompare(data)
   const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null

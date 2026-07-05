@@ -101,6 +101,29 @@ export function classifyTerminal(position, sog) {
 }
 
 /**
+ * Build a diagnostic snapshot of the current classification decision, for logging.
+ * Shows the raw inputs (position, speed) and the derived distances to each terminal so a
+ * missed/spurious classification can be diagnosed from logs (e.g. a berth beyond
+ * DOCK_RADIUS_M, or SOG never dropping below STOPPED_SOG_KNOTS while docked).
+ */
+export function classificationDebug(position, sog) {
+  const speed = typeof sog === 'string' ? parseFloat(sog) : sog
+  const distancesM = {}
+  for (const t of TERMINALS) {
+    distancesM[t.location] = position
+      ? Math.round(haversineMeters(position.lat, position.lon, t.lat, t.lon))
+      : null
+  }
+  return {
+    sog: speed,
+    dockRadiusM: DOCK_RADIUS_M,
+    stoppedSogKnots: STOPPED_SOG_KNOTS,
+    distancesM,
+    classified: classifyTerminal(position, sog),
+  }
+}
+
+/**
  * Inject Arrived/Departed events derived from a change in the AIS-position
  * classification since the previous poll. `data.aisLocation` is the current token
  * (`'Bowen'` | `'Horseshoe Bay'` | `'transit'`, set in parseFerryData);
@@ -135,6 +158,11 @@ export function augmentFromAisPosition(data, existingData, now, { emitHsbDepartu
   if (prev !== 'transit' && (prev !== 'Horseshoe Bay' || emitHsbDepartures)) emit('Departed', prev)
   if (current !== 'transit') emit('Arrived', current)
 
-  if (added) logger.log(`AIS position fallback: ${prev} -> ${current}, injected ${added} event(s)`)
+  // Log every detected transition (even when it emits nothing due to HSB suppression or
+  // dedup), so a missing arrival/departure is diagnosable from the log alone.
+  logger.log(
+    `AIS-DIAG transition ${prev} -> ${current} @ ${time}: injected ${added} event(s)` +
+      (prev === 'Horseshoe Bay' && !emitHsbDepartures ? ' (HSB departure suppressed — scrape owns it)' : ''),
+  )
   return added
 }
