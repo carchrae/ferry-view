@@ -39,7 +39,8 @@ The current ferry state, overwritten on every data change.
 | Field | Type | Description |
 |-------|------|-------------|
 | `time` | string | `"10:35"` — scheduled departure time |
-| `cancelled` | boolean | Whether this sailing is cancelled |
+| `dangerousCargo` | boolean | Sailing carries dangerous cargo — no cars or passengers (source flag, both schedules) |
+| `repositioning` | boolean | Vessel repositioning sailing — no cars or passengers (source flag, `hsbSchedule` only) |
 | `deckSpace` | string? | `"Full"` or percentage like `"71%"` (from schedule API directly) |
 | `matchedDepartureTime` | string? | `"10:35"` — actual departure time (from recentActivity match) |
 | `latenessMinutes` | number? | Minutes late/early (negative = early) |

@@ -6,7 +6,7 @@ const at = (hhmm) => timeToDate(hhmm)
 
 // Bowen schedule; in fallback mode we have no Departed events for the Bowen side
 // (the BC Ferries scraper only recovers Horseshoe Bay departures).
-const bowenSchedule = ['10:00', '11:15', '12:35', '13:55'].map((time) => ({ time, cancelled: false }))
+const bowenSchedule = ['10:00', '11:15', '12:35', '13:55'].map((time) => ({ time }))
 
 describe('matching fallback mode', () => {
   describe('buildPast', () => {
@@ -52,9 +52,38 @@ describe('matching fallback mode', () => {
     })
 
     it('still returns future sailings in fallback mode', () => {
-      const schedule = ['12:35', '13:55', '15:15', '16:40'].map((time) => ({ time, cancelled: false }))
+      const schedule = ['12:35', '13:55', '15:15', '16:40'].map((time) => ({ time }))
       const upcoming = buildUpcoming(schedule, at('14:00'), at('14:01'), 'Bowen', new Set(), null, false, true)
       expect(upcoming.map((e) => e.shortTime)).toEqual(['15:15', '16:40'])
     })
+  })
+})
+
+describe('dangerous cargo / repositioning sailings', () => {
+  it('buildPast still matches and includes a dangerousCargo sailing (not silently dropped)', () => {
+    const schedule = [
+      { time: '10:00' },
+      { time: '13:55', dangerousCargo: true },
+    ]
+    const recentActivity = [
+      { action: 'Departed', location: 'Bowen', time: '10:00' },
+      { action: 'Departed', location: 'Bowen', time: '13:55' },
+    ]
+    const past = buildPast(schedule, recentActivity, 'Bowen', at('14:00'), 'Bowen', false)
+    const entry = past.find((e) => e.scheduledTime === '13:55')
+    expect(entry).toBeDefined()
+    expect(entry.dangerousCargo).toBe(true)
+    expect(entry._hasDep).toBe(true)
+  })
+
+  it('buildUpcoming still includes a repositioning sailing', () => {
+    const schedule = [
+      { time: '13:55', repositioning: true },
+      { time: '15:15' },
+    ]
+    const upcoming = buildUpcoming(schedule, at('12:00'), at('12:01'), 'HSB', new Set(), null, false, false)
+    const entry = upcoming.find((e) => e.shortTime === '13:55')
+    expect(entry).toBeDefined()
+    expect(entry.repositioning).toBe(true)
   })
 })

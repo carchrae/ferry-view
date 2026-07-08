@@ -135,6 +135,13 @@
                       >
                         {{ formatDeckBadge(event, $q.screen.xs) }}
                       </q-badge>
+                      <q-badge
+                        rounded
+                        v-if="sailingTypeBadge(event)"
+                        :color="sailingTypeBadge(event).color"
+                        class="badge-gap"
+                        dense
+                      >{{ sailingTypeBadge(event).text }}</q-badge>
                     </div>
                     <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -171,6 +178,13 @@
                         dense
                       >{{ formatDeckBadge(event, $q.screen.xs)
                         }}</q-badge>
+                      <q-badge
+                        rounded
+                        v-if="sailingTypeBadge(event)"
+                        :color="sailingTypeBadge(event).color"
+                        class="badge-gap"
+                        dense
+                      >{{ sailingTypeBadge(event).text }}</q-badge>
                     </div>
                     <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
@@ -213,6 +227,13 @@
                           class="badge-gap"
                         >{{ formatDeckBadge(s)
                           }}</q-badge>
+                        <q-badge
+                          rounded
+                          v-if="sailingTypeBadge(s)"
+                          :color="sailingTypeBadge(s).color"
+                          class="badge-gap"
+                          dense
+                        >{{ sailingTypeBadge(s).text }}</q-badge>
                       </div>
                       <div
                         v-if="sailingHints(s)"
@@ -253,6 +274,13 @@
                           dense
                           class="badge-gap"
                         >{{ formatDeckBadge(s)}}</q-badge>
+                        <q-badge
+                          rounded
+                          v-if="sailingTypeBadge(s)"
+                          :color="sailingTypeBadge(s).color"
+                          class="badge-gap"
+                          dense
+                        >{{ sailingTypeBadge(s).text }}</q-badge>
                       </div>
                       <div
                         v-if="sailingHints(s)"
@@ -569,6 +597,13 @@
                   dense
                 >{{ formatDeckBadge(event, $q.screen.xs)
                   }}</q-badge>
+                <q-badge
+                  rounded
+                  v-if="sailingTypeBadge(event)"
+                  :color="sailingTypeBadge(event).color"
+                  class="badge-gap"
+                  dense
+                >{{ sailingTypeBadge(event).text }}</q-badge>
               </div>
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -601,6 +636,13 @@
                   dense
                 >{{ formatDeckBadge(event, $q.screen.xs)
                   }}</q-badge>
+                <q-badge
+                  rounded
+                  v-if="sailingTypeBadge(event)"
+                  :color="sailingTypeBadge(event).color"
+                  class="badge-gap"
+                  dense
+                >{{ sailingTypeBadge(event).text }}</q-badge>
               </div>
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
@@ -628,6 +670,13 @@
                     class="badge-gap"
                   >{{ formatDeckBadge(s)
                     }}</q-badge>
+                  <q-badge
+                    rounded
+                    v-if="sailingTypeBadge(s)"
+                    :color="sailingTypeBadge(s).color"
+                    class="badge-gap"
+                    dense
+                  >{{ sailingTypeBadge(s).text }}</q-badge>
                 </div>
                 <div
                   v-if="sailingHints(s)"
@@ -664,6 +713,13 @@
                     class="badge-gap"
                   >{{ formatDeckBadge(s)
                     }}</q-badge>
+                  <q-badge
+                    rounded
+                    v-if="sailingTypeBadge(s)"
+                    :color="sailingTypeBadge(s).color"
+                    class="badge-gap"
+                    dense
+                  >{{ sailingTypeBadge(s).text }}</q-badge>
                 </div>
                 <div
                   v-if="sailingHints(s)"
@@ -820,15 +876,6 @@ function scheduleEntryForKey(sailingKey) {
   return schedule?.find((e) => e.time === time) || null
 }
 
-// The arrival (lineup) photo is keyed to the departure it precedes. When the
-// two singleton snapshots reference different sailings, only the newer photo
-// belongs to the last sailing — the older one is left over from an earlier
-// cycle, so don't pair them in the dialog.
-function isNewestSnapshot(snap, other) {
-  if (!other || other.sailingKey === snap.sailingKey) return true
-  return (snap.recordedAt || 0) >= (other.recordedAt || 0)
-}
-
 // Photo captions show when the photo was captured (recordedAt), not the
 // scheduled sailing time.
 function snapshotTimeLabel(snap, fallbackTime) {
@@ -836,9 +883,32 @@ function snapshotTimeLabel(snap, fallbackTime) {
   return fallbackTime ? formatTime12h(fallbackTime) : null
 }
 
+// Deterministic source of truth for "has a Bowen sailing actually left, and
+// when" — derived from matched schedule/departure data (same as the past-
+// sailings list), rather than comparing the departure and arrival snapshot
+// docs' recordedAt against each other. Those two docs are written by separate,
+// unawaited webcam captures (see functions/lib/webcam.js) racing against each
+// other over the network, so whichever happens to land last is not a
+// trustworthy signal of which sailing most recently departed.
+const lastDepartedBowen = computed(() => {
+  const past = allPastBowen.value
+  for (let i = past.length - 1; i >= 0; i--) {
+    if (past[i]._hasDep && past[i].scheduledTime) return past[i]
+  }
+  return null
+})
+
+const lastDepartedBowenKey = computed(() => {
+  const e = lastDepartedBowen.value
+  if (!e || !ferryData.value) return null
+  return `${ferryData.value.dateIso}_${e.scheduledTime}_To HSB`
+})
+
 const dialogDeparture = computed(() => {
   const snap = departureSnapshot.value
-  if (snap && isNewestSnapshot(snap, arrivalSnapshot.value)) {
+  const key = lastDepartedBowenKey.value
+
+  if (snap && key && snap.sailingKey === key) {
     const entry = scheduleEntryForKey(snap.sailingKey)
     return {
       imageUrl: snap.imageUrl,
@@ -848,22 +918,37 @@ const dialogDeparture = computed(() => {
       capacitySource: entry?.capacitySource,
     }
   }
-  // The ferry hasn't left since the last recorded departure photo — show the
-  // live terminal cam until the real one lands, same as BowenDeparturesPage.
-  const arrivalSnap = arrivalSnapshot.value
-  if (arrivalSnap) {
-    return {
-      imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`,
-      sailingKey: arrivalSnap.sailingKey,
-      live: true,
-    }
+
+  if (!key) {
+    // Nothing has departed from Bowen yet today — the arrival/lineup photo,
+    // if any, is a preview of the first upcoming departure.
+    const arrivalSnap = arrivalSnapshot.value
+    return arrivalSnap
+      ? { imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`, sailingKey: arrivalSnap.sailingKey, live: true }
+      : null
+  }
+
+  // A sailing has left but we don't have its photo yet. Only claim "Live —
+  // photo coming soon" inside the server's actual capture window (10 minutes
+  // past departure — see captureBowenWebcam's isRecent check); past that, the
+  // capture has permanently failed for this sailing, so stop promising a
+  // photo that will never arrive.
+  const minutesSinceDeparture = nowDate().diff(lastDepartedBowen.value.sortTime, 'minute')
+  if (minutesSinceDeparture < 10) {
+    return { imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`, sailingKey: key, live: true }
   }
   return null
 })
 
 const dialogArrival = computed(() => {
   const snap = arrivalSnapshot.value
-  if (!snap || !isNewestSnapshot(snap, departureSnapshot.value)) return null
+  if (!snap) return null
+  const key = lastDepartedBowenKey.value
+  // A lineup photo keyed to a sailing strictly before the last one that
+  // actually departed is left over from an earlier cycle — don't show it.
+  // (Equal or later sailingKeys are current: either paired with the sailing
+  // that just left, or previewing the one after it.)
+  if (key && snap.sailingKey < key) return null
   const entry = scheduleEntryForKey(snap.sailingKey)
   return {
     imageUrl: snap.imageUrl,
@@ -1050,12 +1135,12 @@ const upcomingSailingTimes = computed(() => {
   const now = nowDate()
   const times = new Set()
   for (const s of ferryData.value.hsbSchedule) {
-    if (!s.cancelled && timeToDate(s.time) > now) {
+    if (timeToDate(s.time) > now) {
       times.add(s.time.trim().toUpperCase())
     }
   }
   for (const s of ferryData.value.bowenSchedule) {
-    if (!s.cancelled && timeToDate(s.time) > now) {
+    if (timeToDate(s.time) > now) {
       times.add(s.time.trim().toUpperCase())
     }
   }
@@ -1120,7 +1205,7 @@ const communitySailingEntry = computed(() => {
   if (!ferryData.value) return null
   const now = nowDate()
   return ferryData.value.bowenSchedule
-    .filter(s => !s.cancelled && timeToDate(s.time))
+    .filter(s => timeToDate(s.time))
     .find(s => timeToDate(s.time) > now) || null
 })
 
@@ -1172,6 +1257,12 @@ function formatDeckBadge(event, short) {
     text = event.full
   }
   return event.filledAt && text === 'Full' ? text + formatFilledTime(event.filledAt) : text
+}
+
+function sailingTypeBadge(entry) {
+  if (entry.dangerousCargo) return { text: 'Cargo', color: 'orange-9' }
+  if (entry.repositioning) return { text: 'Reposition', color: 'orange-9' }
+  return null
 }
 
 function shortText(text, isMobile) {

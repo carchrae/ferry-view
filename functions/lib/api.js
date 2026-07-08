@@ -58,12 +58,13 @@ function parseFerryData(data) {
 
   const bowenSchedule = (schBowen.times?.[0] || []).map(entry => ({
     time: normalizeTime(entry[0]),
-    cancelled: parseInt(entry[1]) === 1,
+    dangerousCargo: entry[1] === '1',
   }))
 
   const hsbSchedule = (schHSB.times?.[0] || []).map(entry => ({
     time: normalizeTime(entry[0]),
-    cancelled: parseInt(entry[1]) === 1,
+    dangerousCargo: entry[1] === '1',
+    repositioning: entry[2] === '1',
     deckSpace: entry[3] || null,
   }))
 

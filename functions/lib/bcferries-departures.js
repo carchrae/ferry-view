@@ -86,7 +86,6 @@ export function isDepartureLogStale(data, now, graceMins = 15) {
   const newest = eventTimes.length ? Math.max(...eventTimes) : 0
 
   const expectedTimes = [...(data.hsbSchedule || []), ...(data.bowenSchedule || [])]
-    .filter((s) => !s.cancelled)
     .map((s) => timeToDate(s.time))
     .filter(Boolean)
     .map((t) => t.valueOf())

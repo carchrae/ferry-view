@@ -24,7 +24,7 @@ import {
 } from './lib/bcferries-departures.js'
 import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.js'
 import { applyUserCapacityReport } from './lib/user-capacity.js'
-import { nowInVancouver } from './lib/time.js'
+import { nowInVancouver, timeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
 const VAPID_PUBLIC_KEY = defineSecret('VAPID_PUBLIC_KEY')
@@ -184,21 +184,26 @@ function captureWebcams(bowenPast, data) {
     ).catch((e) => logger.error(`Webcam capture failed for ${sailingKey}:`, e))
   }
 
-  // Capture Bowen community webcam when the ferry arrives at Bowen
+  // Capture Bowen community webcam when the ferry arrives at Bowen. The lineup
+  // this predicts is the next scheduled Bowen departure strictly after the
+  // arrival's own time — not "whatever departure was last matched so far".
+  // That distinction matters when an arrival and the departure that follows
+  // it land in the same poll (a batched/delayed atberth log update): using
+  // "last matched" would already reflect that later departure and mis-pair
+  // this arrival with the *next* sailing after it, leaving a stale lineup
+  // photo attached to a sailing that hasn't actually happened yet.
   const bowenArrivals = data.recentActivity.filter(
     (e) => e.action === 'Arrived' && e.location === 'Bowen',
   )
   if (bowenArrivals.length > 0) {
     const latest = bowenArrivals[0]
-    const lastMatched = data.bowenSchedule
-      .map((s, i) => ({ s, i }))
-      .filter(({ s }) => s.matchedDepartureTime)
-      .pop()
-    if (!lastMatched) {
-      logger.error('No matched Bowen departure found for community webcam capture')
-      return
-    }
-    const nextDep = data.bowenSchedule[lastMatched.i + 1]
+    const latestTime = timeToDate(latest.time)
+    const nextDep = latestTime
+      ? data.bowenSchedule.find((s) => {
+          const t = timeToDate(s.time)
+          return t && t > latestTime
+        })
+      : null
     if (!nextDep) {
       logger.error('No upcoming Bowen departure for community webcam capture')
       return

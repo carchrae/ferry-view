@@ -22,7 +22,6 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
     .filter(d => d.time)
 
   const schedulesWithEnd = scheduleItems
-    .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => t && t <= now)
     .map((item, i, arr) => {
@@ -112,7 +111,6 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
 
 export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing = false, fallback = false) {
   const candidates = scheduleItems
-    .filter((s) => !s.cancelled)
     .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => {
       if (!t) return false
