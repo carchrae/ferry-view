@@ -9,6 +9,7 @@
           <th>Actual dep</th>
           <th>+/- min</th>
           <th>Full</th>
+          <th>Filled by</th>
         </tr>
       </thead>
       <tbody>
@@ -23,7 +24,13 @@
           <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
             {{ d.lateness === null ? '—' : (d.lateness >= 0 ? '+' : '') + d.lateness }}
           </td>
-          <td>{{ capacityLabel(d.capacity) }}</td>
+          <td>
+            {{ capacityLabel(d.capacity) }}
+            <q-icon v-if="d.capacity && d.capacitySource === 'user'" name="person" size="xs" color="grey-7">
+              <q-tooltip>Reported by a rider</q-tooltip>
+            </q-icon>
+          </td>
+          <td>{{ d.filledMinutes !== null && d.filledMinutes !== undefined ? minutesToLabel(d.filledMinutes) : '—' }}</td>
         </tr>
       </tbody>
     </table>
@@ -32,6 +39,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { minutesToLabel } from 'src/composables/useHistoricalStats'
 
 const props = defineProps({
   info: { type: Object, required: true },
@@ -41,6 +49,7 @@ const props = defineProps({
 function capacityLabel(raw) {
   if (!raw) return '—'
   if (raw === 'Full') return 'Full'
+  if (raw === 'Not Full') return 'Not full'
   const n = parseInt(raw)
   return isNaN(n) ? raw : `${100 - n}%`
 }

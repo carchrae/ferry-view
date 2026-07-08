@@ -3,6 +3,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
+import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { defineSecret } from 'firebase-functions/params'
 
 import { fetchFerryData, checkDataChanged, sanitizeForCompare } from './lib/api.js'
@@ -22,6 +23,7 @@ import {
   augmentFromBCFerries,
 } from './lib/bcferries-departures.js'
 import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.js'
+import { applyUserCapacityReport } from './lib/user-capacity.js'
 import { nowInVancouver } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -252,6 +254,22 @@ export const getFerryStatus = onRequest(async (req, res) => {
     return
   }
   res.json(result.data)
+})
+
+// React to user capacity tags immediately: persist them to sailingStatus (past
+// sailings included) and, for today's sailings, regenerate ferryStatus/current
+// so other clients don't wait for the next 1-minute poll. Automated records
+// (no userUid) are ignored, which also prevents any trigger loop via
+// recordCapacityChanges.
+export const onCapacityReport = onDocumentCreated('capacityHistory/{docId}', async (event) => {
+  const isToday = await applyUserCapacityReport(db, event.data?.data())
+  if (isToday) {
+    try {
+      await refreshFerryData(db, { forceUpdate: true })
+    } catch (e) {
+      logger.error('Status refresh after user capacity report failed:', e)
+    }
+  }
 })
 
 export const cleanupWebcams = onSchedule(

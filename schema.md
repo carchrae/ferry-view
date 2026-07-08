@@ -89,9 +89,12 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `direction` | string | `"To Bowen"` or `"To HSB"` |
 | `dateIso` | string | `"2026-05-20"` |
 | `actualDepartureTime` | string? | `"10:35"` — when the ferry actually departed |
-| `filledAt` | number? | Epoch ms when full, or `"user_reported"` |
-| `lastCapacity` | string? | `"Full"` or `"100%"` |
+| `filledAt` | number? | Epoch ms when full, or `"user_reported"` (user tag with no known fill time) |
+| `lastCapacity` | string? | `"Full"`, `"Not Full"` (user-reported: had room, amount unknown), or percent available like `"100%"` |
+| `capacitySource` | string? | `"automated"` (scraped) or `"user"` — written whenever `lastCapacity` is written. Automated is authoritative; user tags only fill gaps (see `updateSailingStatus`). Legacy docs with `lastCapacity` but no `capacitySource` are treated as automated. |
 | `webcamSnapshotPath` | string? | Firebase Storage path to departure webcam photo |
+| `communitySnapshotPath` | string? | Firebase Storage path to the arrival/lineup photo (community camera), keyed to the departure this lineup predicts |
+| `communityArrivalTime` | string? | `"15:00"` — actual arrival time of the ferry in the lineup photo |
 
 ---
 
@@ -102,9 +105,10 @@ Records of capacity changes (both API-reported and user-submitted).
 | Field | Type | Description |
 |-------|------|-------------|
 | `sailingKey` | string | `"2026-05-20_10:35_To HSB"` — links to sailingStatus |
-| `capacity` | string | `"Full"` or percentage like `"71%"` |
+| `capacity` | string | `"Full"`, `"Not Full"` (user-reported: had room, amount unknown), or percent available like `"71%"` |
 | `recordedAt` | number | Epoch ms |
-| `userUid` | string? | Firebase UID — present only for user-submitted ratings |
+| `filledAt` | number? | Epoch ms when full, or `null` |
+| `userUid` | string? | Firebase UID — present only for user-submitted ratings. Creation of a user-submitted record triggers the `onCapacityReport` function, which applies it to `sailingStatus` and refreshes `ferryStatus/current` for today's sailings. |
 
 ---
 
@@ -178,4 +182,4 @@ webcams/bowen/{dateIso}/{sailingKey}_{timestamp}.jpg
 webcams/community/{dateIso}/{arrivalTime}_Arrival_{timestamp}.jpg
 ```
 
-Daily cleanup via `cleanupWebcams` deletes files with `timeCreated` older than 1 day.
+Daily cleanup via `cleanupWebcams` deletes files with `timeCreated` older than 14 days (window matches the `/tag` page's two-week tagging range).

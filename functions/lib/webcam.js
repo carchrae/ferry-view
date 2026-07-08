@@ -100,12 +100,27 @@ export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arri
     recordedAt: Date.now(),
   })
 
+  // Stamp the sailing the lineup photo predicts (the next Bowen departure), so
+  // past sailings keep a pointer to their arrival photo after the singleton
+  // doc moves on. Re-captures overwrite: the newest lineup photo wins.
+  await db.collection('sailingStatus').doc(snapshotKey).set(
+    {
+      sailingKey: snapshotKey,
+      sailingTime,
+      direction: 'To HSB',
+      dateIso,
+      communitySnapshotPath: blobPath,
+      communityArrivalTime: arrivalTime,
+    },
+    { merge: true },
+  )
+
   logger.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
 export async function cleanupOldWebcams() {
   const bucket = getStorage().bucket()
-  const cutoff = nowInVancouver().subtract(1, 'day')
+  const cutoff = nowInVancouver().subtract(14, 'day')
   let deleted = 0
   let failed = 0
 

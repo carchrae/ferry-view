@@ -34,6 +34,10 @@ export const isStaging = !isProduction
 
 const firebaseConfig = isProduction ? prodConfig : stagingConfig
 
+// Public bucket hosting webcam snapshots (see functions/lib/webcam.js) —
+// images are served as https://storage.googleapis.com/{storageBucket}/{path}
+export const storageBucket = firebaseConfig.storageBucket
+
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)

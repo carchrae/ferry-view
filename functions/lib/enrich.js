@@ -121,17 +121,25 @@ export async function augmentFromCapacityHistory(db, data) {
           }
           if (!serverSnap.empty) {
             const r = serverSnap.docs[0].data()
+            const capacitySource = r.userUid ? 'user' : 'automated'
             entry.lastCapacity = r.capacity
+            entry.capacitySource = capacitySource
             // filledAt for the persisted historical record: only a real
             // timestamp is meaningful (HistoryPage averages numeric fill times).
-            const filledAt = r.capacity === 'Full' ? r.filledAt || r.recordedAt : null
+            // User reports must never fall back to recordedAt — a tag made days
+            // later would poison the fill-time averages.
+            const filledAt =
+              r.capacity === 'Full'
+                ? r.userUid
+                  ? typeof r.filledAt === 'number'
+                    ? r.filledAt
+                    : 'user_reported'
+                  : r.filledAt || r.recordedAt
+                : null
             if (r.userUid) {
               entry.filledAt = 'user_reported'
-              enriched++
-            } else {
-              if (r.capacity === 'Full') {
-                entry.filledAt = filledAt
-              }
+            } else if (r.capacity === 'Full') {
+              entry.filledAt = filledAt
             }
             enriched++
             // Persist the capacity to sailingStatus so the historical view
@@ -142,6 +150,7 @@ export async function augmentFromCapacityHistory(db, data) {
               updateSailingStatus(sailingKey, normalizeTime(entry.time), direction, data.dateIso, db, {
                 lastCapacity: r.capacity,
                 filledAt,
+                capacitySource,
               }),
             )
           } else {

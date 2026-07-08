@@ -156,6 +156,7 @@ export function aggregateSailings(docs) {
       actualDep: doc.actualDepartureTime ? normalizeTime(doc.actualDepartureTime) : null,
       lateness,
       capacity: doc.lastCapacity || null,
+      capacitySource: doc.capacitySource ?? null,
       filledAt: doc.filledAt ?? null,
       filledMinutes: doc.lastCapacity === 'Full' ? parseFilledMinutes(doc.filledAt) : null,
     })

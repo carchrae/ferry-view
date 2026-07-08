@@ -25,6 +25,7 @@ export async function recordCapacityChanges(db, data, existingData) {
           updateSailingStatus(sailingKey, entry.time, entry.direction, data.dateIso, db, {
             lastCapacity: entry.available,
             filledAt: entry.available === 'Full' ? Date.now() : null,
+            capacitySource: 'automated',
           })
         )
       }
@@ -53,6 +54,7 @@ export async function recordCapacityChanges(db, data, existingData) {
         updateSailingStatus(sailingKey, entry.time, direction, data.dateIso, db, {
           lastCapacity: 'Full',
           filledAt: Date.now(),
+          capacitySource: 'automated',
         })
       )
     }

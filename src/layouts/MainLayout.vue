@@ -143,6 +143,11 @@
           <q-item-section avatar><q-icon name="map" /></q-item-section>
           <q-item-section>Map</q-item-section>
         </q-item>
+
+        <q-item clickable v-ripple to="/bowen-departures" @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="photo_camera" /></q-item-section>
+          <q-item-section>Bowen Departures</q-item-section>
+        </q-item>
       </q-list>
     </q-drawer>
 

@@ -500,90 +500,10 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <div class="row q-col-gutter-sm">
-            <div v-if="departureSnapshot" class="col-12 col-md-6">
-              <q-card flat bordered>
-                <q-img
-                  :src="departureSnapshot.imageUrl"
-                  :ratio="16 / 9"
-                  spinner-color="primary"
-                  @error="onSnapshotError"
-                >
-                  <template v-slot:error>
-                    <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
-                      <q-icon name="videocam_off" size="24px" />
-                    </div>
-                  </template>
-                </q-img>
-                <q-card-actions class="q-py-sm q-px-sm column items-stretch">
-                  <div class="text-subtitle2 q-mb-xs">
-                    Departure — {{ formatTime12h(departureSnapshot.sailingTime) }}
-                  </div>
-                  <div class="text-caption text-grey-7 q-mb-sm">
-                    Select <strong>Full</strong> — if there are many cars in the photo after the ferry
-                    loaded, this was likely an overload. If it is one car, they may have left home 30
-                    seconds too late.
-                  </div>
-                  <q-btn
-                    no-caps
-                    outlined
-                    color="negative"
-                    label="Full"
-                    @click="saveRating('Full', 'departure')"
-                  />
-                </q-card-actions>
-              </q-card>
-            </div>
-            <div v-if="arrivalSnapshot" class="col-12 col-md-6">
-              <q-card flat bordered>
-                <q-img
-                  :src="arrivalSnapshot.imageUrl"
-                  :ratio="16 / 9"
-                  spinner-color="primary"
-                  @error="onSnapshotError"
-                >
-                  <template v-slot:error>
-                    <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
-                      <q-icon name="videocam_off" size="24px" />
-                    </div>
-                  </template>
-                </q-img>
-                <q-card-actions class="q-py-sm q-px-sm column items-stretch">
-                  <div class="text-subtitle2 q-mb-xs">
-                    Arrival — {{ formatTime12h(arrivalSnapshot.arrivalTime) }}
-                  </div>
-                  <div class="text-caption text-grey-7 q-mb-sm">
-                    Select <strong>75% Full</strong> — are there cars on the hill but not all the way
-                    up?
-                    <br />
-                    Select <strong>90% Full</strong> — does the community photo show cars as far as
-                    you can see?
-                  </div>
-                  <div class="row q-gutter-sm">
-                    <q-btn
-                      no-caps
-                      outlined
-                      class="col"
-                      color="amber-8"
-                      label="75% Full"
-                      @click="saveRating('25%', 'arrival')"
-                    />
-                    <q-btn
-                      no-caps
-                      outlined
-                      class="col"
-                      color="warning"
-                      label="90% Full"
-                      @click="saveRating('10%', 'arrival')"
-                    />
-                  </div>
-
-                </q-card-actions>
-              </q-card>
-            </div>
-          </div>
-          <div class="q-mt-md text-center" v-if="$q.screen.xs">
-            <q-btn flat color="grey-7" icon="close" label="Close" @click="showSnapshotDialog = false" />
+          <SailingTagCards :arrival="dialogArrival" :departure="dialogDeparture" @rate="onDialogRate" />
+          <div class="q-mt-sm text-center">
+            <q-btn flat no-caps color="primary" icon="photo_camera" label="See other departures" to="/bowen-departures" @click="showSnapshotDialog = false" />
+            <q-btn v-if="$q.screen.xs" flat color="grey-7" icon="close" label="Close" @click="showSnapshotDialog = false" />
           </div>
         </q-card-section>
       </q-card>
@@ -817,7 +737,10 @@ import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
 import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
+import SailingTagCards from 'src/components/SailingTagCards.vue'
 import { useAuth } from 'src/composables/useAuth'
+import { useCapacityRating } from 'src/composables/useCapacityRating'
+import { getDeckColor } from 'src/composables/useCapacityDisplay'
 import {
   useHistoricalStats,
   getTypical,
@@ -884,46 +807,77 @@ onUnmounted(() => {
   if (unsubArrival) unsubArrival()
 })
 
-function onSnapshotError(err) {
-  console.error('Snapshot image error:', err)
+const { saveRating } = useCapacityRating()
+
+function scheduleEntryForKey(sailingKey) {
+  const m = sailingKey?.match(/^\d{4}-\d{2}-\d{2}_(.+)_(To\s.+)$/)
+  if (!m || !ferryData.value) return null
+  const [, time, direction] = m
+  const schedule =
+    direction === 'To HSB' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
+  return schedule?.find((e) => e.time === time) || null
 }
 
-function saveRating(capacity, source, filledAt) {
-  const snap = source === 'arrival' ? arrivalSnapshot.value : departureSnapshot.value
-  if (!snap) return
-  if (!user.value) {
-    showSignInDialog.value = true
-    return
+// The arrival (lineup) photo is keyed to the departure it precedes. When the
+// two singleton snapshots reference different sailings, only the newer photo
+// belongs to the last sailing — the older one is left over from an earlier
+// cycle, so don't pair them in the dialog.
+function isNewestSnapshot(snap, other) {
+  if (!other || other.sailingKey === snap.sailingKey) return true
+  return (snap.recordedAt || 0) >= (other.recordedAt || 0)
+}
+
+// Photo captions show when the photo was captured (recordedAt), not the
+// scheduled sailing time.
+function snapshotTimeLabel(snap, fallbackTime) {
+  if (snap.recordedAt) return dayjs(snap.recordedAt).tz(TZ).format('h:mm a')
+  return fallbackTime ? formatTime12h(fallbackTime) : null
+}
+
+const dialogDeparture = computed(() => {
+  const snap = departureSnapshot.value
+  if (!snap || !isNewestSnapshot(snap, arrivalSnapshot.value)) return null
+  const entry = scheduleEntryForKey(snap.sailingKey)
+  return {
+    imageUrl: snap.imageUrl,
+    timeLabel: snapshotTimeLabel(snap, snap.sailingTime),
+    sailingKey: snap.sailingKey,
+    currentCapacity: entry?.lastCapacity,
+    capacitySource: entry?.capacitySource,
   }
-  const sailingKey = snap.sailingKey
-  const userUid = user.value.uid
-  if (!sailingKey || !userUid) {
-    console.error('Missing required fields', { sailingKey, userUid })
-    return
+})
+
+const dialogArrival = computed(() => {
+  const snap = arrivalSnapshot.value
+  if (!snap || !isNewestSnapshot(snap, departureSnapshot.value)) return null
+  const entry = scheduleEntryForKey(snap.sailingKey)
+  return {
+    imageUrl: snap.imageUrl,
+    timeLabel: snapshotTimeLabel(snap, snap.arrivalTime),
+    sailingKey: snap.sailingKey,
+    currentCapacity: entry?.lastCapacity,
+    capacitySource: entry?.capacitySource,
   }
-  addDoc(collection(db, 'capacityHistory'), {
-    sailingKey,
-    capacity,
-    filledAt: filledAt || null,
-    recordedAt: Date.now(),
-    userUid,
-  })
-    .then(() => {
-      const m = sailingKey.match(/^\d{4}-\d{2}-\d{2}_(.+)_(To\s.+)$/)
-      if (m && ferryData.value) {
-        const [, time, direction] = m
-        const schedule = direction === 'To HSB' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
-        const entry = schedule?.find((e) => e.time === time)
-        if (entry) {
-          entry.lastCapacity = capacity
-          entry.filledAt = filledAt || 'user_reported'
-        }
+})
+
+function onDialogRate({ sailingKey, capacity, filledAt }) {
+  saveRating(sailingKey, capacity, filledAt)
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
       }
+      const entry = scheduleEntryForKey(sailingKey)
+      if (entry) {
+        entry.lastCapacity = capacity
+        entry.capacitySource = 'user'
+        entry.filledAt = capacity === 'Full' ? filledAt || 'user_reported' : null
+      }
+      showSnapshotDialog.value = false
     })
     .catch((err) => {
       console.error('Failed to save capacity rating:', err)
     })
-  showSnapshotDialog.value = false
 }
 
 function markCommunityFull() {
@@ -1186,21 +1140,13 @@ function prevCam() {
   fullscreenIndex.value = (fullscreenIndex.value - 1 + allCamUrls.length) % allCamUrls.length
 }
 
-function getDeckColor(available) {
-  if (available === 'Full') return 'red'
-  if (!available) return 'grey'
-  const pct = parseInt(available)
-  if (isNaN(pct)) return 'grey'
-  if (pct >= 80) return 'positive'
-  if (pct >= 30) return 'warning'
-  return 'negative'
-}
-
 function formatDeckBadge(event, short) {
   let text = ''
   if (event.lastCapacity) {
     if (event.lastCapacity === 'Full') {
       text = 'Full'
+    } else if (event.lastCapacity === 'Not Full') {
+      text = 'Not full'
     } else {
       const pct = parseInt(event.lastCapacity)
       if (!isNaN(pct)) {
