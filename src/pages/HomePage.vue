@@ -748,6 +748,9 @@ import {
 } from 'src/composables/useHistoricalStats'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 
+// Same live camera the webcam grid shows as "Bowen Terminal".
+const BOWEN_TERMINAL_CAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
+
 const $q = useQuasar()
 const { ferryData, error } = useFirestoreFerryListener()
 const { rides } = useRides()
@@ -835,15 +838,27 @@ function snapshotTimeLabel(snap, fallbackTime) {
 
 const dialogDeparture = computed(() => {
   const snap = departureSnapshot.value
-  if (!snap || !isNewestSnapshot(snap, arrivalSnapshot.value)) return null
-  const entry = scheduleEntryForKey(snap.sailingKey)
-  return {
-    imageUrl: snap.imageUrl,
-    timeLabel: snapshotTimeLabel(snap, snap.sailingTime),
-    sailingKey: snap.sailingKey,
-    currentCapacity: entry?.lastCapacity,
-    capacitySource: entry?.capacitySource,
+  if (snap && isNewestSnapshot(snap, arrivalSnapshot.value)) {
+    const entry = scheduleEntryForKey(snap.sailingKey)
+    return {
+      imageUrl: snap.imageUrl,
+      timeLabel: snapshotTimeLabel(snap, snap.sailingTime),
+      sailingKey: snap.sailingKey,
+      currentCapacity: entry?.lastCapacity,
+      capacitySource: entry?.capacitySource,
+    }
   }
+  // The ferry hasn't left since the last recorded departure photo — show the
+  // live terminal cam until the real one lands, same as BowenDeparturesPage.
+  const arrivalSnap = arrivalSnapshot.value
+  if (arrivalSnap) {
+    return {
+      imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`,
+      sailingKey: arrivalSnap.sailingKey,
+      live: true,
+    }
+  }
+  return null
 })
 
 const dialogArrival = computed(() => {

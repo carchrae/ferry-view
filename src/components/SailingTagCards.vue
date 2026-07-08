@@ -10,7 +10,14 @@
         </q-responsive>
       </q-card>
       <q-card v-else flat bordered>
-        <q-img :src="arrival.imageUrl" :ratio="16 / 9" spinner-color="primary" @error="onImageError">
+        <q-img
+          :src="arrival.imageUrl"
+          :ratio="16 / 9"
+          spinner-color="primary"
+          class="cursor-pointer"
+          @error="onImageError"
+          @click="openZoom(arrival.imageUrl)"
+        >
           <template v-slot:error>
             <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
               <q-icon name="videocam_off" size="24px" />
@@ -81,7 +88,14 @@
         </q-responsive>
       </q-card>
       <q-card v-else flat bordered>
-        <q-img :src="departure.imageUrl" :ratio="16 / 9" spinner-color="primary" @error="onImageError">
+        <q-img
+          :src="departure.imageUrl"
+          :ratio="16 / 9"
+          spinner-color="primary"
+          class="cursor-pointer"
+          @error="onImageError"
+          @click="openZoom(departure.imageUrl)"
+        >
           <template v-slot:error>
             <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
               <q-icon name="videocam_off" size="24px" />
@@ -148,11 +162,14 @@
         </q-card-actions>
       </q-card>
     </div>
+    <ZoomableImageDialog v-model="zoomOpen" :src="zoomSrc" />
   </div>
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
+import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 
 // Each card describes one photo of a sailing:
 //   { imageUrl, timeLabel, sailingKey, currentCapacity?, capacitySource? }
@@ -170,6 +187,14 @@ defineProps({
 })
 
 const emit = defineEmits(['rate'])
+
+const zoomSrc = ref(null)
+const zoomOpen = ref(false)
+
+function openZoom(url) {
+  zoomSrc.value = url
+  zoomOpen.value = true
+}
 
 // Automated (scraped) capacity is authoritative — the server ignores user tags
 // for those sailings, so don't offer the buttons. User tags may be re-tagged.
