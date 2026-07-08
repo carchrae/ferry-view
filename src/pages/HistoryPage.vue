@@ -307,6 +307,7 @@ function fullLabel(info) {
   if (info.fullPct >= 80) return 'Often Full'
   if (info.fullPct >= 50) return 'Sometimes Full'
   if (info.fullPct > 0) return 'Seldom Full'
+  if (info.notFullCount > 0) return 'Rarely Full'
   return ''
 }
 
@@ -317,6 +318,7 @@ function fullText(info) {
     return info.avgFillTime ? `${label} · by ${info.avgFillTime}` : label
   }
   if (info.avgCapacityPct !== null) return `~${100 - info.avgCapacityPct}% full`
+  if (info.notFullCount > 0) return fullLabel(info)
   return null
 }
 
@@ -330,6 +332,7 @@ function busyClass(info) {
     if (busy >= 40) return 'text-orange'
     return 'text-positive'
   }
+  if (info.notFullCount > 0) return 'text-positive'
   return 'text-grey-6'
 }
 

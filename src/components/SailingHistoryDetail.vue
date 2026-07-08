@@ -66,6 +66,8 @@ const detailSummary = computed(() => {
     parts.push(info.avgFillTime ? `full ${info.fullPct}% · fills by ${info.avgFillTime}` : `full ${info.fullPct}%`)
   } else if (info.avgCapacityPct !== null) {
     parts.push(`avg ${100 - info.avgCapacityPct}% full`)
+  } else if (info.notFullCount > 0) {
+    parts.push(`${info.notFullCount} tagged not full`)
   }
   if (info.exceptionCount) {
     parts.push(`${info.exceptionCount} exception${info.exceptionCount === 1 ? '' : 's'} excluded`)

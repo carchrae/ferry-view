@@ -213,6 +213,11 @@ function computeTimeInfo(time, rawDates) {
     .filter((n) => !isNaN(n) && n <= 100)
   const avgCapacityPct = numbers.length ? Math.round(mean(numbers)) : null
 
+  // Riders can tag a sailing "Not Full" without giving a percentage — it carries
+  // no numeric weight in avgCapacityPct, but it's still positive evidence the
+  // sailing wasn't full, so it's tracked separately for the "Rarely Full" case.
+  const notFullCount = typical.filter((d) => d.capacity === 'Not Full').length
+
   return {
     sched,
     count: typical.length,
@@ -223,6 +228,7 @@ function computeTimeInfo(time, rawDates) {
     fullPct,
     avgFillTime,
     avgCapacityPct,
+    notFullCount,
     dates,
   }
 }
