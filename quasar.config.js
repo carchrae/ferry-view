@@ -102,7 +102,7 @@ export default defineConfig((ctx) => {
         type: 'http',
       },
       port: 9000,
-      open: true,
+      open: false,
       proxy: [
         {
           context: ['/api'],

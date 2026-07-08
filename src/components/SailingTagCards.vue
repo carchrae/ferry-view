@@ -47,7 +47,8 @@
             <q-btn
               no-caps
               outlined
-              class="col"
+              no-wrap
+              class="col tag-btn"
               color="amber-8"
               label="75% Full"
               :disable="isLocked(arrival)"
@@ -56,7 +57,8 @@
             <q-btn
               no-caps
               outlined
-              class="col"
+              no-wrap
+              class="col tag-btn"
               color="warning"
               label="90% Full"
               :disable="isLocked(arrival)"
@@ -121,7 +123,8 @@
               <q-btn
                 no-caps
                 outlined
-                class="col"
+                no-wrap
+                class="col tag-btn"
                 color="negative"
                 label="Full"
                 :disable="isLocked(departure)"
@@ -130,7 +133,8 @@
               <q-btn
                 no-caps
                 outlined
-                class="col"
+                no-wrap
+                class="col tag-btn"
                 color="positive"
                 label="Not Full"
                 :disable="isLocked(departure)"
@@ -185,3 +189,9 @@ function onImageError(err) {
   console.error('Snapshot image error:', err)
 }
 </script>
+
+<style scoped>
+.tag-btn {
+  min-height: 36px;
+}
+</style>

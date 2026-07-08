@@ -277,8 +277,7 @@
                   class="text-center text-caption text-grey-6 q-mt-sm"
                 >
                   <q-icon name="warning" size="xs" color="negative" class="q-mr-xs" />
-                  Live departure feed delayed — Horseshoe Bay times via BC Ferries; Bowen
-                  departure times unavailable (shown as <q-badge rounded color="grey" dense>?</q-badge>).
+                  bowenferry.ca departure feed is down — using AIS or BCF website (if those all fail, departures show as <q-badge rounded color="grey" dense>?</q-badge>).
                 </div>
               </q-card-section>
             </q-card>
