@@ -43,10 +43,20 @@
       bordered
       class="q-mb-md sailing-group"
     >
-      <q-card-section class="q-py-sm">
+      <q-card-section class="q-py-sm row items-center">
         <div class="text-subtitle1 text-weight-medium">
           {{ formatTime12h(sailing.sailingTime) }} — {{ sailing.dayLabel }}
         </div>
+        <q-space />
+        <q-badge
+          v-if="sailing.conflict"
+          color="warning"
+          class="q-py-xs"
+          text-color="dark"
+        >
+          <q-icon name="warning" size="14px" class="q-mr-xs" />
+          Conflicting reports
+        </q-badge>
       </q-card-section>
       <q-separator />
       <q-card-section class="q-pa-sm">
@@ -56,6 +66,20 @@
           placeholders
           @rate="onRate(sailing, $event)"
         />
+        <div v-if="sailing.reports.length" class="row items-center q-gutter-xs q-mt-sm">
+          <span class="text-caption text-grey-7 q-mr-xs">Reports:</span>
+          <q-chip
+            v-for="r in sailing.reports"
+            :key="r.userUid + r.recordedAt"
+            dense
+            square
+            :color="getDeckColor(r.capacity)"
+            text-color="white"
+            class="q-my-none"
+          >
+            {{ formatReporterName(r.userName) }} · {{ capacityFullLabel(r.capacity) }}
+          </q-chip>
+        </div>
       </q-card-section>
     </q-card>
 
@@ -72,12 +96,15 @@ import { nowInVancouver, dayjs, formatTime12h, TZ } from '../../functions/lib/ti
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
+import { useLeaderboard, scoreSailing, formatReporterName } from 'src/composables/useLeaderboard'
+import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 
 // Same live camera the home page shows as "Bowen Terminal".
 const BOWEN_TERMINAL_CAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 
 const $q = useQuasar()
-const { needsSignIn, saveRating } = useCapacityRating()
+const { user, needsSignIn, saveRating } = useCapacityRating()
+const { loadRecentUserReports } = useLeaderboard()
 
 const loading = ref(false)
 const allSailings = ref([])
@@ -160,6 +187,16 @@ async function loadSailings() {
 
     const built = sailings.map((s) => buildCards(s, todayIso))
 
+    // Attach each sailing's user reports (for reporter chips) and conflict flag.
+    const reportsByKey = new Map()
+    for (const r of await loadRecentUserReports()) {
+      if (!reportsByKey.has(r.sailingKey)) reportsByKey.set(r.sailingKey, [])
+      reportsByKey.get(r.sailingKey).push(r)
+    }
+    for (const sailing of built) {
+      attachReports(sailing, reportsByKey.get(sailing.sailingKey) || [])
+    }
+
     // The newest sailing usually has its lineup (arrival) photo before the
     // ferry has left — fill the departure slot with the live Bowen terminal
     // camera until the real departure photo is captured. Not taggable
@@ -213,6 +250,19 @@ function buildCards(s, todayIso) {
   }
 }
 
+// Reduce a sailing's raw user reports to one chip per user (their latest) and
+// derive the unresolved-conflict flag via the shared scoring model.
+function attachReports(sailing, reports) {
+  const latest = new Map()
+  for (const r of reports) {
+    const prev = latest.get(r.userUid)
+    if (!prev || (r.recordedAt || 0) > (prev.recordedAt || 0)) latest.set(r.userUid, r)
+  }
+  sailing.reports = [...latest.values()].sort((a, b) => (a.recordedAt || 0) - (b.recordedAt || 0))
+  const { disputed, resolved } = scoreSailing(reports)
+  sailing.conflict = disputed && !resolved
+}
+
 function onRate(sailing, { sailingKey, capacity, filledAt }) {
   saveRating(sailingKey, capacity, filledAt)
     .then((saved) => {
@@ -225,6 +275,17 @@ function onRate(sailing, { sailingKey, capacity, filledAt }) {
           card.capacitySource = 'user'
         }
       }
+      // Optimistically reflect this report in the chips + conflict flag so the
+      // user sees it before the next reload.
+      const mine = {
+        sailingKey,
+        capacity,
+        recordedAt: Date.now(),
+        userUid: user.value?.uid,
+        userName: user.value?.displayName || user.value?.email || null,
+      }
+      const others = sailing.reports.filter((r) => r.userUid !== mine.userUid)
+      attachReports(sailing, [...others, mine])
       $q.notify({ type: 'positive', message: 'Thanks — capacity recorded!' })
     })
     .catch((err) => {

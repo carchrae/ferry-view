@@ -27,6 +27,9 @@ export function useCapacityRating() {
       filledAt: filledAt || null,
       recordedAt: Date.now(),
       userUid: user.value.uid,
+      // Stored so the leaderboard / bowen-departures can show the reporter's
+      // name without a users lookup (mirrors rides' authorName).
+      userName: user.value.displayName || user.value.email || null,
     })
     return true
   }

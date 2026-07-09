@@ -148,6 +148,11 @@
           <q-item-section avatar><q-icon name="photo_camera" /></q-item-section>
           <q-item-section>Bowen Departures</q-item-section>
         </q-item>
+
+        <q-item clickable v-ripple to="/leaderboard" @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="emoji_events" /></q-item-section>
+          <q-item-section>Leaderboard</q-item-section>
+        </q-item>
       </q-list>
     </q-drawer>
 
