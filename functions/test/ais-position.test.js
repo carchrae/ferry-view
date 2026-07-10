@@ -85,6 +85,15 @@ describe('ais-position', () => {
       expect(classifyTerminal({ lat: BOWEN.lat, lon: BOWEN.lon }, '8.5')).toBeNull()
     })
 
+    // Root cause of the "speed blip = false departure" edge (see the scenario block
+    // below): classification is speed+radius only, so any SOG just over the stopped
+    // threshold declassifies the terminal even though the vessel hasn't left the berth.
+    it('declassifies the terminal on a small speed blip while still at the dock', () => {
+      const atDock = { lat: BOWEN.lat, lon: BOWEN.lon }
+      expect(classifyTerminal(atDock, '0.50')).toBe('Bowen') // below threshold: docked
+      expect(classifyTerminal(atDock, '0.70')).toBeNull() // barely above: reads as transit
+    })
+
     it('returns null when stopped but far from any terminal (mid-channel)', () => {
       const mid = { lat: (BOWEN.lat + HSB.lat) / 2, lon: (BOWEN.lon + HSB.lon) / 2 }
       expect(classifyTerminal(mid, '0.00')).toBeNull()
@@ -218,6 +227,104 @@ describe('ais-position', () => {
       }
       expect(augmentFromAisPosition(data, { aisLocation: 'Bowen' }, nowAt('10:05'))).toBe(0)
       expect(data.recentActivity).toHaveLength(1)
+    })
+  })
+
+  // Behavioural documentation for how a run of successive polls turns into
+  // arrival/departure events. Each poll carries a fresh `recentActivity` (from that
+  // poll's fetch) and the previous poll's `aisLocation` as prior state — exactly how
+  // refreshFerryData threads it. These answer three concrete questions about the edges:
+  //   1. does a speed blip at the dock (no real departure) emit a Departed?
+  //   2. when does the departure time occur?
+  //   3. what happens when the ferry leaves and then returns, staying in the area?
+  describe('arrival/departure scenarios (poll sequences)', () => {
+    // Replay a list of { loc, time } polls, threading prior state and collecting every
+    // event augmentFromAisPosition emits across the run.
+    const runPolls = (polls, opts) => {
+      const events = []
+      let prev = null
+      for (const { loc, time } of polls) {
+        const data = { aisLocation: loc, recentActivity: [] }
+        augmentFromAisPosition(data, prev == null ? null : { aisLocation: prev }, nowAt(time), opts)
+        events.push(...data.recentActivity)
+        prev = loc
+      }
+      return events
+    }
+
+    // Q1: the ferry slows down and speeds up again but never actually leaves the berth.
+    // A single poll catches SOG above the stopped threshold, so classifyTerminal reports
+    // 'transit' for that one poll (Bowen -> transit -> Bowen). Current logic treats that
+    // as a genuine departure+arrival. This test PINS the (arguably wrong) current
+    // behaviour so a future fix — e.g. requiring the vessel to actually clear the dock
+    // radius, or debouncing single-poll transit blips — will visibly flip it here.
+    it('Q1: a one-poll speed blip at the dock emits a spurious Departed then Arrived', () => {
+      const events = runPolls([
+        { loc: 'Bowen', time: '10:00' }, // sitting docked
+        { loc: 'transit', time: '10:01' }, // brief SOG blip over threshold, still at berth
+        { loc: 'Bowen', time: '10:02' }, // settled again, never left
+      ])
+      expect(events).toEqual([
+        { action: 'Departed', location: 'Bowen', time: '10:01' },
+        { action: 'Arrived', location: 'Bowen', time: '10:02' },
+      ])
+    })
+
+    // Q2: the departure time is the wall-clock time of the poll at which the
+    // terminal -> transit transition is first DETECTED — not when the vessel physically
+    // left. It is quantized to the poll cadence: the ferry may have pushed off at 10:03:40
+    // but if the first poll to see it in transit runs at 10:05, the Departed is stamped
+    // 10:05. Steady-docked polls before the transition emit nothing.
+    it('Q2: departure time is stamped at the first poll that sees transit, not earlier', () => {
+      const events = runPolls([
+        { loc: 'Bowen', time: '10:00' }, // docked, no event
+        { loc: 'Bowen', time: '10:02' }, // still docked, no event
+        { loc: 'transit', time: '10:05' }, // first poll to observe it gone -> Departed @ 10:05
+        { loc: 'transit', time: '10:10' }, // still in transit, no further event
+      ])
+      expect(events).toEqual([{ action: 'Departed', location: 'Bowen', time: '10:05' }])
+    })
+
+    // Q3a: the ferry leaves the dock, is seen in transit, then returns to the SAME
+    // terminal (e.g. a false start, or repositioning across berths that dipped it out of
+    // the dock radius). Because a transit poll was observed in between, this reads as a
+    // full Departed + Arrived round-trip at the same terminal rather than one sailing.
+    it('Q3a: leaving then returning to the same terminal emits Departed then Arrived there', () => {
+      const events = runPolls([
+        { loc: 'Bowen', time: '09:00' },
+        { loc: 'transit', time: '09:05' }, // pulled out -> Departed Bowen
+        { loc: 'Bowen', time: '09:15' }, // came back to Bowen -> Arrived Bowen
+      ])
+      expect(events).toEqual([
+        { action: 'Departed', location: 'Bowen', time: '09:05' },
+        { action: 'Arrived', location: 'Bowen', time: '09:15' },
+      ])
+    })
+
+    // Q3b: same round-trip, but it happens entirely BETWEEN two polls — no poll ever
+    // classifies the vessel as transit, so aisLocation reads 'Bowen' both times and NO
+    // event is emitted. The excursion is invisible to the detector.
+    it('Q3b: a leave-and-return that no poll catches in transit emits nothing', () => {
+      const events = runPolls([
+        { loc: 'Bowen', time: '09:00' }, // docked
+        { loc: 'Bowen', time: '09:15' }, // docked again; the excursion fell between polls
+      ])
+      expect(events).toEqual([])
+    })
+
+    // Contrast: a normal, complete sailing (leave Bowen, cross, dock at HSB) yields
+    // exactly one Departed and one Arrived, at the correct terminals.
+    it('a normal Bowen -> HSB sailing emits one Departed and one Arrived', () => {
+      const events = runPolls([
+        { loc: 'Bowen', time: '08:30' },
+        { loc: 'transit', time: '08:35' }, // Departed Bowen
+        { loc: 'transit', time: '08:50' },
+        { loc: 'Horseshoe Bay', time: '08:55' }, // Arrived Horseshoe Bay
+      ])
+      expect(events).toEqual([
+        { action: 'Departed', location: 'Bowen', time: '08:35' },
+        { action: 'Arrived', location: 'Horseshoe Bay', time: '08:55' },
+      ])
     })
   })
 })

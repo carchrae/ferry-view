@@ -37,7 +37,7 @@ const db = getFirestore()
 // sailings are confirmed matching under the "HSB N" -> "Horseshoe Bay" normalization. When
 // true, AIS position drives arrival/departure events every poll and the atberth log + BC
 // Ferries scrape become fallback (consulted only when the AIS position feed is unusable).
-const AIS_PRIMARY = false
+const AIS_PRIMARY = true
 
 async function refreshFerryData(db, {forceUpdate = false} = {}) {
   const data = await fetchFerryData()

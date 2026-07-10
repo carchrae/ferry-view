@@ -253,3 +253,45 @@ describe('updateSailingStatus capacity precedence', () => {
     expect(db.docs[DOC].actualDepartureTime).toBe('10:40')
   })
 })
+
+// A sailing's recorded departure time is WRITE-ONCE, keyed by its scheduled sailingKey:
+// the first actualDepartureTime persisted for a sailing wins, and every later departure
+// classification for that same key is ignored (helpers.js:29). This matters for the AIS
+// classifier's edge cases (see ais-position.test.js): if a spurious one-poll speed blip
+// at the dock is matched to a sailing and recorded first, the real departure that follows
+// CANNOT correct it — the value is cemented, not overwritten. These tests pin that so a
+// future switch to last-wins/nearest-wins recording (or a debounce upstream) flips here
+// visibly.
+describe('updateSailingStatus actualDepartureTime is write-once', () => {
+  it('records the departure time on a sailing that has none yet', async () => {
+    const db = makeDb()
+    await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      actualDepartureTime: '10:38',
+    })
+    expect(db.docs[DOC].actualDepartureTime).toBe('10:38')
+  })
+
+  it('fills an empty departure time on an existing doc', async () => {
+    const db = makeDb({
+      [DOC]: { sailingKey: KEY, lastCapacity: '50%', capacitySource: 'automated' },
+    })
+    await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      actualDepartureTime: '10:38',
+    })
+    expect(db.docs[DOC].actualDepartureTime).toBe('10:38')
+  })
+
+  it('does NOT overwrite an already-recorded departure time (first wins)', async () => {
+    // Simulates the spurious-blip hazard: an earlier (wrong) departure is already stored,
+    // then the real, later departure arrives for the same scheduled sailing. Write-once
+    // keeps the first value; the correction is dropped and no write is issued.
+    const db = makeDb({
+      [DOC]: { sailingKey: KEY, actualDepartureTime: '10:31' },
+    })
+    await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      actualDepartureTime: '10:40',
+    })
+    expect(db.docs[DOC].actualDepartureTime).toBe('10:31')
+    expect(db.writes).toHaveLength(0)
+  })
+})
