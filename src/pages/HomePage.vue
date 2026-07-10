@@ -112,7 +112,10 @@
                       :key="'pb' + i"
                       class="row items-center no-wrap q-mt-xs"
                     >
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                      <div
+                        class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                        @click="openHistory(event.scheduledTime, event.label)"
+                      >
                         {{ formatTime12h(event.scheduledTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
@@ -156,7 +159,10 @@
                       :key="'ph' + i"
                       class="row items-center no-wrap q-mt-xs"
                     >
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                      <div
+                        class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                        @click="openHistory(event.scheduledTime, event.label)"
+                      >
                         {{ formatTime12h(event.scheduledTime) }}
                       </div>
                       <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
@@ -208,7 +214,10 @@
                       class="q-mt-xs"
                     >
                       <div class="row items-center no-wrap">
-                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                        <div
+                          class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                          @click="openHistory(s.shortTime, s.label)"
+                        >
                           {{ formatTime12h(s.shortTime) }}
                         </div>
                         <q-badge
@@ -256,7 +265,10 @@
                       class="q-mt-xs"
                     >
                       <div class="row items-center no-wrap">
-                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                        <div
+                          class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                          @click="openHistory(s.shortTime, s.label)"
+                        >
                           {{ formatTime12h(s.shortTime) }}
                         </div>
                         <q-badge
@@ -325,7 +337,7 @@
               @click="showFullDialog = true"
             />
           </div>
-          <div class="col" v-if="departureSnapshot || arrivalSnapshot">
+          <div class="col" v-if="lastBowenSailing">
             <q-btn
               no-caps
               dense
@@ -334,7 +346,7 @@
               icon="photo_camera"
               label="Last Bowen Sailing"
               class="full-width no-wrap"
-              @click="showSnapshotDialog = true"
+              @click="openSnapshotDialog"
             />
           </div>
         </div>
@@ -527,7 +539,7 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <SailingTagCards :arrival="dialogArrival" :departure="dialogDeparture" @rate="onDialogRate" />
+          <SailingTagCards :arrival="lastBowenSailing?.arrival" :departure="lastBowenSailing?.departure" @rate="onDialogRate" />
           <div class="q-mt-sm text-center">
             <q-btn flat no-caps color="primary" icon="photo_camera" label="See other departures" to="/bowen-departures" @click="showSnapshotDialog = false" />
             <q-btn v-if="$q.screen.xs" flat color="grey-7" icon="close" label="Close" @click="showSnapshotDialog = false" />
@@ -575,7 +587,10 @@
                 :key="'pb' + i"
                 class="row items-center no-wrap q-mt-xs"
               >
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                <div
+                  class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                  @click="openHistory(event.scheduledTime, event.label)"
+                >
                   {{ formatTime12h(event.scheduledTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
@@ -614,7 +629,10 @@
                 :key="'ph' + i"
                 class="row items-center no-wrap q-mt-xs"
               >
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                <div
+                  class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                  @click="openHistory(event.scheduledTime, event.label)"
+                >
                   {{ formatTime12h(event.scheduledTime) }}
                 </div>
                 <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
@@ -656,7 +674,10 @@
                 class="q-mt-xs"
               >
                 <div class="row items-center no-wrap">
-                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                  <div
+                    class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                    @click="openHistory(s.shortTime, s.label)"
+                  >
                     {{ formatTime12h(s.shortTime) }}
                   </div>
                   <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
@@ -699,7 +720,10 @@
                 class="q-mt-xs"
               >
                 <div class="row items-center no-wrap">
-                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
+                  <div
+                    class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
+                    @click="openHistory(s.shortTime, s.label)"
+                  >
                     {{ formatTime12h(s.shortTime) }}
                   </div>
                   <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
@@ -735,6 +759,19 @@
             </div>
           </div>
         </q-card-section>
+        <q-separator />
+        <q-card-section class="q-py-sm text-center">
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            icon="photo_camera"
+            label="Bowen Departures"
+            to="/bowen-departures"
+            @click="showFullDialog = false"
+          />
+        </q-card-section>
         <q-card-section class="q-py-sm text-center">
           <q-btn
             flat
@@ -767,7 +804,22 @@
         </q-card-section>
         <q-separator class="q-mt-sm" />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <SailingHistoryDetail v-if="selectedTypical" :info="selectedTypical.info" />
+          <SailingHistoryDetail v-if="selectedTypical?.info" :info="selectedTypical.info" />
+          <div v-else class="text-caption text-grey-6 q-pa-sm text-center">
+            No recent history for this sailing yet.
+          </div>
+          <div v-if="selectedTypical?.label === 'Bowen'" class="text-center q-mt-sm">
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="primary"
+              icon="photo_camera"
+              :label="`See ${formatTime12h(selectedTypical.time)} departures`"
+              :to="{ path: '/bowen-departures', query: { time: selectedTypical.time } }"
+              @click="showTypicalDialog = false"
+            />
+          </div>
           <div class="text-caption text-grey-5 q-mt-sm q-px-xs">
             Predictions are a guess — there's no certainty with the ferry.
           </div>
@@ -788,7 +840,8 @@ import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
 import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 import { isStaging, db } from 'src/boot/firebase'
-import { doc, onSnapshot, addDoc, collection } from 'firebase/firestore'
+import { addDoc, collection } from 'firebase/firestore'
+import { loadBowenSailings } from 'src/composables/useBowenSailings'
 import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
@@ -803,9 +856,6 @@ import {
   labelToPanel,
 } from 'src/composables/useHistoricalStats'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
-
-// Same live camera the webcam grid shows as "Bowen Terminal".
-const BOWEN_TERMINAL_CAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 
 const $q = useQuasar()
 const { ferryData, error } = useFirestoreFerryListener()
@@ -822,48 +872,27 @@ const { user } = useAuth()
 
 const showSignInDialog = ref(false)
 
-const departureSnapshot = ref(null)
-const arrivalSnapshot = ref(null)
+// The "Last Bowen Sailing" dialog shows the newest Bowen departure, built from
+// the same sailingStatus source as the Bowen Departures page so its two photos
+// are always the correctly-paired arrival/departure of one sailing.
+const lastBowenSailing = ref(null)
 const showSnapshotDialog = ref(false)
-let lastSnapshotKey = null
-let lastArrivalKey = null
 
-let unsubDeparture = null
-let unsubArrival = null
-onMounted(() => {
-  unsubDeparture = onSnapshot(
-    doc(db, 'snapshots', 'latestBowenDeparture'),
-    (snap) => {
-      if (!snap.exists()) return
-      const data = snap.data()
-      if (data.sailingKey !== lastSnapshotKey) {
-        lastSnapshotKey = data.sailingKey
-      }
-      departureSnapshot.value = data
-    },
-    (err) => {
-      console.error('Departure snapshot listener error:', err)
-    },
-  )
-  unsubArrival = onSnapshot(
-    doc(db, 'snapshots', 'latestBowenArrival'),
-    (snap) => {
-      if (!snap.exists()) return
-      const data = snap.data()
-      if (data.arrivalTime !== lastArrivalKey) {
-        lastArrivalKey = data.arrivalTime
-      }
-      arrivalSnapshot.value = data
-    },
-    (err) => {
-      console.error('Arrival snapshot listener error:', err)
-    },
-  )
-})
-onUnmounted(() => {
-  if (unsubDeparture) unsubDeparture()
-  if (unsubArrival) unsubArrival()
-})
+async function loadLastBowenSailing() {
+  try {
+    const built = await loadBowenSailings()
+    lastBowenSailing.value = built[0] || null
+  } catch (err) {
+    console.error('Failed to load last Bowen sailing:', err)
+  }
+}
+onMounted(loadLastBowenSailing)
+
+function openSnapshotDialog() {
+  // Refresh on open so a sailing captured since page load appears.
+  loadLastBowenSailing()
+  showSnapshotDialog.value = true
+}
 
 const { saveRating } = useCapacityRating()
 
@@ -875,89 +904,6 @@ function scheduleEntryForKey(sailingKey) {
     direction === 'To HSB' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
   return schedule?.find((e) => e.time === time) || null
 }
-
-// Photo captions show when the photo was captured (recordedAt), not the
-// scheduled sailing time.
-function snapshotTimeLabel(snap, fallbackTime) {
-  if (snap.recordedAt) return dayjs(snap.recordedAt).tz(TZ).format('h:mm a')
-  return fallbackTime ? formatTime12h(fallbackTime) : null
-}
-
-// Deterministic source of truth for "has a Bowen sailing actually left, and
-// when" — derived from matched schedule/departure data (same as the past-
-// sailings list), rather than comparing the departure and arrival snapshot
-// docs' recordedAt against each other. Those two docs are written by separate,
-// unawaited webcam captures (see functions/lib/webcam.js) racing against each
-// other over the network, so whichever happens to land last is not a
-// trustworthy signal of which sailing most recently departed.
-const lastDepartedBowen = computed(() => {
-  const past = allPastBowen.value
-  for (let i = past.length - 1; i >= 0; i--) {
-    if (past[i]._hasDep && past[i].scheduledTime) return past[i]
-  }
-  return null
-})
-
-const lastDepartedBowenKey = computed(() => {
-  const e = lastDepartedBowen.value
-  if (!e || !ferryData.value) return null
-  return `${ferryData.value.dateIso}_${e.scheduledTime}_To HSB`
-})
-
-const dialogDeparture = computed(() => {
-  const snap = departureSnapshot.value
-  const key = lastDepartedBowenKey.value
-
-  if (snap && key && snap.sailingKey === key) {
-    const entry = scheduleEntryForKey(snap.sailingKey)
-    return {
-      imageUrl: snap.imageUrl,
-      timeLabel: snapshotTimeLabel(snap, snap.sailingTime),
-      sailingKey: snap.sailingKey,
-      currentCapacity: entry?.lastCapacity,
-      capacitySource: entry?.capacitySource,
-    }
-  }
-
-  if (!key) {
-    // Nothing has departed from Bowen yet today — the arrival/lineup photo,
-    // if any, is a preview of the first upcoming departure.
-    const arrivalSnap = arrivalSnapshot.value
-    return arrivalSnap
-      ? { imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`, sailingKey: arrivalSnap.sailingKey, live: true }
-      : null
-  }
-
-  // A sailing has left but we don't have its photo yet. Only claim "Live —
-  // photo coming soon" inside the server's actual capture window (10 minutes
-  // past departure — see captureBowenWebcam's isRecent check); past that, the
-  // capture has permanently failed for this sailing, so stop promising a
-  // photo that will never arrive.
-  const minutesSinceDeparture = nowDate().diff(lastDepartedBowen.value.sortTime, 'minute')
-  if (minutesSinceDeparture < 10) {
-    return { imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`, sailingKey: key, live: true }
-  }
-  return null
-})
-
-const dialogArrival = computed(() => {
-  const snap = arrivalSnapshot.value
-  if (!snap) return null
-  const key = lastDepartedBowenKey.value
-  // A lineup photo keyed to a sailing strictly before the last one that
-  // actually departed is left over from an earlier cycle — don't show it.
-  // (Equal or later sailingKeys are current: either paired with the sailing
-  // that just left, or previewing the one after it.)
-  if (key && snap.sailingKey < key) return null
-  const entry = scheduleEntryForKey(snap.sailingKey)
-  return {
-    imageUrl: snap.imageUrl,
-    timeLabel: snapshotTimeLabel(snap, snap.arrivalTime),
-    sailingKey: snap.sailingKey,
-    currentCapacity: entry?.lastCapacity,
-    capacitySource: entry?.capacitySource,
-  }
-})
 
 function onDialogRate({ sailingKey, capacity, filledAt }) {
   saveRating(sailingKey, capacity, filledAt)
@@ -1075,18 +1021,27 @@ function sailingHints(s) {
   return typicalHints(sailingTypical(s), $q.screen.xs)
 }
 
-// Prediction-detail dialog: shows the historical data behind a prediction.
+// Prediction-detail dialog: shows the historical data behind a sailing. Opened
+// either from a sailing's typical-history hint or by tapping any sailing time
+// (past or upcoming, either terminal). `info` may be null when there's no
+// recent history for that day-of-week + time.
 const showTypicalDialog = ref(false)
 const selectedTypical = ref(null)
-function openTypical(s) {
-  const info = sailingTypical(s)
-  if (!info) return
-  const dir = s.label === 'HSB' ? 'to Bowen' : 'to Horseshoe Bay'
+function openHistory(time, label) {
+  if (!time) return
+  const panel = labelToPanel(label)
+  const info = getTypical(historyByDayOfWeek.value, panel, todayDow.value, time)
+  const dir = label === 'HSB' ? 'to Bowen' : 'to Horseshoe Bay'
   selectedTypical.value = {
     info,
-    title: `${todayDow.value} ${formatTime12h(s.shortTime)} ${dir}`,
+    time,
+    label,
+    title: `${todayDow.value} ${formatTime12h(time)} ${dir}`,
   }
   showTypicalDialog.value = true
+}
+function openTypical(s) {
+  openHistory(s.shortTime, s.label)
 }
 
 const upcomingSailings = computed(() => schedule.upcomingSailings(6))

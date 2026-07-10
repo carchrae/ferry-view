@@ -89,20 +89,18 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { collection, getDocs, query, where } from 'firebase/firestore'
-import { db, storageBucket } from 'src/boot/firebase'
-import { nowInVancouver, dayjs, formatTime12h, TZ } from '../../functions/lib/time.js'
+import { formatTime12h, normalizeTime } from '../../functions/lib/time.js'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLeaderboard, scoreSailing, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
-
-// Same live camera the home page shows as "Bowen Terminal".
-const BOWEN_TERMINAL_CAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
+import { loadBowenSailings } from 'src/composables/useBowenSailings'
 
 const $q = useQuasar()
+const route = useRoute()
 const { user, needsSignIn, saveRating } = useCapacityRating()
 const { loadRecentUserReports } = useLeaderboard()
 
@@ -129,63 +127,10 @@ watch(needsSignIn, (v) => {
   }
 })
 
-function imageUrl(path) {
-  return `https://storage.googleapis.com/${storageBucket}/${path}`
-}
-
-function dayLabel(dateIso, todayIso) {
-  const dated = dayjs(dateIso).format('dddd, MMM D')
-  if (dateIso === todayIso) return `Today (${dated})`
-  if (dateIso === dayjs(todayIso).subtract(1, 'day').format('YYYY-MM-DD')) {
-    return `Yesterday (${dated})`
-  }
-  return dated
-}
-
-// The photo's capture time is encoded in its Storage path
-// (…_{epoch-ms}.jpg — see functions/lib/webcam.js).
-function captureTimeLabel(path) {
-  const m = /_(\d{10,})\.jpg$/.exec(path || '')
-  return m ? dayjs(Number(m[1])).tz(TZ).format('h:mm a') : null
-}
-
 async function loadSailings() {
   loading.value = true
   try {
-    const todayIso = nowInVancouver().format('YYYY-MM-DD')
-    const startIso = nowInVancouver().subtract(13, 'day').format('YYYY-MM-DD')
-    const snap = await getDocs(
-      query(
-        collection(db, 'sailingStatus'),
-        where('dateIso', '>=', startIso),
-        where('dateIso', '<=', todayIso),
-      ),
-    )
-
-    const sailings = []
-    snap.forEach((docSnap) => {
-      const d = docSnap.data()
-      if (d.direction !== 'To HSB') return
-      if (!d.webcamSnapshotPath && !d.communitySnapshotPath) return
-      sailings.push({
-        sailingKey: d.sailingKey || docSnap.id,
-        dateIso: d.dateIso,
-        sailingTime: d.sailingTime,
-        lastCapacity: d.lastCapacity,
-        capacitySource: d.capacitySource,
-        webcamSnapshotPath: d.webcamSnapshotPath,
-        communitySnapshotPath: d.communitySnapshotPath,
-        communityArrivalTime: d.communityArrivalTime,
-      })
-    })
-
-    sailings.sort((a, b) =>
-      a.dateIso !== b.dateIso
-        ? b.dateIso.localeCompare(a.dateIso)
-        : b.sailingTime.localeCompare(a.sailingTime),
-    )
-
-    const built = sailings.map((s) => buildCards(s, todayIso))
+    const built = await loadBowenSailings()
 
     // Attach each sailing's user reports (for reporter chips) and conflict flag.
     const reportsByKey = new Map()
@@ -197,56 +142,12 @@ async function loadSailings() {
       attachReports(sailing, reportsByKey.get(sailing.sailingKey) || [])
     }
 
-    // The newest sailing usually has its lineup (arrival) photo before the
-    // ferry has left — fill the departure slot with the live Bowen terminal
-    // camera until the real departure photo is captured. Not taggable
-    // (SailingTagCards hides the Full button for live cards).
-    const newest = built[0]
-    if (newest && newest.dateIso === todayIso && newest.arrival && !newest.departure) {
-      newest.departure = {
-        imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`,
-        sailingKey: newest.sailingKey,
-        live: true,
-      }
-    }
-
     allSailings.value = built
   } catch (err) {
     console.error('Failed to load sailings:', err)
     $q.notify({ type: 'negative', message: 'Failed to load sailings' })
   } finally {
     loading.value = false
-  }
-}
-
-// Both photos of a sailing share its sailingStatus doc, so they carry the same
-// sailingKey and capacity (unlike the home-page dialog, where the lineup photo
-// can belong to a different sailing than the departure photo).
-function buildCards(s, todayIso) {
-  const shared = {
-    sailingKey: s.sailingKey,
-    currentCapacity: s.lastCapacity,
-    capacitySource: s.capacitySource,
-  }
-  return {
-    ...s,
-    dayLabel: dayLabel(s.dateIso, todayIso),
-    arrival: s.communitySnapshotPath
-      ? {
-          ...shared,
-          imageUrl: imageUrl(s.communitySnapshotPath),
-          timeLabel:
-            captureTimeLabel(s.communitySnapshotPath) ||
-            (s.communityArrivalTime && formatTime12h(s.communityArrivalTime)),
-        }
-      : null,
-    departure: s.webcamSnapshotPath
-      ? {
-          ...shared,
-          imageUrl: imageUrl(s.webcamSnapshotPath),
-          timeLabel: captureTimeLabel(s.webcamSnapshotPath),
-        }
-      : null,
   }
 }
 
@@ -294,5 +195,19 @@ function onRate(sailing, { sailingKey, capacity, filledAt }) {
     })
 }
 
-onMounted(loadSailings)
+// Preselect the sailing filter when arriving from a "See {time} departures" link
+// on the home page (e.g. /bowen-departures?time=07:30). Match by normalized time
+// so a stored "7:30" and a passed "07:30" still line up.
+function applyTimeFromQuery() {
+  const t = route.query.time
+  if (!t) return
+  const target = normalizeTime(String(t))
+  const match = allSailings.value.find((s) => normalizeTime(s.sailingTime) === target)
+  filterTime.value = match ? match.sailingTime : target
+}
+
+onMounted(async () => {
+  await loadSailings()
+  applyTimeFromQuery()
+})
 </script>
