@@ -110,11 +110,11 @@
                     <div
                       v-for="(event, i) in recentPastBowen.slice(-3)"
                       :key="'pb' + i"
-                      class="row items-center no-wrap q-mt-xs"
+                      class="row items-center no-wrap q-mt-xs cursor-pointer"
+                      @click="openHistory(event.scheduledTime, event.label)"
                     >
                       <div
-                        class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                        @click="openHistory(event.scheduledTime, event.label)"
+                        class="text-body2 text-weight-bold text-no-wrap clip-time"
                       >
                         {{ formatTime12h(event.scheduledTime) }}
                       </div>
@@ -157,11 +157,11 @@
                     <div
                       v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
-                      class="row items-center no-wrap q-mt-xs"
+                      class="row items-center no-wrap q-mt-xs cursor-pointer"
+                      @click="openHistory(event.scheduledTime, event.label)"
                     >
                       <div
-                        class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                        @click="openHistory(event.scheduledTime, event.label)"
+                        class="text-body2 text-weight-bold text-no-wrap clip-time"
                       >
                         {{ formatTime12h(event.scheduledTime) }}
                       </div>
@@ -585,11 +585,11 @@
               <div
                 v-for="(event, i) in allPastBowen"
                 :key="'pb' + i"
-                class="row items-center no-wrap q-mt-xs"
+                class="row items-center no-wrap q-mt-xs cursor-pointer"
+                @click="openHistory(event.scheduledTime, event.label)"
               >
                 <div
-                  class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                  @click="openHistory(event.scheduledTime, event.label)"
+                  class="text-body2 text-weight-bold text-no-wrap clip-time"
                 >
                   {{ formatTime12h(event.scheduledTime) }}
                 </div>
@@ -627,11 +627,11 @@
               <div
                 v-for="(event, i) in allPastHSB"
                 :key="'ph' + i"
-                class="row items-center no-wrap q-mt-xs"
+                class="row items-center no-wrap q-mt-xs cursor-pointer"
+                @click="openHistory(event.scheduledTime, event.label)"
               >
                 <div
-                  class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                  @click="openHistory(event.scheduledTime, event.label)"
+                  class="text-body2 text-weight-bold text-no-wrap clip-time"
                 >
                   {{ formatTime12h(event.scheduledTime) }}
                 </div>
