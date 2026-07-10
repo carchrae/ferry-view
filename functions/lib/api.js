@@ -2,7 +2,7 @@ import { logger } from 'firebase-functions/logger'
 import diff from 'microdiff'
 import { dayjs, normalizeTime, nowInVancouver } from './time.js'
 import { calculateLateness } from './matching.js'
-import { extractVesselPosition, classifyTerminal } from './ais-position.js'
+import { extractVesselPosition, classifyTerminal, normalizeLocation } from './ais-position.js'
 
 const API_URL = 'https://bowenferry.ca/Production/AISPositionsData3'
 
@@ -52,7 +52,7 @@ function parseFerryData(data) {
 
   const recentActivity = (atberth.times?.[0] || []).map(entry => ({
     action: entry[0],
-    location: entry[1],
+    location: normalizeLocation(entry[1]),
     time: normalizeTime(entry[2]),
   }))
 

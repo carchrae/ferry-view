@@ -33,6 +33,12 @@ initializeApp()
 
 const db = getFirestore()
 
+// AIS-position is being promoted from fallback to PRIMARY locator. Kept OFF until today's
+// sailings are confirmed matching under the "HSB N" -> "Horseshoe Bay" normalization. When
+// true, AIS position drives arrival/departure events every poll and the atberth log + BC
+// Ferries scrape become fallback (consulted only when the AIS position feed is unusable).
+const AIS_PRIMARY = false
+
 async function refreshFerryData(db, {forceUpdate = false} = {}) {
   const data = await fetchFerryData()
   if (!data) return null
@@ -59,14 +65,23 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
 
   // Record the primary mechanism behind the live vessel status, so it's persisted
   // alongside the data:
-  //   'atberth'          — bowenferry.ca's live arrival/departure log (primary source)
-  //   'ais-position'     — lat/long + speed classifier (fallback, live log stale). Note the
-  //                        BC Ferries scrape ALSO runs in this mode to backfill HSB.
+  //   'ais-position'     — lat/long + speed classifier. PRIMARY when AIS_PRIMARY is on and
+  //                        the feed is usable; otherwise the stale-log fallback (in which
+  //                        case the BC Ferries scrape ALSO runs to backfill HSB).
+  //   'atberth'          — bowenferry.ca's live arrival/departure log (primary when AIS is
+  //                        not driving: flag off, or on but AIS momentarily unusable).
   //   'bcferries-scrape' — BC Ferries website scrape only (fallback, no usable AIS position)
   // Set before the change-diff so a source flip (even without a usingFallback flip)
   // triggers a persist on its own.
   const aisUsable = data.isFresh && data.position != null
-  data.statusSource = !usingFallback ? 'atberth' : aisUsable ? 'ais-position' : 'bcferries-scrape'
+  const aisPrimary = AIS_PRIMARY && aisUsable
+  data.statusSource = aisPrimary
+    ? 'ais-position'
+    : !usingFallback
+      ? 'atberth'
+      : aisUsable
+        ? 'ais-position'
+        : 'bcferries-scrape'
 
   // Per-poll AIS position diagnostics. Logged every poll (one greppable line) so a missed
   // or spurious arrival/departure transition can be reconstructed from the log history:
@@ -92,21 +107,36 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   const existingDataSanitized = existingData ? sanitizeForCompare(existingData) : null
   let dataChanged = forceUpdate || checkDataChanged(newDataSanitized, existingDataSanitized)
 
-  // Fallback: if bowenferry.ca's departure log has stalled (live feed fresh but no new
-  // Departed/Arrived events), recover arrival/departure events another way and inject them
+  // Recover arrival/departure events that the atberth log alone would miss, and inject them
   // so matching recovers. recentActivity is excluded from checkDataChanged, so any injection
-  // must force a persist to save the recovered matches. Both sources fire-and-log so a
+  // must force a persist to save the recovered matches. Every source fires-and-logs so a
   // failure never breaks the poll.
   //
-  // The two sources are complementary, NOT mutually exclusive:
-  //   - BC Ferries scrape: authoritative HSB->Bowen actual departure times, and STATELESS
-  //     — it re-fetches the full day's actuals every poll, so a transient miss self-heals
-  //     next poll. It's the reliable owner of the Horseshoe Bay side, so it always runs.
-  //   - AIS position: the only source for the Bowen->HSB side (no authoritative feed) plus
-  //     the live location. It's STATEFUL (fires once per terminal<->transit transition), so
-  //     a missed poll loses that event permanently — which is why it can't be trusted alone
-  //     for HSB. It covers HSB departures only as a backup when the scrape fails.
-  if (usingFallback) {
+  // Two regimes, selected by AIS_PRIMARY:
+  //   - AIS PRIMARY (aisPrimary): the AIS position classifier owns arrival/departure events
+  //     and runs every poll (including HSB departures, since the scrape is now fallback).
+  //     The atberth log + BC Ferries scrape are consulted only when AIS is unusable — i.e.
+  //     when aisPrimary is false, which drops through to the fallback branch below.
+  //   - AIS FALLBACK (flag off): the atberth log is primary; the two recovery sources only
+  //     fire when it stalls (usingFallback). They are complementary, NOT mutually exclusive:
+  //       - BC Ferries scrape: authoritative HSB->Bowen actuals, STATELESS — re-fetches the
+  //         full day every poll, so a transient miss self-heals. Reliable owner of the HSB
+  //         side, so it always runs in fallback.
+  //       - AIS position: the only source for the Bowen->HSB side plus the live location.
+  //         STATEFUL (fires once per terminal<->transit transition), so a missed poll loses
+  //         that event permanently — why it can't be trusted alone for HSB. Covers HSB
+  //         departures only as a backup when the scrape fails.
+  if (aisPrimary) {
+    // Primary locator: emit position-derived events every poll. AIS owns HSB too now, so
+    // emit HSB departures. (Reaching this branch means AIS is usable, so the atberth log /
+    // scrape are not consulted; when AIS goes unusable, aisPrimary is false and the
+    // fallback branch below takes over automatically.)
+    const added = augmentFromAisPosition(data, existingData, now, { emitHsbDepartures: true })
+    if (added > 0) {
+      dataChanged = true
+      logger.log(`AIS primary: recovered ${added} event(s)`)
+    }
+  } else if (usingFallback) {
     let scraperOk = false
     try {
       const scraped = await fetchBowenDepartures()

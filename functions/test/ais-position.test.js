@@ -8,6 +8,7 @@ import {
   extractVesselPosition,
   classifyTerminal,
   augmentFromAisPosition,
+  normalizeLocation,
   TERMINALS,
 } from '../lib/ais-position.js'
 
@@ -91,6 +92,30 @@ describe('ais-position', () => {
 
     it('returns null for a missing position', () => {
       expect(classifyTerminal(null, '0.00')).toBeNull()
+    })
+  })
+
+  describe('normalizeLocation', () => {
+    it('collapses each Horseshoe Bay berth to "Horseshoe Bay"', () => {
+      expect(normalizeLocation('HSB 1')).toBe('Horseshoe Bay')
+      expect(normalizeLocation('HSB 2')).toBe('Horseshoe Bay')
+      expect(normalizeLocation('HSB 3')).toBe('Horseshoe Bay')
+    })
+
+    it('collapses bare "HSB" and lowercase/extra-whitespace variants', () => {
+      expect(normalizeLocation('HSB')).toBe('Horseshoe Bay')
+      expect(normalizeLocation('hsb 2')).toBe('Horseshoe Bay')
+      expect(normalizeLocation('  HSB  3 ')).toBe('Horseshoe Bay')
+    })
+
+    it('passes Bowen and other locations through unchanged', () => {
+      expect(normalizeLocation('Bowen')).toBe('Bowen')
+      expect(normalizeLocation('Horseshoe Bay')).toBe('Horseshoe Bay')
+    })
+
+    it('passes non-string input through unchanged', () => {
+      expect(normalizeLocation(null)).toBeNull()
+      expect(normalizeLocation(undefined)).toBeUndefined()
     })
   })
 

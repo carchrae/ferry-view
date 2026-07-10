@@ -20,6 +20,18 @@ export const TERMINALS = [
 // The two terminals are ~5 km apart, so a generous radius can't ambiguously match both.
 // 600 m also comfortably spans Horseshoe Bay's three berths.
 export const DOCK_RADIUS_M = 600
+
+/**
+ * Canonicalize an atberth event location to the terminal name the pipeline matches on.
+ * bowenferry.ca's arrival/departure log now reports Horseshoe Bay's three berths as
+ * "HSB 1" / "HSB 2" / "HSB 3" (and possibly bare "HSB"); collapse all of them to the
+ * single canonical "Horseshoe Bay". "Bowen" and anything else pass through unchanged.
+ */
+export function normalizeLocation(location) {
+  if (typeof location !== 'string') return location
+  if (/^HSB(\s*\d+)?$/i.test(location.trim())) return 'Horseshoe Bay'
+  return location
+}
 // At or below this speed the vessel is considered stopped (docked), not maneuvering.
 export const STOPPED_SOG_KNOTS = 0.6
 
