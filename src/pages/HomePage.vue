@@ -637,37 +637,50 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <LineupTimelapse
-            v-if="showTimelapse && timelapseFrames.length"
-            :frames="timelapseFrames"
-            :crosswalk-full-at="lastBowenSailing?.crosswalkFullAt || null"
-            @crosswalk="onTimelapseCrosswalk"
-          />
-          <SailingTagCards
-            v-else
-            :arrival="lastBowenSailing?.arrival"
-            :departure="lastBowenSailing?.departure"
-            @rate="onDialogRate"
-          />
+          <!-- The upcoming (boarding) sailing's lineup is the live one when
+               the ferry hasn't arrived yet — show it first, auto-playing. -->
           <template v-if="upcomingLineup?.timelapse?.length">
-            <q-separator class="q-my-sm" />
             <div class="text-subtitle2 q-mb-xs">
-              Lineup for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
+              Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
             </div>
             <LineupTimelapse
+              :key="`up-${upcomingLineup.sailingKey}-${upcomingLineup.timelapse.length}`"
               :frames="upcomingLineup.timelapse"
               :crosswalk-full-at="upcomingLineup.crosswalkFullAt || null"
               @crosswalk="onUpcomingCrosswalk"
             />
+            <q-separator class="q-my-sm" />
           </template>
+
+          <SailingTagCards
+            :arrival="lastBowenSailing?.arrival"
+            :departure="lastBowenSailing?.departure"
+            @rate="onDialogRate"
+          />
+
+          <!-- The last (departed) sailing's own lineup history, revealed
+               below its photos — never replacing them. -->
+          <template v-if="showTimelapse && timelapseFrames.length">
+            <q-separator class="q-my-sm" />
+            <div class="text-subtitle2 q-mb-xs">
+              Lineup history — {{ formatTime12h(lastBowenSailing.sailingTime) }} sailing
+            </div>
+            <LineupTimelapse
+              :key="`last-${lastBowenSailing.sailingKey}-${timelapseFrames.length}`"
+              :frames="timelapseFrames"
+              :crosswalk-full-at="lastBowenSailing?.crosswalkFullAt || null"
+              @crosswalk="onTimelapseCrosswalk"
+            />
+          </template>
+
           <div class="q-mt-sm text-center">
             <q-btn
               v-if="timelapseFrames.length >= 2"
               flat
               no-caps
               color="primary"
-              :icon="showTimelapse ? 'photo_library' : 'play_circle'"
-              :label="showTimelapse ? 'Back to photos' : 'Play history'"
+              :icon="showTimelapse ? 'expand_less' : 'play_circle'"
+              :label="showTimelapse ? 'Hide history' : 'Play history'"
               @click="showTimelapse = !showTimelapse"
             />
             <q-btn flat no-caps color="primary" icon="photo_camera" label="See other departures" to="/bowen-departures" @click="showSnapshotDialog = false" />
@@ -1103,21 +1116,23 @@ const showSnapshotDialog = ref(false)
 const showTimelapse = ref(false)
 const timelapseFrames = computed(() => lastBowenSailing.value?.timelapse || [])
 
-async function loadLastBowenSailing() {
+async function loadLastBowenSailing(force = false) {
   try {
-    // Both come from the same cached query — one Firestore read set.
-    const built = await loadBowenSailings()
+    // Both come from the same query — force refreshes it (see below), then
+    // loadUpcomingLineup reads the same freshened cache: one read set.
+    const built = await loadBowenSailings(force)
     lastBowenSailing.value = built[0] || null
     upcomingLineup.value = await loadUpcomingLineup()
   } catch (err) {
     console.error('Failed to load last Bowen sailing:', err)
   }
 }
-onMounted(loadLastBowenSailing)
+onMounted(() => loadLastBowenSailing())
 
 function openSnapshotDialog() {
-  // Refresh on open so a sailing captured since page load appears.
-  loadLastBowenSailing()
+  // Force a refresh on open: the boarding sailing gains a timelapse frame
+  // every 5 min, so the cached set would be stale and play too few frames.
+  loadLastBowenSailing(true)
   showTimelapse.value = false
   showSnapshotDialog.value = true
 }

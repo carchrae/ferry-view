@@ -81,9 +81,12 @@ let cachedAt = 0
 
 // One shared fetch of all To HSB sailingStatus docs in the window (raw,
 // unfiltered, newest first) backing both loadBowenSailings (photo cards) and
-// loadUpcomingLineup (timelapse of the sailing currently boarding).
-async function fetchRawSailings() {
-  if (cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSailings
+// loadUpcomingLineup (timelapse of the sailing currently boarding). Pass
+// force to bypass the TTL — the boarding sailing gains a frame every 5
+// minutes, so a stale cache would show only the frames captured before the
+// last fetch. Opening the dialog forces a refresh so all frames appear.
+async function fetchRawSailings(force = false) {
+  if (!force && cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSailings
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
   const startIso = nowInVancouver().subtract(13, 'day').format('YYYY-MM-DD')
   const snap = await getDocs(
@@ -133,9 +136,9 @@ async function fetchRawSailings() {
 // photo-less placeholder cards. (Its lineup is exposed separately via
 // loadUpcomingLineup.) This is the single source of truth for both the Bowen
 // Departures page and the home page's "Last Bowen Sailing" dialog.
-export async function loadBowenSailings() {
+export async function loadBowenSailings(force = false) {
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
-  const raw = await fetchRawSailings()
+  const raw = await fetchRawSailings(force)
   return finalize(
     raw.filter((s) => s.webcamSnapshotPath || s.communitySnapshotPath),
     todayIso,
