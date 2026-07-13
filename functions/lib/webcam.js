@@ -243,6 +243,65 @@ export async function captureLineupTimelapse(db, data) {
   logger.log(`Saved lineup timelapse frame: ${blobPath} (${best.length}B)`)
 }
 
+// Departure timelapse: the Bowen TERMINAL camera as the ferry loads. Unlike
+// the lineup (community) timelapse, capture EVERY minute (no 5-min gate),
+// starting 10 minutes before a departure and continuing until the ferry
+// actually leaves. Departure is detected via matchedDepartureTime, which the
+// poll's final matchDepartures sets on the schedule entry once the sailing
+// has left — so once it departs, the target no longer matches and capture
+// stops on its own. The -20 min lower bound is a safety cap for a sailing
+// whose departure is never detected (stale log) so it can't capture forever.
+export function departureTimelapseDecision(data, now) {
+  const target = (data.bowenSchedule || []).find((s) => {
+    if (s.matchedDepartureTime) return false // already departed
+    const t = timeToDate(s.time)
+    if (!t) return false
+    const minsUntil = t.diff(now, 'minute') // >0 future, <0 past (running late)
+    return minsUntil <= 10 && minsUntil >= -20
+  })
+  if (!target) return { capture: false }
+  return { capture: true, sailingTime: target.time }
+}
+
+export async function captureDepartureTimelapse(db, data) {
+  const decision = departureTimelapseDecision(data, nowInVancouver())
+  if (!decision.capture) return
+
+  const samples = await captureSamples(WEBCAM_URL)
+  if (samples.length === 0) {
+    logger.error('All departure timelapse samples failed')
+    return
+  }
+
+  // Terminal cam is already low-resolution (~14 KB); keep it uncompressed to
+  // preserve detail (potential future departure-fullness ML), like the single
+  // departure photo (captureBowenWebcam).
+  const best = pickBestFrame(samples)
+  const timestamp = Date.now()
+  const blobPath = `webcams/bowen/${data.dateIso}/timelapse/${decision.sailingTime}_To HSB_${timestamp}.jpg`
+  const bucket = getStorage().bucket()
+  const file = bucket.file(blobPath)
+  await file.save(best, {
+    contentType: 'image/jpeg',
+    metadata: { cacheControl: IMMUTABLE_CACHE },
+  })
+  await file.makePublic()
+
+  const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
+  await db.collection('sailingStatus').doc(snapshotKey).set(
+    {
+      sailingKey: snapshotKey,
+      sailingTime: decision.sailingTime,
+      direction: 'To HSB',
+      dateIso: data.dateIso,
+      departureTimelapsePaths: FieldValue.arrayUnion(blobPath),
+    },
+    { merge: true },
+  )
+
+  logger.log(`Saved departure timelapse frame: ${blobPath} (${best.length}B)`)
+}
+
 export async function cleanupOldWebcams() {
   const bucket = getStorage().bucket()
   const cutoff = nowInVancouver().subtract(14, 'day')

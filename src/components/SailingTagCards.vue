@@ -10,7 +10,16 @@
         </q-responsive>
       </q-card>
       <q-card v-else flat bordered>
+        <LineupTimelapse
+          v-if="arrival.timelapse && arrival.timelapse.length"
+          :frames="arrival.timelapse"
+          :crosswalk-full-at="arrival.crosswalkFullAt || null"
+          taggable
+          :autoplay="autoplay"
+          @crosswalk="emit('crosswalk', { sailingKey: arrival.sailingKey, ...$event })"
+        />
         <q-img
+          v-else
           :src="arrival.imageUrl"
           :ratio="16 / 9"
           spinner-color="primary"
@@ -88,7 +97,13 @@
         </q-responsive>
       </q-card>
       <q-card v-else flat bordered>
+        <LineupTimelapse
+          v-if="departure.timelapse && departure.timelapse.length"
+          :frames="departure.timelapse"
+          :autoplay="autoplay"
+        />
         <q-img
+          v-else
           :src="departure.imageUrl"
           :ratio="16 / 9"
           spinner-color="primary"
@@ -170,23 +185,29 @@
 import { ref } from 'vue'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
+import LineupTimelapse from 'src/components/LineupTimelapse.vue'
 
 // Each card describes one photo of a sailing:
-//   { imageUrl, timeLabel, sailingKey, currentCapacity?, capacitySource? }
-// timeLabel is the preformatted time the photo was captured (parents decide
-// the source: blob-path timestamp, snapshot recordedAt, …); omit to show just
-// "Arrival"/"Departure".
-// The arrival (lineup) photo can belong to a different sailing than the
-// departure photo, so each card carries its own sailingKey/capacity.
+//   { imageUrl, timeLabel, sailingKey, currentCapacity?, capacitySource?,
+//     timelapse?: [{ imageUrl, timeLabel, ts }] }
+// timeLabel is the preformatted time the photo was captured; omit to show just
+// "Arrival"/"Departure". When `timelapse` has frames the card animates them
+// instead of the single photo (arrival = community lineup, taggable for
+// crosswalk; departure = terminal cam). The arrival (lineup) photo can belong
+// to a different sailing than the departure photo, so each carries its own
+// sailingKey/capacity.
 defineProps({
   arrival: { type: Object, default: null },
   departure: { type: Object, default: null },
   // When set, a missing photo renders as a same-size placeholder instead of
   // collapsing the column (used on the tag page for a consistent grid).
   placeholders: { type: Boolean, default: false },
+  // Auto-play timelapses. Disable on the departures list, where many render
+  // at once, so they show a static frame + play button (no timer/preload storm).
+  autoplay: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['rate'])
+const emit = defineEmits(['rate', 'crosswalk'])
 
 const zoomSrc = ref(null)
 const zoomOpen = ref(false)

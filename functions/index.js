@@ -20,6 +20,7 @@ import {
   captureBowenWebcam,
   captureBowenCommunityWebcam,
   captureLineupTimelapse,
+  captureDepartureTimelapse,
   cleanupOldWebcams,
 } from './lib/webcam.js'
 import {
@@ -272,13 +273,19 @@ export const pollFerryStatus = onSchedule(
     }
     const { data, hsbPast, bowenPast, dataChanged } = result
 
-    // Cadence-driven (every 5th poll during a lineup window), so it runs
-    // whether or not this poll changed anything — unlike captureWebcams,
-    // which is event-driven and gated behind dataChanged.
+    // Cadence-driven (lineup: every 5th poll; departure: every poll in the
+    // 10-min pre-departure window), so they run whether or not this poll
+    // changed anything — unlike captureWebcams, which is event-driven and
+    // gated behind dataChanged.
     try {
       await captureLineupTimelapse(db, data)
     } catch (e) {
       logger.error('Lineup timelapse capture failed:', e)
+    }
+    try {
+      await captureDepartureTimelapse(db, data)
+    } catch (e) {
+      logger.error('Departure timelapse capture failed:', e)
     }
 
     if (!dataChanged) {

@@ -35,22 +35,43 @@ headers, and **deleted after 14 days** by the nightly `cleanupOldWebcams`.
 Volume: ~100–140 frames/day ≈ 8–10 MB/day ≈ 130 MB steady state — inside
 the free Storage tier.
 
+## 1b. Departure timelapse (Bowen terminal camera)
+
+A second timelapse watches the **Bowen terminal** camera as the ferry loads.
+`departureTimelapseDecision()` captures **every minute** (no 5-min gate),
+starting **10 minutes before** a departure and continuing **until the ferry
+actually departs** — detected via `matchedDepartureTime`, which the poll sets
+on the schedule entry once the sailing has left, so capture stops on its own
+(a −20 min safety cap covers a departure that's never detected). Frames go to
+`webcams/bowen/<dateIso>/timelapse/…` and are appended to the sailing's
+`departureTimelapsePaths`. Terminal frames are already tiny (~14 KB) so they
+are stored uncompressed.
+
 ## 2. Playback (client)
 
-`useBowenSailings.js` maps `lineupTimelapsePaths` to a sorted
-`timelapse: [{ imageUrl, timeLabel, ts }]` array on each built sailing, and
-exposes `loadUpcomingLineup()` — the newest photo-less sailing of today that
-has frames, i.e. the lineup currently building. Both share one cached
-Firestore query. The HomePage "Last Bowen Sailing" dialog shows:
+`useBowenSailings.js` maps `lineupTimelapsePaths` → the **arrival** timelapse
+and `departureTimelapsePaths` → the **departure** timelapse, as sorted
+`[{ imageUrl, timeLabel, ts }]` arrays on each built card. It also exposes
+`loadUpcomingLineup()` — the lineup currently building for the next sailing.
 
-- a **Play history** button when the last (photographed) sailing has ≥ 2
-  frames — swaps the photo cards for the player, and
-- a **"Lineup for the ⟨time⟩ sailing"** section whenever the upcoming
-  sailing has any frames — the same player, auto-playing the lineup so far.
+The "Last Bowen Sailing" dialog:
 
-`src/components/LineupTimelapse.vue` preloads the frames and animates them
-(~0.7 s/frame) with a pause control and scrub slider; while paused it offers
-the crosswalk confirm (§3).
+- The **arrival** and **departure** sections each animate their timelapse
+  (community lineup / terminal cam) when frames exist, and fall back to the
+  single photo otherwise. There is no separate "Play history" toggle — the
+  history *is* the arrival/departure section.
+- A **"Lineup building for the ⟨time⟩ sailing"** section shows the boarding
+  sailing's lineup. `loadUpcomingLineup()` gates this to a *genuinely
+  upcoming* sailing (scheduled time still ahead, 20-min late grace), so a
+  sailing that departed but never got its arrival photo can't surface its
+  stale last frame.
+
+`src/components/LineupTimelapse.vue` animates frames (~0.7 s/frame) with a
+pause control and scrub slider. `autoplay` (default true) plays on mount and
+preloads; the Bowen Departures list passes `autoplay=false` so its many
+players show a static newest frame and only preload/play on demand.
+`taggable` (arrival/lineup only) enables the crosswalk confirm (§3); the
+terminal departure timelapse is never taggable.
 
 ## 3. Crosswalk tagging (the labeling pipeline)
 

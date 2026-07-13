@@ -1,6 +1,6 @@
 import { collection, getDocs, query, where } from 'firebase/firestore'
 import { db, storageBucket } from 'src/boot/firebase'
-import { nowInVancouver, dayjs, formatTime12h, TZ } from '../../functions/lib/time.js'
+import { nowInVancouver, dayjs, formatTime12h, timeToDate, TZ } from '../../functions/lib/time.js'
 
 // Same live camera the home page shows as "Bowen Terminal".
 export const BOWEN_TERMINAL_CAM_URL =
@@ -48,26 +48,35 @@ function buildCards(s, todayIso) {
     currentCapacity: s.lastCapacity,
     capacitySource: s.capacitySource,
   }
+  // Arrival = the community lineup timelapse; departure = the Bowen terminal
+  // timelapse. Each card shows its timelapse (animated) when frames exist and
+  // otherwise falls back to the single photo.
+  const arrivalTimelapse = buildTimelapse(s.lineupTimelapsePaths)
+  const departureTimelapse = buildTimelapse(s.departureTimelapsePaths)
   return {
     ...s,
     dayLabel: dayLabel(s.dateIso, todayIso),
-    timelapse: buildTimelapse(s.lineupTimelapsePaths),
-    arrival: s.communitySnapshotPath
-      ? {
-          ...shared,
-          imageUrl: imageUrl(s.communitySnapshotPath),
-          timeLabel:
-            captureTimeLabel(s.communitySnapshotPath) ||
-            (s.communityArrivalTime && formatTime12h(s.communityArrivalTime)),
-        }
-      : null,
-    departure: s.webcamSnapshotPath
-      ? {
-          ...shared,
-          imageUrl: imageUrl(s.webcamSnapshotPath),
-          timeLabel: captureTimeLabel(s.webcamSnapshotPath),
-        }
-      : null,
+    arrival:
+      s.communitySnapshotPath || arrivalTimelapse.length
+        ? {
+            ...shared,
+            crosswalkFullAt: s.crosswalkFullAt || null,
+            timelapse: arrivalTimelapse,
+            imageUrl: s.communitySnapshotPath ? imageUrl(s.communitySnapshotPath) : null,
+            timeLabel:
+              captureTimeLabel(s.communitySnapshotPath) ||
+              (s.communityArrivalTime && formatTime12h(s.communityArrivalTime)),
+          }
+        : null,
+    departure:
+      s.webcamSnapshotPath || departureTimelapse.length
+        ? {
+            ...shared,
+            timelapse: departureTimelapse,
+            imageUrl: s.webcamSnapshotPath ? imageUrl(s.webcamSnapshotPath) : null,
+            timeLabel: captureTimeLabel(s.webcamSnapshotPath),
+          }
+        : null,
   }
 }
 
@@ -101,7 +110,12 @@ async function fetchRawSailings(force = false) {
   const sailings = []
   snap.forEach((docSnap) => {
     const d = docSnap.data()
-    if (!d.webcamSnapshotPath && !d.communitySnapshotPath && !d.lineupTimelapsePaths?.length)
+    if (
+      !d.webcamSnapshotPath &&
+      !d.communitySnapshotPath &&
+      !d.lineupTimelapsePaths?.length &&
+      !d.departureTimelapsePaths?.length
+    )
       return
     sailings.push({
       sailingKey: d.sailingKey || docSnap.id,
@@ -113,6 +127,7 @@ async function fetchRawSailings(force = false) {
       communitySnapshotPath: d.communitySnapshotPath,
       communityArrivalTime: d.communityArrivalTime,
       lineupTimelapsePaths: d.lineupTimelapsePaths || [],
+      departureTimelapsePaths: d.departureTimelapsePaths || [],
       crosswalkFullAt: d.crosswalkFullAt || null,
     })
   })
@@ -145,19 +160,29 @@ export async function loadBowenSailings(force = false) {
   )
 }
 
-// The lineup building for the sailing that hasn't happened yet: today's
-// newest photo-less sailing with timelapse frames. Returns
-// { sailingKey, sailingTime, dateIso, crosswalkFullAt, timelapse } or null.
+// The lineup building for the sailing that hasn't happened yet: the next
+// still-to-depart Bowen sailing today that has lineup frames but no photos.
+// Returns { sailingKey, sailingTime, dateIso, crosswalkFullAt, timelapse } or
+// null. Gated to genuinely-upcoming sailings by scheduled time — a sailing
+// that already departed but never got its arrival photo (capture failed) also
+// stays photo-less-with-frames, and picking the newest such doc would show
+// that previous sailing's last frame. The 20-minute grace keeps a sailing
+// that is boarding late (past its scheduled time, not yet departed).
+const UPCOMING_LATE_GRACE_MIN = 20
+
 export async function loadUpcomingLineup() {
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  const cutoff = nowInVancouver().subtract(UPCOMING_LATE_GRACE_MIN, 'minute')
   const raw = await fetchRawSailings()
-  const s = raw.find(
-    (x) =>
-      x.dateIso === todayIso &&
-      !x.webcamSnapshotPath &&
-      !x.communitySnapshotPath &&
-      x.lineupTimelapsePaths.length,
-  )
+  const candidates = raw.filter((x) => {
+    if (x.dateIso !== todayIso) return false
+    if (x.webcamSnapshotPath || x.communitySnapshotPath) return false
+    if (!x.lineupTimelapsePaths.length) return false
+    const t = timeToDate(x.sailingTime)
+    return t && t > cutoff
+  })
+  // Earliest still-upcoming sailing (raw is sorted newest-first).
+  const s = candidates[candidates.length - 1]
   if (!s) return null
   return {
     sailingKey: s.sailingKey,

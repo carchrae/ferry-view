@@ -74,7 +74,9 @@
           :arrival="sailing.arrival"
           :departure="sailing.departure"
           placeholders
+          :autoplay="false"
           @rate="onRate(sailing, $event)"
+          @crosswalk="onCrosswalk(sailing, $event)"
         />
         <div v-if="sailing.reports.length" class="row items-center q-gutter-xs q-mt-sm">
           <span class="text-caption text-grey-7 q-mr-xs">Reports:</span>
@@ -105,6 +107,7 @@ import { formatTime12h, normalizeTime } from '../../functions/lib/time.js'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
+import { useLineupReport } from 'src/composables/useLineupReport'
 import { useLeaderboard, scoreSailing, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { loadBowenSailings } from 'src/composables/useBowenSailings'
@@ -112,6 +115,7 @@ import { loadBowenSailings } from 'src/composables/useBowenSailings'
 const $q = useQuasar()
 const route = useRoute()
 const { user, needsSignIn, saveRating } = useCapacityRating()
+const { saveCrosswalkMark } = useLineupReport()
 const { loadRecentUserReports } = useLeaderboard()
 
 const loading = ref(false)
@@ -172,6 +176,22 @@ function attachReports(sailing, reports) {
   sailing.reports = [...latest.values()].sort((a, b) => (a.recordedAt || 0) - (b.recordedAt || 0))
   const { disputed, resolved } = scoreSailing(reports)
   sailing.conflict = disputed && !resolved
+}
+
+function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
+  saveCrosswalkMark(sailingKey, ts)
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
+      }
+      if (sailing.arrival) sailing.arrival.crosswalkFullAt = ts
+      $q.notify({ type: 'positive', message: `Full to crosswalk recorded at ${timeLabel} — thanks!` })
+    })
+    .catch((err) => {
+      console.error('Failed to save crosswalk mark:', err)
+      $q.notify({ type: 'negative', message: 'Failed to record crosswalk time' })
+    })
 }
 
 function onRate(sailing, { sailingKey, capacity, filledAt }) {

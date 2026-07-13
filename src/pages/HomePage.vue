@@ -637,8 +637,10 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <!-- The upcoming (boarding) sailing's lineup is the live one when
-               the ferry hasn't arrived yet — show it first, auto-playing. -->
+          <!-- The upcoming (boarding) sailing's lineup — only shown once that
+               sailing actually has frames (loadUpcomingLineup gates it to a
+               genuinely-upcoming sailing, so it never shows a departed
+               sailing's stale last frame). -->
           <template v-if="upcomingLineup?.timelapse?.length">
             <div class="text-subtitle2 q-mb-xs">
               Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
@@ -647,42 +649,23 @@
               :key="`up-${upcomingLineup.sailingKey}-${upcomingLineup.timelapse.length}`"
               :frames="upcomingLineup.timelapse"
               :crosswalk-full-at="upcomingLineup.crosswalkFullAt || null"
+              taggable
               @crosswalk="onUpcomingCrosswalk"
             />
             <q-separator class="q-my-sm" />
           </template>
 
+          <!-- Arrival & departure sections: each animates its timelapse
+               (community lineup / terminal cam) when frames exist, else the
+               single photo. -->
           <SailingTagCards
             :arrival="lastBowenSailing?.arrival"
             :departure="lastBowenSailing?.departure"
             @rate="onDialogRate"
+            @crosswalk="onCardCrosswalk"
           />
 
-          <!-- The last (departed) sailing's own lineup history, revealed
-               below its photos — never replacing them. -->
-          <template v-if="showTimelapse && timelapseFrames.length">
-            <q-separator class="q-my-sm" />
-            <div class="text-subtitle2 q-mb-xs">
-              Lineup history — {{ formatTime12h(lastBowenSailing.sailingTime) }} sailing
-            </div>
-            <LineupTimelapse
-              :key="`last-${lastBowenSailing.sailingKey}-${timelapseFrames.length}`"
-              :frames="timelapseFrames"
-              :crosswalk-full-at="lastBowenSailing?.crosswalkFullAt || null"
-              @crosswalk="onTimelapseCrosswalk"
-            />
-          </template>
-
           <div class="q-mt-sm text-center">
-            <q-btn
-              v-if="timelapseFrames.length >= 2"
-              flat
-              no-caps
-              color="primary"
-              :icon="showTimelapse ? 'expand_less' : 'play_circle'"
-              :label="showTimelapse ? 'Hide history' : 'Play history'"
-              @click="showTimelapse = !showTimelapse"
-            />
             <q-btn flat no-caps color="primary" icon="photo_camera" label="See other departures" to="/bowen-departures" @click="showSnapshotDialog = false" />
             <q-btn v-if="$q.screen.xs" flat color="grey-7" icon="close" label="Close" @click="showSnapshotDialog = false" />
           </div>
@@ -1113,8 +1096,6 @@ onUnmounted(() => {
 const lastBowenSailing = ref(null)
 const upcomingLineup = ref(null)
 const showSnapshotDialog = ref(false)
-const showTimelapse = ref(false)
-const timelapseFrames = computed(() => lastBowenSailing.value?.timelapse || [])
 
 async function loadLastBowenSailing(force = false) {
   try {
@@ -1133,7 +1114,6 @@ function openSnapshotDialog() {
   // Force a refresh on open: the boarding sailing gains a timelapse frame
   // every 5 min, so the cached set would be stale and play too few frames.
   loadLastBowenSailing(true)
-  showTimelapse.value = false
   showSnapshotDialog.value = true
 }
 
@@ -1171,17 +1151,18 @@ function onDialogRate({ sailingKey, capacity, filledAt }) {
 const { saveCrosswalkMark } = useLineupReport()
 
 // The rider paused a timelapse on the frame where cars reach the crosswalk
-// and confirmed — record that frame's capture time against `target`'s
-// sailing (target is the reactive object carrying sailingKey/crosswalkFullAt).
-function recordCrosswalk(target, { ts, timeLabel }) {
-  if (!target?.sailingKey) return
-  saveCrosswalkMark(target.sailingKey, ts)
+// and confirmed — record that frame's capture time. `apply` reflects it
+// optimistically on whichever reactive object owns the crosswalkFullAt the
+// player reads.
+function recordCrosswalk(sailingKey, { ts, timeLabel }, apply) {
+  if (!sailingKey) return
+  saveCrosswalkMark(sailingKey, ts)
     .then((saved) => {
       if (!saved) {
         showSignInDialog.value = true
         return
       }
-      target.crosswalkFullAt = ts
+      apply(ts)
       $q.notify({ type: 'positive', message: `Full to crosswalk recorded at ${timeLabel} — thanks!` })
     })
     .catch((err) => {
@@ -1190,8 +1171,17 @@ function recordCrosswalk(target, { ts, timeLabel }) {
     })
 }
 
-const onTimelapseCrosswalk = (e) => recordCrosswalk(lastBowenSailing.value, e)
-const onUpcomingCrosswalk = (e) => recordCrosswalk(upcomingLineup.value, e)
+// From the arrival card's lineup timelapse (carries its own sailingKey).
+const onCardCrosswalk = ({ sailingKey, ts, timeLabel }) =>
+  recordCrosswalk(sailingKey, { ts, timeLabel }, (v) => {
+    if (lastBowenSailing.value?.arrival) lastBowenSailing.value.arrival.crosswalkFullAt = v
+  })
+
+// From the upcoming (boarding) lineup section.
+const onUpcomingCrosswalk = (e) =>
+  recordCrosswalk(upcomingLineup.value?.sailingKey, e, (v) => {
+    if (upcomingLineup.value) upcomingLineup.value.crosswalkFullAt = v
+  })
 
 function markCommunityFull() {
   const entry = communitySailingEntry.value

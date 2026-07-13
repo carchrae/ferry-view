@@ -32,7 +32,10 @@
         @update:model-value="pause"
       />
     </q-card-actions>
-    <q-card-section v-if="!playing" class="q-pt-none q-px-sm q-pb-sm column items-stretch">
+    <q-card-section
+      v-if="taggable && !playing"
+      class="q-pt-none q-px-sm q-pb-sm column items-stretch"
+    >
       <div v-if="crosswalkFullAt" class="text-caption text-grey-7">
         Full to crosswalk recorded at {{ recordedLabel }}.
       </div>
@@ -58,19 +61,24 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 
-// Animates the 5-minute lineup timelapse frames of one sailing.
-// frames: [{ imageUrl, timeLabel, ts }], oldest first. Auto-plays on mount
-// and ends holding the newest frame; the slider scrubs (and pauses).
+// Animates the timelapse frames of one sailing (community lineup or Bowen
+// terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. The slider
+// scrubs (and pauses).
 //
-// This player is also the crosswalk tagging tool: while paused (and no time
-// is recorded yet — crosswalkFullAt prop), a confirm button offers to record
-// the CURRENT FRAME's capture time as the moment the lineup reached the
-// crosswalk. Emits 'crosswalk' with { ts, timeLabel }; the frame time — not
-// the tap time — becomes the label, which is exactly what classifier
-// training wants.
+// autoplay (default true): play on mount and preload all frames. Pass false
+// where many players render at once (the Bowen Departures list) — the newest
+// frame shows statically and frames preload only when the user hits play.
+//
+// taggable (default false): when set, the player doubles as the crosswalk
+// tagging tool — while paused (and no time recorded yet), a confirm button
+// records the CURRENT FRAME's capture time as the moment the lineup reached
+// the crosswalk, emitting 'crosswalk' with { ts, timeLabel }. Only the
+// community lineup (arrival) is taggable, never the terminal (departure) cam.
 const props = defineProps({
   frames: { type: Array, required: true },
   crosswalkFullAt: { type: Number, default: null },
+  taggable: { type: Boolean, default: false },
+  autoplay: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['crosswalk'])
@@ -79,17 +87,30 @@ const recordedLabel = computed(() =>
   props.crosswalkFullAt ? dayjs(props.crosswalkFullAt).tz(TZ).format('h:mm a') : null,
 )
 
-const index = ref(0)
+// Non-autoplay players open on the newest (most representative) frame.
+const index = ref(props.autoplay ? 0 : Math.max(props.frames.length - 1, 0))
 const playing = ref(false)
 let timer = null
+let preloaded = false
 
 const current = computed(() => props.frames[Math.min(index.value, props.frames.length - 1)] || {})
 const atEnd = computed(() => index.value >= props.frames.length - 1)
 
 const FRAME_MS = 700
 
+function preloadAll() {
+  if (preloaded) return
+  preloaded = true
+  // Small frames (~40-80 KB) with immutable cache headers.
+  for (const f of props.frames) {
+    const img = new Image()
+    img.src = f.imageUrl
+  }
+}
+
 function play() {
   if (props.frames.length < 2) return
+  preloadAll()
   if (atEnd.value) index.value = 0
   playing.value = true
   timer = setInterval(() => {
@@ -112,13 +133,10 @@ function toggle() {
 }
 
 onMounted(() => {
-  // Preload every frame so playback doesn't stutter on first run — they're
-  // small (~40-80 KB) and served with immutable cache headers.
-  for (const f of props.frames) {
-    const img = new Image()
-    img.src = f.imageUrl
+  if (props.autoplay) {
+    preloadAll()
+    play()
   }
-  play()
 })
 
 onUnmounted(pause)
