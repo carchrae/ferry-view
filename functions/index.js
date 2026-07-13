@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
-import { onDocumentCreated } from 'firebase-functions/v2/firestore'
+import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { defineSecret } from 'firebase-functions/params'
 
 import { fetchFerryData, checkDataChanged, sanitizeForCompare } from './lib/api.js'
@@ -24,6 +24,7 @@ import {
 } from './lib/bcferries-departures.js'
 import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.js'
 import { applyUserCapacityReport } from './lib/user-capacity.js'
+import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-aggregate.js'
 import { nowInVancouver, timeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -297,13 +298,59 @@ export const getFerryStatus = onRequest(async (req, res) => {
 // (no userUid) are ignored, which also prevents any trigger loop via
 // recordCapacityChanges.
 export const onCapacityReport = onDocumentCreated('capacityHistory/{docId}', async (event) => {
-  const isToday = await applyUserCapacityReport(db, event.data?.data())
+  const record = event.data?.data()
+  const isToday = await applyUserCapacityReport(db, record)
   if (isToday) {
     try {
       await refreshFerryData(db, { forceUpdate: true })
     } catch (e) {
       logger.error('Status refresh after user capacity report failed:', e)
     }
+  }
+  // Only user reports affect the leaderboard; automated (no-userUid) records are
+  // ignored, which also avoids needless recomputes and any trigger loop.
+  if (record?.userUid) {
+    try {
+      await recomputeLeaderboard(db)
+    } catch (e) {
+      logger.error('Leaderboard recompute after capacity report failed:', e)
+    }
+  }
+})
+
+// Any ride create/edit/delete changes the ride-share board (a deleted ride must
+// lose its credit). recomputeLeaderboard only writes to aggregates/*, so this
+// can't loop.
+export const onRideWrite = onDocumentWritten('rides/{rideId}', async () => {
+  try {
+    await recomputeLeaderboard(db)
+  } catch (e) {
+    logger.error('Leaderboard recompute after ride write failed:', e)
+  }
+})
+
+// Daily refresh so the rolling 30-day window (and the champion) stays accurate
+// on days with no user activity.
+export const refreshLeaderboard = onSchedule(
+  {
+    schedule: 'every day 03:00',
+    timeZone: 'America/Vancouver',
+  },
+  async () => {
+    await recomputeLeaderboard(db)
+  },
+)
+
+// Manual one-shot: backfill the userReport flag on pre-existing user records,
+// then seed/rebuild the aggregate doc. Hit once after deploying this change.
+export const rebuildLeaderboard = onRequest(async (req, res) => {
+  try {
+    const backfilled = await backfillUserReportFlag(db)
+    const { reporters, riders } = await recomputeLeaderboard(db)
+    res.json({ backfilled, reporters: reporters.length, riders: riders.length })
+  } catch (e) {
+    logger.error('rebuildLeaderboard failed:', e)
+    res.status(500).json({ error: String(e) })
   }
 })
 

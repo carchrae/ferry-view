@@ -24,9 +24,30 @@
           <q-route-tab name="map" label="Map" icon="map" to="/map" />
         </q-tabs>
 
+        <q-btn flat dense round icon="account_circle" aria-label="Profile" to="/profile" />
+
         <q-btn flat dense round icon="info" aria-label="About Bowen Lift" @click="showAttributions = true" />
       </q-toolbar>
     </q-header>
+
+    <!-- Prompt to set a display name (shown once for name-less signed-in users) -->
+    <q-dialog v-model="showNamePrompt">
+      <q-card style="min-width: 300px; max-width: 400px">
+        <q-card-section class="row items-center q-pb-none">
+          <div class="text-h6">Set your name?</div>
+          <q-space />
+          <q-btn flat round dense icon="close" aria-label="Close" v-close-popup />
+        </q-card-section>
+        <q-card-section class="q-pt-sm text-body2 text-grey-8">
+          You're signed in but don't have a displayed name yet, so your reports and rides show as
+          "Anonymous". Want to add one?
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Not now" color="grey-7" v-close-popup />
+          <q-btn unelevated no-caps label="Set name" color="primary" @click="goSetName" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <!-- iOS install hint dialog -->
     <q-dialog v-model="showIosHint">
@@ -153,6 +174,11 @@
           <q-item-section avatar><q-icon name="emoji_events" /></q-item-section>
           <q-item-section>Leaderboard</q-item-section>
         </q-item>
+
+        <q-item clickable v-ripple to="/profile" @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="account_circle" /></q-item-section>
+          <q-item-section>Profile</q-item-section>
+        </q-item>
       </q-list>
     </q-drawer>
 
@@ -173,12 +199,15 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useInstall } from 'src/composables/useInstall'
+import { useAuth } from 'src/composables/useAuth'
+import { isAnonymous } from 'src/composables/useAnonymity'
 import { isStaging } from '../boot/firebase.js'
 
 const route = useRoute()
+const router = useRouter()
 const currentTab = ref(
   route.path === '/status' ? 'status'
     : route.path === '/rides' ? 'rides'
@@ -189,6 +218,42 @@ const leftDrawerOpen = ref(false)
 const showAttributions = ref(false)
 
 const { isInstallable, install, showIosHint } = useInstall()
+
+// Prompt a signed-in user who has no displayed name to set one — once per user.
+const { user } = useAuth()
+const showNamePrompt = ref(false)
+const NAME_PROMPT_KEY = 'bowenlift.namePrompted'
+
+function alreadyPrompted(uid) {
+  try {
+    return localStorage.getItem(`${NAME_PROMPT_KEY}:${uid}`) === '1'
+  } catch {
+    return false
+  }
+}
+function markPrompted(uid) {
+  try {
+    localStorage.setItem(`${NAME_PROMPT_KEY}:${uid}`, '1')
+  } catch {
+    // localStorage unavailable — worst case we prompt again next session.
+  }
+}
+
+watch(
+  user,
+  (u) => {
+    if (u && !u.displayName && !isAnonymous(u.uid) && !alreadyPrompted(u.uid)) {
+      showNamePrompt.value = true
+      markPrompted(u.uid)
+    }
+  },
+  { immediate: true },
+)
+
+function goSetName() {
+  showNamePrompt.value = false
+  router.push('/profile')
+}
 
 function toggleLeftDrawer() {
   leftDrawerOpen.value = !leftDrawerOpen.value

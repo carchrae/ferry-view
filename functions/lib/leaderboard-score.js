@@ -76,8 +76,8 @@ export function scoreSailing(reports) {
 }
 
 // Aggregate a flat list of reports (across many sailings) into a ranked
-// leaderboard. Returns [{ userUid, userName, credits, reportCount }] sorted by
-// credits desc, then report count desc.
+// leaderboard. Returns [{ userUid, userName, userPhoto, credits, reportCount }]
+// sorted by credits desc, then report count desc.
 export function aggregateLeaderboard(reports) {
   const bySailing = new Map()
   for (const r of reports || []) {
@@ -93,31 +93,85 @@ export function aggregateLeaderboard(reports) {
     // report count. Track the newest userName we've seen for the display label.
     const latest = latestPerUser(sailingReports)
     for (const r of latest) {
-      const entry = totals.get(r.userUid) || {
-        userUid: r.userUid,
-        userName: null,
-        credits: 0,
-        reportCount: 0,
-        _nameAt: -1,
-      }
+      const entry = totals.get(r.userUid) || newEntry(r.userUid)
       entry.credits += credits.get(r.userUid) || 0
       entry.reportCount += 1
-      if (r.userName && (r.recordedAt || 0) >= entry._nameAt) {
-        entry.userName = r.userName
-        entry._nameAt = r.recordedAt || 0
-      }
+      applyIdentity(entry, r.recordedAt || 0, r.userName, r.userPhoto, r.anonymous)
       totals.set(r.userUid, entry)
     }
   }
 
+  return finalizeBoard(totals)
+}
+
+// Ride-share leaderboard. Every ride post — offer or request — is worth the same
+// as being first to report a sailing (CREDIT_FIRST). Input is a flat list of
+// { authorUid, authorName, authorPhoto, createdAt }; returns the same entry
+// shape as aggregateLeaderboard so both boards render identically.
+export function aggregateRideLeaderboard(rides) {
+  const totals = new Map() // uid -> entry (see newEntry)
+  for (const r of rides || []) {
+    if (!r || !r.authorUid) continue
+    const entry = totals.get(r.authorUid) || newEntry(r.authorUid)
+    entry.credits += CREDIT_FIRST
+    entry.reportCount += 1
+    applyIdentity(entry, r.createdAt || 0, r.authorName, r.authorPhoto, r.anonymous)
+    totals.set(r.authorUid, entry)
+  }
+
+  return finalizeBoard(totals)
+}
+
+// --- Shared leaderboard-entry helpers (used by both boards) ---
+
+function newEntry(userUid) {
+  return {
+    userUid,
+    userName: null,
+    userPhoto: null,
+    anonymous: false,
+    credits: 0,
+    reportCount: 0,
+    lastAt: -1, // newest activity, used as the tie-breaker
+    _nameAt: -1,
+    _photoAt: -1,
+  }
+}
+
+// Fold one record's identity into an entry. Name and photo each keep the newest
+// non-empty value independently. The `anonymous` flag and `lastAt` follow the
+// single most-recent record (a fresh non-anonymous report un-hides the user).
+function applyIdentity(entry, at, name, photo, anonymous) {
+  if (name && at >= entry._nameAt) {
+    entry.userName = name
+    entry._nameAt = at
+  }
+  if (photo && at >= entry._photoAt) {
+    entry.userPhoto = photo
+    entry._photoAt = at
+  }
+  if (at >= entry.lastAt) {
+    entry.lastAt = at
+    entry.anonymous = !!anonymous
+  }
+}
+
+// Ranked, credits desc, then report count desc, then most-recent activity desc.
+function finalizeBoard(totals) {
   return [...totals.values()]
     .map((e) => ({
       userUid: e.userUid,
       userName: e.userName,
+      userPhoto: e.userPhoto,
+      anonymous: e.anonymous,
       credits: round1(e.credits),
       reportCount: e.reportCount,
+      lastAt: e.lastAt,
     }))
-    .sort((a, b) => b.credits - a.credits || b.reportCount - a.reportCount)
+    .sort(
+      (a, b) =>
+        b.credits - a.credits || b.reportCount - a.reportCount || b.lastAt - a.lastAt,
+    )
 }
 
 // Round to 1 decimal, avoiding floating-point noise like 0.30000000000000004.
@@ -127,14 +181,14 @@ export function round1(n) {
 
 // Display a reporter's name as first name + last initial:
 //   "Tom Carchrae" -> "Tom C.", "Tom" -> "Tom", "tom@x.com" -> "tom".
-// Falls back to "A rider" when no usable name is stored (legacy reports).
+// Falls back to "Anonymous" when no usable name is stored (legacy reports).
 export function formatReporterName(name) {
-  if (!name || typeof name !== 'string') return 'A rider'
+  if (!name || typeof name !== 'string') return 'Anonymous'
   let n = name.trim()
-  if (!n) return 'A rider'
+  if (!n) return 'Anonymous'
   if (n.includes('@')) n = n.split('@')[0].trim() // email -> local part
   const parts = n.split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return 'A rider'
+  if (parts.length === 0) return 'Anonymous'
   if (parts.length === 1) return parts[0]
   return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`
 }

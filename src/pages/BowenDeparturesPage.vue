@@ -18,11 +18,21 @@
       />
       <q-btn flat dense round icon="refresh" :loading="loading" @click="loadSailings" />
     </div>
-    <div class="text-body2 text-grey-7 q-mb-md">
+    <div class="text-body2 text-grey-7 q-mb-sm">
       These photos capture Bowen-side sailings (departures to Horseshoe Bay) over the last two
       weeks. Record how full the ferry was — your reports fill in sailings BC Ferries didn't
       record.
     </div>
+    <q-btn
+      flat
+      dense
+      no-caps
+      color="primary"
+      icon="emoji_events"
+      label="Reporter Leaderboard"
+      to="/leaderboard"
+      class="q-mb-md"
+    />
 
     <div v-if="loading && !filteredSailings.length" class="q-py-xl text-center">
       <q-spinner color="primary" size="32px" />

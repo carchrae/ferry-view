@@ -4,8 +4,9 @@ import {
   capacityCamp,
   scoreSailing,
   aggregateLeaderboard,
+  aggregateRideLeaderboard,
   formatReporterName,
-} from '../src/composables/leaderboardScore.js'
+} from '../functions/lib/leaderboard-score.js'
 
 // Helper: build a report. Reports for one sailing share a sailingKey.
 function rep(userUid, capacity, recordedAt, extra = {}) {
@@ -117,6 +118,69 @@ describe('aggregateLeaderboard', () => {
     const board = aggregateLeaderboard(reports)
     assert.equal(board[0].userName, 'New Name')
   })
+
+  it('breaks credit/report ties by most recent report', () => {
+    const reports = [
+      { sailingKey: 'S1', userUid: 'A', capacity: 'Full', recordedAt: 5 },
+      { sailingKey: 'S2', userUid: 'B', capacity: 'Full', recordedAt: 9 },
+    ]
+    const board = aggregateLeaderboard(reports)
+    // Both 1.0 credit / 1 report; B reported more recently, so B ranks first.
+    assert.equal(board[0].userUid, 'B')
+    assert.equal(board[1].userUid, 'A')
+  })
+
+  it('follows the most recent report for the anonymous flag', () => {
+    const anon = aggregateLeaderboard([
+      { sailingKey: 'S1', userUid: 'A', capacity: 'Full', recordedAt: 1, anonymous: false },
+      { sailingKey: 'S2', userUid: 'A', capacity: 'Full', recordedAt: 9, anonymous: true },
+    ])
+    assert.equal(anon[0].anonymous, true)
+
+    const unhidden = aggregateLeaderboard([
+      { sailingKey: 'S1', userUid: 'A', capacity: 'Full', recordedAt: 1, anonymous: true },
+      { sailingKey: 'S2', userUid: 'A', capacity: 'Full', recordedAt: 9, anonymous: false },
+    ])
+    assert.equal(unhidden[0].anonymous, false)
+  })
+})
+
+describe('aggregateRideLeaderboard', () => {
+  it('gives one credit per ride and ranks by post count', () => {
+    const rides = [
+      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 1 },
+      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 2 },
+      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 3 },
+    ]
+    const board = aggregateRideLeaderboard(rides)
+    assert.equal(board.length, 2)
+    assert.equal(board[0].userUid, 'A')
+    assert.equal(board[0].credits, 2.0)
+    assert.equal(board[0].reportCount, 2)
+    assert.equal(board[1].userUid, 'B')
+    assert.equal(board[1].credits, 1.0)
+  })
+
+  it('keeps the most recent name and photo, ignores authorless rides', () => {
+    const rides = [
+      { authorUid: 'A', authorName: 'Old', authorPhoto: 'old.png', createdAt: 1 },
+      { authorUid: 'A', authorName: 'New', authorPhoto: null, createdAt: 9 },
+      { authorName: 'Ghost', createdAt: 5 },
+    ]
+    const board = aggregateRideLeaderboard(rides)
+    assert.equal(board.length, 1)
+    assert.equal(board[0].userName, 'New')
+    assert.equal(board[0].userPhoto, 'old.png')
+  })
+
+  it('breaks ties by most recent ride', () => {
+    const board = aggregateRideLeaderboard([
+      { authorUid: 'A', authorName: 'A', createdAt: 5 },
+      { authorUid: 'B', authorName: 'B', createdAt: 9 },
+    ])
+    assert.equal(board[0].userUid, 'B')
+    assert.equal(board[1].userUid, 'A')
+  })
 })
 
 describe('formatReporterName', () => {
@@ -125,7 +189,7 @@ describe('formatReporterName', () => {
     assert.equal(formatReporterName('Tom'), 'Tom')
     assert.equal(formatReporterName('tom@example.com'), 'tom')
     assert.equal(formatReporterName('  Jane  Q  Doe '), 'Jane D.')
-    assert.equal(formatReporterName(''), 'A rider')
-    assert.equal(formatReporterName(null), 'A rider')
+    assert.equal(formatReporterName(''), 'Anonymous')
+    assert.equal(formatReporterName(null), 'Anonymous')
   })
 })

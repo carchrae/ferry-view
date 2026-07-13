@@ -7,6 +7,14 @@
         { "fieldPath": "sailingKey", "order": "ASCENDING" },
         { "fieldPath": "recordedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "capacityHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userReport", "order": "ASCENDING" },
+        { "fieldPath": "recordedAt", "order": "ASCENDING" }
+      ]
     }
   ]
 }

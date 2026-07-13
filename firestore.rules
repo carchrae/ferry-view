@@ -44,6 +44,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Precomputed leaderboard aggregate (server-write only)
+    match /aggregates/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Default: deny all other access
     match /{document=**} {
       allow read, write: if false;

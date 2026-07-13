@@ -1,47 +1,74 @@
 <template>
   <q-page class="q-pa-md">
     <div class="row items-center q-mb-sm">
-      <div class="text-h6">Reporter Leaderboard</div>
+      <div class="text-h6">Leaderboard</div>
       <q-space />
       <q-btn flat dense round icon="refresh" :loading="loading" @click="load" />
     </div>
-    <div class="text-body2 text-grey-7 q-mb-md">
-      Riders who report how full Bowen departures are — ranked by credits earned over the last 30
-      days. You earn a credit for being first to report a sailing; agreeing with or confirming
-      others earns a little too.
-    </div>
 
-    <div v-if="loading && !board.length" class="q-py-xl text-center">
-      <q-spinner color="primary" size="32px" />
-    </div>
+    <q-banner v-if="user" dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
+      <template v-if="user.displayName">
+        You appear here as <strong>{{ formatReporterName(user.displayName) }}</strong>.
+        <router-link to="/profile">Change your name</router-link>
+      </template>
+      <template v-else>
+        You don't have a displayed name yet — you show as "Anonymous".
+        <router-link to="/profile">Set your name</router-link>
+      </template>
+    </q-banner>
+    <q-banner v-else dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
+      <router-link to="/profile">Sign in</router-link> to appear on the leaderboard with your name.
+    </q-banner>
 
-    <div v-else-if="!board.length" class="q-py-xl text-center text-grey-6">
-      No reports in the last 30 days yet — be the first on the
-      <router-link to="/bowen-departures">Bowen Departures</router-link> page!
-    </div>
+    <div class="row q-col-gutter-md">
+      <!-- Capacity reporters -->
+      <div class="col-12 col-md-6">
+        <div class="text-subtitle1 text-weight-medium q-mb-xs">Capacity Reporters</div>
+        <div class="text-body2 text-grey-7 q-mb-sm">
+          Ranked by credits earned reporting how full Bowen departures are over the last 30 days.
+          You earn a credit for being first to report a sailing; confirming others earns a little
+          too.
+        </div>
+        <div v-if="loading && !board.length" class="q-py-lg text-center">
+          <q-spinner color="primary" size="28px" />
+        </div>
+        <LeaderboardList
+          v-else
+          :entries="board"
+          :me-uid="user?.uid"
+          count-noun="report"
+          clickable
+          @select="openUser"
+        >
+        </LeaderboardList>
+        <div v-if="!loading && !board.length" class="text-caption text-grey-6 q-mt-sm">
+          No reports in the last 30 days yet — be the first on the
+          <router-link to="/bowen-departures">Bowen Departures</router-link> page!
+        </div>
+      </div>
 
-    <q-list v-else bordered separator class="rounded-borders">
-      <q-item
-        v-for="(entry, i) in board"
-        :key="entry.userUid"
-        clickable
-        v-ripple
-        @click="openUser(entry)"
-      >
-        <q-item-section avatar>
-          <q-avatar :color="rankColor(i)" text-color="white" size="32px">{{ i + 1 }}</q-avatar>
-        </q-item-section>
-        <q-item-section>
-          <q-item-label>{{ formatReporterName(entry.userName) }}</q-item-label>
-          <q-item-label caption>
-            {{ entry.reportCount }} report{{ entry.reportCount === 1 ? '' : 's' }}
-          </q-item-label>
-        </q-item-section>
-        <q-item-section side>
-          <q-badge color="primary" class="text-body2">{{ entry.credits.toFixed(1) }}</q-badge>
-        </q-item-section>
-      </q-item>
-    </q-list>
+      <!-- Ride sharers -->
+      <div class="col-12 col-md-6">
+        <div class="text-subtitle1 text-weight-medium q-mb-xs">Ride Sharers</div>
+        <div class="text-body2 text-grey-7 q-mb-sm">
+          Ranked by ride offers and requests posted over the last 30 days. Every post — offering a
+          seat or asking for one — is worth one credit.
+        </div>
+        <div v-if="loading && !rideBoard.length" class="q-py-lg text-center">
+          <q-spinner color="primary" size="28px" />
+        </div>
+        <LeaderboardList
+          v-else
+          :entries="rideBoard"
+          :me-uid="user?.uid"
+          count-noun="post"
+          empty-text="No rides posted in the last 30 days yet."
+        />
+        <div v-if="!loading && !rideBoard.length" class="text-caption text-grey-6 q-mt-sm">
+          Be the first — <router-link to="/rides/post">post a ride</router-link>.
+        </div>
+      </div>
+    </div>
 
     <q-dialog v-model="showUser">
       <q-card style="min-width: 300px; max-width: 460px">
@@ -80,27 +107,28 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
-import { round1 } from 'src/composables/leaderboardScore'
+import { round1 } from '../../functions/lib/leaderboard-score.js'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
+import { useAuth } from 'src/composables/useAuth'
+import LeaderboardList from 'src/components/LeaderboardList.vue'
 import { dayjs, formatTime12h, TZ } from '../../functions/lib/time.js'
 
 const $q = useQuasar()
-const { getLeaderboard, getUserReports } = useLeaderboard()
+const { getLeaderboard, getRideLeaderboard, getUserReports, subscribeLeaderboard } = useLeaderboard()
+const { user } = useAuth()
 
-const loading = ref(false)
+const loading = ref(true)
 const board = ref([])
+const rideBoard = ref([])
+let unsubscribe = null
 
 const showUser = ref(false)
 const userLoading = ref(false)
 const userReports = ref([])
 const selectedName = ref('')
-
-function rankColor(i) {
-  return i === 0 ? 'amber-8' : i === 1 ? 'blue-grey-5' : i === 2 ? 'brown-5' : 'grey-6'
-}
 
 // sailingKey format: "{dateIso}_{time}_{direction}" e.g. "2026-05-20_10:35_To HSB".
 function sailingLabel(sailingKey) {
@@ -114,10 +142,14 @@ function reportedAtLabel(ts) {
   return ts ? `Reported ${dayjs(ts).tz(TZ).format('MMM D, h:mm a')}` : ''
 }
 
+// Client-side fallback: used before the server has seeded aggregates/leaderboard,
+// and by the manual refresh button.
 async function load() {
   loading.value = true
   try {
-    board.value = await getLeaderboard()
+    const [reporters, riders] = await Promise.all([getLeaderboard(), getRideLeaderboard()])
+    board.value = reporters
+    rideBoard.value = riders
   } catch (err) {
     console.error('Failed to load leaderboard:', err)
     $q.notify({ type: 'negative', message: 'Failed to load leaderboard' })
@@ -127,7 +159,7 @@ async function load() {
 }
 
 async function openUser(entry) {
-  selectedName.value = entry.userName
+  selectedName.value = entry.anonymous ? 'Anonymous' : entry.userName
   userReports.value = []
   showUser.value = true
   userLoading.value = true
@@ -141,5 +173,27 @@ async function openUser(entry) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  // Live-subscribe to the precomputed board; fall back to client aggregation
+  // only until the server has seeded the doc.
+  unsubscribe = subscribeLeaderboard(
+    ({ reporters, riders, exists }) => {
+      if (exists) {
+        board.value = reporters
+        rideBoard.value = riders
+        loading.value = false
+      } else {
+        load()
+      }
+    },
+    (err) => {
+      console.error('Leaderboard subscription failed:', err)
+      load()
+    },
+  )
+})
+
+onUnmounted(() => {
+  if (unsubscribe) unsubscribe()
+})
 </script>

@@ -7,6 +7,7 @@ const routes = [
       { path: 'status', component: () => import('pages/HistoryPage.vue') },
       { path: 'bowen-departures', component: () => import('pages/BowenDeparturesPage.vue') },
       { path: 'leaderboard', component: () => import('pages/LeaderboardPage.vue') },
+      { path: 'profile', component: () => import('pages/ProfilePage.vue') },
       { path: 'rides', component: () => import('pages/RidesPage.vue') },
       { path: 'rides/post', component: () => import('pages/PostRidePage.vue') },
       { path: 'rides/:id/edit', component: () => import('pages/PostRidePage.vue') },

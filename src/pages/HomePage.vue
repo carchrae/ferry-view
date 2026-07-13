@@ -350,6 +350,70 @@
             />
           </div>
         </div>
+
+        <!-- Leaderboard champions: top capacity reporter + top ride sharer -->
+        <div v-if="champion || rideChampion" class="row q-col-gutter-sm q-mb-sm">
+          <div v-if="champion" class="col-12 col-sm-6">
+            <router-link
+              to="/leaderboard"
+              class="champion-row row items-center no-wrap q-pa-sm full-height"
+            >
+              <div class="champion-star q-mr-sm">
+                <img
+                  v-if="champion.anonymous || champion.userPhoto"
+                  :src="champion.anonymous ? anonymousIcon : champion.userPhoto"
+                  class="champion-photo"
+                  alt=""
+                  referrerpolicy="no-referrer"
+                />
+                <q-icon v-else name="emoji_events" color="white" size="24px" />
+              </div>
+              <div class="col overflow-hidden">
+                <div class="text-caption text-weight-bold text-amber-9">
+                  <q-icon name="star" size="14px" class="q-mb-xs" /> {{ championSlogan }}
+                </div>
+                <div class="text-subtitle2 text-grey-9 ellipsis">
+                  {{ champion.anonymous ? 'Anonymous' : formatReporterName(champion.userName) }}
+                </div>
+              </div>
+              <q-badge color="amber-8" text-color="white" class="text-body2 q-mr-xs">
+                {{ champion.credits.toFixed(1) }}
+              </q-badge>
+              <q-icon name="chevron_right" color="grey-6" />
+            </router-link>
+          </div>
+
+          <div v-if="rideChampion" class="col-12 col-sm-6">
+            <router-link
+              to="/leaderboard"
+              class="champion-row ride row items-center no-wrap q-pa-sm full-height"
+            >
+              <div class="champion-star ride q-mr-sm">
+                <img
+                  v-if="rideChampion.anonymous || rideChampion.userPhoto"
+                  :src="rideChampion.anonymous ? anonymousIcon : rideChampion.userPhoto"
+                  class="champion-photo"
+                  alt=""
+                  referrerpolicy="no-referrer"
+                />
+                <q-icon v-else name="directions_car" color="white" size="24px" />
+              </div>
+              <div class="col overflow-hidden">
+                <div class="text-caption text-weight-bold text-blue-9">
+                  <q-icon name="star" size="14px" class="q-mb-xs" /> {{ rideChampionSlogan }}
+                </div>
+                <div class="text-subtitle2 text-grey-9 ellipsis">
+                  {{ rideChampion.anonymous ? 'Anonymous' : formatReporterName(rideChampion.userName) }}
+                </div>
+              </div>
+              <q-badge color="blue-8" text-color="white" class="text-body2 q-mr-xs">
+                {{ rideChampion.credits.toFixed(1) }}
+              </q-badge>
+              <q-icon name="chevron_right" color="grey-6" />
+            </router-link>
+          </div>
+        </div>
+
         <!-- Rides -->
         <div class="col-12 col-md-6">
           <q-card flat bordered>
@@ -848,7 +912,9 @@ import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import { useAuth } from 'src/composables/useAuth'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
+import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor } from 'src/composables/useCapacityDisplay'
+import anonymousIcon from 'src/assets/cat.svg'
 import {
   useHistoricalStats,
   getTypical,
@@ -871,6 +937,78 @@ const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 const { user } = useAuth()
 
 const showSignInDialog = ref(false)
+
+// Current leaderboard champions, celebrated in a row under the sailing buttons:
+// the top capacity reporter and the top ride sharer ("hero"). Read live from the
+// server-precomputed board; failures are non-fatal (each cell just hides).
+const { getLeaderboard, getRideLeaderboard, subscribeLeaderboard } = useLeaderboard()
+const champion = ref(null)
+const rideChampion = ref(null)
+let unsubscribeLeaderboard = null
+
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+// Cheeky titles for the reigning capacity-tagging champ; one picked per load.
+const CHAMPION_SLOGANS = [
+  'Spots a Full Ferry from Space',
+  'Certified Overload Whisperer',
+  'Knows Full When They See It',
+  'Sharpest Eyes on the Sound',
+  'Deck-Space Detective',
+  'Reads a Ferry Like a Book',
+  'Sees the Overload Coming',
+  'Ferry Capacity Clairvoyant',
+  'Counts Cars in Their Sleep',
+  'Never Misses a Sailing',
+]
+const championSlogan = ref(pick(CHAMPION_SLOGANS))
+
+// Cheeky titles for the top ride sharer.
+const RIDE_CHAMPION_SLOGANS = [
+  'Ride Share Hero',
+  'Always Has a Seat Spare',
+  'Never Leaves Anyone at the Dock',
+  'Carpool Kingpin',
+  'Turns Strangers into Carpools',
+  'Wheels for the People',
+  'The Dock Pickup Legend',
+]
+const rideChampionSlogan = ref(pick(RIDE_CHAMPION_SLOGANS))
+
+// Client-side fallback used only until the server seeds aggregates/leaderboard.
+async function loadChampionsFallback() {
+  try {
+    champion.value = (await getLeaderboard())[0] || null
+  } catch (err) {
+    console.error('Failed to load leaderboard champion:', err)
+  }
+  try {
+    rideChampion.value = (await getRideLeaderboard())[0] || null
+  } catch (err) {
+    console.error('Failed to load ride-share champion:', err)
+  }
+}
+onMounted(() => {
+  unsubscribeLeaderboard = subscribeLeaderboard(
+    ({ reporters, riders, exists }) => {
+      if (exists) {
+        champion.value = reporters[0] || null
+        rideChampion.value = riders[0] || null
+      } else {
+        loadChampionsFallback()
+      }
+    },
+    (err) => {
+      console.error('Champion subscription failed:', err)
+      loadChampionsFallback()
+    },
+  )
+})
+onUnmounted(() => {
+  if (unsubscribeLeaderboard) unsubscribeLeaderboard()
+})
 
 // The "Last Bowen Sailing" dialog shows the newest Bowen departure, built from
 // the same sailingStatus source as the Bowen Departures page so its two photos
@@ -1333,6 +1471,65 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
+$star-clip: polygon(
+  50% 0%,
+  61% 35%,
+  98% 35%,
+  68% 57%,
+  79% 91%,
+  50% 70%,
+  21% 91%,
+  32% 57%,
+  2% 35%,
+  39% 35%
+);
+
+.champion-row {
+  text-decoration: none;
+  border: 1px solid #ffd54f;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #fff8e1, #ffecb3);
+  cursor: pointer;
+
+  &:hover {
+    background: linear-gradient(135deg, #fff3d6, #ffe49c);
+  }
+
+  // Ride-share hero variant — blue instead of gold.
+  &.ride {
+    border-color: #90caf9;
+    background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+
+    &:hover {
+      background: linear-gradient(135deg, #d6ebfd, #a6d3f7);
+    }
+  }
+}
+
+// Gold star frame with the champion's photo (or a trophy) clipped inside it.
+.champion-star {
+  position: relative;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, #ffd54f, #ffb300);
+  clip-path: $star-clip;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &.ride {
+    background: linear-gradient(135deg, #64b5f6, #1e88e5);
+  }
+}
+
+.champion-photo {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  clip-path: $star-clip;
+}
+
 .webcam-card {
 }
 

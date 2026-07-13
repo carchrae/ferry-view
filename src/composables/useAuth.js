@@ -16,12 +16,21 @@ const user = ref(null)
 let unsubscribe = null
 let listenerCount = 0
 
+// The Firebase User object exposes its fields via getters and mutates in place
+// (e.g. after updateProfile), so a bare ref won't re-render when the name
+// changes. Consumers only ever read these properties, so we store a plain
+// snapshot and re-snapshot whenever the profile changes.
+function toPlainUser(u) {
+  if (!u) return null
+  return { uid: u.uid, email: u.email, displayName: u.displayName, photoURL: u.photoURL }
+}
+
 export function useAuth() {
   onMounted(() => {
     listenerCount++
     if (!unsubscribe) {
       unsubscribe = onAuthStateChanged(auth, (u) => {
-        user.value = u
+        user.value = toPlainUser(u)
       })
     }
   })
@@ -75,6 +84,13 @@ export function useAuth() {
     await fbSignOut(auth)
   }
 
+  async function updateDisplayName(displayName) {
+    if (!auth.currentUser) throw new Error('Not signed in')
+    await updateProfile(auth.currentUser, { displayName })
+    // updateProfile mutates currentUser in place; re-snapshot to trigger updates.
+    user.value = toPlainUser(auth.currentUser)
+  }
+
   return {
     user,
     signInWithGoogle,
@@ -83,5 +99,6 @@ export function useAuth() {
     sendPhoneCode,
     verifyPhoneCode,
     signOut,
+    updateDisplayName,
   }
 }

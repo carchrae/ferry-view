@@ -3,6 +3,8 @@ import {
   collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, Timestamp
 } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
+import { resolveAvatarUrl } from 'src/composables/useAvatar'
+import { isAnonymous } from 'src/composables/useAnonymity'
 import { nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 
 export function useRides() {
@@ -46,6 +48,12 @@ export function useRides() {
       authorName: data.authorName || user.displayName || user.email || 'Anonymous',
       authorEmail: user.email || null,
       authorUid: user.uid,
+      // Resolved avatar (Google photo, else Gravatar) for the ride-share
+      // leaderboard, which can't read other users' auth profiles client-side.
+      authorPhoto: await resolveAvatarUrl(user),
+      // Leaderboard-only: hide this poster behind a cat icon. The ride
+      // card still shows the real name/contact so riders can coordinate.
+      anonymous: isAnonymous(user.uid),
       contactMethod: data.contactMethod || null,
       contactInfo: data.contactInfo || null,
       createdAt: Timestamp.now(),
