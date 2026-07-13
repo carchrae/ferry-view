@@ -140,6 +140,13 @@
                       </q-badge>
                       <q-badge
                         rounded
+                        v-if="crosswalkBadge(event)"
+                        color="deep-orange"
+                        class="badge-gap"
+                        dense
+                      >{{ crosswalkBadge(event) }}</q-badge>
+                      <q-badge
+                        rounded
                         v-if="sailingTypeBadge(event)"
                         :color="sailingTypeBadge(event).color"
                         class="badge-gap"
@@ -236,6 +243,13 @@
                           class="badge-gap"
                         >{{ formatDeckBadge(s)
                           }}</q-badge>
+                        <q-badge
+                          rounded
+                          v-if="crosswalkBadge(s)"
+                          color="deep-orange"
+                          class="badge-gap"
+                          dense
+                        >{{ crosswalkBadge(s) }}</q-badge>
                         <q-badge
                           rounded
                           v-if="sailingTypeBadge(s)"
@@ -729,6 +743,13 @@
                   }}</q-badge>
                 <q-badge
                   rounded
+                  v-if="crosswalkBadge(event)"
+                  color="deep-orange"
+                  class="badge-gap"
+                  dense
+                >{{ crosswalkBadge(event) }}</q-badge>
+                <q-badge
+                  rounded
                   v-if="sailingTypeBadge(event)"
                   :color="sailingTypeBadge(event).color"
                   class="badge-gap"
@@ -806,6 +827,13 @@
                     class="badge-gap"
                   >{{ formatDeckBadge(s)
                     }}</q-badge>
+                  <q-badge
+                    rounded
+                    v-if="crosswalkBadge(s)"
+                    color="deep-orange"
+                    class="badge-gap"
+                    dense
+                  >{{ crosswalkBadge(s) }}</q-badge>
                   <q-badge
                     rounded
                     v-if="sailingTypeBadge(s)"
@@ -1457,6 +1485,14 @@ function formatFilledTime(val) {
   if (!val) return ''
   if (val === 'user_reported') return ''
   return `@${dayjs(val).tz(TZ).format('h:mm')}`
+}
+
+// Bowen-side counterpart of the HSB "Full@6:27" badge: the rider-marked time
+// the car lineup reached the crosswalk. Only Bowen sailings ever carry
+// crosswalkFullAt (HSB has no lineup camera), just as only HSB sailings get
+// automated "full at" times.
+function crosswalkBadge(event) {
+  return event?.crosswalkFullAt ? `Crosswalk${formatFilledTime(event.crosswalkFullAt)}` : null
 }
 
 const isSailing = computed(() => {

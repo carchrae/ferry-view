@@ -366,6 +366,16 @@ export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (
     },
     { merge: true },
   )
+  // Surface the mark on the live schedule right away (augmentRecentActivity
+  // copies crosswalkFullAt onto the bowenSchedule entry) instead of waiting
+  // for the next changed poll — mirrors onCapacityReport.
+  if (dateIso === nowInVancouver().format('YYYY-MM-DD')) {
+    try {
+      await refreshFerryData(db, { forceUpdate: true })
+    } catch (e) {
+      logger.error('Status refresh after lineup report failed:', e)
+    }
+  }
 })
 
 // Any ride create/edit/delete changes the ride-share board (a deleted ride must

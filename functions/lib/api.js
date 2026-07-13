@@ -123,7 +123,13 @@ function checkDataChanged(newData, existingData) {
   return changes.length > 0
 }
 
-const ENRICHMENT_FIELDS = ['matchedDepartureTime', 'latenessMinutes', 'lastCapacity', 'filledAt']
+const ENRICHMENT_FIELDS = [
+  'matchedDepartureTime',
+  'latenessMinutes',
+  'lastCapacity',
+  'filledAt',
+  'crosswalkFullAt',
+]
 
 function stripEnrichmentFields(schedule) {
   if (!Array.isArray(schedule)) return schedule

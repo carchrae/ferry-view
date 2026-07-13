@@ -11,6 +11,16 @@ export async function augmentRecentActivity(db, data) {
   statusSnap.forEach((doc) => {
     const s = doc.data()
     logger.log('checking sailing status', s)
+    // Surface rider crosswalk marks on the live schedule — the Bowen-side
+    // counterpart of the HSB "Full@time" (filledAt) display. Only Bowen
+    // sailings ever carry crosswalkFullAt (HSB has no lineup camera), just
+    // as only HSB sailings ever get automated fill times.
+    if (s.direction === 'To HSB' && typeof s.crosswalkFullAt === 'number') {
+      const entry = data.bowenSchedule.find(
+        (e) => normalizeTime(e.time) === normalizeTime(s.sailingTime),
+      )
+      if (entry) entry.crosswalkFullAt = s.crosswalkFullAt
+    }
     let departureTime = s.actualDepartureTime
     if (!departureTime) return
     const depDate = timeToDate(departureTime)
