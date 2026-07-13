@@ -1,7 +1,7 @@
 <template>
   <q-page class="q-pa-md">
     <div class="row items-center q-mb-sm">
-      <div class="text-h6">Leaderboard</div>
+      <div class="text-h6">Bowen Heroes</div>
       <q-space />
       <q-btn flat dense round icon="refresh" :loading="loading" @click="load" />
     </div>
