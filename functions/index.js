@@ -16,7 +16,12 @@ import {
   augmentFromCapacityHistory,
 } from './lib/enrich.js'
 import { recordCapacityChanges, recordDepartureTimes } from './lib/record.js'
-import { captureBowenWebcam, captureBowenCommunityWebcam, cleanupOldWebcams } from './lib/webcam.js'
+import {
+  captureBowenWebcam,
+  captureBowenCommunityWebcam,
+  captureLineupTimelapse,
+  cleanupOldWebcams,
+} from './lib/webcam.js'
 import {
   isDepartureLogStale,
   fetchBowenDepartures,
@@ -267,6 +272,15 @@ export const pollFerryStatus = onSchedule(
     }
     const { data, hsbPast, bowenPast, dataChanged } = result
 
+    // Cadence-driven (every 5th poll during a lineup window), so it runs
+    // whether or not this poll changed anything — unlike captureWebcams,
+    // which is event-driven and gated behind dataChanged.
+    try {
+      await captureLineupTimelapse(db, data)
+    } catch (e) {
+      logger.error('Lineup timelapse capture failed:', e)
+    }
+
     if (!dataChanged) {
       logger.log('No changes detected, skipping save')
       await maybeSendNotifications(data)
@@ -324,6 +338,34 @@ export const onCapacityReport = onDocumentCreated('capacityHistory/{docId}', asy
       logger.error('Leaderboard recompute after capacity report failed:', e)
     }
   }
+})
+
+// A rider marked the moment the car lineup reached the crosswalk. Stamp it on
+// the sailing's doc — first tag wins (the interesting moment is when the
+// lineup *becomes* that long); all raw reports stay in lineupReports as
+// labeled training data for a future automated detector.
+export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (event) => {
+  const r = event.data?.data()
+  if (!r?.userUid || typeof r.crosswalkAt !== 'number') return
+  const m = /^(\d{4}-\d{2}-\d{2})_(.+)_(To\s.+)$/.exec(r.sailingKey || '')
+  if (!m) {
+    logger.warn('Ignoring lineup report with malformed sailingKey:', r.sailingKey)
+    return
+  }
+  const [, dateIso, time, direction] = m
+  const ref = db.collection('sailingStatus').doc(r.sailingKey)
+  const snap = await ref.get()
+  if (snap.exists && snap.data().crosswalkFullAt) return
+  await ref.set(
+    {
+      sailingKey: r.sailingKey,
+      sailingTime: time,
+      direction,
+      dateIso,
+      crosswalkFullAt: r.crosswalkAt,
+    },
+    { merge: true },
+  )
 })
 
 // Any ride create/edit/delete changes the ride-share board (a deleted ride must

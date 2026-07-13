@@ -32,6 +32,15 @@ service cloud.firestore {
         && request.resource.data.userUid == request.auth.uid;
     }
 
+    // Lineup reports: riders marking when the car lineup reached the
+    // crosswalk. Append-only, like capacityHistory.
+    match /lineupReports/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['sailingKey', 'crosswalkAt', 'userUid'])
+        && request.resource.data.userUid == request.auth.uid;
+    }
+
     // Sailing status collection (server-write only)
     match /sailingStatus/{docId} {
       allow read: if true;

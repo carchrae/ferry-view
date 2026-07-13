@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "type": "logistic",
+  "roi": { "left": 0.0, "top": 0.5, "width": 1.0, "height": 0.5 },
+  "size": [48, 27],
+  "weights": [],
+  "bias": 0,
+  "threshold": 0.7,
+  "metrics": null,
+  "trainedAt": null
+}

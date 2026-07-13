@@ -1,8 +1,10 @@
 import { logger } from 'firebase-functions/logger'
 import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
+import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
-import { isRecent, nowInVancouver, dayjs } from './time.js'
+import { isRecent, nowInVancouver, timeToDate, dayjs } from './time.js'
+import { classifyLineup } from './lineup-classifier.js'
 
 // Photo filenames are timestamped and never rewritten, so browsers can cache
 // them forever — without this, GCS's default 1-hour max-age makes every
@@ -13,7 +15,6 @@ const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jp
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
 const SAMPLE_COUNT = 3
 const SAMPLE_DELAY_MS = 1000
-const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 async function captureSamples(url) {
   const samples = []
@@ -148,6 +149,100 @@ export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arri
   logger.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
+// Lineup timelapse: between sailings, the community camera shows the car
+// lineup building for the NEXT Bowen departure. Decide (statelessly — the
+// poll runs every minute, so `minute % 5` gives a 5-minute cadence with no
+// stored state and no Firestore reads) whether this poll should capture a
+// frame:
+//   - only from 30 min after the previous Bowen departure (before that the
+//     lot is mostly empty),
+//   - never for departures scheduled at/after 9 pm,
+//   - attributed to the next upcoming Bowen departure.
+export function timelapseDecision(data, now) {
+  if (now.minute() % 5 !== 0) return { capture: false }
+
+  // Last Bowen departure today: the atberth/AIS log is newest-first. When it
+  // has no Bowen departure (stale log, early morning), fall back to the most
+  // recent *scheduled* time already in the past — close enough for a 30-min
+  // buffer. No departure today at all (overnight) → no capture.
+  const depEntry = (data.recentActivity || []).find(
+    (e) => e.action === 'Departed' && e.location === 'Bowen',
+  )
+  let lastDep = depEntry ? timeToDate(depEntry.time) : null
+  if (!lastDep) {
+    for (const s of data.bowenSchedule || []) {
+      const t = timeToDate(s.time)
+      if (t && t < now && (!lastDep || t > lastDep)) lastDep = t
+    }
+  }
+  if (!lastDep) return { capture: false }
+
+  const nextDep = (data.bowenSchedule || []).find((s) => {
+    const t = timeToDate(s.time)
+    return t && t > now
+  })
+  if (!nextDep) return { capture: false }
+  if (parseInt(nextDep.time.split(':')[0], 10) >= 21) return { capture: false }
+
+  if (now.diff(lastDep, 'minute') < 30) return { capture: false }
+
+  return { capture: true, sailingTime: nextDep.time }
+}
+
+export async function captureLineupTimelapse(db, data) {
+  const decision = timelapseDecision(data, nowInVancouver())
+  if (!decision.capture) return
+
+  const samples = await captureSamples(COMMUNITY_WEBCAM_URL)
+  if (samples.length === 0) {
+    logger.error('All lineup timelapse samples failed')
+    return
+  }
+
+  const best = await compressSnapshot(pickBestFrame(samples))
+  const timestamp = Date.now()
+  // Under webcams/ so cleanupOldWebcams ages frames out; the _{epoch}.jpg
+  // suffix keeps the client's captureTimeLabel() parsing working.
+  const blobPath = `webcams/community/${data.dateIso}/timelapse/${decision.sailingTime}_To HSB_${timestamp}.jpg`
+  const bucket = getStorage().bucket()
+  const file = bucket.file(blobPath)
+  await file.save(best, {
+    contentType: 'image/jpeg',
+    metadata: { cacheControl: IMMUTABLE_CACHE },
+  })
+  await file.makePublic()
+
+  const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
+
+  // Automated crosswalk detection (no-op until a trained model is committed —
+  // see lib/lineup-classifier.js). Kept separate from the human-tagged
+  // crosswalkFullAt so agreement can be measured before the auto value is
+  // trusted anywhere. First positive frame wins, mirroring onLineupReport.
+  const autoFields = {}
+  const verdict = await classifyLineup(best)
+  if (verdict?.fullToCrosswalk) {
+    const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
+    if (!snap.exists || !snap.data().crosswalkFullAtAuto) {
+      autoFields.crosswalkFullAtAuto = timestamp
+      autoFields.crosswalkAutoProb = Math.round(verdict.probability * 1000) / 1000
+    }
+  }
+
+  await db.collection('sailingStatus').doc(snapshotKey).set(
+    {
+      sailingKey: snapshotKey,
+      sailingTime: decision.sailingTime,
+      direction: 'To HSB',
+      dateIso: data.dateIso,
+      lineupTimelapsePaths: FieldValue.arrayUnion(blobPath),
+      ...autoFields,
+    },
+    { merge: true },
+  )
+
+  logger.log(`Saved lineup timelapse frame: ${blobPath} (${best.length}B)`)
+}
+
 export async function cleanupOldWebcams() {
   const bucket = getStorage().bucket()
   const cutoff = nowInVancouver().subtract(14, 'day')
@@ -156,7 +251,9 @@ export async function cleanupOldWebcams() {
 
   const [files] = await bucket.getFiles({ prefix: 'webcams/' })
   for (const file of files) {
-    const [meta] = await file.getMetadata()
+    // getFiles() already returns metadata — a per-file getMetadata() call
+    // here would cost one Class B op per stored photo, every night.
+    const meta = file.metadata || {}
     if (meta.timeCreated && dayjs(meta.timeCreated) < cutoff) {
       try {
         await file.delete()

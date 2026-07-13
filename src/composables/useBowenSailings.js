@@ -26,6 +26,18 @@ function captureTimeLabel(path) {
   return m ? dayjs(Number(m[1])).tz(TZ).format('h:mm a') : null
 }
 
+function captureTs(path) {
+  const m = /_(\d{10,})\.jpg$/.exec(path || '')
+  return m ? Number(m[1]) : 0
+}
+
+// 5-minute lineup frames (see captureLineupTimelapse), oldest first.
+function buildTimelapse(paths) {
+  return (paths || [])
+    .map((p) => ({ imageUrl: imageUrl(p), timeLabel: captureTimeLabel(p), ts: captureTs(p) }))
+    .sort((a, b) => a.ts - b.ts)
+}
+
 // Both photos of a sailing share its sailingStatus doc, so they carry the same
 // sailingKey and capacity (unlike the two independently-written snapshot
 // singleton docs, where the lineup photo can belong to a different sailing than
@@ -39,6 +51,7 @@ function buildCards(s, todayIso) {
   return {
     ...s,
     dayLabel: dayLabel(s.dateIso, todayIso),
+    timelapse: buildTimelapse(s.lineupTimelapsePaths),
     arrival: s.communitySnapshotPath
       ? {
           ...shared,
@@ -66,15 +79,12 @@ const CACHE_TTL_MS = 5 * 60 * 1000
 let cachedSailings = null
 let cachedAt = 0
 
-// Load Bowen-side sailings (departures to Horseshoe Bay) from the last two
-// weeks that have at least one photo, newest first, each with paired
-// arrival/departure cards. This is the single source of truth for both the
-// Bowen Departures page and the home page's "Last Bowen Sailing" dialog.
-export async function loadBowenSailings() {
+// One shared fetch of all To HSB sailingStatus docs in the window (raw,
+// unfiltered, newest first) backing both loadBowenSailings (photo cards) and
+// loadUpcomingLineup (timelapse of the sailing currently boarding).
+async function fetchRawSailings() {
+  if (cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSailings
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
-  if (cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) {
-    return finalize(cachedSailings, todayIso)
-  }
   const startIso = nowInVancouver().subtract(13, 'day').format('YYYY-MM-DD')
   const snap = await getDocs(
     query(
@@ -88,7 +98,8 @@ export async function loadBowenSailings() {
   const sailings = []
   snap.forEach((docSnap) => {
     const d = docSnap.data()
-    if (!d.webcamSnapshotPath && !d.communitySnapshotPath) return
+    if (!d.webcamSnapshotPath && !d.communitySnapshotPath && !d.lineupTimelapsePaths?.length)
+      return
     sailings.push({
       sailingKey: d.sailingKey || docSnap.id,
       dateIso: d.dateIso,
@@ -98,6 +109,8 @@ export async function loadBowenSailings() {
       webcamSnapshotPath: d.webcamSnapshotPath,
       communitySnapshotPath: d.communitySnapshotPath,
       communityArrivalTime: d.communityArrivalTime,
+      lineupTimelapsePaths: d.lineupTimelapsePaths || [],
+      crosswalkFullAt: d.crosswalkFullAt || null,
     })
   })
 
@@ -109,8 +122,47 @@ export async function loadBowenSailings() {
 
   cachedSailings = sailings
   cachedAt = Date.now()
+  return sailings
+}
 
-  return finalize(sailings, todayIso)
+// Load Bowen-side sailings (departures to Horseshoe Bay) from the last two
+// weeks that have at least one PHOTO, newest first, each with paired
+// arrival/departure cards. Timelapse frames alone don't earn a card — the
+// upcoming sailing collects frames long before it has photos, and surfacing
+// it here made it built[0]: an empty "Last Bowen Sailing" dialog and
+// photo-less placeholder cards. (Its lineup is exposed separately via
+// loadUpcomingLineup.) This is the single source of truth for both the Bowen
+// Departures page and the home page's "Last Bowen Sailing" dialog.
+export async function loadBowenSailings() {
+  const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  const raw = await fetchRawSailings()
+  return finalize(
+    raw.filter((s) => s.webcamSnapshotPath || s.communitySnapshotPath),
+    todayIso,
+  )
+}
+
+// The lineup building for the sailing that hasn't happened yet: today's
+// newest photo-less sailing with timelapse frames. Returns
+// { sailingKey, sailingTime, dateIso, crosswalkFullAt, timelapse } or null.
+export async function loadUpcomingLineup() {
+  const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  const raw = await fetchRawSailings()
+  const s = raw.find(
+    (x) =>
+      x.dateIso === todayIso &&
+      !x.webcamSnapshotPath &&
+      !x.communitySnapshotPath &&
+      x.lineupTimelapsePaths.length,
+  )
+  if (!s) return null
+  return {
+    sailingKey: s.sailingKey,
+    sailingTime: s.sailingTime,
+    dateIso: s.dateIso,
+    crosswalkFullAt: s.crosswalkFullAt,
+    timelapse: buildTimelapse(s.lineupTimelapsePaths),
+  }
 }
 
 function finalize(sailings, todayIso) {

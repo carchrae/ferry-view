@@ -623,8 +623,39 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <SailingTagCards :arrival="lastBowenSailing?.arrival" :departure="lastBowenSailing?.departure" @rate="onDialogRate" />
+          <LineupTimelapse
+            v-if="showTimelapse && timelapseFrames.length"
+            :frames="timelapseFrames"
+            :crosswalk-full-at="lastBowenSailing?.crosswalkFullAt || null"
+            @crosswalk="onTimelapseCrosswalk"
+          />
+          <SailingTagCards
+            v-else
+            :arrival="lastBowenSailing?.arrival"
+            :departure="lastBowenSailing?.departure"
+            @rate="onDialogRate"
+          />
+          <template v-if="upcomingLineup?.timelapse?.length">
+            <q-separator class="q-my-sm" />
+            <div class="text-subtitle2 q-mb-xs">
+              Lineup for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
+            </div>
+            <LineupTimelapse
+              :frames="upcomingLineup.timelapse"
+              :crosswalk-full-at="upcomingLineup.crosswalkFullAt || null"
+              @crosswalk="onUpcomingCrosswalk"
+            />
+          </template>
           <div class="q-mt-sm text-center">
+            <q-btn
+              v-if="timelapseFrames.length >= 2"
+              flat
+              no-caps
+              color="primary"
+              :icon="showTimelapse ? 'photo_library' : 'play_circle'"
+              :label="showTimelapse ? 'Back to photos' : 'Play history'"
+              @click="showTimelapse = !showTimelapse"
+            />
             <q-btn flat no-caps color="primary" icon="photo_camera" label="See other departures" to="/bowen-departures" @click="showSnapshotDialog = false" />
             <q-btn v-if="$q.screen.xs" flat color="grey-7" icon="close" label="Close" @click="showSnapshotDialog = false" />
           </div>
@@ -925,11 +956,13 @@ import { useSchedule, timeToDate } from 'src/composables/useSchedule'
 import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 import { isStaging, db } from 'src/boot/firebase'
 import { addDoc, collection } from 'firebase/firestore'
-import { loadBowenSailings } from 'src/composables/useBowenSailings'
+import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
 import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
+import LineupTimelapse from 'src/components/LineupTimelapse.vue'
+import { useLineupReport } from 'src/composables/useLineupReport'
 import { useAuth } from 'src/composables/useAuth'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
@@ -1037,12 +1070,17 @@ onUnmounted(() => {
 // the same sailingStatus source as the Bowen Departures page so its two photos
 // are always the correctly-paired arrival/departure of one sailing.
 const lastBowenSailing = ref(null)
+const upcomingLineup = ref(null)
 const showSnapshotDialog = ref(false)
+const showTimelapse = ref(false)
+const timelapseFrames = computed(() => lastBowenSailing.value?.timelapse || [])
 
 async function loadLastBowenSailing() {
   try {
+    // Both come from the same cached query — one Firestore read set.
     const built = await loadBowenSailings()
     lastBowenSailing.value = built[0] || null
+    upcomingLineup.value = await loadUpcomingLineup()
   } catch (err) {
     console.error('Failed to load last Bowen sailing:', err)
   }
@@ -1052,6 +1090,7 @@ onMounted(loadLastBowenSailing)
 function openSnapshotDialog() {
   // Refresh on open so a sailing captured since page load appears.
   loadLastBowenSailing()
+  showTimelapse.value = false
   showSnapshotDialog.value = true
 }
 
@@ -1085,6 +1124,31 @@ function onDialogRate({ sailingKey, capacity, filledAt }) {
       console.error('Failed to save capacity rating:', err)
     })
 }
+
+const { saveCrosswalkMark } = useLineupReport()
+
+// The rider paused a timelapse on the frame where cars reach the crosswalk
+// and confirmed — record that frame's capture time against `target`'s
+// sailing (target is the reactive object carrying sailingKey/crosswalkFullAt).
+function recordCrosswalk(target, { ts, timeLabel }) {
+  if (!target?.sailingKey) return
+  saveCrosswalkMark(target.sailingKey, ts)
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
+      }
+      target.crosswalkFullAt = ts
+      $q.notify({ type: 'positive', message: `Full to crosswalk recorded at ${timeLabel} — thanks!` })
+    })
+    .catch((err) => {
+      console.error('Failed to save crosswalk mark:', err)
+      $q.notify({ type: 'negative', message: 'Failed to record crosswalk time' })
+    })
+}
+
+const onTimelapseCrosswalk = (e) => recordCrosswalk(lastBowenSailing.value, e)
+const onUpcomingCrosswalk = (e) => recordCrosswalk(upcomingLineup.value, e)
 
 function markCommunityFull() {
   const entry = communitySailingEntry.value

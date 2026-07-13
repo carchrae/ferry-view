@@ -56,3 +56,6 @@ credentials.json
 /functions/backup/bowen-ferry/rides.json
 /functions/backup/bowen-ferry/sailingStatus.json
 /functions/backup/bowen-ferry/snapshots.json
+
+# Lineup-classifier training data (exported by scripts/export-lineup-dataset.mjs)
+/training-data/
