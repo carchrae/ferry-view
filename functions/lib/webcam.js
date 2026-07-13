@@ -177,9 +177,18 @@ export function timelapseDecision(data, now) {
   }
   if (!lastDep) return { capture: false }
 
+  // The lineup is building for the earliest sailing that hasn't departed yet —
+  // NOT `first scheduled time > now`. When a sailing is boarding past its
+  // scheduled time, "time > now" skips it and credits its lineup to the NEXT
+  // sailing, so that next sailing's timelapse wrongly opens with the current
+  // sailing's crowd. matchedDepartureTime (set by the poll once a sailing
+  // leaves) marks departed sailings; the 30-min grace excludes ancient
+  // sailings that were never matched (log gaps) so they can't become a
+  // permanent target.
   const nextDep = (data.bowenSchedule || []).find((s) => {
+    if (s.matchedDepartureTime) return false
     const t = timeToDate(s.time)
-    return t && t > now
+    return t && t > now.subtract(30, 'minute')
   })
   if (!nextDep) return { capture: false }
   if (parseInt(nextDep.time.split(':')[0], 10) >= 21) return { capture: false }

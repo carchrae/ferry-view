@@ -66,21 +66,23 @@ The "Last Bowen Sailing" dialog:
   sailing that departed but never got its arrival photo can't surface its
   stale last frame.
 
-`src/components/LineupTimelapse.vue` animates frames (~0.7 s/frame) with a
-pause control and scrub slider. `autoplay` (default true) plays on mount and
-preloads; the Bowen Departures list passes `autoplay=false` so its many
-players show a static newest frame and only preload/play on demand.
-`taggable` (arrival/lineup only) enables the crosswalk confirm (§3); the
-terminal departure timelapse is never taggable.
+`src/components/LineupTimelapse.vue` animates frames (~0.7 s/frame). Controls
+are a play/pause toggle on the left, then ◀ / ▶ step buttons flanking a center
+control. `autoplay` (default true) plays on mount and preloads; the Bowen
+Departures list passes `autoplay=false` so its many players show a static
+newest frame and only preload/step on demand. When `taggable` (arrival/lineup only) the center
+control is the crosswalk button — "Full to Crosswalk @ ⟨current frame time⟩",
+recording that frame's time (§3), and showing the saved time once recorded.
+The non-taggable terminal departure timelapse shows the current frame's time
+as a plain label instead.
 
 ## 3. Crosswalk tagging (the labeling pipeline)
 
-The timelapse player **is** the tagging tool. While playback is paused (and
-no time is recorded yet), it offers a confirm button: the rider scrubs or
-pauses on the frame where cars reach the crosswalk and confirms — recording
-**that frame's capture time**, not the moment they tapped. That makes the
-label exact: every frame before it is a clean negative, every frame from it
-on a clean positive.
+The timelapse player **is** the tagging tool. The rider steps (◀ / ▶) to the
+frame where cars reach the crosswalk and presses the center button ("Full to
+Crosswalk @ ⟨that frame's time⟩") — recording **that frame's capture time**,
+not the moment they tapped. That makes the label exact: every frame before it
+is a clean negative, every frame from it on a clean positive.
 
 Each confirmation is appended to the **`lineupReports`** collection
 (`useLineupReport.js`; rules mirror `capacityHistory` — public read,

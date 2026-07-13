@@ -14,46 +14,42 @@
         <span>{{ index + 1 }} / {{ frames.length }}</span>
       </div>
     </q-img>
-    <q-card-actions class="q-py-sm q-px-sm items-center no-wrap">
+    <q-card-actions class="q-py-sm q-px-xs items-center no-wrap">
       <q-btn
         round
         dense
         flat
         :icon="playing ? 'pause' : atEnd ? 'replay' : 'play_arrow'"
+        :disable="frames.length < 2"
         @click="toggle"
       />
-      <q-slider
-        v-model="index"
-        :min="0"
-        :max="frames.length - 1"
-        :step="1"
+      <q-btn round dense flat icon="chevron_left" :disable="index <= 0" @click="step(-1)" />
+      <q-btn
+        v-if="taggable"
+        no-caps
+        no-wrap
         dense
-        class="col q-mx-sm"
-        @update:model-value="pause"
+        :flat="Boolean(crosswalkFullAt)"
+        :outline="!crosswalkFullAt"
+        class="col q-mx-xs"
+        :color="crosswalkFullAt ? 'grey-7' : 'deep-orange'"
+        icon="directions_walk"
+        :label="centerLabel"
+        :disable="Boolean(crosswalkFullAt) || !current.ts"
+        @click="confirmCrosswalk"
+      />
+      <div v-else class="col text-center text-caption text-grey-7">
+        {{ current.timeLabel }}
+      </div>
+      <q-btn
+        round
+        dense
+        flat
+        icon="chevron_right"
+        :disable="index >= frames.length - 1"
+        @click="step(1)"
       />
     </q-card-actions>
-    <q-card-section
-      v-if="taggable && !playing"
-      class="q-pt-none q-px-sm q-pb-sm column items-stretch"
-    >
-      <div v-if="crosswalkFullAt" class="text-caption text-grey-7">
-        Full to crosswalk recorded at {{ recordedLabel }}.
-      </div>
-      <template v-else>
-        <div class="text-caption text-grey-7 q-mb-xs">
-          Pause on the frame where cars reach the crosswalk, then confirm:
-        </div>
-        <q-btn
-          no-caps
-          no-wrap
-          color="deep-orange"
-          icon="directions_walk"
-          :label="`Full to Crosswalk at ${current.timeLabel}`"
-          :disable="!current.ts"
-          @click="emit('crosswalk', { ts: current.ts, timeLabel: current.timeLabel })"
-        />
-      </template>
-    </q-card-section>
   </q-card>
 </template>
 
@@ -62,18 +58,19 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 
 // Animates the timelapse frames of one sailing (community lineup or Bowen
-// terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. The slider
-// scrubs (and pauses).
+// terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. Step through
+// with the ◀ / ▶ buttons; the center control shows the current frame's time.
 //
 // autoplay (default true): play on mount and preload all frames. Pass false
 // where many players render at once (the Bowen Departures list) — the newest
-// frame shows statically and frames preload only when the user hits play.
+// frame shows statically and frames preload only when the user steps.
 //
-// taggable (default false): when set, the player doubles as the crosswalk
-// tagging tool — while paused (and no time recorded yet), a confirm button
-// records the CURRENT FRAME's capture time as the moment the lineup reached
-// the crosswalk, emitting 'crosswalk' with { ts, timeLabel }. Only the
-// community lineup (arrival) is taggable, never the terminal (departure) cam.
+// taggable (default false): the center control becomes the crosswalk tagging
+// button — "Full to Crosswalk @ <current frame time>". Stepping to the frame
+// where cars reach the crosswalk and pressing it records THAT frame's capture
+// time (emits 'crosswalk' with { ts, timeLabel }). Once recorded it shows the
+// saved time, disabled. Only the community lineup (arrival) is taggable, never
+// the terminal (departure) cam.
 const props = defineProps({
   frames: { type: Array, required: true },
   crosswalkFullAt: { type: Number, default: null },
@@ -95,6 +92,12 @@ let preloaded = false
 
 const current = computed(() => props.frames[Math.min(index.value, props.frames.length - 1)] || {})
 const atEnd = computed(() => index.value >= props.frames.length - 1)
+
+const centerLabel = computed(() =>
+  props.crosswalkFullAt
+    ? `Crosswalk @ ${recordedLabel.value}`
+    : `Full to Crosswalk @ ${current.value.timeLabel || '—'}`,
+)
 
 const FRAME_MS = 700
 
@@ -130,6 +133,19 @@ function pause() {
 function toggle() {
   if (playing.value) pause()
   else play()
+}
+
+// Stepping is a manual scrub: stop playback and move one frame.
+function step(delta) {
+  pause()
+  preloadAll()
+  index.value = Math.min(Math.max(index.value + delta, 0), props.frames.length - 1)
+}
+
+function confirmCrosswalk() {
+  if (!current.value.ts) return
+  pause()
+  emit('crosswalk', { ts: current.value.ts, timeLabel: current.value.timeLabel })
 }
 
 onMounted(() => {

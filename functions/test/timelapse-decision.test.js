@@ -4,18 +4,24 @@ import { timeToDate } from '../lib/time.js'
 
 const at = (hhmm) => timeToDate(hhmm)
 
-// Typical mid-day Bowen schedule around a 13:55 sailing, plus the evening
-// tail for the 9 pm cutoff cases.
-const bowenSchedule = ['12:35', '13:55', '15:15', '20:25', '21:30', '22:30'].map((time) => ({
-  time,
-}))
+// Fresh schedule per call so matchedDepartureTime set in one test can't leak.
+// `departedBefore` marks every sailing at/before that time as departed (the
+// poll stamps matchedDepartureTime on sailings that have left).
+function sched(times, departedBefore) {
+  return times.map((time) => {
+    const s = { time }
+    if (departedBefore && time <= departedBefore) s.matchedDepartureTime = time
+    return s
+  })
+}
 
+const MIDDAY = ['12:35', '13:55', '15:15', '20:25', '21:30', '22:30']
 const departed = (time) => ({ action: 'Departed', location: 'Bowen', time })
 
 function data(overrides = {}) {
   return {
     dateIso: '2026-07-13',
-    bowenSchedule,
+    bowenSchedule: sched(MIDDAY, '12:35'),
     recentActivity: [departed('12:36')],
     ...overrides,
   }
@@ -25,6 +31,24 @@ describe('timelapseDecision', () => {
   it('captures on a 5-minute mark, 30+ min after the last departure, for the next sailing', () => {
     const d = timelapseDecision(data(), at('13:10'))
     expect(d).toEqual({ capture: true, sailingTime: '13:55' })
+  })
+
+  it('attributes frames to a sailing boarding past its scheduled time, not the next one', () => {
+    // 07:30 departed; 08:45 is boarding late (08:50, not yet departed). Its
+    // lineup must be credited to 08:45 — not 10:00 (the old "time > now" bug).
+    const d = data({
+      bowenSchedule: sched(['07:30', '08:45', '10:00'], '07:30'),
+      recentActivity: [departed('07:31')],
+    })
+    expect(timelapseDecision(d, at('08:50'))).toEqual({ capture: true, sailingTime: '08:45' })
+  })
+
+  it('moves to the next sailing once the current one has departed', () => {
+    const d = data({
+      bowenSchedule: sched(['07:30', '08:45', '10:00'], '08:45'),
+      recentActivity: [departed('08:47')],
+    })
+    expect(timelapseDecision(d, at('09:20'))).toEqual({ capture: true, sailingTime: '10:00' })
   })
 
   it('skips off-cadence minutes', () => {
@@ -38,20 +62,25 @@ describe('timelapseDecision', () => {
   })
 
   it('skips departures scheduled at/after 9 pm', () => {
-    // Last departure 20:26, next is 21:30 → no timelapse for it.
-    const d = data({ recentActivity: [departed('20:26')] })
+    const d = data({
+      bowenSchedule: sched(MIDDAY, '20:25'),
+      recentActivity: [departed('20:26')],
+    })
     expect(timelapseDecision(d, at('21:00')).capture).toBe(false)
   })
 
   it('still captures for the 20:25 sailing (before the cutoff)', () => {
-    const d = data({ recentActivity: [departed('15:16')] })
+    const d = data({
+      bowenSchedule: sched(MIDDAY, '15:15'),
+      recentActivity: [departed('15:16')],
+    })
     expect(timelapseDecision(d, at('19:00'))).toEqual({ capture: true, sailingTime: '20:25' })
   })
 
   it('skips when nothing has departed today (early morning / overnight)', () => {
     const d = data({
       recentActivity: [],
-      bowenSchedule: [{ time: '15:15' }, { time: '20:25' }],
+      bowenSchedule: sched(['15:15', '20:25']),
     })
     expect(timelapseDecision(d, at('14:00')).capture).toBe(false)
   })
@@ -65,8 +94,8 @@ describe('timelapseDecision', () => {
 
   it('skips when there is no later sailing today', () => {
     const d = data({
+      bowenSchedule: sched(['22:30'], '22:30'),
       recentActivity: [departed('22:31')],
-      bowenSchedule: [{ time: '22:30' }],
     })
     expect(timelapseDecision(d, at('23:05')).capture).toBe(false)
   })
