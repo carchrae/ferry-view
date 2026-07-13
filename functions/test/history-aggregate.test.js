@@ -60,7 +60,12 @@ describe('recomputeHistoricalStats', () => {
         filledAt: 1752300000000,
         extraneousField: 'dropped',
       },
-      { dateIso: yesterday, sailingTime: '10:35', direction: 'To HSB' },
+      {
+        dateIso: yesterday,
+        sailingTime: '10:35',
+        direction: 'To HSB',
+        crosswalkFullAt: 1752310000000,
+      },
       { dateIso: today, sailingTime: '10:00', direction: 'To Bowen' },
       { dateIso: tooOld, sailingTime: '10:00', direction: 'To Bowen' },
       // Malformed doc — skipped
@@ -85,7 +90,7 @@ describe('recomputeHistoricalStats', () => {
         src: 'automated',
         fa: 1752300000000,
       },
-      { d: yesterday, t: '10:35', dir: 'To HSB' },
+      { d: yesterday, t: '10:35', dir: 'To HSB', cw: 1752310000000 },
     ])
   })
 

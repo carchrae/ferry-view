@@ -154,7 +154,7 @@
                     </q-item>
                     <q-item v-if="isExpanded(panel, day.key, time)" class="bg-grey-1 q-pa-none">
                       <q-item-section>
-                        <SailingHistoryDetail :info="info" />
+                        <SailingHistoryDetail :info="info" :panel="panel" />
                       </q-item-section>
                     </q-item>
                   </template>
@@ -231,7 +231,7 @@
                   </q-item>
                   <q-item v-if="isExpanded(panel, selectedDay, time)" class="bg-grey-1 q-pa-none">
                     <q-item-section>
-                      <SailingHistoryDetail :info="info" />
+                      <SailingHistoryDetail :info="info" :panel="panel" />
                     </q-item-section>
                   </q-item>
                 </template>

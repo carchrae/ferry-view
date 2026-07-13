@@ -159,6 +159,9 @@ export function aggregateSailings(docs) {
       capacitySource: doc.capacitySource ?? null,
       filledAt: doc.filledAt ?? null,
       filledMinutes: doc.lastCapacity === 'Full' ? parseFilledMinutes(doc.filledAt) : null,
+      // Bowen-side "full to crosswalk" time (minutes past midnight in TZ).
+      // Mutually exclusive with filledMinutes: only To HSB sailings carry it.
+      crosswalkMinutes: parseFilledMinutes(doc.crosswalkFullAt),
     })
   }
 
@@ -207,6 +210,10 @@ function computeTimeInfo(time, rawDates) {
   const fillMins = typical.map((d) => d.filledMinutes).filter((m) => m !== null && m !== undefined)
   const avgFillTime = fillMins.length ? minutesToLabel(mean(fillMins)) : null
 
+  // Bowen-side equivalent: typical time the lineup reached the crosswalk.
+  const cwMins = typical.map((d) => d.crosswalkMinutes).filter((m) => m !== null && m !== undefined)
+  const avgCwTime = cwMins.length ? minutesToLabel(mean(cwMins)) : null
+
   const numbers = typical
     .filter((d) => d.capacity && d.capacity !== 'Full')
     .map((d) => parseInt(d.capacity))
@@ -227,6 +234,7 @@ function computeTimeInfo(time, rawDates) {
     latePct,
     fullPct,
     avgFillTime,
+    avgCwTime,
     avgCapacityPct,
     notFullCount,
     dates,
@@ -328,6 +336,7 @@ async function fetchFromAggregate(start, end) {
         lastCapacity: r.cap,
         capacitySource: r.src,
         filledAt: r.fa,
+        crosswalkFullAt: r.cw,
       }))
   } catch (e) {
     console.warn('[useHistoricalStats] aggregate read failed, falling back:', e)

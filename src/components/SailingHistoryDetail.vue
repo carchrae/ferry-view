@@ -9,7 +9,7 @@
           <th>Actual dep</th>
           <th>+/- min</th>
           <th>Full</th>
-          <th>Filled by</th>
+          <th>{{ isBowen ? 'Full to CW' : 'Filled by' }}</th>
         </tr>
       </thead>
       <tbody>
@@ -30,7 +30,7 @@
               <q-tooltip>Reported by a rider</q-tooltip>
             </q-icon>
           </td>
-          <td>{{ d.filledMinutes !== null && d.filledMinutes !== undefined ? minutesToLabel(d.filledMinutes) : '—' }}</td>
+          <td>{{ slotLabel(d) }}</td>
         </tr>
       </tbody>
     </table>
@@ -43,7 +43,13 @@ import { minutesToLabel } from 'src/composables/useHistoricalStats'
 
 const props = defineProps({
   info: { type: Object, required: true },
+  // 'bowen' (To HSB departures) or 'hsb'. Bowen sailings have no automated
+  // fill time, so their last column shows the rider "full to crosswalk" time
+  // instead of "Filled by".
+  panel: { type: String, default: 'hsb' },
 })
+
+const isBowen = computed(() => props.panel === 'bowen')
 
 // Per-date capacity shown as "% full" (stored value is % available/free).
 function capacityLabel(raw) {
@@ -52,6 +58,12 @@ function capacityLabel(raw) {
   if (raw === 'Not Full') return 'Not full'
   const n = parseInt(raw)
   return isNaN(n) ? raw : `${100 - n}%`
+}
+
+// Last column: fill time for HSB, crosswalk time for Bowen.
+function slotLabel(d) {
+  const mins = isBowen.value ? d.crosswalkMinutes : d.filledMinutes
+  return mins !== null && mins !== undefined ? minutesToLabel(mins) : '—'
 }
 
 // Grey summary line shown above the per-date table.
@@ -63,7 +75,11 @@ const detailSummary = computed(() => {
     parts.push(info.latePct !== null ? `${avg} · ${info.latePct}% late` : avg)
   }
   if (info.fullPct > 0) {
-    parts.push(info.avgFillTime ? `full ${info.fullPct}% · fills by ${info.avgFillTime}` : `full ${info.fullPct}%`)
+    const fillBy = isBowen.value ? info.avgCwTime : info.avgFillTime
+    const byLabel = isBowen.value ? 'full to CW by' : 'fills by'
+    parts.push(fillBy ? `full ${info.fullPct}% · ${byLabel} ${fillBy}` : `full ${info.fullPct}%`)
+  } else if (isBowen.value && info.avgCwTime) {
+    parts.push(`full to CW by ${info.avgCwTime}`)
   } else if (info.avgCapacityPct !== null) {
     parts.push(`avg ${100 - info.avgCapacityPct}% full`)
   } else if (info.notFullCount > 0) {

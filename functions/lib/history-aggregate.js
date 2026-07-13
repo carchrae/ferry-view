@@ -14,7 +14,8 @@ export const HISTORY_WEEKS = 8
 // Records use short keys to stay well under the 1 MB doc limit; the client
 // expands them back to sailingStatus field names (see useHistoricalStats.js):
 //   d = dateIso, t = sailingTime, dir = direction, dep = actualDepartureTime,
-//   cap = lastCapacity, src = capacitySource, fa = filledAt
+//   cap = lastCapacity, src = capacitySource, fa = filledAt,
+//   cw = crosswalkFullAt (Bowen-side "full to crosswalk" time, epoch ms)
 export async function recomputeHistoricalStats(db) {
   const now = nowInVancouver()
   const start = now.subtract(HISTORY_WEEKS, 'week').format('YYYY-MM-DD')
@@ -39,6 +40,12 @@ export async function recomputeHistoricalStats(db) {
       // for the client's filledAt parser — flatten to epoch ms. Numbers and
       // 'user_reported' pass through unchanged.
       rec.fa = typeof s.filledAt?.toMillis === 'function' ? s.filledAt.toMillis() : s.filledAt
+    }
+    if (s.crosswalkFullAt != null) {
+      rec.cw =
+        typeof s.crosswalkFullAt?.toMillis === 'function'
+          ? s.crosswalkFullAt.toMillis()
+          : s.crosswalkFullAt
     }
     sailings.push(rec)
   })
