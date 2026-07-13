@@ -15,6 +15,14 @@
         { "fieldPath": "userReport", "order": "ASCENDING" },
         { "fieldPath": "recordedAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "sailingStatus",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "direction", "order": "ASCENDING" },
+        { "fieldPath": "dateIso", "order": "ASCENDING" }
+      ]
     }
   ]
 }

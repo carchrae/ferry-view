@@ -58,16 +58,28 @@ function buildCards(s, todayIso) {
   }
 }
 
+// The 13-day query below reads ~200 docs, and the HomePage mount, its snapshot
+// dialog, and route re-mounts each used to re-run it. Cache the raw query
+// result briefly so a session bills the read once; the TTL keeps a fresh
+// departure photo from being hidden for long.
+const CACHE_TTL_MS = 5 * 60 * 1000
+let cachedSailings = null
+let cachedAt = 0
+
 // Load Bowen-side sailings (departures to Horseshoe Bay) from the last two
 // weeks that have at least one photo, newest first, each with paired
 // arrival/departure cards. This is the single source of truth for both the
 // Bowen Departures page and the home page's "Last Bowen Sailing" dialog.
 export async function loadBowenSailings() {
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  if (cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) {
+    return finalize(cachedSailings, todayIso)
+  }
   const startIso = nowInVancouver().subtract(13, 'day').format('YYYY-MM-DD')
   const snap = await getDocs(
     query(
       collection(db, 'sailingStatus'),
+      where('direction', '==', 'To HSB'),
       where('dateIso', '>=', startIso),
       where('dateIso', '<=', todayIso),
     ),
@@ -76,7 +88,6 @@ export async function loadBowenSailings() {
   const sailings = []
   snap.forEach((docSnap) => {
     const d = docSnap.data()
-    if (d.direction !== 'To HSB') return
     if (!d.webcamSnapshotPath && !d.communitySnapshotPath) return
     sailings.push({
       sailingKey: d.sailingKey || docSnap.id,
@@ -96,6 +107,13 @@ export async function loadBowenSailings() {
       : b.sailingTime.localeCompare(a.sailingTime),
   )
 
+  cachedSailings = sailings
+  cachedAt = Date.now()
+
+  return finalize(sailings, todayIso)
+}
+
+function finalize(sailings, todayIso) {
   const built = sailings.map((s) => buildCards(s, todayIso))
 
   // The newest sailing usually has its lineup (arrival) photo before the

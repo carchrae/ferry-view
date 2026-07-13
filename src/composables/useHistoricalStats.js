@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { collection, query, where, getDocs } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
 import { db } from 'boot/firebase'
 import { dayjs, TZ, normalizeTime, nowInVancouver } from '../../functions/lib/time.js'
 import { getImpactedDates } from '../../functions/lib/holidays.js'
@@ -305,33 +305,66 @@ export function typicalHints(info, compact = false) {
 // Composable — fetch + aggregate sailingStatus over a date range
 // ---------------------------------------------------------------------------
 
+// The nightly refreshHistoryAggregate function mirrors the last 8 weeks of
+// sailingStatus into this single doc (see functions/lib/history-aggregate.js
+// for the short record keys). Reading it costs 1 doc read instead of the
+// ~1,700-doc range scan every HomePage/HistoryPage mount used to run.
+async function fetchFromAggregate(start, end) {
+  try {
+    const snap = await getDoc(doc(db, 'aggregates', 'historicalStats'))
+    if (!snap.exists()) return null
+    const agg = snap.data()
+    // Must fully cover the requested window. agg.end is yesterday-at-rebuild,
+    // so a stale aggregate (missed nightly runs) fails the end check and we
+    // fall back to the direct query.
+    if (!Array.isArray(agg.sailings) || agg.start > start || agg.end < end) return null
+    return agg.sailings
+      .filter((r) => r.d >= start && r.d <= end)
+      .map((r) => ({
+        dateIso: r.d,
+        sailingTime: r.t,
+        direction: r.dir,
+        actualDepartureTime: r.dep,
+        lastCapacity: r.cap,
+        capacitySource: r.src,
+        filledAt: r.fa,
+      }))
+  } catch (e) {
+    console.warn('[useHistoricalStats] aggregate read failed, falling back:', e)
+    return null
+  }
+}
+
+async function fetchDirect(start, end) {
+  const q = query(
+    collection(db, 'sailingStatus'),
+    where('dateIso', '>=', start),
+    where('dateIso', '<=', end),
+  )
+  const snap = await getDocs(q)
+  const out = []
+  snap.forEach((d) => out.push(d.data()))
+  return out
+}
+
 export function useHistoricalStats() {
   const loading = ref(false)
   const error = ref(null)
   const docs = ref([])
   const impactedDates = ref([])
+  const excludeHolidays = ref(true)
 
-  async function fetchStats({ weeksBack = 8, excludeHolidays = true } = {}) {
+  async function fetchStats({ weeksBack = 8, excludeHolidays: exclude = true } = {}) {
     loading.value = true
     error.value = null
+    excludeHolidays.value = exclude
     try {
       const start = nowInVancouver().subtract(weeksBack, 'week').format('YYYY-MM-DD')
       const end = nowInVancouver().subtract(1, 'day').format('YYYY-MM-DD')
-      const impacted = excludeHolidays ? getImpactedDates(start, end) : new Set()
-      impactedDates.value = [...impacted].sort()
-      const q = query(
-        collection(db, 'sailingStatus'),
-        where('dateIso', '>=', start),
-        where('dateIso', '<=', end),
-      )
-      const snap = await getDocs(q)
-      const out = []
-      snap.forEach((d) => {
-        const data = d.data()
-        if (impacted.has(data.dateIso)) return
-        out.push(data)
-      })
-      docs.value = out
+      // Always compute the impacted set so the holiday toggle can be flipped
+      // without refetching — exclusion happens reactively in byDayOfWeek.
+      impactedDates.value = [...getImpactedDates(start, end)].sort()
+      docs.value = (await fetchFromAggregate(start, end)) ?? (await fetchDirect(start, end))
     } catch (e) {
       console.error('[useHistoricalStats] fetch failed:', e)
       error.value = e.message
@@ -339,7 +372,11 @@ export function useHistoricalStats() {
     loading.value = false
   }
 
-  const byDayOfWeek = computed(() => aggregateSailings(docs.value))
+  const byDayOfWeek = computed(() => {
+    if (!excludeHolidays.value) return aggregateSailings(docs.value)
+    const impacted = new Set(impactedDates.value)
+    return aggregateSailings(docs.value.filter((d) => !impacted.has(d.dateIso)))
+  })
 
-  return { loading, error, docs, impactedDates, byDayOfWeek, fetchStats }
+  return { loading, error, docs, impactedDates, excludeHolidays, byDayOfWeek, fetchStats }
 }

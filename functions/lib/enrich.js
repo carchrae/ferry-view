@@ -93,11 +93,37 @@ export function enrichDeckCapacity(data, existingData) {
 
 const SKIP_CAPACITY_HISTORY_AUGMENT = false
 
+// Fetch today's capacityHistory records in ONE range query (sailingKey is
+// prefixed with dateIso) and reduce to the latest record per sailingKey.
+// Replaces the previous one-query-per-schedule-entry loop, which billed ~32
+// reads (empty queries still bill one) on every call.
+async function latestCapacityBySailingKey(db, dateIso) {
+  const snap = await db
+    .collection('capacityHistory')
+    .where('sailingKey', '>=', `${dateIso}_`)
+    .where('sailingKey', '<', `${dateIso}_`)
+    .get()
+  const latest = new Map()
+  snap.forEach((doc) => {
+    const r = doc.data()
+    const prev = latest.get(r.sailingKey)
+    if (!prev || (r.recordedAt || 0) > (prev.recordedAt || 0)) latest.set(r.sailingKey, r)
+  })
+  return latest
+}
+
 export async function augmentFromCapacityHistory(db, data) {
   if (SKIP_CAPACITY_HISTORY_AUGMENT) return
   try {
     let enriched = 0
     const statusWrites = []
+    let latestByKey
+    try {
+      latestByKey = await latestCapacityBySailingKey(db, data.dateIso)
+    } catch (e) {
+      logger.error(`capacityHistory query failed for date "${data.dateIso}":`, e)
+      return
+    }
     for (const [direction, schedule] of [
       ['To Bowen', data.hsbSchedule],
       ['To HSB', data.bowenSchedule],
@@ -106,21 +132,8 @@ export async function augmentFromCapacityHistory(db, data) {
         const sailingKey = `${data.dateIso}_${normalizeTime(entry.time)}_${direction}`
 
         if (entry.lastCapacity === undefined) {
-          // Get most recent server record
-          let serverSnap
-          try {
-            serverSnap = await db
-              .collection('capacityHistory')
-              .where('sailingKey', '==', sailingKey)
-              .orderBy('recordedAt', 'desc')
-              .limit(1)
-              .get()
-          } catch (e) {
-            logger.error(`capacityHistory query failed for sailingKey "${sailingKey}":`, e)
-            continue
-          }
-          if (!serverSnap.empty) {
-            const r = serverSnap.docs[0].data()
+          const r = latestByKey.get(sailingKey)
+          if (r) {
             const capacitySource = r.userUid ? 'user' : 'automated'
             entry.lastCapacity = r.capacity
             entry.capacitySource = capacitySource

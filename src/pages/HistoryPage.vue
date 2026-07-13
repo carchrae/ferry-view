@@ -246,17 +246,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { dayjs, TZ, nowInVancouver } from '../../functions/lib/time.js'
 import { useHistoricalStats, DAY_KEYS } from 'src/composables/useHistoricalStats'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 
 const weeksBack = ref(4)
-const excludeHolidays = ref(true)
 const directionTab = ref('hsb')
 const showMobileSettings = ref(false)
 
-const { loading, error, byDayOfWeek, impactedDates, fetchStats } = useHistoricalStats()
+// excludeHolidays comes from the composable: flipping it re-filters the
+// already-fetched docs reactively instead of re-running the Firestore query.
+const { loading, error, byDayOfWeek, impactedDates, excludeHolidays, fetchStats } =
+  useHistoricalStats()
 
 const expandedRows = reactive(new Set())
 function rowKey(dir, dayKey, time) { return `${dir}|${dayKey}|${time}` }
@@ -357,8 +359,6 @@ const weekCount = computed(() => {
 function fetchData() {
   fetchStats({ weeksBack: weeksBack.value, excludeHolidays: excludeHolidays.value })
 }
-
-watch(excludeHolidays, () => fetchData())
 
 onMounted(() => {
   fetchData()

@@ -1,6 +1,10 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore'
 import { getMessaging } from 'firebase/messaging'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 
@@ -40,7 +44,12 @@ export const storageBucket = firebaseConfig.storageBucket
 
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
-export const db = getFirestore(app)
+// Persistent (IndexedDB) cache: listener re-attaches after a reload only bill
+// changed docs, and repeat single-doc reads are served locally. Multi-tab
+// manager so a second open tab doesn't silently lose persistence.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+})
 export const messaging = getMessaging(app)
 
 export let analytics = null

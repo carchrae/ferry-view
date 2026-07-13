@@ -25,6 +25,7 @@ import {
 import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.js'
 import { applyUserCapacityReport } from './lib/user-capacity.js'
 import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-aggregate.js'
+import { recomputeHistoricalStats } from './lib/history-aggregate.js'
 import { nowInVancouver, timeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -176,9 +177,16 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
     logger.debug('No changes detected, skipping save')
   }
 
-  // Now backfill — reads freshly-corrected sailingStatus docs
-  await augmentRecentActivity(db, data)
-  await augmentFromCapacityHistory(db, data)
+  // Now backfill — reads freshly-corrected sailingStatus docs. Only when this
+  // poll changed something (or was forced): on a no-change poll the enriched
+  // result is never persisted (see the dataChanged guard below) and the poll
+  // discards it, so running the backfills would spend ~30-50 Firestore reads
+  // per minute for nothing. User reports arrive via onCapacityReport, which
+  // re-runs this with forceUpdate, so they still get backfilled promptly.
+  if (dataChanged) {
+    await augmentRecentActivity(db, data)
+    await augmentFromCapacityHistory(db, data)
+  }
 
   // Clear first-match artifacts from schedule so the second match
   // re-evaluates from scratch with the (now augmented) recentActivity.
@@ -340,6 +348,31 @@ export const refreshLeaderboard = onSchedule(
     await recomputeLeaderboard(db)
   },
 )
+
+// Nightly rebuild of the historicalStats aggregate. Its window ends yesterday,
+// so once-a-day is always fresh; clients read the one doc instead of range-
+// scanning ~8 weeks of sailingStatus on every HomePage/HistoryPage mount.
+export const refreshHistoryAggregate = onSchedule(
+  {
+    schedule: 'every day 03:10',
+    timeZone: 'America/Vancouver',
+  },
+  async () => {
+    await recomputeHistoricalStats(db)
+  },
+)
+
+// Manual one-shot: seed aggregates/historicalStats. Hit once after deploy so
+// clients don't fall back to direct range scans until the first 03:10 run.
+export const rebuildHistoryAggregate = onRequest(async (req, res) => {
+  try {
+    const result = await recomputeHistoricalStats(db)
+    res.json(result)
+  } catch (e) {
+    logger.error('rebuildHistoryAggregate failed:', e)
+    res.status(500).json({ error: String(e) })
+  }
+})
 
 // Manual one-shot: backfill the userReport flag on pre-existing user records,
 // then seed/rebuild the aggregate doc. Hit once after deploying this change.
