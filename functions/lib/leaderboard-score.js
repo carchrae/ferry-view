@@ -107,7 +107,9 @@ export function aggregateLeaderboard(reports) {
 // Ride-share leaderboard. Every ride post — offer or request — is worth the same
 // as being first to report a sailing (CREDIT_FIRST). Input is a flat list of
 // { authorUid, authorName, authorPhoto, createdAt }; returns the same entry
-// shape as aggregateLeaderboard so both boards render identically.
+// shape as aggregateLeaderboard so both boards render identically. Riders with
+// only a single post are excluded — the board rewards repeat participation, and
+// since each ride is worth 1 credit, reportCount >= 2 means "more than one point".
 export function aggregateRideLeaderboard(rides) {
   const totals = new Map() // uid -> entry (see newEntry)
   for (const r of rides || []) {
@@ -119,7 +121,7 @@ export function aggregateRideLeaderboard(rides) {
     totals.set(r.authorUid, entry)
   }
 
-  return finalizeBoard(totals)
+  return finalizeBoard(totals).filter((e) => e.reportCount >= 2)
 }
 
 // --- Shared leaderboard-entry helpers (used by both boards) ---

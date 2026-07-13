@@ -150,15 +150,29 @@ describe('aggregateRideLeaderboard', () => {
     const rides = [
       { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 1 },
       { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 2 },
-      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 3 },
+      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 3 },
+      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 4 },
+      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 5 },
+      { authorUid: 'C', authorName: 'Cy Gamma', createdAt: 6 }, // single ride — excluded
     ]
     const board = aggregateRideLeaderboard(rides)
     assert.equal(board.length, 2)
     assert.equal(board[0].userUid, 'A')
-    assert.equal(board[0].credits, 2.0)
-    assert.equal(board[0].reportCount, 2)
+    assert.equal(board[0].credits, 3.0)
+    assert.equal(board[0].reportCount, 3)
     assert.equal(board[1].userUid, 'B')
-    assert.equal(board[1].credits, 1.0)
+    assert.equal(board[1].credits, 2.0)
+    assert.ok(!board.some((e) => e.userUid === 'C'))
+  })
+
+  it('excludes riders with only one ride', () => {
+    const board = aggregateRideLeaderboard([
+      { authorUid: 'A', authorName: 'A', createdAt: 1 },
+      { authorUid: 'A', authorName: 'A', createdAt: 2 },
+      { authorUid: 'B', authorName: 'B', createdAt: 3 },
+    ])
+    assert.equal(board.length, 1)
+    assert.equal(board[0].userUid, 'A')
   })
 
   it('keeps the most recent name and photo, ignores authorless rides', () => {
@@ -176,6 +190,8 @@ describe('aggregateRideLeaderboard', () => {
   it('breaks ties by most recent ride', () => {
     const board = aggregateRideLeaderboard([
       { authorUid: 'A', authorName: 'A', createdAt: 5 },
+      { authorUid: 'A', authorName: 'A', createdAt: 5 },
+      { authorUid: 'B', authorName: 'B', createdAt: 9 },
       { authorUid: 'B', authorName: 'B', createdAt: 9 },
     ])
     assert.equal(board[0].userUid, 'B')

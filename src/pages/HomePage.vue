@@ -352,7 +352,7 @@
         </div>
 
         <!-- Leaderboard champions: top capacity reporter + top ride sharer -->
-        <div v-if="champion || rideChampion" class="row q-col-gutter-sm q-mb-sm">
+        <div v-if="championsLoaded" class="row q-col-gutter-sm q-mb-sm">
           <div v-if="champion" class="col-12 col-sm-6">
             <router-link
               to="/leaderboard"
@@ -383,8 +383,10 @@
             </router-link>
           </div>
 
-          <div v-if="rideChampion" class="col-12 col-sm-6">
+          <div class="col-12 col-sm-6">
+            <!-- Ride-share hero, or an invite to become one when nobody qualifies -->
             <router-link
+              v-if="rideChampion"
               to="/leaderboard"
               class="champion-row ride row items-center no-wrap q-pa-sm full-height"
             >
@@ -409,6 +411,24 @@
               <q-badge color="blue-8" text-color="white" class="text-body2 q-mr-xs">
                 {{ rideChampion.credits.toFixed(1) }}
               </q-badge>
+              <q-icon name="chevron_right" color="grey-6" />
+            </router-link>
+            <router-link
+              v-else
+              to="/rides/post"
+              class="champion-row ride row items-center no-wrap q-pa-sm full-height"
+            >
+              <div class="champion-star ride q-mr-sm">
+                <q-icon name="directions_car" color="white" size="24px" />
+              </div>
+              <div class="col overflow-hidden">
+                <div class="text-caption text-weight-bold text-blue-9">
+                  <q-icon name="star" size="14px" class="q-mb-xs" /> Ride Share Hero
+                </div>
+                <div class="text-caption text-grey-8">
+                  Could be you — offer or ask for more than one ride this month.
+                </div>
+              </div>
               <q-icon name="chevron_right" color="grey-6" />
             </router-link>
           </div>
@@ -944,6 +964,7 @@ const showSignInDialog = ref(false)
 const { getLeaderboard, getRideLeaderboard, subscribeLeaderboard } = useLeaderboard()
 const champion = ref(null)
 const rideChampion = ref(null)
+const championsLoaded = ref(false)
 let unsubscribeLeaderboard = null
 
 function pick(arr) {
@@ -989,6 +1010,7 @@ async function loadChampionsFallback() {
   } catch (err) {
     console.error('Failed to load ride-share champion:', err)
   }
+  championsLoaded.value = true
 }
 onMounted(() => {
   unsubscribeLeaderboard = subscribeLeaderboard(
@@ -996,6 +1018,7 @@ onMounted(() => {
       if (exists) {
         champion.value = reporters[0] || null
         rideChampion.value = riders[0] || null
+        championsLoaded.value = true
       } else {
         loadChampionsFallback()
       }

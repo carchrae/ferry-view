@@ -52,7 +52,7 @@
         <div class="text-subtitle1 text-weight-medium q-mb-xs">Ride Sharers</div>
         <div class="text-body2 text-grey-7 q-mb-sm">
           Ranked by ride offers and requests posted over the last 30 days. Every post — offering a
-          seat or asking for one — is worth one credit.
+          seat or asking for one — is worth one credit; riders with more than one post appear here.
         </div>
         <div v-if="loading && !rideBoard.length" class="q-py-lg text-center">
           <q-spinner color="primary" size="28px" />
@@ -62,10 +62,10 @@
           :entries="rideBoard"
           :me-uid="user?.uid"
           count-noun="post"
-          empty-text="No rides posted in the last 30 days yet."
+          empty-text="No one has posted more than one ride in the last 30 days yet."
         />
         <div v-if="!loading && !rideBoard.length" class="text-caption text-grey-6 q-mt-sm">
-          Be the first — <router-link to="/rides/post">post a ride</router-link>.
+          <router-link to="/rides/post">Post more than one ride</router-link> this month to appear here.
         </div>
       </div>
     </div>
