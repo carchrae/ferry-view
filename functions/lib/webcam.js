@@ -1,7 +1,13 @@
 import { logger } from 'firebase-functions/logger'
 import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
+import sharp from 'sharp'
 import { isRecent, nowInVancouver, dayjs } from './time.js'
+
+// Photo filenames are timestamped and never rewritten, so browsers can cache
+// them forever — without this, GCS's default 1-hour max-age makes every
+// return visit re-download ~hundreds of KB per photo.
+const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable'
 
 const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
@@ -22,6 +28,24 @@ async function captureSamples(url) {
     }
   }
   return samples
+}
+
+// The community camera serves 1280×720 JPEGs at ~400 KB — far more than the
+// card-sized display needs, and the departures page shows hundreds of them.
+// Halve the dimensions and re-encode (~40–60 KB). Compression failure must
+// never lose a capture: fall back to the original bytes.
+export async function compressSnapshot(buf) {
+  try {
+    const { width } = await sharp(buf).metadata()
+    if (!width) return buf
+    return await sharp(buf)
+      .resize({ width: Math.round(width / 2) })
+      .jpeg({ quality: 80 })
+      .toBuffer()
+  } catch (e) {
+    logger.warn('Snapshot compression failed, storing original:', e.message)
+    return buf
+  }
 }
 
 function pickBestFrame(samples) {
@@ -53,7 +77,10 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, dateIso, r
   const blobPath = `webcams/bowen/${dateIso}/${sailingKey}_${timestamp}.jpg`
   const bucket = getStorage().bucket()
   const file = bucket.file(blobPath)
-  await file.save(best, { contentType: 'image/jpeg' })
+  await file.save(best, {
+    contentType: 'image/jpeg',
+    metadata: { cacheControl: IMMUTABLE_CACHE },
+  })
   await file.makePublic()
 
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
@@ -82,12 +109,15 @@ export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arri
     return
   }
 
-  const best = pickBestFrame(samples)
+  const best = await compressSnapshot(pickBestFrame(samples))
   const timestamp = Date.now()
   const blobPath = `webcams/community/${dateIso}/${sailingTime}_To HSB_${timestamp}.jpg`
   const bucket = getStorage().bucket()
   const file = bucket.file(blobPath)
-  await file.save(best, { contentType: 'image/jpeg' })
+  await file.save(best, {
+    contentType: 'image/jpeg',
+    metadata: { cacheControl: IMMUTABLE_CACHE },
+  })
   await file.makePublic()
 
   const imageUrl = `https://storage.googleapis.com/${bucket.name}/${blobPath}`
