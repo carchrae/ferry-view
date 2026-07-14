@@ -640,11 +640,21 @@
         </q-card-section>
         <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <!-- The upcoming (boarding) sailing's lineup — only shown once that
-               sailing actually has frames (loadUpcomingLineup gates it to a
-               genuinely-upcoming sailing, so it never shows a departed
-               sailing's stale last frame). -->
+          <!-- Arrival & departure sections: each shows its timelapse (community
+               lineup / terminal cam) when frames exist, else the single photo. -->
+          <SailingTagCards
+            :arrival="lastBowenSailing?.arrival"
+            :departure="lastBowenSailing?.departure"
+            @rate="onDialogRate"
+            @crosswalk="onCardCrosswalk"
+          />
+
+          <!-- The upcoming (boarding) sailing's lineup, at the bottom — only
+               shown once that sailing actually has frames (loadUpcomingLineup
+               gates it to a genuinely-upcoming sailing, so it never shows a
+               departed sailing's stale last frame). -->
           <template v-if="upcomingLineup?.timelapse?.length">
+            <q-separator class="q-my-sm" />
             <div class="text-subtitle2 q-mb-xs">
               Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
             </div>
@@ -655,18 +665,7 @@
               taggable
               @crosswalk="onUpcomingCrosswalk"
             />
-            <q-separator class="q-my-sm" />
           </template>
-
-          <!-- Arrival & departure sections: each animates its timelapse
-               (community lineup / terminal cam) when frames exist, else the
-               single photo. -->
-          <SailingTagCards
-            :arrival="lastBowenSailing?.arrival"
-            :departure="lastBowenSailing?.departure"
-            @rate="onDialogRate"
-            @crosswalk="onCardCrosswalk"
-          />
 
           <div class="q-mt-sm text-center">
             <q-btn flat no-caps color="primary" icon="photo_camera" label="See other departures" to="/bowen-departures" @click="showSnapshotDialog = false" />

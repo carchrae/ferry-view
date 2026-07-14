@@ -19,7 +19,7 @@
         round
         dense
         flat
-        :icon="playing ? 'pause' : atEnd ? 'replay' : 'play_arrow'"
+        :icon="playing ? 'pause' : 'play_arrow'"
         :disable="frames.length < 2"
         @click="toggle"
       />
@@ -58,12 +58,13 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 
 // Animates the timelapse frames of one sailing (community lineup or Bowen
-// terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. Step through
-// with the ◀ / ▶ buttons; the center control shows the current frame's time.
+// terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. Opens on the
+// newest frame; step through with the ◀ / ▶ buttons or press play to run from
+// the start; the center control shows the current frame's time.
 //
-// autoplay (default true): play on mount and preload all frames. Pass false
-// where many players render at once (the Bowen Departures list) — the newest
-// frame shows statically and frames preload only when the user steps.
+// autoplay (default false): when true, play on mount and preload all frames.
+// Off by default — clips don't move until the user presses play/step, and the
+// static frame shown is the last one captured.
 //
 // taggable (default false): the center control becomes the crosswalk tagging
 // button — "Full to Crosswalk @ <current frame time>". Stepping to the frame
@@ -75,7 +76,7 @@ const props = defineProps({
   frames: { type: Array, required: true },
   crosswalkFullAt: { type: Number, default: null },
   taggable: { type: Boolean, default: false },
-  autoplay: { type: Boolean, default: true },
+  autoplay: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['crosswalk'])
@@ -84,8 +85,8 @@ const recordedLabel = computed(() =>
   props.crosswalkFullAt ? dayjs(props.crosswalkFullAt).tz(TZ).format('h:mm a') : null,
 )
 
-// Non-autoplay players open on the newest (most representative) frame.
-const index = ref(props.autoplay ? 0 : Math.max(props.frames.length - 1, 0))
+// Open on the newest (last-captured) frame — the current state of the lineup.
+const index = ref(Math.max(props.frames.length - 1, 0))
 const playing = ref(false)
 let timer = null
 let preloaded = false

@@ -202,9 +202,9 @@ defineProps({
   // When set, a missing photo renders as a same-size placeholder instead of
   // collapsing the column (used on the tag page for a consistent grid).
   placeholders: { type: Boolean, default: false },
-  // Auto-play timelapses. Disable on the departures list, where many render
-  // at once, so they show a static frame + play button (no timer/preload storm).
-  autoplay: { type: Boolean, default: true },
+  // Auto-play timelapses. Off by default — clips open on the last-captured
+  // frame and only move when the user presses play/step.
+  autoplay: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['rate', 'crosswalk'])

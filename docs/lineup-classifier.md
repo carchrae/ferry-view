@@ -56,25 +56,25 @@ and `departureTimelapsePaths` → the **departure** timelapse, as sorted
 
 The "Last Bowen Sailing" dialog:
 
-- The **arrival** and **departure** sections each animate their timelapse
+- The **arrival** and **departure** sections each show their timelapse
   (community lineup / terminal cam) when frames exist, and fall back to the
   single photo otherwise. There is no separate "Play history" toggle — the
   history *is* the arrival/departure section.
-- A **"Lineup building for the ⟨time⟩ sailing"** section shows the boarding
-  sailing's lineup. `loadUpcomingLineup()` gates this to a *genuinely
-  upcoming* sailing (scheduled time still ahead, 20-min late grace), so a
-  sailing that departed but never got its arrival photo can't surface its
-  stale last frame.
+- A **"Lineup building for the ⟨time⟩ sailing"** section at the **bottom** of
+  the dialog shows the boarding sailing's lineup. `loadUpcomingLineup()` gates
+  this to a *genuinely upcoming* sailing (scheduled time still ahead, 20-min
+  late grace), so a sailing that departed but never got its arrival photo
+  can't surface its stale last frame.
 
-`src/components/LineupTimelapse.vue` animates frames (~0.7 s/frame). Controls
-are a play/pause toggle on the left, then ◀ / ▶ step buttons flanking a center
-control. `autoplay` (default true) plays on mount and preloads; the Bowen
-Departures list passes `autoplay=false` so its many players show a static
-newest frame and only preload/step on demand. When `taggable` (arrival/lineup only) the center
-control is the crosswalk button — "Full to Crosswalk @ ⟨current frame time⟩",
-recording that frame's time (§3), and showing the saved time once recorded.
-The non-taggable terminal departure timelapse shows the current frame's time
-as a plain label instead.
+`src/components/LineupTimelapse.vue` shows the **last-captured** frame by
+default and never auto-plays (`autoplay` default false); the clip only moves
+when the user presses play (runs from the start) or steps. Controls are a
+play/pause toggle on the left, then ◀ / ▶ step buttons flanking a center
+control. When `taggable` (arrival/lineup only) the center control is the
+crosswalk button — "Full to Crosswalk @ ⟨current frame time⟩", recording that
+frame's time (§3), and showing the saved time once recorded. The non-taggable
+terminal departure timelapse shows the current frame's time as a plain label
+instead.
 
 ## 3. Crosswalk tagging (the labeling pipeline)
 
