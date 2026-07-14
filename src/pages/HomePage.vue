@@ -324,7 +324,7 @@
                   </div>
                 </div>
                 <div v-if="anyCrosswalkBadge" class="text-center text-caption text-grey-6 q-mt-sm">
-                  CW = full to the crosswalk
+                  C = full to the crosswalk
                 </div>
                 <div class="text-center text-caption text-grey-5 q-mt-sm">
                   Predictions are just a guess — there's no certainty with the ferry.
@@ -901,7 +901,7 @@
             </div>
           </div>
           <div v-if="anyCrosswalkBadge" class="text-center text-caption text-grey-6 q-mt-sm">
-            CW = full to the crosswalk
+            C = full to the crosswalk
           </div>
         </q-card-section>
         <q-separator />
@@ -1503,16 +1503,16 @@ function formatFilledTime(val) {
 }
 
 // Bowen-side counterpart of the HSB "Full@6:27" badge: the rider-marked time
-// the car lineup reached the crosswalk. Abbreviated "CW" (explained by a note
+// the car lineup reached the crosswalk. Abbreviated "C" (explained by a note
 // under each schedule) because the sailing rows are too narrow for the full
 // word. Only Bowen sailings ever carry crosswalkFullAt (HSB has no lineup
 // camera), just as only HSB sailings get automated "full at" times.
 function crosswalkBadge(event) {
-  return event?.crosswalkFullAt ? `CW${formatFilledTime(event.crosswalkFullAt)}` : null
+  return event?.crosswalkFullAt ? `C${formatFilledTime(event.crosswalkFullAt)}` : null
 }
 
 // True when any Bowen sailing shown (past or upcoming) carries a crosswalk
-// tag, so the "CW = …" legend only appears when there's a CW badge to explain.
+// tag, so the "C = …" legend only appears when there's a C badge to explain.
 const anyCrosswalkBadge = computed(() =>
   [
     ...recentPastBowen.value,
