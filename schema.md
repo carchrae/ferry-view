@@ -96,6 +96,11 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `webcamSnapshotPath` | string? | Firebase Storage path to departure webcam photo |
 | `communitySnapshotPath` | string? | Firebase Storage path to the arrival/lineup photo (community camera), keyed to the departure this lineup predicts |
 | `communityArrivalTime` | string? | `"15:00"` — actual arrival time of the ferry in the lineup photo |
+| `lineupTimelapsePaths` | string[]? | Storage paths of the lineup timelapse frames (community camera, one per 5 min while the lineup builds — see [docs/webcams.md](docs/webcams.md)) |
+| `departureTimelapsePaths` | string[]? | Storage paths of the loading timelapse frames (terminal camera, one per minute from arrival/T−10 until departure) |
+| `crosswalkFullAt` | number? | Epoch ms when a rider marked the lineup full to the crosswalk (first tag wins, via `onLineupReport`) |
+| `crosswalkFullAtAuto` | number? | Epoch ms of the first timelapse frame the lineup classifier scored positive (kept separate from the human tag; unused until a trained model ships) |
+| `crosswalkAutoProb` | number? | Classifier probability behind `crosswalkFullAtAuto` |
 
 ---
 
@@ -108,8 +113,29 @@ Records of capacity changes (both API-reported and user-submitted).
 | `sailingKey` | string | `"2026-05-20_10:35_To HSB"` — links to sailingStatus |
 | `capacity` | string | `"Full"`, `"Not Full"` (user-reported: had room, amount unknown), or percent available like `"71%"` |
 | `recordedAt` | number | Epoch ms |
-| `filledAt` | number? | Epoch ms when full, or `null` |
+| `filledAt` | number? | Epoch ms when full, `"user_reported"` (user tag with no known fill time), or `null` |
 | `userUid` | string? | Firebase UID — present only for user-submitted ratings. Creation of a user-submitted record triggers the `onCapacityReport` function, which applies it to `sailingStatus` and refreshes `ferryStatus/current` for today's sailings. |
+| `userReport` | boolean? | `true` on user-submitted records only — the leaderboard queries on this flag so automated records never enter the scan |
+| `userName` | string? | Reporter display name (null when `anonymous`) |
+| `userPhoto` | string? | Resolved avatar URL (null when `anonymous`) |
+| `anonymous` | boolean? | Reporter opted to appear as a cat on the leaderboard |
+
+---
+
+## `lineupReports/{autoId}`
+
+Rider-submitted "car lineup reached the crosswalk" marks (see
+[docs/lineup-classifier.md](docs/lineup-classifier.md)). Never deleted — they
+are the classifier's training labels. The `onLineupReport` trigger stamps the
+first tag onto the sailing's `crosswalkFullAt`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sailingKey` | string | `"2026-05-20_10:35_To HSB"` |
+| `crosswalkAt` | number | Epoch ms of the timelapse frame the rider tagged (the frame's capture time, not the tap time) |
+| `recordedAt` | number | Epoch ms the tag was submitted |
+| `userUid` | string | Firebase UID |
+| `userName` / `userPhoto` / `anonymous` | | As in `capacityHistory` |
 
 ---
 
@@ -127,15 +153,29 @@ Latest departure webcam photo from the Bowen terminal. Single document, overwrit
 
 ## `snapshots/latestBowenArrival`
 
-Latest arrival webcam photo (community camera). Single document, overwritten on each capture.
+Latest arrival webcam photo (community camera). Single document, overwritten on each capture (also the per-arrival dedup guard).
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `imageUrl` | string | Public HTTPS URL to the photo in Firebase Storage |
-| `sailingKey` | string | `"2026-05-20_15:00_Arrival"` |
+| `sailingKey` | string | `"2026-05-20_15:15_To HSB"` — the next scheduled Bowen departure after the arrival (the sailing whose lineup the photo shows) |
 | `arrivalTime` | string | `"15:00"` — actual arrival time |
 | `dateIso` | string | `"2026-05-20"` |
 | `recordedAt` | number | Epoch ms |
+
+---
+
+## `aggregates/{docId}`
+
+Server-maintained rollups so clients read one doc instead of range-scanning
+collections (public read, no client writes). Records use short keys; the
+composables expand them.
+
+| Doc | Built by | Contents |
+|-----|----------|----------|
+| `historicalStats` | `refreshHistoryAggregate` nightly 03:10 (manual seed: `rebuildHistoryAggregate`) | `{ start, end, weeks, updatedAt, sailings[] }` — last 8 weeks of `sailingStatus`, ending yesterday. Record keys: `d`ateIso, `t`ime, `dir`ection, `dep`arture, `cap`acity, `src`, `fa` (filledAt), `cw` (crosswalkFullAt) |
+| `leaderboard` | `recomputeLeaderboard` on capacity/ride triggers + nightly 03:00 (manual: `rebuildLeaderboard`) | `{ reporters[], riders[], updatedAt }` — 30-day ranked boards (max 100 entries each) |
+| `bowenSailings` | Incremental upserts from every webcam capture / user report, reconciled by `refreshBowenSailingsAggregate` nightly 03:20 (manual seed: `rebuildBowenSailings`) | `{ start, end, updatedAt, sailings[] }` — last 13 days of To HSB sailings that have media. Record keys: `d`, `t`, `cap`, `src`, `wp`/`cp` (photo paths), `ca` (arrival time), `cw`, and `lt`/`dt` — timelapse frame **epoch suffixes only** (full Storage paths are deterministic and reconstructed client-side) |
 
 ---
 
@@ -179,8 +219,14 @@ Web push notification subscriptions.
 ## Firebase Storage
 
 ```
-webcams/bowen/{dateIso}/{sailingKey}_{timestamp}.jpg
-webcams/community/{dateIso}/{arrivalTime}_Arrival_{timestamp}.jpg
+webcams/bowen/{dateIso}/{sailingKey}_{epoch-ms}.jpg                  departure photo
+webcams/bowen/{dateIso}/timelapse/{time}_To HSB_{epoch-ms}.jpg       loading timelapse frame
+webcams/community/{dateIso}/{time}_To HSB_{epoch-ms}.jpg             arrival/lineup photo
+webcams/community/{dateIso}/timelapse/{time}_To HSB_{epoch-ms}.jpg   lineup timelapse frame
 ```
 
-Daily cleanup via `cleanupWebcams` deletes files with `timeCreated` older than 14 days (window matches the `/tag` page's two-week tagging range).
+The `_{epoch-ms}.jpg` suffix is the capture time; clients parse it for frame
+time labels. Capture timing, expected daily counts, and volume live in
+[docs/webcams.md](docs/webcams.md).
+
+**Retention**: daily cleanup via `cleanupWebcams` (00:00 Vancouver) deletes files with `timeCreated` older than **14 days** (window matches the departures page's two-week tagging range). Firestore pointers/tags are kept forever; only the pixels expire — hence the lineup-dataset export cron ([docs/lineup-classifier.md §6](docs/lineup-classifier.md)).

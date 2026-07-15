@@ -16,10 +16,10 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 - `formatDeckBadge` replaces two separate template functions.
 - Ride request contact info is public (no sign-in), uses `sms:` protocol for SMS method.
 - SailingKey format normalization discussed twice but deferred both times.
-- Webcam images served via Firebase Storage download URL. Storage paths include `_${Date.now()}` timestamp for 1-day TTL cleanup.
+- Webcam images served via Firebase Storage download URL. Storage paths include a `_${Date.now()}` capture-time suffix (clients parse it for frame time labels).
 - Snapshot image uses plain `<img>` with CSS `aspect-ratio: 16/9` instead of Quasar `q-img` due to zero-height sizing bug.
 - Netlify proxy redirect for webcam images disabled while debugging frontend display.
-- Daily cleanup function `cleanupWebcams` deletes `webcams/` files older than 1 day (checks `timeCreated` metadata).
+- Daily cleanup function `cleanupWebcams` deletes `webcams/` files older than **14 days** (checks `timeCreated` metadata). Capture timing/volume/retention: `docs/webcams.md`.
 
 ## Relevant Files
 - `functions/lib/constants.js`: shared lateness helpers and notification defaults.
@@ -27,7 +27,7 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 - `functions/lib/enrich.js`: `enrichDeckCapacity`, `augmentFromFilledStatus`, `augmentFromCapacityHistory`.
 - `functions/lib/helpers.js`: `updateSailingStatus` — does not clear `filledAt` when `null` is passed.
 - `functions/lib/record.js`: `recordCapacityChanges`, `recordDepartureTimes` — both generate sailingKeys with inconsistent format.
-- `functions/lib/webcam.js`: `captureBowenWebcam`, `captureBowenCommunityWebcam` — multi-sample capture, Firebase Storage upload, snapshot doc update.
+- `functions/lib/webcam.js`: single photos (`captureBowenWebcam`, `captureBowenCommunityWebcam`) + timelapses (`captureLineupTimelapse`, `captureDepartureTimelapse`) with their arrival-gated decision functions — multi-sample capture, Storage upload, sailingStatus/aggregate/snapshot doc updates. See `docs/webcams.md`.
 - `functions/lib/lateness.js`: notification logic.
 - `functions/lib/holidays.js`: BC statutory holiday computation (`getBcHolidays`, `holidayName`, `getImpactedDates`, `getHolidayContext`) — long-weekend awareness; holiday-impacted dates excluded from historical baselines.
 - `src/composables/useHistoricalStats.js`: shared history aggregation. `aggregateSailings` groups sailingStatus by direction/day-of-week/time, detects lateness **exceptions** (median+MAD outliers, excluded from averages but retained/flagged), and exposes `getTypical`/`typicalHints` for the home page. Used by both HistoryPage and HomePage.

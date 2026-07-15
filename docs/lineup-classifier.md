@@ -7,6 +7,10 @@ infrastructure, no GPUs, no external services.
 
 ## 1. Timelapse capture (server)
 
+> Full timing rules, expected frame counts, and retention for **all** webcam
+> paths live in [webcams.md](webcams.md) — this section keeps just what the
+> training pipeline depends on.
+
 Between sailings, the community camera watches the car lineup build for the
 **next** Bowen departure. The existing 1-minute `pollFerryStatus` drives
 capture statelessly — `timelapseDecision()` in `functions/lib/webcam.js`
@@ -17,8 +21,11 @@ says yes only when **all** of these hold:
   (from the live activity log, falling back to the scheduled time when the
   log is stale; no departure yet today → no capture, which also kills
   overnight frames),
-- there **is** a later Bowen sailing today, and it departs **before 9 pm**
-  (the 21:30 / 22:30 / 23:30 boats get no timelapse).
+- the ferry has **not yet arrived back at Bowen** — once it's docked the
+  lineup is loading, so frames stop at arrival and the terminal camera
+  (§1b) takes over,
+- there **is** a later not-yet-departed Bowen sailing today, and it departs
+  **before 9 pm** (the 21:30 / 22:30 / 23:30 boats get no timelapse).
 
 Each frame is captured from the community cam, compressed (~40–80 KB,
 half-resolution JPEG), stored at
@@ -32,17 +39,22 @@ and appended to the sailing's `sailingStatus` doc as `lineupTimelapsePaths`
 zero extra Firestore reads. Frames are public, served with immutable cache
 headers, and **deleted after 14 days** by the nightly `cleanupOldWebcams`.
 
-Volume: ~100–140 frames/day ≈ 8–10 MB/day ≈ 130 MB steady state — inside
-the free Storage tier.
+Volume: capture runs from 30 min after the previous departure until the
+ferry arrives back, so ~4–8 frames per sailing, ~50–100 frames/day —
+inside the free Storage tier.
 
 ## 1b. Departure timelapse (Bowen terminal camera)
 
 A second timelapse watches the **Bowen terminal** camera as the ferry loads.
 `departureTimelapseDecision()` captures **every minute** (no 5-min gate),
-starting **10 minutes before** a departure and continuing **until the ferry
-actually departs** — detected via `matchedDepartureTime`, which the poll sets
-on the schedule entry once the sailing has left, so capture stops on its own
-(a −20 min safety cap covers a departure that's never detected). Frames go to
+starting at **max(ferry arrival at Bowen, 10 minutes before the scheduled
+time)** — a late ferry doesn't burn frames on an empty berth — and continuing
+**until the ferry actually departs** — detected via `matchedDepartureTime`,
+which the poll sets on the schedule entry once the sailing has left, so
+capture stops on its own. Safety bounds: at most 30 min past the effective
+start, never a sailing >60 min past schedule, and a legacy `T−10…T+20` window
+when arrival is undetectable (AIS outage) — see
+[webcams.md](webcams.md) for details. Frames go to
 `webcams/bowen/<dateIso>/timelapse/…` and are appended to the sailing's
 `departureTimelapsePaths`. Terminal frames are already tiny (~14 KB) so they
 are stored uncompressed.
