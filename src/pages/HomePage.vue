@@ -1546,7 +1546,7 @@ function shortText(text, isMobile) {
 function formatFilledTime(val) {
   if (!val) return ''
   if (val === 'user_reported') return ''
-  return `:${dayjs(val).tz(TZ).format('h:mm')}`
+  return ` ${dayjs(val).tz(TZ).format('h:mm')}`
 }
 
 // Bowen-side counterpart of the HSB "Full@6:27" badge: the rider-marked time
