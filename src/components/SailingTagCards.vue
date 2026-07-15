@@ -14,6 +14,7 @@
           v-if="arrival.timelapse && arrival.timelapse.length"
           :frames="arrival.timelapse"
           :crosswalk-full-at="arrival.crosswalkFullAt || null"
+          :default-ts="arrival.arrivalTs || null"
           taggable
           :autoplay="autoplay"
           @crosswalk="emit('crosswalk', { sailingKey: arrival.sailingKey, ...$event })"

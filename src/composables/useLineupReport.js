@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { addDoc, collection } from 'firebase/firestore'
+import { addDoc, collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { resolveAvatarUrl } from 'src/composables/useAvatar'
@@ -41,4 +41,28 @@ export function useLineupReport() {
   }
 
   return { user, needsSignIn, saveCrosswalkMark }
+}
+
+// All crosswalk marks recorded in the last `days` days (lineupReports is
+// world-readable), for showing who marked what on the departures page. The
+// default window matches the page's two-week photo range.
+export async function loadRecentLineupReports(days = 14) {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+  const snap = await getDocs(
+    query(collection(db, 'lineupReports'), where('recordedAt', '>=', cutoff)),
+  )
+  const reports = []
+  snap.forEach((docSnap) => {
+    const d = docSnap.data()
+    if (!d.userUid || typeof d.crosswalkAt !== 'number') return
+    reports.push({
+      sailingKey: d.sailingKey,
+      crosswalkAt: d.crosswalkAt,
+      recordedAt: d.recordedAt || 0,
+      userUid: d.userUid,
+      userName: d.userName || null,
+      anonymous: d.anonymous || false,
+    })
+  })
+  return reports
 }

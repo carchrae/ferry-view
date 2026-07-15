@@ -53,6 +53,14 @@ function buildCards(s, todayIso) {
   // otherwise falls back to the single photo.
   const arrivalTimelapse = buildTimelapse(s.lineupTimelapsePaths)
   const departureTimelapse = buildTimelapse(s.departureTimelapsePaths)
+  // When the ferry arrived, as an epoch — the arrival photo's capture time
+  // (exact), else the logged arrival time. The arrival timelapse defaults to
+  // the frame nearest this moment (the peak lineup) instead of the last frame.
+  const arrivalTs =
+    captureTs(s.communitySnapshotPath) ||
+    (s.communityArrivalTime && s.dateIso
+      ? dayjs.tz(`${s.dateIso} ${s.communityArrivalTime}`, TZ).valueOf()
+      : null)
   return {
     ...s,
     dayLabel: dayLabel(s.dateIso, todayIso),
@@ -61,6 +69,7 @@ function buildCards(s, todayIso) {
         ? {
             ...shared,
             crosswalkFullAt: s.crosswalkFullAt || null,
+            arrivalTs,
             timelapse: arrivalTimelapse,
             imageUrl: s.communitySnapshotPath ? imageUrl(s.communitySnapshotPath) : null,
             timeLabel:

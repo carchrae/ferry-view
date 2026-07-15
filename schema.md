@@ -98,7 +98,7 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `communityArrivalTime` | string? | `"15:00"` — actual arrival time of the ferry in the lineup photo |
 | `lineupTimelapsePaths` | string[]? | Storage paths of the lineup timelapse frames (community camera, one per 5 min while the lineup builds — see [docs/webcams.md](docs/webcams.md)) |
 | `departureTimelapsePaths` | string[]? | Storage paths of the loading timelapse frames (terminal camera, one per minute from arrival/T−10 until departure) |
-| `crosswalkFullAt` | number? | Epoch ms when a rider marked the lineup full to the crosswalk (first tag wins, via `onLineupReport`) |
+| `crosswalkFullAt` | number? | Epoch ms when a rider marked the lineup full to the crosswalk (latest tag wins, via `onLineupReport`) |
 | `crosswalkFullAtAuto` | number? | Epoch ms of the first timelapse frame the lineup classifier scored positive (kept separate from the human tag; unused until a trained model ships) |
 | `crosswalkAutoProb` | number? | Classifier probability behind `crosswalkFullAtAuto` |
 

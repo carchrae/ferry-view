@@ -23,7 +23,7 @@
         :disable="frames.length < 2"
         @click="toggle"
       />
-      <q-btn round dense flat icon="chevron_left" :disable="index <= 0" @click="step(-1)" />
+      <q-btn round dense flat icon="chevron_left" :disable="frames.length < 2" @click="step(-1)" />
       <q-btn
         v-if="taggable"
         no-caps
@@ -35,7 +35,7 @@
         :color="crosswalkFullAt ? 'grey-7' : 'deep-orange'"
         icon="directions_walk"
         :label="centerLabel"
-        :disable="Boolean(crosswalkFullAt) || !current.ts"
+        :disable="!current.ts"
         @click="confirmCrosswalk"
       />
       <div v-else class="col text-center text-caption text-grey-7">
@@ -48,38 +48,50 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { dayjs, TZ } from '../../functions/lib/time.js'
 
 // Animates the timelapse frames of one sailing (community lineup or Bowen
-// terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. Opens on the
-// newest frame; step through with the ◀ / ▶ buttons or press play to run from
-// the start; the center control shows the current frame's time.
+// terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. Opens on
+// the frame nearest `defaultTs` when given (e.g. the ferry's arrival — the
+// peak lineup), else the newest frame; step through with the ◀ / ▶ buttons
+// or press play to run from the start; the center control shows the current
+// frame's time.
 //
 // autoplay (default false): when true, play on mount and preload all frames.
-// Off by default — clips don't move until the user presses play/step, and the
-// static frame shown is the last one captured.
+// Off by default — clips don't move until the user presses play/step.
 //
 // taggable (default false): the center control becomes the crosswalk tagging
 // button — "Full to Crosswalk @ <current frame time>". Stepping to the frame
 // where cars reach the crosswalk and pressing it records THAT frame's capture
-// time (emits 'crosswalk' with { ts, timeLabel }). Once recorded it shows the
-// saved time, disabled. Only the community lineup (arrival) is taggable, never
-// the terminal (departure) cam.
+// time (emits 'crosswalk' with { ts, timeLabel }). An existing mark doesn't
+// lock it: the button turns into "Re-mark …" so a later rider can record a
+// different frame (the latest mark wins server-side). Only the community
+// lineup (arrival) is taggable, never the terminal (departure) cam.
 const props = defineProps({
   frames: { type: Array, required: true },
   crosswalkFullAt: { type: Number, default: null },
   taggable: { type: Boolean, default: false },
   autoplay: { type: Boolean, default: false },
+  defaultTs: { type: Number, default: null },
 })
 
 const emit = defineEmits(['crosswalk'])
 
-const recordedLabel = computed(() =>
-  props.crosswalkFullAt ? dayjs(props.crosswalkFullAt).tz(TZ).format('h:mm a') : null,
-)
-
-// Open on the newest (last-captured) frame — the current state of the lineup.
-const index = ref(Math.max(props.frames.length - 1, 0))
+// Open on the frame nearest defaultTs, else the newest (last-captured) frame.
+function initialIndex() {
+  if (props.frames.length === 0) return 0
+  if (props.defaultTs == null) return props.frames.length - 1
+  let best = props.frames.length - 1
+  let bestDiff = Infinity
+  props.frames.forEach((f, i) => {
+    const diff = Math.abs((f.ts || 0) - props.defaultTs)
+    if (f.ts && diff < bestDiff) {
+      bestDiff = diff
+      best = i
+    }
+  })
+  return best
+}
+const index = ref(initialIndex())
 const playing = ref(false)
 let timer = null
 let preloaded = false
@@ -89,7 +101,7 @@ const atEnd = computed(() => index.value >= props.frames.length - 1)
 
 const centerLabel = computed(() =>
   props.crosswalkFullAt
-    ? `Crosswalk @ ${recordedLabel.value}`
+    ? `Re-mark Crosswalk @ ${current.value.timeLabel || '—'}`
     : `Full to Crosswalk @ ${current.value.timeLabel || '—'}`,
 )
 
@@ -129,16 +141,15 @@ function toggle() {
   else play()
 }
 
-// Stepping is a manual scrub: stop playback and move one frame. ▶ on the
-// last frame wraps back to the start; ◀ still stops at the first frame.
+// Stepping is a manual scrub: stop playback and move one frame, wrapping at
+// both ends (▶ on the last frame goes to the first, ◀ on the first to the
+// last).
 function step(delta) {
   pause()
   preloadAll()
-  if (delta > 0 && atEnd.value) {
-    index.value = 0
-    return
-  }
-  index.value = Math.min(Math.max(index.value + delta, 0), props.frames.length - 1)
+  const n = props.frames.length
+  if (n === 0) return
+  index.value = (index.value + delta + n) % n
 }
 
 function confirmCrosswalk() {

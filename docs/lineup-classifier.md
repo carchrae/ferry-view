@@ -84,9 +84,11 @@ when the user presses play (runs from the start) or steps. Controls are a
 play/pause toggle on the left, then ◀ / ▶ step buttons flanking a center
 control. When `taggable` (arrival/lineup only) the center control is the
 crosswalk button — "Full to Crosswalk @ ⟨current frame time⟩", recording that
-frame's time (§3), and showing the saved time once recorded. The non-taggable
-terminal departure timelapse shows the current frame's time as a plain label
-instead.
+frame's time (§3). Once a mark exists the button becomes "Re-mark Crosswalk
+@ ⟨frame⟩" so a later rider can record a different frame. The arrival
+timelapse opens on the frame nearest the ferry's arrival (the peak lineup).
+The non-taggable terminal departure timelapse shows the current frame's time
+as a plain label instead.
 
 ## 3. Crosswalk tagging (the labeling pipeline)
 
@@ -100,8 +102,12 @@ Each confirmation is appended to the **`lineupReports`** collection
 (`useLineupReport.js`; rules mirror `capacityHistory` — public read,
 authenticated create, `userUid` must match). The `onLineupReport` trigger
 stamps `crosswalkFullAt` (epoch ms) onto the sailing's `sailingStatus` doc —
-**first tag wins** — and the player then shows "recorded at …" instead of
-the button. The raw reports are never deleted: they are the training labels.
+the **latest tag wins**, so anyone can correct an earlier mark (mirroring
+capacity re-tagging). The departures page shows one chip per reporter with
+their marked time. The raw reports are never deleted: they are the training
+labels. ⚠️ Note the exporter (§5) labels frames from the **earliest**
+`crosswalkAt` of a sailing, so a correction to a *later* time doesn't yet
+supersede the original label in the training data.
 
 ## 4. The classifier
 

@@ -78,7 +78,10 @@
           @rate="onRate(sailing, $event)"
           @crosswalk="onCrosswalk(sailing, $event)"
         />
-        <div v-if="sailing.reports.length" class="row items-center q-gutter-xs q-mt-sm">
+        <div
+          v-if="sailing.reports.length || sailing.crosswalkReports.length"
+          class="row items-center q-gutter-xs q-mt-sm"
+        >
           <span class="text-caption text-grey-7 q-mr-xs">Reports:</span>
           <q-chip
             v-for="r in sailing.reports"
@@ -90,6 +93,19 @@
             class="q-my-none"
           >
             {{ formatReporterName(r.userName) }} · {{ capacityFullLabel(r.capacity) }}
+          </q-chip>
+          <q-chip
+            v-for="r in sailing.crosswalkReports"
+            :key="'cw' + r.userUid + r.recordedAt"
+            dense
+            square
+            color="deep-orange"
+            text-color="white"
+            icon="directions_walk"
+            class="q-my-none"
+          >
+            {{ formatReporterName(r.userName) }} · crosswalk @ {{ crosswalkTimeLabel(r.crosswalkAt) }}
+            <q-tooltip>Marked {{ crosswalkTimeLabel(r.recordedAt) }} as the time the lineup reached the crosswalk</q-tooltip>
           </q-chip>
         </div>
       </q-card-section>
@@ -103,11 +119,11 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { formatTime12h, normalizeTime } from '../../functions/lib/time.js'
+import { formatTime12h, normalizeTime, dayjs, TZ } from '../../functions/lib/time.js'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
-import { useLineupReport } from 'src/composables/useLineupReport'
+import { useLineupReport, loadRecentLineupReports } from 'src/composables/useLineupReport'
 import { useLeaderboard, scoreSailing, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { loadBowenSailings } from 'src/composables/useBowenSailings'
@@ -148,13 +164,23 @@ async function loadSailings() {
     const built = await loadBowenSailings()
 
     // Attach each sailing's user reports (for reporter chips) and conflict flag.
+    const [userReports, lineupReports] = await Promise.all([
+      loadRecentUserReports(),
+      loadRecentLineupReports(),
+    ])
     const reportsByKey = new Map()
-    for (const r of await loadRecentUserReports()) {
+    for (const r of userReports) {
       if (!reportsByKey.has(r.sailingKey)) reportsByKey.set(r.sailingKey, [])
       reportsByKey.get(r.sailingKey).push(r)
     }
+    const crosswalkByKey = new Map()
+    for (const r of lineupReports) {
+      if (!crosswalkByKey.has(r.sailingKey)) crosswalkByKey.set(r.sailingKey, [])
+      crosswalkByKey.get(r.sailingKey).push(r)
+    }
     for (const sailing of built) {
       attachReports(sailing, reportsByKey.get(sailing.sailingKey) || [])
+      attachCrosswalkReports(sailing, crosswalkByKey.get(sailing.sailingKey) || [])
     }
 
     allSailings.value = built
@@ -179,6 +205,22 @@ function attachReports(sailing, reports) {
   sailing.conflict = disputed && !resolved
 }
 
+// One crosswalk chip per user (their latest mark), oldest submission first.
+// The sailing's effective crosswalkFullAt is the newest mark overall (latest
+// wins server-side); the chips show who marked which time.
+function attachCrosswalkReports(sailing, reports) {
+  const latest = new Map()
+  for (const r of reports) {
+    const prev = latest.get(r.userUid)
+    if (!prev || (r.recordedAt || 0) > (prev.recordedAt || 0)) latest.set(r.userUid, r)
+  }
+  sailing.crosswalkReports = [...latest.values()].sort(
+    (a, b) => (a.recordedAt || 0) - (b.recordedAt || 0),
+  )
+}
+
+const crosswalkTimeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
+
 function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
   saveCrosswalkMark(sailingKey, ts)
     .then((saved) => {
@@ -187,6 +229,17 @@ function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
         return
       }
       if (sailing.arrival) sailing.arrival.crosswalkFullAt = ts
+      // Optimistically reflect the mark in the chips (replacing this user's
+      // previous one) so it shows before the next reload.
+      const mine = {
+        sailingKey,
+        crosswalkAt: ts,
+        recordedAt: Date.now(),
+        userUid: user.value?.uid,
+        userName: user.value?.displayName || user.value?.email || null,
+      }
+      const others = (sailing.crosswalkReports || []).filter((r) => r.userUid !== mine.userUid)
+      attachCrosswalkReports(sailing, [...others, mine])
       // Crosswalk marks aren't leaderboard-scored, so no points label — but
       // they're a solid contribution: mid-tier fanfare.
       celebrate(0.5, { label: null })

@@ -349,9 +349,10 @@ export const onCapacityReport = onDocumentCreated('capacityHistory/{docId}', asy
 })
 
 // A rider marked the moment the car lineup reached the crosswalk. Stamp it on
-// the sailing's doc — first tag wins (the interesting moment is when the
-// lineup *becomes* that long); all raw reports stay in lineupReports as
-// labeled training data for a future automated detector.
+// the sailing's doc — the LATEST tag wins, so a later rider can correct the
+// original mark (mirrors capacity, where user tags may be re-tagged); all raw
+// reports stay in lineupReports as labeled training data for a future
+// automated detector.
 export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (event) => {
   const r = event.data?.data()
   if (!r?.userUid || typeof r.crosswalkAt !== 'number') return
@@ -362,8 +363,6 @@ export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (
   }
   const [, dateIso, time, direction] = m
   const ref = db.collection('sailingStatus').doc(r.sailingKey)
-  const snap = await ref.get()
-  if (snap.exists && snap.data().crosswalkFullAt) return
   await ref.set(
     {
       sailingKey: r.sailingKey,
