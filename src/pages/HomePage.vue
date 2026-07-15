@@ -540,27 +540,6 @@
                 @error="handleCamError(cam.globalIndex)"
                 @load="handleCamLoad(cam.globalIndex)"
               >
-                <div
-                  class="absolute-bottom transparent text-center q-ma-none q-pa-xs"
-                  v-if="
-                    cam.globalIndex === 5 && communitySailingEntry && !hideCommunityWebcamFullButton
-                  "
-                  @click.stop
-                >
-                  <q-btn
-                    v-if="!communityWebcamFull"
-                    no-caps
-                    outline
-                    dense
-                    color="negative"
-                    label="Does that look full?"
-                    class="bg-white full-width"
-                    @click="markCommunityFull"
-                  />
-                  <div v-else class="bg-white text-positive q-pa-xs rounded-borders text-caption">
-                    <q-icon name="check" /> Marked as Full
-                  </div>
-                </div>
                 <template v-slot:error>
                   <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
                     <q-icon name="videocam_off" size="24px" />
@@ -1030,8 +1009,7 @@ import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
 import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
-import { isStaging, db } from 'src/boot/firebase'
-import { addDoc, collection } from 'firebase/firestore'
+import { isStaging } from 'src/boot/firebase'
 import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
 import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
@@ -1039,7 +1017,6 @@ import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import LineupTimelapse from 'src/components/LineupTimelapse.vue'
 import { useLineupReport } from 'src/composables/useLineupReport'
-import { useAuth } from 'src/composables/useAuth'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor } from 'src/composables/useCapacityDisplay'
@@ -1063,8 +1040,6 @@ const oneMinuteFromNowDate = () => nowInVancouver().add(1, 'minute')
 const nowMs = () => Date.now()
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
-
-const { user } = useAuth()
 
 const showSignInDialog = ref(false)
 
@@ -1244,31 +1219,6 @@ const onUpcomingCrosswalk = (e) =>
   recordCrosswalk(upcomingLineup.value?.sailingKey, e, (v) => {
     if (upcomingLineup.value) upcomingLineup.value.crosswalkFullAt = v
   })
-
-function markCommunityFull() {
-  const entry = communitySailingEntry.value
-  if (!entry) return
-  if (!user.value) {
-    showSignInDialog.value = true
-    return
-  }
-  const dateIso = nowInVancouver().format('YYYY-MM-DD')
-  const sailingKey = `${dateIso}_${entry.time}_To HSB`
-  addDoc(collection(db, 'capacityHistory'), {
-    sailingKey,
-    capacity: 'Full',
-    filledAt: Date.now(),
-    recordedAt: Date.now(),
-    userUid: user.value.uid,
-  })
-    .then(() => {
-      entry.lastCapacity = 'Full'
-      entry.filledAt = Date.now()
-      // First live "Full" tag on the boarding sailing — jackpot.
-      celebrate(1)
-    })
-    .catch((err) => console.error('Failed to mark community full:', err))
-}
 
 function captureDebugData() {
   const payload = {
@@ -1477,22 +1427,6 @@ const displayCams = computed(() =>
     globalIndex: i,
   })),
 )
-
-const communitySailingEntry = computed(() => {
-  if (!ferryData.value) return null
-  const now = nowDate()
-  return (
-    ferryData.value.bowenSchedule
-      .filter((s) => timeToDate(s.time))
-      .find((s) => timeToDate(s.time) > now) || null
-  )
-})
-
-const hideCommunityWebcamFullButton = true
-const communityWebcamFull = computed(() => {
-  const e = communitySailingEntry.value
-  return e?.lastCapacity === 'Full' && !!e?.filledAt
-})
 
 const fullscreen = ref(false)
 const fullscreenIndex = ref(0)
