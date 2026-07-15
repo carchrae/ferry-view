@@ -1,32 +1,40 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import {
-  collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, Timestamp
+  collection, addDoc, updateDoc, deleteDoc, doc, query, where, orderBy, onSnapshot, limit, Timestamp
 } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { resolveAvatarUrl } from 'src/composables/useAvatar'
 import { isAnonymous } from 'src/composables/useAnonymity'
 import { nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 
-export function useRides() {
+// Pass { live: false } when only the write helpers are needed (e.g. the post
+// form) — the active-rides snapshot listener costs a read per active ride on
+// every mount, for a list such a page never renders.
+export function useRides({ live = true } = {}) {
   const rides = ref([])
   let unsubscribe = null
 
-  onMounted(() => {
-    const ridesRef = collection(db, 'rides')
-    const q = query(
-      ridesRef,
-      where('expiresAt', '>', Timestamp.now()),
-      orderBy('expiresAt'),
-      orderBy('createdAt', 'desc')
-    )
-    unsubscribe = onSnapshot(q, (snapshot) => {
-      rides.value = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+  if (live) {
+    onMounted(() => {
+      const ridesRef = collection(db, 'rides')
+      const q = query(
+        ridesRef,
+        where('expiresAt', '>', Timestamp.now()),
+        orderBy('expiresAt'),
+        orderBy('createdAt', 'desc'),
+        // Active rides are a handful; cap what a runaway/abusive collection
+        // could bill every listener.
+        limit(50)
+      )
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        rides.value = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+      })
     })
-  })
 
-  onUnmounted(() => {
-    if (unsubscribe) unsubscribe()
-  })
+    onUnmounted(() => {
+      if (unsubscribe) unsubscribe()
+    })
+  }
 
   function computeExpiresAt(data) {
     if (data.recurring) return nowInVancouver().add(7, 'day')

@@ -154,7 +154,8 @@ const route = useRoute()
 const router = useRouter()
 const $q = useQuasar()
 const { user } = useAuth()
-const { createRide, updateRide, deleteRide } = useRides()
+// live: false — this form only writes; don't attach the rides listener.
+const { createRide, updateRide, deleteRide } = useRides({ live: false })
 
 const editId = computed(() => route.params.id || null)
 const isEdit = computed(() => !!editId.value)

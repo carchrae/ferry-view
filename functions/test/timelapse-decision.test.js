@@ -99,4 +99,46 @@ describe('timelapseDecision', () => {
     })
     expect(timelapseDecision(d, at('23:05')).capture).toBe(false)
   })
+
+  it('stops once the ferry arrives back at Bowen (Arrived event)', () => {
+    const d = data({
+      recentActivity: [{ action: 'Arrived', location: 'Bowen', time: '13:45' }, departed('12:36')],
+    })
+    expect(timelapseDecision(d, at('13:50')).capture).toBe(false)
+  })
+
+  it('stops once the ferry arrives back at Bowen (AIS level signal)', () => {
+    const d = data({
+      aisLocation: 'Bowen',
+      aisLocationSince: at('13:45').valueOf(),
+    })
+    expect(timelapseDecision(d, at('13:50')).capture).toBe(false)
+  })
+
+  it("ignores the previous cycle's arrival (event predates the last departure)", () => {
+    const d = data({
+      recentActivity: [departed('12:36'), { action: 'Arrived', location: 'Bowen', time: '12:30' }],
+    })
+    expect(timelapseDecision(d, at('13:10'))).toEqual({ capture: true, sailingTime: '13:55' })
+  })
+
+  it('keeps capturing while AIS has the ferry at the other terminal', () => {
+    const d = data({
+      aisLocation: 'Horseshoe Bay',
+      aisLocationSince: at('12:50').valueOf(),
+    })
+    expect(timelapseDecision(d, at('13:10'))).toEqual({ capture: true, sailingTime: '13:55' })
+  })
+
+  it('resumes for the next cycle after the ferry departs again', () => {
+    const d = data({
+      bowenSchedule: sched(MIDDAY, '13:55'),
+      recentActivity: [
+        departed('13:58'),
+        { action: 'Arrived', location: 'Bowen', time: '13:45' },
+        departed('12:36'),
+      ],
+    })
+    expect(timelapseDecision(d, at('14:30'))).toEqual({ capture: true, sailingTime: '15:15' })
+  })
 })

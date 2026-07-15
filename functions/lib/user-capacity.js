@@ -1,6 +1,7 @@
 import { logger } from 'firebase-functions/logger'
 import { updateSailingStatus } from './helpers.js'
 import { nowInVancouver } from './time.js'
+import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 
 // Applies a user-submitted capacityHistory record to its sailingStatus doc.
 // Returns true when the record is for today's date (caller should then force
@@ -29,6 +30,15 @@ export async function applyUserCapacityReport(db, record) {
     filledAt,
     capacitySource: 'user',
   })
+
+  if (direction === 'To HSB') {
+    await upsertBowenSailing(db, {
+      dateIso,
+      sailingTime: time,
+      cap: record.capacity,
+      src: 'user',
+    })
+  }
 
   return dateIso === nowInVancouver().format('YYYY-MM-DD')
 }

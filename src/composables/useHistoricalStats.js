@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
+import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore'
 import { db } from 'boot/firebase'
 import { dayjs, TZ, normalizeTime, nowInVancouver } from '../../functions/lib/time.js'
 import { getImpactedDates } from '../../functions/lib/holidays.js'
@@ -317,15 +317,21 @@ export function typicalHints(info, compact = false) {
 // sailingStatus into this single doc (see functions/lib/history-aggregate.js
 // for the short record keys). Reading it costs 1 doc read instead of the
 // ~1,700-doc range scan every HomePage/HistoryPage mount used to run.
+// A slightly-stale aggregate still beats the ~1,700-doc direct scan: over an
+// 8-week day-of-week average, a few missing recent days barely move the
+// numbers. Only fall back when the nightly rebuild has been dead for over a
+// week (or the window's start isn't covered at all).
+const STALE_GRACE_DAYS = 7
+
 async function fetchFromAggregate(start, end) {
   try {
     const snap = await getDoc(doc(db, 'aggregates', 'historicalStats'))
     if (!snap.exists()) return null
     const agg = snap.data()
-    // Must fully cover the requested window. agg.end is yesterday-at-rebuild,
-    // so a stale aggregate (missed nightly runs) fails the end check and we
-    // fall back to the direct query.
-    if (!Array.isArray(agg.sailings) || agg.start > start || agg.end < end) return null
+    // agg.end is yesterday-at-rebuild; allow it to lag the requested end by
+    // up to the grace window before declaring the aggregate unusable.
+    const graceEnd = dayjs(end).subtract(STALE_GRACE_DAYS, 'day').format('YYYY-MM-DD')
+    if (!Array.isArray(agg.sailings) || agg.start > start || agg.end < graceEnd) return null
     return agg.sailings
       .filter((r) => r.d >= start && r.d <= end)
       .map((r) => ({
@@ -344,15 +350,30 @@ async function fetchFromAggregate(start, end) {
   }
 }
 
+// Degraded-mode fallback when the aggregate is missing or long-stale. Bounded
+// two ways: a hard doc cap (a 52-week HistoryPage request could otherwise
+// scan ~11k docs; range scans return ascending dateIso, so truncation drops
+// the newest days — acceptable for a fallback), and a short-lived cache so
+// HomePage + HistoryPage mounts in the same session share one scan.
+const DIRECT_LIMIT = 2500
+const DIRECT_CACHE_TTL_MS = 10 * 60 * 1000
+let directCache = null // { key, docs, at }
+
 async function fetchDirect(start, end) {
+  const key = `${start}|${end}`
+  if (directCache?.key === key && Date.now() - directCache.at < DIRECT_CACHE_TTL_MS) {
+    return directCache.docs
+  }
   const q = query(
     collection(db, 'sailingStatus'),
     where('dateIso', '>=', start),
     where('dateIso', '<=', end),
+    limit(DIRECT_LIMIT),
   )
   const snap = await getDocs(q)
   const out = []
   snap.forEach((d) => out.push(d.data()))
+  directCache = { key, docs: out, at: Date.now() }
   return out
 }
 

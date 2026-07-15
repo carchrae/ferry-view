@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore'
 import { db, storageBucket } from 'src/boot/firebase'
 import { nowInVancouver, dayjs, formatTime12h, timeToDate, TZ } from '../../functions/lib/time.js'
 
@@ -80,24 +80,65 @@ function buildCards(s, todayIso) {
   }
 }
 
-// The 13-day query below reads ~200 docs, and the HomePage mount, its snapshot
-// dialog, and route re-mounts each used to re-run it. Cache the raw query
-// result briefly so a session bills the read once; the TTL keeps a fresh
-// departure photo from being hidden for long.
+// The HomePage mount, its snapshot dialog, and route re-mounts each re-fetch
+// this data. Cache the result briefly so a session bills the read once; the
+// TTL keeps a fresh departure photo from being hidden for long.
 const CACHE_TTL_MS = 5 * 60 * 1000
 let cachedSailings = null
 let cachedAt = 0
 
-// One shared fetch of all To HSB sailingStatus docs in the window (raw,
-// unfiltered, newest first) backing both loadBowenSailings (photo cards) and
-// loadUpcomingLineup (timelapse of the sailing currently boarding). Pass
-// force to bypass the TTL — the boarding sailing gains a frame every 5
-// minutes, so a stale cache would show only the frames captured before the
-// last fetch. Opening the dialog forces a refresh so all frames appear.
-async function fetchRawSailings(force = false) {
-  if (!force && cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSailings
+// Trust the aggregate only while its producers are alive: the capture/report
+// paths update it all day and the nightly rebuild restamps it, so >24h old
+// means the backend is broken and the bounded fallback is safer.
+const AGGREGATE_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const FALLBACK_DAYS = 3
+
+// aggregates/bowenSailings stores compact records (short keys, timelapse
+// frames as bare epoch suffixes — see functions/lib/bowen-sailings-aggregate.js);
+// expand back to the sailingStatus field names the rest of this module uses.
+// Paths are deterministic, so they reconstruct from (dateIso, time, epoch).
+function expandAggregateRecord(r) {
+  return {
+    sailingKey: `${r.d}_${r.t}_To HSB`,
+    dateIso: r.d,
+    sailingTime: r.t,
+    lastCapacity: r.cap,
+    capacitySource: r.src,
+    webcamSnapshotPath: r.wp,
+    communitySnapshotPath: r.cp,
+    communityArrivalTime: r.ca,
+    lineupTimelapsePaths: (r.lt || []).map(
+      (ts) => `webcams/community/${r.d}/timelapse/${r.t}_To HSB_${ts}.jpg`,
+    ),
+    departureTimelapsePaths: (r.dt || []).map(
+      (ts) => `webcams/bowen/${r.d}/timelapse/${r.t}_To HSB_${ts}.jpg`,
+    ),
+    crosswalkFullAt: r.cw || null,
+  }
+}
+
+// One doc read replacing the old ~200-doc range scan. Returns null when the
+// aggregate is missing, stale, or unreadable — the caller falls back.
+async function fetchFromAggregate() {
+  try {
+    const snap = await getDoc(doc(db, 'aggregates', 'bowenSailings'))
+    if (!snap.exists()) return null
+    const agg = snap.data()
+    if (!Array.isArray(agg.sailings)) return null
+    if (!agg.updatedAt || Date.now() - agg.updatedAt > AGGREGATE_MAX_AGE_MS) return null
+    return agg.sailings.map(expandAggregateRecord)
+  } catch (e) {
+    console.error('bowenSailings aggregate read failed, falling back:', e)
+    return null
+  }
+}
+
+// Degraded-mode fallback: the old direct sailingStatus range scan, but capped
+// to a few days (~45 docs instead of ~200). Fewer days on the departures page
+// until the nightly rebuild restores the aggregate — deliberately cheap.
+async function fetchDirectBounded() {
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
-  const startIso = nowInVancouver().subtract(13, 'day').format('YYYY-MM-DD')
+  const startIso = nowInVancouver().subtract(FALLBACK_DAYS, 'day').format('YYYY-MM-DD')
   const snap = await getDocs(
     query(
       collection(db, 'sailingStatus'),
@@ -110,13 +151,6 @@ async function fetchRawSailings(force = false) {
   const sailings = []
   snap.forEach((docSnap) => {
     const d = docSnap.data()
-    if (
-      !d.webcamSnapshotPath &&
-      !d.communitySnapshotPath &&
-      !d.lineupTimelapsePaths?.length &&
-      !d.departureTimelapsePaths?.length
-    )
-      return
     sailings.push({
       sailingKey: d.sailingKey || docSnap.id,
       dateIso: d.dateIso,
@@ -131,6 +165,29 @@ async function fetchRawSailings(force = false) {
       crosswalkFullAt: d.crosswalkFullAt || null,
     })
   })
+  return sailings
+}
+
+// One shared fetch of all To HSB sailings in the window (raw, newest first)
+// backing both loadBowenSailings (photo cards) and loadUpcomingLineup
+// (timelapse of the sailing currently boarding). Pass force to bypass the
+// TTL — the boarding sailing gains a frame every 5 minutes, so a stale cache
+// would show only the frames captured before the last fetch. Opening the
+// dialog forces a refresh so all frames appear (now one aggregate doc read).
+async function fetchRawSailings(force = false) {
+  if (!force && cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSailings
+
+  const raw = (await fetchFromAggregate()) ?? (await fetchDirectBounded())
+
+  // Media-less sailings never earn a card (a capacity-only tag can land in
+  // the aggregate before any photo does).
+  const sailings = raw.filter(
+    (s) =>
+      s.webcamSnapshotPath ||
+      s.communitySnapshotPath ||
+      s.lineupTimelapsePaths?.length ||
+      s.departureTimelapsePaths?.length,
+  )
 
   sailings.sort((a, b) =>
     a.dateIso !== b.dateIso

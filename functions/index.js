@@ -32,6 +32,7 @@ import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.
 import { applyUserCapacityReport } from './lib/user-capacity.js'
 import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-aggregate.js'
 import { recomputeHistoricalStats } from './lib/history-aggregate.js'
+import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
 import { nowInVancouver, timeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -373,6 +374,9 @@ export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (
     },
     { merge: true },
   )
+  if (direction === 'To HSB') {
+    await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: r.crosswalkAt })
+  }
   // Surface the mark on the live schedule right away (augmentRecentActivity
   // copies crosswalkFullAt onto the bowenSchedule entry) instead of waiting
   // for the next changed poll — mirrors onCapacityReport.
@@ -420,6 +424,32 @@ export const refreshHistoryAggregate = onSchedule(
     await recomputeHistoricalStats(db)
   },
 )
+
+// Nightly rebuild of the bowenSailings aggregate (the departures-page /
+// "Last Bowen Sailing" data). Reconciliation for the incremental updates the
+// capture/report paths make during the day: prunes days that aged out of the
+// 13-day window and picks up automated capacity values.
+export const refreshBowenSailingsAggregate = onSchedule(
+  {
+    schedule: 'every day 03:20',
+    timeZone: 'America/Vancouver',
+  },
+  async () => {
+    await recomputeBowenSailings(db)
+  },
+)
+
+// Manual one-shot: seed aggregates/bowenSailings. Hit once after deploy so
+// clients don't fall back to direct range scans until the first 03:20 run.
+export const rebuildBowenSailings = onRequest(async (req, res) => {
+  try {
+    const result = await recomputeBowenSailings(db)
+    res.json(result)
+  } catch (e) {
+    logger.error('rebuildBowenSailings failed:', e)
+    res.status(500).json({ error: String(e) })
+  }
+})
 
 // Manual one-shot: seed aggregates/historicalStats. Hit once after deploy so
 // clients don't fall back to direct range scans until the first 03:10 run.
