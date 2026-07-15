@@ -41,14 +41,7 @@
       <div v-else class="col text-center text-caption text-grey-7">
         {{ current.timeLabel }}
       </div>
-      <q-btn
-        round
-        dense
-        flat
-        icon="chevron_right"
-        :disable="index >= frames.length - 1"
-        @click="step(1)"
-      />
+      <q-btn round dense flat icon="chevron_right" :disable="frames.length < 2" @click="step(1)" />
     </q-card-actions>
   </q-card>
 </template>
@@ -136,10 +129,15 @@ function toggle() {
   else play()
 }
 
-// Stepping is a manual scrub: stop playback and move one frame.
+// Stepping is a manual scrub: stop playback and move one frame. ▶ on the
+// last frame wraps back to the start; ◀ still stops at the first frame.
 function step(delta) {
   pause()
   preloadAll()
+  if (delta > 0 && atEnd.value) {
+    index.value = 0
+    return
+  }
   index.value = Math.min(Math.max(index.value + delta, 0), props.frames.length - 1)
 }
 
