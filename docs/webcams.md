@@ -44,8 +44,9 @@ departure to a schedule entry. Skipped when the sailing already has a
 `timelapseDecision` captures a frame when **all** of these hold:
 
 - the poll lands on a 5-minute mark (`minute % 5 === 0`) — stateless cadence;
-- at least **30 minutes** have passed since the previous Bowen departure
-  (before that the lot is mostly empty). Falls back to the last past
+- at least **15 minutes** have passed since the previous Bowen departure
+  (before that the lot is mostly empty; sailings that fill up do so early, so
+  the window opens well before the lineup peaks). Falls back to the last past
   *scheduled* time when the activity log has no departure; no departure or
   past sailing yet today → no capture (kills overnight frames);
 - the ferry has **not yet arrived back at Bowen** for this cycle — once it's
@@ -61,8 +62,8 @@ departure to a schedule entry. Skipped when the sailing already has a
   30-minute grace so a boat boarding past its scheduled time keeps its own
   frames).
 
-So the lineup timelapse covers **from 30 min after the previous departure
-until the ferry arrives back** — typically ~4–8 frames per cycle.
+So the lineup timelapse covers **from 15 min after the previous departure
+until the ferry arrives back** — typically ~7–11 frames per cycle.
 
 ### 4. Departure (loading) timelapse — terminal cam, one frame / minute
 
@@ -121,10 +122,10 @@ Firestore pointers written alongside each capture:
 |---|---|---|
 | Arrival photos | ~16 | ~1 MB |
 | Departure photos | ~16 | ~0.2 MB |
-| Lineup timelapse | ~13 sailings × 4–8 ≈ 50–100 | ~3–7 MB |
+| Lineup timelapse | ~13 sailings × 7–11 ≈ 90–140 | ~5–10 MB |
 | Departure timelapse | ~16 × 10–15 ≈ 160–240 | ~2–3.5 MB |
 
-≈ 250–370 files, ~6–12 MB/day → steady state ~100–170 MB under the 14-day
+≈ 280–410 files, ~8–15 MB/day → steady state ~110–210 MB under the 14-day
 window, inside the free Storage tier. Each timelapse frame also costs one
 `sailingStatus` write + one `aggregates/bowenSailings` write, so the arrival
 gating above is also the write-cost control.

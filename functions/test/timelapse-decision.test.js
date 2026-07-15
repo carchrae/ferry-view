@@ -56,9 +56,9 @@ describe('timelapseDecision', () => {
     expect(timelapseDecision(data(), at('13:09')).capture).toBe(false)
   })
 
-  it('waits 30 minutes after the previous departure', () => {
-    expect(timelapseDecision(data(), at('13:05')).capture).toBe(false) // 29 min
-    expect(timelapseDecision(data(), at('13:10')).capture).toBe(true) // 34 min
+  it('waits 15 minutes after the previous departure', () => {
+    expect(timelapseDecision(data(), at('12:50')).capture).toBe(false) // 14 min
+    expect(timelapseDecision(data(), at('12:55')).capture).toBe(true) // 19 min
   })
 
   it('skips departures scheduled at/after 9 pm', () => {
@@ -89,7 +89,7 @@ describe('timelapseDecision', () => {
     const d = data({ recentActivity: [{ action: 'Arrived', location: 'Bowen', time: '13:40' }] })
     // Last scheduled sailing in the past is 13:55; 14:30 is 35 min later.
     expect(timelapseDecision(d, at('14:30'))).toEqual({ capture: true, sailingTime: '15:15' })
-    expect(timelapseDecision(d, at('14:20')).capture).toBe(false) // only 25 min
+    expect(timelapseDecision(d, at('14:05')).capture).toBe(false) // only 10 min
   })
 
   it('skips when there is no later sailing today', () => {

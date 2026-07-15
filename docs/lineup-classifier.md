@@ -17,7 +17,7 @@ capture statelessly — `timelapseDecision()` in `functions/lib/webcam.js`
 says yes only when **all** of these hold:
 
 - the poll lands on a 5-minute mark (`minute % 5 === 0`),
-- at least **30 minutes** have passed since the previous Bowen departure
+- at least **15 minutes** have passed since the previous Bowen departure
   (from the live activity log, falling back to the scheduled time when the
   log is stale; no departure yet today → no capture, which also kills
   overnight frames),
@@ -39,8 +39,8 @@ and appended to the sailing's `sailingStatus` doc as `lineupTimelapsePaths`
 zero extra Firestore reads. Frames are public, served with immutable cache
 headers, and **deleted after 14 days** by the nightly `cleanupOldWebcams`.
 
-Volume: capture runs from 30 min after the previous departure until the
-ferry arrives back, so ~4–8 frames per sailing, ~50–100 frames/day —
+Volume: capture runs from 15 min after the previous departure until the
+ferry arrives back, so ~7–11 frames per sailing, ~90–140 frames/day —
 inside the free Storage tier.
 
 ## 1b. Departure timelapse (Bowen terminal camera)
@@ -186,7 +186,7 @@ PATH, a lock against overlapping runs, and dated logs under
 
 1. Deploy (`npm run deploy:all` — rules for `lineupReports` ship with it).
 2. Confirm frames appear under `webcams/community/<date>/timelapse/` on
-   5-minute marks ≥ 30 min after a departure, and none for post-9 pm boats.
+   5-minute marks ≥ 15 min after a departure, and none for post-9 pm boats.
 3. Set up the export cron (§6).
 4. Collect tags for a few weeks; eyeball `training-data/manifest.csv` label
    counts.

@@ -213,12 +213,15 @@ export function arrivalSignalAvailable(data) {
 // poll runs every minute, so `minute % 5` gives a 5-minute cadence with no
 // stored state and no Firestore reads) whether this poll should capture a
 // frame:
-//   - only from 30 min after the previous Bowen departure (before that the
-//     lot is mostly empty),
+//   - only from 15 min after the previous Bowen departure (before that the
+//     lot is mostly empty — and sailings that fill up do so early, so the
+//     window opens well before the lineup peaks),
 //   - until the ferry arrives back at Bowen (loading from there on is the
 //     terminal camera's job — see departureTimelapseDecision),
 //   - never for departures scheduled at/after 9 pm,
 //   - attributed to the next upcoming Bowen departure.
+const LINEUP_WAIT_AFTER_DEP_MIN = 15
+
 export function timelapseDecision(data, now) {
   if (now.minute() % 5 !== 0) return { capture: false }
 
@@ -241,7 +244,7 @@ export function timelapseDecision(data, now) {
   if (!nextDep) return { capture: false }
   if (parseInt(nextDep.time.split(':')[0], 10) >= 21) return { capture: false }
 
-  if (now.diff(lastDep, 'minute') < 30) return { capture: false }
+  if (now.diff(lastDep, 'minute') < LINEUP_WAIT_AFTER_DEP_MIN) return { capture: false }
 
   // Ferry is back at the dock: the lineup has stopped building (it's
   // draining onto the boat) and the terminal camera has taken over.
