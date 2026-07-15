@@ -33,6 +33,7 @@ import { applyUserCapacityReport } from './lib/user-capacity.js'
 import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-aggregate.js'
 import { recomputeHistoricalStats } from './lib/history-aggregate.js'
 import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
+import { functionsActive } from './lib/control.js'
 import { nowInVancouver, timeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -266,6 +267,7 @@ export const pollFerryStatus = onSchedule(
     secrets: [VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY],
   },
   async (context) => {
+    if (!(await functionsActive())) return
     logger.log('Polling ferry status...')
     const result = await refreshFerryData(db)
     if (!result) {
@@ -328,6 +330,7 @@ export const getFerryStatus = onRequest(async (req, res) => {
 // (no userUid) are ignored, which also prevents any trigger loop via
 // recordCapacityChanges.
 export const onCapacityReport = onDocumentCreated('capacityHistory/{docId}', async (event) => {
+  if (!(await functionsActive())) return
   const record = event.data?.data()
   const isToday = await applyUserCapacityReport(db, record)
   if (isToday) {
@@ -354,6 +357,7 @@ export const onCapacityReport = onDocumentCreated('capacityHistory/{docId}', asy
 // reports stay in lineupReports as labeled training data for a future
 // automated detector.
 export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (event) => {
+  if (!(await functionsActive())) return
   const r = event.data?.data()
   if (!r?.userUid || typeof r.crosswalkAt !== 'number') return
   const m = /^(\d{4}-\d{2}-\d{2})_(.+)_(To\s.+)$/.exec(r.sailingKey || '')
@@ -392,6 +396,7 @@ export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (
 // lose its credit). recomputeLeaderboard only writes to aggregates/*, so this
 // can't loop.
 export const onRideWrite = onDocumentWritten('rides/{rideId}', async () => {
+  if (!(await functionsActive())) return
   try {
     await recomputeLeaderboard(db)
   } catch (e) {
@@ -407,6 +412,7 @@ export const refreshLeaderboard = onSchedule(
     timeZone: 'America/Vancouver',
   },
   async () => {
+    if (!(await functionsActive())) return
     await recomputeLeaderboard(db)
   },
 )
@@ -420,6 +426,7 @@ export const refreshHistoryAggregate = onSchedule(
     timeZone: 'America/Vancouver',
   },
   async () => {
+    if (!(await functionsActive())) return
     await recomputeHistoricalStats(db)
   },
 )
@@ -434,6 +441,7 @@ export const refreshBowenSailingsAggregate = onSchedule(
     timeZone: 'America/Vancouver',
   },
   async () => {
+    if (!(await functionsActive())) return
     await recomputeBowenSailings(db)
   },
 )
@@ -481,6 +489,7 @@ export const cleanupWebcams = onSchedule(
     timeZone: 'America/Vancouver',
   },
   async () => {
+    if (!(await functionsActive())) return
     logger.log('Running webcam cleanup...')
     await cleanupOldWebcams()
   },

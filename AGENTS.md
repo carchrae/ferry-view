@@ -20,6 +20,7 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 - Snapshot image uses plain `<img>` with CSS `aspect-ratio: 16/9` instead of Quasar `q-img` due to zero-height sizing bug.
 - Netlify proxy redirect for webcam images disabled while debugging frontend display.
 - Daily cleanup function `cleanupWebcams` deletes `webcams/` files older than **14 days** (checks `timeCreated` metadata). Capture timing/volume/retention: `docs/webcams.md`.
+- Staging cost switch: on `bowen-ferry-staging`, all scheduled functions + Firestore triggers are dormant unless Firestore `control/staging`.activeUntil is in the future — wake with `node functions/staging-run-until.js 4h` (see `functions/lib/control.js`). Production is never gated. Trigger gating also stops restore-storms when restoring a prod backup into staging.
 
 ## Relevant Files
 - `functions/lib/constants.js`: shared lateness helpers and notification defaults.
