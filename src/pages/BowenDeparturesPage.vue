@@ -111,6 +111,7 @@ import { useLineupReport } from 'src/composables/useLineupReport'
 import { useLeaderboard, scoreSailing, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { loadBowenSailings } from 'src/composables/useBowenSailings'
+import { celebrate, estimateCredits } from 'src/composables/useTagCelebration'
 
 const $q = useQuasar()
 const route = useRoute()
@@ -186,6 +187,9 @@ function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
         return
       }
       if (sailing.arrival) sailing.arrival.crosswalkFullAt = ts
+      // Crosswalk marks aren't leaderboard-scored, so no points label — but
+      // they're a solid contribution: mid-tier fanfare.
+      celebrate(0.5, { label: null })
       $q.notify({ type: 'positive', message: `Full to crosswalk recorded at ${timeLabel} — thanks!` })
     })
     .catch((err) => {
@@ -216,6 +220,9 @@ function onRate(sailing, { sailingKey, capacity, filledAt }) {
         userName: user.value?.displayName || user.value?.email || null,
       }
       const others = sailing.reports.filter((r) => r.userUid !== mine.userUid)
+      // Kerching scaled to what this report earns on the leaderboard (first
+      // report 1.0, confirming a dispute 0.5, agreeing 0.1).
+      celebrate(estimateCredits(others, mine))
       attachReports(sailing, [...others, mine])
       $q.notify({ type: 'positive', message: 'Thanks — capacity recorded!' })
     })

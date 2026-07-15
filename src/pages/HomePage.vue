@@ -1043,6 +1043,7 @@ import { useAuth } from 'src/composables/useAuth'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor } from 'src/composables/useCapacityDisplay'
+import { celebrate } from 'src/composables/useTagCelebration'
 import anonymousIcon from 'src/assets/cat.svg'
 import {
   useHistoricalStats,
@@ -1194,6 +1195,9 @@ function onDialogRate({ sailingKey, capacity, filledAt }) {
         entry.filledAt = capacity === 'Full' ? filledAt || 'user_reported' : null
       }
       showSnapshotDialog.value = false
+      // Other users' reports aren't loaded here, so assume the jackpot case
+      // (this dialog tags the latest sailing, which is usually unreported).
+      celebrate(1)
     })
     .catch((err) => {
       console.error('Failed to save capacity rating:', err)
@@ -1215,6 +1219,9 @@ function recordCrosswalk(sailingKey, { ts, timeLabel }, apply) {
         return
       }
       apply(ts)
+      // Crosswalk marks aren't leaderboard-scored — mid-tier fanfare, no
+      // points label.
+      celebrate(0.5, { label: null })
       $q.notify({
         type: 'positive',
         message: `Full to crosswalk recorded at ${timeLabel} — thanks!`,
@@ -1257,6 +1264,8 @@ function markCommunityFull() {
     .then(() => {
       entry.lastCapacity = 'Full'
       entry.filledAt = Date.now()
+      // First live "Full" tag on the boarding sailing — jackpot.
+      celebrate(1)
     })
     .catch((err) => console.error('Failed to mark community full:', err))
 }
