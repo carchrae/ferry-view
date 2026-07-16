@@ -1018,7 +1018,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
@@ -1198,6 +1198,20 @@ function scheduleEntryForKey(sailingKey) {
     direction === 'To HSB' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
   return schedule?.find((e) => e.time === time) || null
 }
+
+// The live-cam departure placeholder must not outlive its sailing: once the
+// poll marks that sailing departed, refetch the cards (one cheap aggregate
+// read) so the real departure photo replaces the live view without a browser
+// refresh. The photo lands seconds-to-a-minute after departure is detected,
+// so this retries on each subsequent ferryData update until the live flag is
+// gone (finalize() stops inserting it once the photo path exists).
+watch(ferryData, () => {
+  const card = lastBowenSailing.value
+  if (!card?.departure?.live) return
+  if (scheduleEntryForKey(card.sailingKey)?.matchedDepartureTime) {
+    loadLastBowenSailing(true)
+  }
+})
 
 function onDialogRate({ sailingKey, capacity, filledAt }) {
   saveRating(sailingKey, capacity, filledAt)
