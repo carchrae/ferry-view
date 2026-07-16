@@ -21,6 +21,8 @@
     "dev": "quasar dev -m spa",
     "build": "quasar build -m pwa",
     "postinstall": "quasar prepare",
+    "staging:refresh": "bash scripts/staging-refresh.sh",
+    "staging:run-until": "node functions/staging-run-until.js",
     "firebase-config": "bash scripts/get-firebase-config.sh",
     "update-vapid-keys:staging": "bash scripts/rotate-vapid-keys.sh staging",
     "generate-vapid-keys:staging": "bash scripts/generate-vapid-keys.sh staging",
