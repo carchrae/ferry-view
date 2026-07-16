@@ -124,7 +124,17 @@
         </q-img>
         <q-card-actions class="q-py-sm q-px-sm column items-stretch">
           <div class="text-subtitle2 q-mb-xs row items-center">
-            <span>Departure{{ departure.timeLabel ? ` — ${departure.timeLabel}` : '' }}</span>
+            <!-- No departure time yet + not the live-cam placeholder = the
+                 timelapse-only state while the ferry is still at the dock. -->
+            <span>
+              Departure{{
+                departure.timeLabel
+                  ? ` — ${departure.timeLabel}`
+                  : departure.live
+                    ? ''
+                    : ' — loading/unloading in progress'
+              }}
+            </span>
             <q-badge v-if="departure.live" color="info" class="q-ml-sm">Live</q-badge>
             <q-badge
               v-if="departure.currentCapacity"

@@ -264,10 +264,14 @@ function finalize(sailings, todayIso) {
 
   // The newest sailing usually has its lineup (arrival) photo before the
   // ferry has left — fill the departure slot with the live Bowen terminal
-  // camera until the real departure photo is captured. Not taggable
-  // (SailingTagCards hides the Full button for live cards).
+  // camera until the real departure PHOTO is captured. The loading timelapse
+  // frames that accumulate while the boat loads must not displace it (a live
+  // view beats minutes-old frames — the timelapse takes over once the
+  // sailing has departed and its photo exists), so the check is for the
+  // photo, not for the card. Not taggable (SailingTagCards hides the Full
+  // button for live cards).
   const newest = built[0]
-  if (newest && newest.dateIso === todayIso && newest.arrival && !newest.departure) {
+  if (newest && newest.dateIso === todayIso && newest.arrival && !newest.departure?.imageUrl) {
     newest.departure = {
       imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`,
       sailingKey: newest.sailingKey,
