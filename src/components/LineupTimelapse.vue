@@ -5,6 +5,8 @@
       :ratio="16 / 9"
       no-transition
       spinner-color="primary"
+      class="cursor-pointer"
+      @click="openZoom"
     >
       <div
         class="absolute-bottom row items-center justify-between text-caption"
@@ -33,7 +35,6 @@
         :outline="!crosswalkFullAt"
         class="col q-mx-xs"
         :color="crosswalkFullAt ? 'grey-7' : 'deep-orange'"
-        icon="directions_walk"
         :label="centerLabel"
         :disable="!current.ts"
         @click="confirmCrosswalk"
@@ -43,11 +44,35 @@
       </div>
       <q-btn round dense flat icon="chevron_right" :disable="frames.length < 2" @click="step(1)" />
     </q-card-actions>
+    <ZoomableImageDialog v-model="zoomOpen" :src="current.imageUrl" />
+    <q-dialog v-model="confirmOpen">
+      <q-card>
+        <q-card-section class="text-subtitle1">Change the crosswalk time?</q-card-section>
+        <q-card-section class="q-pt-none text-body2">
+          Someone already marked the lineup as past the crosswalk at
+          <strong>{{ recordedLabel }}</strong
+          >. Only change it if you think that's wrong — your mark at
+          <strong>{{ current.timeLabel }}</strong> will replace it.
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Cancel" v-close-popup />
+          <q-btn
+            flat
+            no-caps
+            color="deep-orange"
+            :label="`Change to ${current.timeLabel}`"
+            @click="emitCrosswalk"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-card>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
+import { dayjs, TZ } from '../../functions/lib/time.js'
 
 // Animates the timelapse frames of one sailing (community lineup or Bowen
 // terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. Opens on
@@ -60,12 +85,13 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 // Off by default — clips don't move until the user presses play/step.
 //
 // taggable (default false): the center control becomes the crosswalk tagging
-// button — "Full to Crosswalk @ <current frame time>". Stepping to the frame
-// where cars reach the crosswalk and pressing it records THAT frame's capture
-// time (emits 'crosswalk' with { ts, timeLabel }). An existing mark doesn't
-// lock it: the button turns into "Re-mark …" so a later rider can record a
-// different frame (the latest mark wins server-side). Only the community
-// lineup (arrival) is taggable, never the terminal (departure) cam.
+// button — "Past crosswalk at <current frame time>?". Stepping to the frame
+// where cars reach the crosswalk and pressing it records THAT frame's
+// capture time (emits 'crosswalk' with { ts, timeLabel }). An existing mark
+// doesn't lock it: the button turns into "Change past crosswalk to …?" so a
+// later rider can record a different frame (the latest mark wins
+// server-side). Only the community lineup (arrival) is taggable, never the
+// terminal (departure) cam.
 const props = defineProps({
   frames: { type: Array, required: true },
   crosswalkFullAt: { type: Number, default: null },
@@ -101,8 +127,8 @@ const atEnd = computed(() => index.value >= props.frames.length - 1)
 
 const centerLabel = computed(() =>
   props.crosswalkFullAt
-    ? `Re-mark Crosswalk @ ${current.value.timeLabel || '—'}`
-    : `Full to Crosswalk @ ${current.value.timeLabel || '—'}`,
+    ? `Change past crosswalk to ${current.value.timeLabel || '—'}?`
+    : `Past crosswalk at ${current.value.timeLabel || '—'}?`,
 )
 
 const FRAME_MS = 700
@@ -152,9 +178,35 @@ function step(delta) {
   index.value = (index.value + delta + n) % n
 }
 
+// Tapping the frame opens it in the pinch/scroll-zoomable fullscreen viewer
+// (same as the single arrival/departure photos). Pause first so the frame
+// doesn't change underneath the zoomed view.
+const zoomOpen = ref(false)
+function openZoom() {
+  pause()
+  zoomOpen.value = true
+}
+
+// Changing an existing mark asks for confirmation first — the current mark
+// is someone's report, so replacing it should be a deliberate "I think that
+// time is wrong", not a stray tap.
+const confirmOpen = ref(false)
+const recordedLabel = computed(() =>
+  props.crosswalkFullAt ? dayjs(props.crosswalkFullAt).tz(TZ).format('h:mm a') : null,
+)
+
 function confirmCrosswalk() {
   if (!current.value.ts) return
   pause()
+  if (props.crosswalkFullAt) {
+    confirmOpen.value = true
+    return
+  }
+  emitCrosswalk()
+}
+
+function emitCrosswalk() {
+  confirmOpen.value = false
   emit('crosswalk', { ts: current.value.ts, timeLabel: current.value.timeLabel })
 }
 

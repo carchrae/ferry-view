@@ -653,6 +653,7 @@
             @rate="onDialogRate"
             @crosswalk="onCardCrosswalk"
           />
+          <ReportChips :reports="dialogReports" :crosswalk-reports="dialogCrosswalkReports" />
 
           <!-- The upcoming (boarding) sailing's lineup, at the bottom — only
                shown once that sailing actually has frames (loadUpcomingLineup
@@ -660,8 +661,23 @@
                departed sailing's stale last frame). -->
           <template v-if="upcomingLineup?.timelapse?.length">
             <q-separator class="q-my-sm" />
-            <div class="text-subtitle2 q-mb-xs">
-              Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
+            <div class="text-subtitle2 q-mb-xs row items-center">
+              <span>
+                Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
+              </span>
+              <q-badge
+                v-if="upcomingLineup.crosswalkFullAt"
+                rounded
+                color="deep-orange"
+                class="q-ml-sm"
+                dense
+              >
+                crosswalk {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
+                <q-tooltip>
+                  Lineup reached the crosswalk at
+                  {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
+                </q-tooltip>
+              </q-badge>
             </div>
             <LineupTimelapse
               :key="`up-${upcomingLineup.sailingKey}-${upcomingLineup.timelapse.length}`"
@@ -1015,8 +1031,9 @@ import RideCard from 'src/components/RideCard.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
+import ReportChips from 'src/components/ReportChips.vue'
 import LineupTimelapse from 'src/components/LineupTimelapse.vue'
-import { useLineupReport } from 'src/composables/useLineupReport'
+import { useLineupReport, loadRecentLineupReports } from 'src/composables/useLineupReport'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor } from 'src/composables/useCapacityDisplay'
@@ -1046,7 +1063,8 @@ const showSignInDialog = ref(false)
 // Current leaderboard champions, celebrated in a row under the sailing buttons:
 // the top capacity reporter and the top ride sharer ("hero"). Read live from the
 // server-precomputed board; failures are non-fatal (each cell just hides).
-const { getLeaderboard, getRideLeaderboard, subscribeLeaderboard } = useLeaderboard()
+const { getLeaderboard, getRideLeaderboard, subscribeLeaderboard, loadRecentUserReports } =
+  useLeaderboard()
 const champion = ref(null)
 const rideChampion = ref(null)
 const championsLoaded = ref(false)
@@ -1141,11 +1159,36 @@ onMounted(() => loadLastBowenSailing())
 function openSnapshotDialog() {
   // Force a refresh on open: the boarding sailing gains a timelapse frame
   // every 5 min, so the cached set would be stale and play too few frames.
-  loadLastBowenSailing(true)
+  loadLastBowenSailing(true).then(loadDialogReports)
   showSnapshotDialog.value = true
 }
 
-const { saveRating } = useCapacityRating()
+// Reporter chips for the dialog's sailing (who tagged capacity / marked the
+// crosswalk). Loaded only when the dialog opens — two small user-report
+// queries per open, never on page mount.
+const dialogReports = ref([])
+const dialogCrosswalkReports = ref([])
+
+async function loadDialogReports() {
+  const key = lastBowenSailing.value?.sailingKey
+  dialogReports.value = []
+  dialogCrosswalkReports.value = []
+  if (!key) return
+  try {
+    const [userReports, lineupReports] = await Promise.all([
+      loadRecentUserReports(),
+      loadRecentLineupReports(),
+    ])
+    dialogReports.value = userReports.filter((r) => r.sailingKey === key)
+    dialogCrosswalkReports.value = lineupReports.filter((r) => r.sailingKey === key)
+  } catch (err) {
+    console.error('Failed to load dialog reports:', err)
+  }
+}
+
+const crosswalkAtLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
+
+const { user, saveRating } = useCapacityRating()
 
 function scheduleEntryForKey(sailingKey) {
   const m = sailingKey?.match(/^\d{4}-\d{2}-\d{2}_(.+)_(To\s.+)$/)
@@ -1212,6 +1255,20 @@ function recordCrosswalk(sailingKey, { ts, timeLabel }, apply) {
 const onCardCrosswalk = ({ sailingKey, ts, timeLabel }) =>
   recordCrosswalk(sailingKey, { ts, timeLabel }, (v) => {
     if (lastBowenSailing.value?.arrival) lastBowenSailing.value.arrival.crosswalkFullAt = v
+    // Reflect the mark in the dialog's report chips immediately (ReportChips
+    // keeps each user's latest, so appending is enough).
+    if (sailingKey === lastBowenSailing.value?.sailingKey) {
+      dialogCrosswalkReports.value = [
+        ...dialogCrosswalkReports.value,
+        {
+          sailingKey,
+          crosswalkAt: v,
+          recordedAt: Date.now(),
+          userUid: user.value?.uid,
+          userName: user.value?.displayName || user.value?.email || null,
+        },
+      ]
+    }
   })
 
 // From the upcoming (boarding) lineup section.

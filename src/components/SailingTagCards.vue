@@ -37,6 +37,10 @@
         <q-card-actions class="q-py-sm q-px-sm column items-stretch">
           <div class="text-subtitle2 q-mb-xs row items-center">
             <span>Arrival{{ arrival.timeLabel ? ` — ${arrival.timeLabel}` : '' }}</span>
+            <q-badge v-if="arrival.crosswalkFullAt" rounded color="deep-orange" class="q-ml-sm" dense>
+              crosswalk {{ crosswalkLabel(arrival.crosswalkFullAt) }}
+              <q-tooltip>Lineup reached the crosswalk at {{ crosswalkLabel(arrival.crosswalkFullAt) }}</q-tooltip>
+            </q-badge>
             <q-badge
               v-if="arrival.currentCapacity"
               :color="getDeckColor(arrival.currentCapacity)"
@@ -185,6 +189,7 @@
 <script setup>
 import { ref } from 'vue'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
+import { dayjs, TZ } from '../../functions/lib/time.js'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 import LineupTimelapse from 'src/components/LineupTimelapse.vue'
 
@@ -235,6 +240,8 @@ function rate(card, capacity) {
 function onImageError(err) {
   console.error('Snapshot image error:', err)
 }
+
+const crosswalkLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 </script>
 
 <style scoped>

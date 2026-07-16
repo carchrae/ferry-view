@@ -78,36 +78,7 @@
           @rate="onRate(sailing, $event)"
           @crosswalk="onCrosswalk(sailing, $event)"
         />
-        <div
-          v-if="sailing.reports.length || sailing.crosswalkReports.length"
-          class="row items-center q-gutter-xs q-mt-sm"
-        >
-          <span class="text-caption text-grey-7 q-mr-xs">Reports:</span>
-          <q-chip
-            v-for="r in sailing.reports"
-            :key="r.userUid + r.recordedAt"
-            dense
-            square
-            :color="getDeckColor(r.capacity)"
-            text-color="white"
-            class="q-my-none"
-          >
-            {{ formatReporterName(r.userName) }} · {{ capacityFullLabel(r.capacity) }}
-          </q-chip>
-          <q-chip
-            v-for="r in sailing.crosswalkReports"
-            :key="'cw' + r.userUid + r.recordedAt"
-            dense
-            square
-            color="deep-orange"
-            text-color="white"
-            icon="directions_walk"
-            class="q-my-none"
-          >
-            {{ formatReporterName(r.userName) }} · crosswalk @ {{ crosswalkTimeLabel(r.crosswalkAt) }}
-            <q-tooltip>Marked {{ crosswalkTimeLabel(r.recordedAt) }} as the time the lineup reached the crosswalk</q-tooltip>
-          </q-chip>
-        </div>
+        <ReportChips :reports="sailing.reports" :crosswalk-reports="sailing.crosswalkReports" />
       </q-card-section>
     </q-card>
 
@@ -119,13 +90,13 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { formatTime12h, normalizeTime, dayjs, TZ } from '../../functions/lib/time.js'
+import { formatTime12h, normalizeTime } from '../../functions/lib/time.js'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
+import ReportChips from 'src/components/ReportChips.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadRecentLineupReports } from 'src/composables/useLineupReport'
-import { useLeaderboard, scoreSailing, formatReporterName } from 'src/composables/useLeaderboard'
-import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
+import { useLeaderboard, scoreSailing } from 'src/composables/useLeaderboard'
 import { loadBowenSailings } from 'src/composables/useBowenSailings'
 import { celebrate, estimateCredits } from 'src/composables/useTagCelebration'
 
@@ -218,8 +189,6 @@ function attachCrosswalkReports(sailing, reports) {
     (a, b) => (a.recordedAt || 0) - (b.recordedAt || 0),
   )
 }
-
-const crosswalkTimeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 
 function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
   saveCrosswalkMark(sailingKey, ts)

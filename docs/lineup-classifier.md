@@ -83,9 +83,11 @@ default and never auto-plays (`autoplay` default false); the clip only moves
 when the user presses play (runs from the start) or steps. Controls are a
 play/pause toggle on the left, then ◀ / ▶ step buttons flanking a center
 control. When `taggable` (arrival/lineup only) the center control is the
-crosswalk button — "Full to Crosswalk @ ⟨current frame time⟩", recording that
-frame's time (§3). Once a mark exists the button becomes "Re-mark Crosswalk
-@ ⟨frame⟩" so a later rider can record a different frame. The arrival
+crosswalk button — "Past crosswalk at ⟨current frame time⟩?", recording
+that frame's time (§3). Once a mark exists the button becomes "Change past
+crosswalk to ⟨frame⟩?" and asks for confirmation (the existing mark is shown,
+and changing it means you think that time is wrong) before a later rider's
+frame replaces it. The arrival
 timelapse opens on the frame nearest the ferry's arrival (the peak lineup).
 The non-taggable terminal departure timelapse shows the current frame's time
 as a plain label instead.
@@ -93,9 +95,9 @@ as a plain label instead.
 ## 3. Crosswalk tagging (the labeling pipeline)
 
 The timelapse player **is** the tagging tool. The rider steps (◀ / ▶) to the
-frame where cars reach the crosswalk and presses the center button ("Full to
-Crosswalk @ ⟨that frame's time⟩") — recording **that frame's capture time**,
-not the moment they tapped. That makes the label exact: every frame before it
+frame where cars reach the crosswalk and presses the center button ("Past
+crosswalk at ⟨that frame's time⟩?") — recording **that frame's capture
+time**, not the moment they tapped. That makes the label exact: every frame before it
 is a clean negative, every frame from it on a clean positive.
 
 Each confirmation is appended to the **`lineupReports`** collection
