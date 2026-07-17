@@ -131,7 +131,7 @@
                   >
                     <q-item clickable @click="toggleRow(panel, day.key, time)">
                       <q-item-section class="col-auto time-col">
-                        <div class="text-weight-medium text-body2">{{ time }}</div>
+                        <div class="text-weight-medium text-body2">{{ formatTime12h(time) }}</div>
                       </q-item-section>
                       <q-item-section class="col">
                         <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
@@ -208,7 +208,7 @@
                 >
                   <q-item clickable @click="toggleRow(panel, selectedDay, time)">
                     <q-item-section class="col-auto time-col">
-                      <div class="text-weight-medium text-body2">{{ time }}</div>
+                      <div class="text-weight-medium text-body2">{{ formatTime12h(time) }}</div>
                     </q-item-section>
                     <q-item-section class="col">
                       <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
@@ -247,7 +247,7 @@
 
 <script setup>
 import { ref, computed, onMounted, reactive } from 'vue'
-import { dayjs, TZ, nowInVancouver } from '../../functions/lib/time.js'
+import { dayjs, TZ, nowInVancouver, formatTime12h } from '../../functions/lib/time.js'
 import { useHistoricalStats, DAY_KEYS } from 'src/composables/useHistoricalStats'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 
