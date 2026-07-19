@@ -135,7 +135,7 @@
                       </q-item-section>
                       <q-item-section class="col">
                         <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
-                        <div v-if="fullText(info)" class="text-body2" :class="busyClass(info)">● {{ fullText(info) }}</div>
+                        <div v-if="fullText(info, panel)" class="text-body2" :class="busyClass(info, panel)">● {{ fullText(info, panel) }}</div>
                       </q-item-section>
                       <q-item-section side>
                         <div class="row items-center no-wrap">
@@ -212,7 +212,7 @@
                     </q-item-section>
                     <q-item-section class="col">
                       <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
-                      <div v-if="fullText(info)" class="text-body2" :class="busyClass(info)">● {{ fullText(info) }}</div>
+                      <div v-if="fullText(info, panel)" class="text-body2" :class="busyClass(info, panel)">● {{ fullText(info, panel) }}</div>
                     </q-item-section>
                     <q-item-section side>
                       <div class="row items-center no-wrap">
@@ -313,21 +313,30 @@ function fullLabel(info) {
   return ''
 }
 
-// Coloured capacity line: how likely to be full (and when it fills), or how busy.
-function fullText(info) {
+// Coloured capacity line: how likely to be full (and when it fills), or how
+// busy. Bowen riders tapping "Full" never supply a fill time (see
+// SailingTagCards' rate()) — fall back to the crosswalk-full time there, the
+// closest available "when it fills" signal. Even when no sailing was ever
+// tagged Full outright, a crosswalk mark is still real evidence on its own
+// (a busy lineup), so it gets its own line rather than showing nothing.
+function fullText(info, panel) {
   if (info.fullPct > 0) {
     const label = fullLabel(info)
-    return info.avgFillTime ? `${label} · by ${info.avgFillTime}` : label
+    const fillTime = panel === 'bowen' ? info.avgCwTime : info.avgFillTime
+    const byLabel = panel === 'bowen' ? 'full to CW by' : 'by'
+    return fillTime ? `${label} · ${byLabel} ${fillTime}` : label
   }
+  if (panel === 'bowen' && info.avgCwTime) return `Full to CW by ${info.avgCwTime}`
   if (info.avgCapacityPct !== null) return `~${100 - info.avgCapacityPct}% full`
   if (info.notFullCount > 0) return fullLabel(info)
   return null
 }
 
-function busyClass(info) {
+function busyClass(info, panel) {
   if (info.fullPct >= 80) return 'text-negative text-weight-bold'
   if (info.fullPct >= 50) return 'text-warning text-weight-bold'
   if (info.fullPct > 0) return 'text-orange'
+  if (panel === 'bowen' && info.avgCwTime) return 'text-orange'
   if (info.avgCapacityPct !== null) {
     const busy = 100 - info.avgCapacityPct
     if (busy >= 70) return 'text-warning'

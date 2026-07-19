@@ -2,10 +2,11 @@ import { logger } from 'firebase-functions/logger'
 import { nowInVancouver } from './time.js'
 
 // How many days of Bowen departures the aggregate carries — matches the
-// two-week window the departures page shows.
-export const BOWEN_SAILINGS_DAYS = 13
+// six-week window the departures page shows (and must stay <= the webcam
+// cleanup cutoff in webcam.js, or photos vanish before the aggregate does).
+export const BOWEN_SAILINGS_DAYS = 42
 
-// aggregates/bowenSailings: a compact copy of the last 13 days of To HSB
+// aggregates/bowenSailings: a compact copy of the last 42 days of To HSB
 // sailingStatus docs that have at least one photo or timelapse frame — the
 // exact set the client's fetchRawSailings used to range-scan (~200 doc reads
 // per HomePage mount; now one doc read). Short keys mirror historicalStats

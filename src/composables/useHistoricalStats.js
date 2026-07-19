@@ -205,8 +205,16 @@ function computeTimeInfo(time, rawDates) {
   const lateCount = typLateness.filter((l) => l >= 2).length
   const latePct = typLateness.length ? Math.round((lateCount / typLateness.length) * 100) : null
 
-  const fullCount = typical.filter((d) => d.capacity === 'Full').length
-  const fullPct = typical.length ? Math.round((fullCount / typical.length) * 100) : 0
+  // Bowen capacity is only ever known when a rider tags it (no automated
+  // deck-space reading for To HSB sailings), so most Bowen dates have no
+  // capacity value at all. Those un-reported dates must not count as "not
+  // full" evidence — the denominator here is reported dates only, mirroring
+  // how latePct is scoped to dates with a lateness value.
+  const reportedCapacity = typical.filter((d) => d.capacity)
+  const fullCount = reportedCapacity.filter((d) => d.capacity === 'Full').length
+  const fullPct = reportedCapacity.length
+    ? Math.round((fullCount / reportedCapacity.length) * 100)
+    : null
   const fillMins = typical.map((d) => d.filledMinutes).filter((m) => m !== null && m !== undefined)
   const avgFillTime = fillMins.length ? minutesToLabel(mean(fillMins)) : null
 
@@ -271,7 +279,10 @@ function freqWord(pct) {
 // often full"). Lateness under 3 minutes is not mentioned. Only surfaces
 // signals backed by enough samples. When `compact` (mobile), the fill time
 // drops "by" and its space (e.g. "usually full 4:15pm") to save width.
-export function typicalHints(info, compact = false) {
+// `panel` distinguishes Bowen departures ('bowen'), where riders tapping
+// "Full" never supply a fill time (see SailingTagCards' rate()) — the
+// crosswalk-full time is the closest available "when it fills" signal there.
+export function typicalHints(info, compact = false, panel = null) {
   if (!info || info.count < EXCEPTION_MIN_SAMPLES) return null
   const segs = []
   let severity = 0 // 0 none, 1 warning, 2 negative
@@ -282,12 +293,21 @@ export function typicalHints(info, compact = false) {
   }
 
   if (info.fullPct >= 40) {
+    const fillTime = panel === 'bowen' ? info.avgCwTime : info.avgFillTime
+    const fillWord = panel === 'bowen' ? 'full to CW' : 'full'
     let fullText = 'full'
-    if (info.avgFillTime) {
-      fullText = compact ? `full ${info.avgFillTime.replace(' ', '')}` : `full by ${info.avgFillTime}`
+    if (fillTime) {
+      fullText = compact ? `${fillWord} ${fillTime.replace(' ', '')}` : `${fillWord} by ${fillTime}`
     }
     segs.push({ freq: freqWord(info.fullPct), text: fullText })
     severity = Math.max(severity, info.fullPct >= 70 ? 2 : 1)
+  } else if (panel === 'bowen' && info.avgCwTime) {
+    // No sailing was ever tagged Full outright, but a crosswalk mark is still
+    // real evidence of a busy lineup on its own — surface it rather than
+    // showing nothing. No percentage backs a frequency word here, so none is
+    // used (mirrors SailingHistoryDetail's plain "full to CW by X" fallback).
+    segs.push({ freq: null, text: `full to CW by ${info.avgCwTime}` })
+    severity = Math.max(severity, 1)
   } else if (info.avgCapacityPct !== null && (100 - info.avgCapacityPct) >= 60) {
     segs.push({ freq: 'usually', text: `~${100 - info.avgCapacityPct}% full` })
     severity = Math.max(severity, 1)

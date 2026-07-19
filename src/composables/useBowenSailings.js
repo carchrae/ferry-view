@@ -209,7 +209,7 @@ async function fetchRawSailings(force = false) {
   return sailings
 }
 
-// Load Bowen-side sailings (departures to Horseshoe Bay) from the last two
+// Load Bowen-side sailings (departures to Horseshoe Bay) from the last six
 // weeks that have at least one PHOTO, newest first, each with paired
 // arrival/departure cards. Timelapse frames alone don't earn a card — the
 // upcoming sailing collects frames long before it has photos, and surfacing

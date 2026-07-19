@@ -434,7 +434,7 @@ export const refreshHistoryAggregate = onSchedule(
 // Nightly rebuild of the bowenSailings aggregate (the departures-page /
 // "Last Bowen Sailing" data). Reconciliation for the incremental updates the
 // capture/report paths make during the day: prunes days that aged out of the
-// 13-day window and picks up automated capacity values.
+// 42-day window and picks up automated capacity values.
 export const refreshBowenSailingsAggregate = onSchedule(
   {
     schedule: 'every day 03:20',

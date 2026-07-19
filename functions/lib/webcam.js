@@ -396,7 +396,7 @@ export async function captureDepartureTimelapse(db, data) {
 
 export async function cleanupOldWebcams() {
   const bucket = getStorage().bucket()
-  const cutoff = nowInVancouver().subtract(14, 'day')
+  const cutoff = nowInVancouver().subtract(42, 'day')
   let deleted = 0
   let failed = 0
 

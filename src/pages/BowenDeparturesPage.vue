@@ -4,6 +4,19 @@
       <div class="text-h6">Bowen Departures</div>
       <q-space />
       <q-select
+        v-model="filterDay"
+        :options="dayOptions"
+        label="Day"
+        dense
+        outlined
+        emit-value
+        map-options
+        clearable
+        options-dense
+        class="q-mr-sm"
+        style="min-width: 130px"
+      />
+      <q-select
         v-model="filterTime"
         :options="sailingTimeOptions"
         label="Sailing"
@@ -19,7 +32,7 @@
       <q-btn flat dense round icon="refresh" :loading="loading" @click="loadSailings" />
     </div>
     <div class="text-body2 text-grey-7 q-mb-sm">
-      These photos capture Bowen-side sailings (departures to Horseshoe Bay) over the last two
+      These photos capture Bowen-side sailings (departures to Horseshoe Bay) over the last six
       weeks. Record how full the ferry was — your reports fill in sailings BC Ferries didn't
       record.
     </div>
@@ -40,9 +53,9 @@
 
     <div v-else-if="!filteredSailings.length" class="q-py-xl text-center text-grey-6">
       {{
-        filterTime
-          ? 'No photos for this sailing in the last two weeks.'
-          : 'No webcam photos available yet — photos are kept for two weeks.'
+        filterTime || filterDay
+          ? 'No photos for this sailing in the last six weeks.'
+          : 'No webcam photos available yet — photos are kept for six weeks.'
       }}
     </div>
 
@@ -88,9 +101,10 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { formatTime12h, normalizeTime } from '../../functions/lib/time.js'
+import { formatTime12h, normalizeTime, dayjs } from '../../functions/lib/time.js'
+import { DAY_KEYS } from 'src/composables/useHistoricalStats'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import ReportChips from 'src/components/ReportChips.vue'
@@ -102,6 +116,7 @@ import { celebrate, estimateCredits } from 'src/composables/useTagCelebration'
 
 const $q = useQuasar()
 const route = useRoute()
+const router = useRouter()
 const { user, needsSignIn, saveRating } = useCapacityRating()
 const { saveCrosswalkMark } = useLineupReport()
 const { loadRecentUserReports } = useLeaderboard()
@@ -109,17 +124,29 @@ const { loadRecentUserReports } = useLeaderboard()
 const loading = ref(false)
 const allSailings = ref([])
 const filterTime = ref(null)
+const filterDay = ref(null)
 const showSignInDialog = ref(false)
+// Query params are only synced to the URL once the initial ?time/?day values
+// (if any) have been applied — otherwise that sync would fire first and wipe
+// them before loadSailings/applyFiltersFromQuery gets a chance to read them.
+let queryReady = false
 
 const sailingTimeOptions = computed(() => {
   const times = [...new Set(allSailings.value.map((s) => s.sailingTime))].sort()
   return times.map((t) => ({ label: formatTime12h(t), value: t }))
 })
 
+const dayOptions = computed(() => {
+  const days = new Set(allSailings.value.map((s) => dayjs(s.dateIso).format('dddd')))
+  return DAY_KEYS.filter((d) => days.has(d)).map((d) => ({ label: d, value: d }))
+})
+
 const filteredSailings = computed(() =>
-  filterTime.value
-    ? allSailings.value.filter((s) => s.sailingTime === filterTime.value)
-    : allSailings.value,
+  allSailings.value.filter(
+    (s) =>
+      (!filterTime.value || s.sailingTime === filterTime.value) &&
+      (!filterDay.value || dayjs(s.dateIso).format('dddd') === filterDay.value),
+  ),
 )
 
 watch(needsSignIn, (v) => {
@@ -254,19 +281,30 @@ function onRate(sailing, { sailingKey, capacity, filledAt }) {
     })
 }
 
-// Preselect the sailing filter when arriving from a "See {time} departures" link
-// on the home page (e.g. /bowen-departures?time=07:30). Match by normalized time
-// so a stored "7:30" and a passed "07:30" still line up.
-function applyTimeFromQuery() {
+// Preselect the filters when arriving from a link with ?time=&day= (e.g. the
+// home page's "See {time} departures" link, or a shared/bookmarked URL from
+// this page itself). Time is matched by normalized time so a stored "7:30"
+// and a passed "07:30" still line up; day is matched as-is against DAY_KEYS.
+function applyFiltersFromQuery() {
   const t = route.query.time
-  if (!t) return
-  const target = normalizeTime(String(t))
-  const match = allSailings.value.find((s) => normalizeTime(s.sailingTime) === target)
-  filterTime.value = match ? match.sailingTime : target
+  if (t) {
+    const target = normalizeTime(String(t))
+    const match = allSailings.value.find((s) => normalizeTime(s.sailingTime) === target)
+    filterTime.value = match ? match.sailingTime : target
+  }
+  const d = route.query.day
+  if (d && DAY_KEYS.includes(String(d))) filterDay.value = String(d)
 }
+
+// Keep the URL in sync with the filters so they're shareable/bookmarkable.
+watch([filterTime, filterDay], ([time, day]) => {
+  if (!queryReady) return
+  router.replace({ query: { ...route.query, time: time || undefined, day: day || undefined } })
+})
 
 onMounted(async () => {
   await loadSailings()
-  applyTimeFromQuery()
+  applyFiltersFromQuery()
+  queryReady = true
 })
 </script>

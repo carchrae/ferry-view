@@ -385,85 +385,76 @@
 
         <!-- Leaderboard champions: top capacity reporter + top ride sharer -->
         <div v-if="championsLoaded" class="row q-col-gutter-sm q-mb-sm">
-          <div v-if="champion" class="col-12 col-sm-6">
+          <div v-if="champion" class="col-6">
             <router-link
               to="/leaderboard"
-              class="champion-row row items-center no-wrap q-pa-sm full-height"
+              class="champion-row column no-wrap q-pa-sm full-height"
             >
-              <div class="champion-star q-mr-sm">
-                <img
-                  v-if="champion.anonymous || champion.userPhoto"
-                  :src="champion.anonymous ? anonymousIcon : champion.userPhoto"
-                  class="champion-photo"
-                  alt=""
-                  referrerpolicy="no-referrer"
-                />
-                <q-icon v-else name="emoji_events" color="white" size="24px" />
-              </div>
-              <div class="col overflow-hidden">
-                <div class="text-caption text-weight-bold text-amber-9">
-                  <q-icon name="star" size="14px" class="q-mb-xs" /> {{ championSlogan }}
+              <div class="row items-center no-wrap">
+                <div class="champion-star q-mr-sm">
+                  <img
+                    v-if="champion.anonymous || champion.userPhoto"
+                    :src="champion.anonymous ? anonymousIcon : champion.userPhoto"
+                    class="champion-photo"
+                    alt=""
+                    referrerpolicy="no-referrer"
+                  />
+                  <q-icon v-else name="emoji_events" color="white" size="16px" />
                 </div>
-                <div class="text-subtitle2 text-grey-9 ellipsis">
+                <div class="text-subtitle2 text-grey-9 col ellipsis">
                   {{ champion.anonymous ? 'Anonymous' : formatReporterName(champion.userName) }}
                 </div>
               </div>
-              <q-badge color="amber-8" text-color="white" class="text-body2 q-mr-xs">
-                {{ champion.credits.toFixed(1) }}
-              </q-badge>
-              <q-icon name="chevron_right" color="grey-6" />
+              <div class="text-caption text-weight-bold text-amber-9 q-mt-xs q-pl-xs">
+                {{ championSlogan }}
+              </div>
             </router-link>
           </div>
 
-          <div class="col-12 col-sm-6">
+          <div class="col-6">
             <!-- Ride-share hero, or an invite to become one when nobody qualifies -->
             <router-link
               v-if="rideChampion"
               to="/leaderboard"
-              class="champion-row ride row items-center no-wrap q-pa-sm full-height"
+              class="champion-row ride column no-wrap q-pa-sm full-height"
             >
-              <div class="champion-star ride q-mr-sm">
-                <img
-                  v-if="rideChampion.anonymous || rideChampion.userPhoto"
-                  :src="rideChampion.anonymous ? anonymousIcon : rideChampion.userPhoto"
-                  class="champion-photo"
-                  alt=""
-                  referrerpolicy="no-referrer"
-                />
-                <q-icon v-else name="directions_car" color="white" size="24px" />
-              </div>
-              <div class="col overflow-hidden">
-                <div class="text-caption text-weight-bold text-blue-9">
-                  <q-icon name="star" size="14px" class="q-mb-xs" /> {{ rideChampionSlogan }}
+              <div class="row items-center no-wrap">
+                <div class="champion-star ride q-mr-sm">
+                  <img
+                    v-if="rideChampion.anonymous || rideChampion.userPhoto"
+                    :src="rideChampion.anonymous ? anonymousIcon : rideChampion.userPhoto"
+                    class="champion-photo"
+                    alt=""
+                    referrerpolicy="no-referrer"
+                  />
+                  <q-icon v-else name="directions_car" color="white" size="16px" />
                 </div>
-                <div class="text-subtitle2 text-grey-9 ellipsis">
+                <div class="text-subtitle2 text-grey-9 col ellipsis">
                   {{
                     rideChampion.anonymous ? 'Anonymous' : formatReporterName(rideChampion.userName)
                   }}
                 </div>
               </div>
-              <q-badge color="blue-8" text-color="white" class="text-body2 q-mr-xs">
-                {{ rideChampion.credits.toFixed(1) }}
-              </q-badge>
-              <q-icon name="chevron_right" color="grey-6" />
+              <div class="text-caption text-weight-bold text-blue-9 q-mt-xs q-pl-xs">
+                {{ rideChampionSlogan }}
+              </div>
             </router-link>
             <router-link
               v-else
               to="/rides/post"
-              class="champion-row ride row items-center no-wrap q-pa-sm full-height"
+              class="champion-row ride column no-wrap q-pa-sm full-height"
             >
-              <div class="champion-star ride q-mr-sm">
-                <q-icon name="directions_car" color="white" size="24px" />
-              </div>
-              <div class="col overflow-hidden">
-                <div class="text-caption text-weight-bold text-blue-9">
-                  <q-icon name="star" size="14px" class="q-mb-xs" /> Ride Share Hero
+              <div class="row items-start no-wrap">
+                <div class="champion-star ride q-mr-sm">
+                  <q-icon name="directions_car" color="white" size="16px" />
                 </div>
-                <div class="text-caption text-grey-8">
-                  Could be you — offer or ask for more than one ride this month.
+                <div class="text-caption text-weight-bold text-blue-9 col">
+                  Ride Share Hero
                 </div>
               </div>
-              <q-icon name="chevron_right" color="grey-6" />
+              <div class="text-caption text-grey-8 q-mt-xs">
+                Could be you — offer or ask for more than one ride this month.
+              </div>
             </router-link>
           </div>
         </div>
@@ -1361,7 +1352,7 @@ function sailingTypical(s) {
 // Typical-history hints for an upcoming sailing (null when unremarkable).
 // Compact form on mobile to keep the line short.
 function sailingHints(s) {
-  return typicalHints(sailingTypical(s), $q.screen.xs)
+  return typicalHints(sailingTypical(s), $q.screen.xs, labelToPanel(s.label))
 }
 
 // Prediction-detail dialog: shows the historical data behind a sailing. Opened
@@ -1749,8 +1740,8 @@ $star-clip: polygon(
 .champion-star {
   position: relative;
   flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
+  width: 30px;
+  height: 30px;
   background: linear-gradient(135deg, #ffd54f, #ffb300);
   clip-path: $star-clip;
   display: flex;
@@ -1763,8 +1754,8 @@ $star-clip: polygon(
 }
 
 .champion-photo {
-  width: 42px;
-  height: 42px;
+  width: 24px;
+  height: 24px;
   object-fit: cover;
   clip-path: $star-clip;
 }
