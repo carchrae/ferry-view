@@ -1,9 +1,13 @@
 import { logger } from 'firebase-functions/logger'
 import { initializeApp } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { onRequest } from 'firebase-functions/v2/https'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
-import { onDocumentCreated, onDocumentWritten } from 'firebase-functions/v2/firestore'
+import {
+  onDocumentCreated,
+  onDocumentDeleted,
+  onDocumentWritten,
+} from 'firebase-functions/v2/firestore'
 import { defineSecret } from 'firebase-functions/params'
 
 import { fetchFerryData, checkDataChanged, sanitizeForCompare } from './lib/api.js'
@@ -397,6 +401,135 @@ export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (
     logger.error('Leaderboard recompute after lineup report failed:', e)
   }
 })
+
+// A rider deleted one of their capacity reports (rules only allow deleting
+// your own). Re-derive the sailing's capacity from the remaining user reports
+// — latest wins, same as a fresh report — or clear it when none remain, then
+// refresh the live status and the leaderboard.
+export const onCapacityReportDelete = onDocumentDeleted(
+  'capacityHistory/{docId}',
+  async (event) => {
+    if (!(await functionsActive())) return
+    const r = event.data?.data()
+    if (!r?.userUid || !r.sailingKey) return
+    const m = /^(\d{4}-\d{2}-\d{2})_(.+)_(To\s.+)$/.exec(r.sailingKey)
+    if (!m) return
+    const [, dateIso, time, direction] = m
+
+    let isToday = false
+    try {
+      const snap = await db
+        .collection('capacityHistory')
+        .where('sailingKey', '==', r.sailingKey)
+        .where('userReport', '==', true)
+        .get()
+      let latest = null
+      snap.forEach((doc) => {
+        const d = doc.data()
+        if (!d.userUid) return
+        if (!latest || (d.recordedAt || 0) > (latest.recordedAt || 0)) latest = d
+      })
+
+      if (latest) {
+        isToday = await applyUserCapacityReport(db, latest)
+      } else {
+        // Automated capacity never covers To HSB sailings, so a user-sourced
+        // value with no reports left behind it simply goes away.
+        await db.collection('sailingStatus').doc(r.sailingKey).set(
+          {
+            lastCapacity: FieldValue.delete(),
+            capacitySource: FieldValue.delete(),
+            filledAt: FieldValue.delete(),
+          },
+          { merge: true },
+        )
+        if (direction === 'To HSB') {
+          await upsertBowenSailing(db, {
+            dateIso,
+            sailingTime: time,
+            clearKeys: ['cap', 'src'],
+          })
+        }
+        isToday = dateIso === nowInVancouver().format('YYYY-MM-DD')
+      }
+    } catch (e) {
+      logger.error('Reapplying capacity after report delete failed:', e)
+    }
+
+    if (isToday) {
+      try {
+        await refreshFerryData(db, { forceUpdate: true })
+      } catch (e) {
+        logger.error('Status refresh after report delete failed:', e)
+      }
+    }
+    try {
+      await recomputeLeaderboard(db)
+    } catch (e) {
+      logger.error('Leaderboard recompute after report delete failed:', e)
+    }
+  },
+)
+
+// Same for a deleted crosswalk mark: fall back to the latest remaining mark
+// (the server-side "latest wins" rule) or clear the sailing's crosswalk time.
+export const onLineupReportDelete = onDocumentDeleted(
+  'lineupReports/{docId}',
+  async (event) => {
+    if (!(await functionsActive())) return
+    const r = event.data?.data()
+    if (!r?.userUid || !r.sailingKey) return
+    const m = /^(\d{4}-\d{2}-\d{2})_(.+)_(To\s.+)$/.exec(r.sailingKey)
+    if (!m) return
+    const [, dateIso, time, direction] = m
+
+    try {
+      const snap = await db
+        .collection('lineupReports')
+        .where('sailingKey', '==', r.sailingKey)
+        .get()
+      let latest = null
+      snap.forEach((doc) => {
+        const d = doc.data()
+        if (!d.userUid || typeof d.crosswalkAt !== 'number') return
+        if (!latest || (d.recordedAt || 0) > (latest.recordedAt || 0)) latest = d
+      })
+
+      if (latest) {
+        await db
+          .collection('sailingStatus')
+          .doc(r.sailingKey)
+          .set({ crosswalkFullAt: latest.crosswalkAt }, { merge: true })
+        if (direction === 'To HSB') {
+          await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: latest.crosswalkAt })
+        }
+      } else {
+        await db
+          .collection('sailingStatus')
+          .doc(r.sailingKey)
+          .set({ crosswalkFullAt: FieldValue.delete() }, { merge: true })
+        if (direction === 'To HSB') {
+          await upsertBowenSailing(db, { dateIso, sailingTime: time, clearKeys: ['cw'] })
+        }
+      }
+    } catch (e) {
+      logger.error('Reapplying crosswalk after mark delete failed:', e)
+    }
+
+    if (dateIso === nowInVancouver().format('YYYY-MM-DD')) {
+      try {
+        await refreshFerryData(db, { forceUpdate: true })
+      } catch (e) {
+        logger.error('Status refresh after mark delete failed:', e)
+      }
+    }
+    try {
+      await recomputeLeaderboard(db)
+    } catch (e) {
+      logger.error('Leaderboard recompute after mark delete failed:', e)
+    }
+  },
+)
 
 // Any ride create/edit/delete changes the ride-share board (a deleted ride must
 // lose its credit). recomputeLeaderboard only writes to aggregates/*, so this

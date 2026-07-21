@@ -160,7 +160,12 @@
           @rate="onRate(sailing, $event)"
           @crosswalk="onCrosswalk(sailing, $event)"
         />
-        <ReportChips :reports="sailing.reports" :crosswalk-reports="sailing.crosswalkReports" />
+        <ReportChips
+          :reports="sailing.reports"
+          :crosswalk-reports="sailing.crosswalkReports"
+          @delete-report="onDeleteReport(sailing, $event)"
+          @delete-crosswalk="onDeleteCrosswalk(sailing, $event)"
+        />
       </q-card-section>
     </q-card>
 
@@ -182,6 +187,7 @@ import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadRecentLineupReports } from 'src/composables/useLineupReport'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
+import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import {
   loadBowenSailings,
   loadUpcomingLineup,
@@ -196,8 +202,8 @@ import {
 const $q = useQuasar()
 const route = useRoute()
 const router = useRouter()
-const { user, needsSignIn, saveRating } = useCapacityRating()
-const { saveCrosswalkMark } = useLineupReport()
+const { user, needsSignIn, saveRating, deleteRating } = useCapacityRating()
+const { saveCrosswalkMark, deleteCrosswalkMark } = useLineupReport()
 const { loadRecentUserReports } = useLeaderboard()
 
 const loading = ref(false)
@@ -437,6 +443,77 @@ function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
       console.error('Failed to save crosswalk mark:', err)
       $q.notify({ type: 'negative', message: 'Failed to record crosswalk time' })
     })
+}
+
+// Latest entry of a report list by recordedAt, or null when empty.
+function latestOf(list) {
+  return (list || []).reduce(
+    (a, b) => (!a || (b.recordedAt || 0) > (a.recordedAt || 0) ? b : a),
+    null,
+  )
+}
+
+// A rider clicked the X on their own capacity chip. Confirm, delete their
+// report docs, and optimistically mirror what the server's delete trigger
+// will re-derive (latest remaining report wins, or the capacity clears).
+function onDeleteReport(sailing, report) {
+  $q.dialog({
+    title: 'Delete your report?',
+    message: `Remove your ${capacityFullLabel(report.capacity)} report from this sailing?`,
+    cancel: { label: 'Keep it', flat: true, noCaps: true },
+    ok: { label: 'Delete', color: 'negative', noCaps: true },
+  }).onOk(() => {
+    deleteRating(report.sailingKey)
+      .then(() => {
+        const remaining = (reportsByKey.value.get(report.sailingKey) || []).filter(
+          (r) => r.userUid !== user.value?.uid,
+        )
+        reportsByKey.value.set(report.sailingKey, remaining)
+        attachReports(sailing, remaining)
+        const latest = latestOf(remaining)
+        sailing.lastCapacity = latest?.capacity ?? null
+        sailing.capacitySource = latest ? 'user' : null
+        for (const card of [sailing.arrival, sailing.departure]) {
+          if (card && card.capacitySource === 'user') {
+            card.currentCapacity = latest?.capacity ?? null
+            card.capacitySource = latest ? 'user' : null
+          }
+        }
+        $q.notify({ type: 'positive', message: 'Report deleted' })
+      })
+      .catch((err) => {
+        console.error('Failed to delete capacity report:', err)
+        $q.notify({ type: 'negative', message: 'Failed to delete report' })
+      })
+  })
+}
+
+// Same for the rider's own crosswalk mark: the latest remaining mark becomes
+// the sailing's crosswalk time, or it clears.
+function onDeleteCrosswalk(sailing, report) {
+  $q.dialog({
+    title: 'Delete your crosswalk mark?',
+    message: `Remove your ${crosswalkAtLabel(report.crosswalkAt)} crosswalk mark from this sailing?`,
+    cancel: { label: 'Keep it', flat: true, noCaps: true },
+    ok: { label: 'Delete', color: 'negative', noCaps: true },
+  }).onOk(() => {
+    deleteCrosswalkMark(report.sailingKey)
+      .then(() => {
+        const remaining = (crosswalkByKey.value.get(report.sailingKey) || []).filter(
+          (r) => r.userUid !== user.value?.uid,
+        )
+        crosswalkByKey.value.set(report.sailingKey, remaining)
+        attachCrosswalkReports(sailing, remaining)
+        const latest = latestOf(remaining)
+        sailing.crosswalkFullAt = latest?.crosswalkAt ?? null
+        if (sailing.arrival) sailing.arrival.crosswalkFullAt = latest?.crosswalkAt ?? null
+        $q.notify({ type: 'positive', message: 'Crosswalk mark deleted' })
+      })
+      .catch((err) => {
+        console.error('Failed to delete crosswalk mark:', err)
+        $q.notify({ type: 'negative', message: 'Failed to delete crosswalk mark' })
+      })
+  })
 }
 
 function onRate(sailing, { sailingKey, capacity, filledAt }) {

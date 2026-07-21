@@ -69,6 +69,31 @@ function effectsChosen() {
 
 let sessionTagCount = 0
 
+// One-time explainer shown on a rider's very first report (any session —
+// tracked in localStorage). Marked as shown immediately, so it appears once.
+const EXPLAINED_KEY = 'reportingExplained'
+let explainedThisSession = false
+
+function maybeExplainReporting() {
+  if (explainedThisSession) return
+  explainedThisSession = true
+  try {
+    if (localStorage.getItem(EXPLAINED_KEY)) return
+    localStorage.setItem(EXPLAINED_KEY, 'yes')
+  } catch {
+    /* private mode — the session flag above still limits it to once */
+  }
+  Dialog.create({
+    title: 'Your first report — thanks!',
+    message:
+      'Your report is now attached to this sailing with your name, and it earns ' +
+      'leaderboard points. Tapped the wrong answer? Just tap another one — only your ' +
+      'latest report counts. You can also remove your report with the X on your chip ' +
+      'in the Reports row. When riders disagree, the answer most riders back wins.',
+    ok: { label: 'Got it', color: 'primary', noCaps: true },
+  })
+}
+
 function askAboutEffects() {
   Dialog.create({
     title: 'Keep the fireworks?',
@@ -83,6 +108,7 @@ function askAboutEffects() {
 }
 
 export function celebrate(credits, { label } = {}) {
+  maybeExplainReporting()
   // Dismissing the dialog without choosing stores nothing, so the next
   // session's 3rd tag asks again.
   sessionTagCount++

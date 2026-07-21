@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { addDoc, collection } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, getDocs, query, where } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { resolveAvatarUrl } from 'src/composables/useAvatar'
@@ -47,5 +47,22 @@ export function useCapacityRating() {
     return true
   }
 
-  return { user, needsSignIn, saveRating }
+  // Deletes ALL of the signed-in user's capacity reports for a sailing (each
+  // re-tag is its own doc, so removing only the latest would resurface an
+  // older one). Rules restrict deletes to the user's own docs. The server's
+  // onCapacityReportDelete trigger re-derives the sailing's capacity.
+  async function deleteRating(sailingKey) {
+    if (!user.value || !sailingKey) return false
+    const snap = await getDocs(
+      query(
+        collection(db, 'capacityHistory'),
+        where('sailingKey', '==', sailingKey),
+        where('userUid', '==', user.value.uid),
+      ),
+    )
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
+    return true
+  }
+
+  return { user, needsSignIn, saveRating, deleteRating }
 }

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, getDocs, query, where } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { resolveAvatarUrl } from 'src/composables/useAvatar'
@@ -40,7 +40,23 @@ export function useLineupReport() {
     return true
   }
 
-  return { user, needsSignIn, saveCrosswalkMark }
+  // Deletes ALL of the signed-in user's crosswalk marks for a sailing (each
+  // re-mark is its own doc). The server's onLineupReportDelete trigger falls
+  // back to the latest remaining mark or clears the sailing's crosswalk time.
+  async function deleteCrosswalkMark(sailingKey) {
+    if (!user.value || !sailingKey) return false
+    const snap = await getDocs(
+      query(
+        collection(db, 'lineupReports'),
+        where('sailingKey', '==', sailingKey),
+        where('userUid', '==', user.value.uid),
+      ),
+    )
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)))
+    return true
+  }
+
+  return { user, needsSignIn, saveCrosswalkMark, deleteCrosswalkMark }
 }
 
 // All crosswalk marks recorded in the last `days` days (lineupReports is

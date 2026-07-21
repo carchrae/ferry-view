@@ -93,7 +93,7 @@ export async function recomputeBowenSailings(db) {
 // capture after midnight, before the 03:20 rebuild) extends `end`.
 export async function upsertBowenSailing(
   db,
-  { dateIso, sailingTime, addLineupTs, addDepartureTs, ...scalars },
+  { dateIso, sailingTime, addLineupTs, addDepartureTs, clearKeys, ...scalars },
 ) {
   if (!dateIso || !sailingTime) return
   try {
@@ -112,6 +112,9 @@ export async function upsertBowenSailing(
       for (const [k, v] of Object.entries(scalars)) {
         if (v != null) rec[k] = flattenMs(v)
       }
+      // Null scalars are skipped above, so deleting a value (e.g. the last
+      // user report's capacity) needs an explicit key list.
+      for (const k of clearKeys || []) delete rec[k]
       if (addLineupTs != null && !(rec.lt || []).includes(addLineupTs)) {
         rec.lt = [...(rec.lt || []), addLineupTs].sort((a, b) => a - b)
       }

@@ -36,8 +36,10 @@
       :color="getDeckColor(r.capacity)"
       text-color="white"
       :icon="capacityResolvedWin ? 'emoji_events' : undefined"
+      :removable="r.userUid === meUid"
       class="q-my-none"
       :class="{ 'winner-chip': capacityResolvedWin }"
+      @remove="emit('delete-report', r)"
     >
       {{ formatReporterName(r.userName) }} · {{ capacityFullLabel(r.capacity) }} ·
       +{{ creditFor(r.userUid) }}
@@ -56,8 +58,10 @@
       color="deep-orange"
       text-color="white"
       icon="directions_walk"
+      :removable="r.userUid === meUid"
       class="q-my-none"
       :class="{ 'winner-chip': crosswalkResolvedWin }"
+      @remove="emit('delete-crosswalk', r)"
     >
       {{ formatReporterName(r.userName) }} · crosswalk @ {{ timeLabel(r.crosswalkAt) }} ·
       +{{ cwCreditFor(r.userUid) }}
@@ -76,6 +80,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { useAuth } from 'src/composables/useAuth'
 import { formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { scoreSailing, scoreCrosswalk, round1 } from '../../functions/lib/leaderboard-score.js'
@@ -96,6 +101,12 @@ const props = defineProps({
   reports: { type: Array, default: () => [] }, // { userUid, userName, capacity, recordedAt }
   crosswalkReports: { type: Array, default: () => [] }, // { userUid, userName, crosswalkAt, recordedAt }
 })
+
+// The viewer's own chips get an X (q-chip removable) that asks the parent to
+// delete that report; other riders' chips are read-only.
+const emit = defineEmits(['delete-report', 'delete-crosswalk'])
+const { user } = useAuth()
+const meUid = computed(() => user.value?.uid)
 
 const showScoring = ref(false)
 
