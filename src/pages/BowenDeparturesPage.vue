@@ -56,6 +56,40 @@
       />
     </div>
 
+    <!-- The sailing that's boarding right now: the community-cam lineup building
+         before the ferry arrives. Shown at the top (not subject to the day/time
+         filters) only while that sailing has frames but no photo yet, so it
+         never lingers as a departed sailing's stale last frame. -->
+    <q-card
+      v-if="upcomingLineup?.timelapse?.length"
+      flat
+      bordered
+      class="q-mb-md upcoming-lineup"
+    >
+      <q-card-section class="q-py-sm row items-center">
+        <div class="text-subtitle1 text-weight-medium">
+          Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
+        </div>
+        <q-space />
+        <q-badge v-if="upcomingLineup.crosswalkFullAt" rounded color="deep-orange" dense>
+          crosswalk {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
+          <q-tooltip>
+            Lineup reached the crosswalk at {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
+          </q-tooltip>
+        </q-badge>
+      </q-card-section>
+      <q-separator />
+      <q-card-section class="q-pa-sm">
+        <LineupTimelapse
+          :key="`up-${upcomingLineup.sailingKey}-${upcomingLineup.timelapse.length}`"
+          :frames="upcomingLineup.timelapse"
+          :crosswalk-full-at="upcomingLineup.crosswalkFullAt || null"
+          taggable
+          @crosswalk="onUpcomingCrosswalk"
+        />
+      </q-card-section>
+    </q-card>
+
     <div v-if="loading && !filteredSailings.length" class="q-py-xl text-center">
       <q-spinner color="primary" size="32px" />
     </div>
@@ -108,15 +142,16 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { formatTime12h, normalizeTime, dayjs } from '../../functions/lib/time.js'
+import { formatTime12h, normalizeTime, dayjs, TZ } from '../../functions/lib/time.js'
 import { DAY_KEYS } from 'src/composables/useHistoricalStats'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
+import LineupTimelapse from 'src/components/LineupTimelapse.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import ReportChips from 'src/components/ReportChips.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadRecentLineupReports } from 'src/composables/useLineupReport'
 import { useLeaderboard, scoreSailing } from 'src/composables/useLeaderboard'
-import { loadBowenSailings } from 'src/composables/useBowenSailings'
+import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
 import { celebrate, estimateCredits } from 'src/composables/useTagCelebration'
 
 const $q = useQuasar()
@@ -128,10 +163,13 @@ const { loadRecentUserReports } = useLeaderboard()
 
 const loading = ref(false)
 const allSailings = ref([])
+const upcomingLineup = ref(null)
 const filterTime = ref([])
 const filterDay = ref([])
 const untaggedOnly = ref(false)
 const showSignInDialog = ref(false)
+
+const crosswalkAtLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 // Query params are only synced to the URL once the initial ?time/?day values
 // (if any) have been applied — otherwise that sync would fire first and wipe
 // them before loadSailings/applyFiltersFromQuery gets a chance to read them.
@@ -210,12 +248,37 @@ async function loadSailings() {
     }
 
     allSailings.value = built
+    // The sailing boarding right now (community-cam lineup, no photo yet).
+    // Reads the same freshened cache as loadBowenSailings — no extra reads.
+    upcomingLineup.value = await loadUpcomingLineup()
   } catch (err) {
     console.error('Failed to load sailings:', err)
     $q.notify({ type: 'negative', message: 'Failed to load sailings' })
   } finally {
     loading.value = false
   }
+}
+
+// Crosswalk mark from the upcoming (boarding) lineup timelapse — the rider
+// paused on the frame where cars reach the crosswalk. Mirrors onCrosswalk,
+// but targets the upcomingLineup sailing (which isn't in allSailings yet).
+function onUpcomingCrosswalk({ ts, timeLabel }) {
+  const sailingKey = upcomingLineup.value?.sailingKey
+  if (!sailingKey) return
+  saveCrosswalkMark(sailingKey, ts)
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
+      }
+      if (upcomingLineup.value) upcomingLineup.value.crosswalkFullAt = ts
+      celebrate(0.5, { label: null })
+      $q.notify({ type: 'positive', message: `Full to crosswalk recorded at ${timeLabel} — thanks!` })
+    })
+    .catch((err) => {
+      console.error('Failed to save crosswalk mark:', err)
+      $q.notify({ type: 'negative', message: 'Failed to record crosswalk time' })
+    })
 }
 
 // Reduce a sailing's raw user reports to one chip per user (their latest) and
