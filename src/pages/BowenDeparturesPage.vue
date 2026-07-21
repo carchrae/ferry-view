@@ -71,6 +71,16 @@
       />
     </div>
 
+    <q-banner v-if="disagreementOnly" dense rounded class="bg-amber-1 text-grey-9 q-mb-md">
+      <template v-slot:avatar>
+        <q-icon name="sports_mma" color="warning" size="28px" />
+      </template>
+      These sailings have unresolved disagreements — riders reported different capacities, or
+      marked crosswalk times more than 5 minutes apart. The report most riders agree on wins, so
+      add yours to break a tie. Only your latest report counts; changing your mind replaces your
+      earlier one.
+    </q-banner>
+
     <!-- The sailing that's boarding right now: the community-cam lineup building
          before the ferry arrives. Shown at the top (not subject to the day/time
          filters) only while that sailing has frames but no photo yet, so it
