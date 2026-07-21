@@ -18,6 +18,7 @@
         emit-value
         map-options
         clearable
+        :clear-value="[]"
         options-dense
         class="col q-mr-sm"
         style="min-width: 0"
@@ -32,6 +33,7 @@
         emit-value
         map-options
         clearable
+        :clear-value="[]"
         options-dense
         class="col"
         style="min-width: 0"
@@ -200,8 +202,9 @@ function isUnreported(s) {
 const filteredSailings = computed(() =>
   allSailings.value.filter(
     (s) =>
-      (!filterTime.value.length || filterTime.value.includes(s.sailingTime)) &&
-      (!filterDay.value.length || filterDay.value.includes(dayjs(s.dateIso).format('dddd'))) &&
+      // ?. because clearing a q-select emits null (the model isn't always an array).
+      (!filterTime.value?.length || filterTime.value.includes(s.sailingTime)) &&
+      (!filterDay.value?.length || filterDay.value.includes(dayjs(s.dateIso).format('dddd'))) &&
       (!untaggedOnly.value || isUnreported(s)),
   ),
 )
@@ -210,7 +213,7 @@ const emptyMessage = computed(() => {
   if (untaggedOnly.value) {
     return 'No untagged sailings here — every sailing in view already has a report. 🎉'
   }
-  return filterTime.value.length || filterDay.value.length
+  return filterTime.value?.length || filterDay.value?.length
     ? 'No photos for this sailing in the last six weeks.'
     : 'No webcam photos available yet — photos are kept for six weeks.'
 })
@@ -398,8 +401,8 @@ watch([filterTime, filterDay, untaggedOnly], ([time, day, untagged]) => {
   router.replace({
     query: {
       ...route.query,
-      time: time.length ? time : undefined,
-      day: day.length ? day : undefined,
+      time: time?.length ? time : undefined,
+      day: day?.length ? day : undefined,
       untagged: untagged || undefined,
     },
   })
