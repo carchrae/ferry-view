@@ -51,8 +51,8 @@
       <div class="col-12 col-md-6">
         <div class="text-subtitle1 text-weight-medium q-mb-xs">Ride Sharers</div>
         <div class="text-body2 text-grey-7 q-mb-sm">
-          Ranked by ride offers and requests posted over the last 30 days. Every post — offering a
-          seat or asking for one — is worth one credit; riders with more than one post appear here.
+          Ranked by ride offers and requests posted over the last 30 days. Offering a seat is worth
+          10 credits, asking for one is worth 5; riders with more than one post appear here.
         </div>
         <div v-if="loading && !rideBoard.length" class="q-py-lg text-center">
           <q-spinner color="primary" size="28px" />

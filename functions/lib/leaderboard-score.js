@@ -17,6 +17,9 @@ export const CREDIT_FIRST = 1.0 // first correct reporter of the winning camp
 export const CREDIT_CONFIRM = 0.5 // additional reporter who confirms a disputed win
 export const CREDIT_AGREE = 0.1 // redundant agreement / participation / losing camp
 
+export const RIDE_OFFER_CREDIT = 10 // posting a ride offer (has a spare seat)
+export const RIDE_REQUEST_CREDIT = 5 // posting a ride request (looking for a seat)
+
 // Which agreement camp a reported value belongs to. Only "Full" means the deck
 // filled; everything else ("Not Full" and any percent-available) agrees that
 // there was room.
@@ -104,18 +107,19 @@ export function aggregateLeaderboard(reports) {
   return finalizeBoard(totals)
 }
 
-// Ride-share leaderboard. Every ride post — offer or request — is worth the same
-// as being first to report a sailing (CREDIT_FIRST). Input is a flat list of
-// { authorUid, authorName, authorPhoto, createdAt }; returns the same entry
-// shape as aggregateLeaderboard so both boards render identically. Riders with
-// only a single post are excluded — the board rewards repeat participation, and
-// since each ride is worth 1 credit, reportCount >= 2 means "more than one point".
+// Ride-share leaderboard. Offering a ride (a spare seat helps more people) is
+// worth more than asking for one. Input is a flat list of
+// { authorUid, authorName, authorPhoto, createdAt, type }, where type is
+// 'offer' or 'request' (anything else defaults to the request credit). Returns
+// the same entry shape as aggregateLeaderboard so both boards render
+// identically. Riders with only a single post are excluded — the board
+// rewards repeat participation.
 export function aggregateRideLeaderboard(rides) {
   const totals = new Map() // uid -> entry (see newEntry)
   for (const r of rides || []) {
     if (!r || !r.authorUid) continue
     const entry = totals.get(r.authorUid) || newEntry(r.authorUid)
-    entry.credits += CREDIT_FIRST
+    entry.credits += r.type === 'offer' ? RIDE_OFFER_CREDIT : RIDE_REQUEST_CREDIT
     entry.reportCount += 1
     applyIdentity(entry, r.createdAt || 0, r.authorName, r.authorPhoto, r.anonymous)
     totals.set(r.authorUid, entry)

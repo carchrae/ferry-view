@@ -63,6 +63,7 @@ export function useLeaderboard() {
         authorPhoto: d.authorPhoto || null,
         createdAt: d.createdAt?.toMillis?.() || 0,
         anonymous: d.anonymous || false,
+        type: d.type,
       })
     })
     return rides

@@ -934,6 +934,8 @@ import {
   labelToPanel,
 } from 'src/composables/useHistoricalStats'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
+import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
+import { loadBowenSailings } from 'src/composables/useBowenSailings'
 
 const $q = useQuasar()
 const { ferryData, error } = useFirestoreFerryListener()
@@ -1021,9 +1023,33 @@ onUnmounted(() => {
   if (unsubscribeLeaderboard) unsubscribeLeaderboard()
 })
 
-function captureDebugData() {
+// Bowen sailings are sorted newest-first by loadBowenSailings; the most
+// recent handful is enough to cross-check webcamAttribution's live decision
+// against what actually got stamped, without ballooning the payload with six
+// weeks of history.
+const DEBUG_BOWEN_SAILINGS_LIMIT = 10
+
+async function captureDebugData() {
+  const now = nowInVancouver()
+
+  // Reruns the exact server-side capture decisions (functions/lib/webcam-decision.js)
+  // against the live ferryData snapshot: which sailing the lineup/departure
+  // timelapse would target right now, its window boundaries, and how late it
+  // is. This is what verifies the schedule-relative windowing fix (see
+  // scheduleWindowEnd in functions/lib/matching.js) — a captured frame whose
+  // sailingKey doesn't match the window shown here for its capture time is a
+  // misattribution.
+  const webcamAttribution = ferryData.value ? scheduleAttributionDebug(ferryData.value, now) : null
+
+  let bowenSailings = []
+  try {
+    bowenSailings = (await loadBowenSailings(true)).slice(0, DEBUG_BOWEN_SAILINGS_LIMIT)
+  } catch (err) {
+    console.error('Debug capture: failed to load Bowen sailings:', err)
+  }
+
   const payload = {
-    capturedAt: nowInVancouver().toISOString(),
+    capturedAt: now.toISOString(),
     now: nowDate().toISOString(),
     ferryData: JSON.parse(JSON.stringify(ferryData.value)),
     computed: {
@@ -1034,6 +1060,8 @@ function captureDebugData() {
       allPastHSB: JSON.parse(JSON.stringify(allPastHSB.value)),
       allPastBowen: JSON.parse(JSON.stringify(allPastBowen.value)),
     },
+    webcamAttribution,
+    bowenSailings: JSON.parse(JSON.stringify(bowenSailings)),
     rides: JSON.parse(JSON.stringify(rides.value)),
     sortedRides: JSON.parse(JSON.stringify(sortedRides.value)),
   }

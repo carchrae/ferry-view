@@ -3,10 +3,29 @@ import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
 import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
-import { isRecent, nowInVancouver, timeToDate, dayjs, TZ } from './time.js'
+import { isRecent, nowInVancouver, timeToDate, dayjs } from './time.js'
 import { classifyLineup } from './lineup-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
-import { scheduleWindowEnd } from './matching.js'
+import {
+  lastBowenDeparture,
+  bowenArrivalForCurrentCycle,
+  arrivalSignalAvailable,
+  timelapseDecision,
+  departureTimelapseDecision,
+} from './webcam-decision.js'
+
+// Re-exported so existing imports of the decision logic from this file (and
+// the test suite) keep working — the actual definitions now live in
+// webcam-decision.js, which has no Storage/logger/sharp dependencies and is
+// therefore safe to import from the client bundle (see HomePage.vue's
+// debug-info capture).
+export {
+  lastBowenDeparture,
+  bowenArrivalForCurrentCycle,
+  arrivalSignalAvailable,
+  timelapseDecision,
+  departureTimelapseDecision,
+}
 
 // Photo filenames are timestamped and never rewritten, so browsers can cache
 // them forever — without this, GCS's default 1-hour max-age makes every
@@ -17,6 +36,27 @@ const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jp
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
 const SAMPLE_COUNT = 3
 const SAMPLE_DELAY_MS = 1000
+
+// Logs which sailing a capture was attributed to and how late that sailing
+// is against its scheduled time — the trace needed to reconstruct why a
+// frame landed where it did after the fact (see scheduleWindowEnd in
+// matching.js, and the debug-info capture on HomePage.vue which surfaces
+// the same lateness/window numbers live). A `warn` once lateness passes
+// LATE_ATTRIBUTION_WARN_MIN makes sustained delays searchable in Cloud
+// Functions logs even when nobody's watching the departures page.
+const LATE_ATTRIBUTION_WARN_MIN = 45
+
+function logAttribution(kind, decision, now) {
+  const t = timeToDate(decision.sailingTime)
+  const lateMin = t ? Math.round(now.diff(t, 'minute')) : null
+  const msg = `${kind} attributed to ${decision.sailingTime}` +
+    (lateMin != null ? ` (${lateMin}m late)` : ' (unknown lateness)')
+  if (lateMin != null && lateMin >= LATE_ATTRIBUTION_WARN_MIN) {
+    logger.warn(msg)
+  } else {
+    logger.log(msg)
+  }
+}
 
 async function captureSamples(url) {
   const samples = []
@@ -153,112 +193,9 @@ export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arri
   logger.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
-// Last Bowen departure today: the atberth/AIS log is newest-first. When it
-// has no Bowen departure (stale log, early morning), fall back to the most
-// recent *scheduled* time already in the past — close enough for a 30-min
-// buffer. Returns a dayjs, or null when nothing has departed today
-// (overnight / before the first sailing).
-export function lastBowenDeparture(data, now) {
-  const depEntry = (data.recentActivity || []).find(
-    (e) => e.action === 'Departed' && e.location === 'Bowen',
-  )
-  let lastDep = depEntry ? timeToDate(depEntry.time) : null
-  if (!lastDep) {
-    for (const s of data.bowenSchedule || []) {
-      const t = timeToDate(s.time)
-      if (t && t < now && (!lastDep || t > lastDep)) lastDep = t
-    }
-  }
-  return lastDep
-}
-
-// When did the ferry arrive back at Bowen for the CURRENT loading cycle?
-// Returns a dayjs, or null when it hasn't (or the arrival can't be seen).
-// The AIS level classification is primary and reflects the present: docked
-// at Bowen right now IS arrived — even when the schedule says this sailing
-// should already have left, a late-boarding ferry is still at the dock (so
-// no comparison against the last departure, whose schedule-time fallback
-// would wrongly declare a late boarder "gone" the minute its scheduled time
-// passes). Any other classification means it isn't there.
-// Without AIS, fall back to the newest Arrived/Bowen log event, gated to be
-// at/after the last (possibly schedule-inferred) departure — a stale log
-// that recorded an arrival but missed the departure after it must not read
-// as "still docked" forever.
-export function bowenArrivalForCurrentCycle(data, now) {
-  if (data.aisLocation != null) {
-    if (data.aisLocation !== 'Bowen') return null
-    return data.aisLocationSince ? dayjs(data.aisLocationSince).tz(TZ) : now
-  }
-  const arr = (data.recentActivity || []).find(
-    (e) => e.action === 'Arrived' && e.location === 'Bowen',
-  )
-  if (arr) {
-    const t = timeToDate(arr.time)
-    const lastDep = lastBowenDeparture(data, now)
-    if (t && (!lastDep || t >= lastDep)) return t
-  }
-  return null
-}
-
-// Can we see arrivals at all? False when AIS classification is absent AND the
-// activity log has never mentioned Bowen — then "no arrival" means "blind",
-// not "ferry still out", and the terminal camera falls back to its legacy
-// schedule-only window.
-export function arrivalSignalAvailable(data) {
-  if (data.aisLocation != null) return true
-  return (data.recentActivity || []).some((e) => e.location === 'Bowen')
-}
-
-// Lineup timelapse: between sailings, the community camera shows the car
-// lineup building for the NEXT Bowen departure. Decide (statelessly — the
-// poll runs every minute, so `minute % 5` gives a 5-minute cadence with no
-// stored state and no Firestore reads) whether this poll should capture a
-// frame:
-//   - only from 15 min after the previous Bowen departure (before that the
-//     lot is mostly empty — and sailings that fill up do so early, so the
-//     window opens well before the lineup peaks),
-//   - until the ferry arrives back at Bowen (loading from there on is the
-//     terminal camera's job — see departureTimelapseDecision),
-//   - never for departures scheduled at/after 9 pm,
-//   - attributed to the next upcoming Bowen departure.
-const LINEUP_WAIT_AFTER_DEP_MIN = 15
-
-export function timelapseDecision(data, now) {
-  if (now.minute() % 5 !== 0) return { capture: false }
-
-  const lastDep = lastBowenDeparture(data, now)
-  if (!lastDep) return { capture: false }
-
-  // The lineup is building for the earliest sailing that hasn't departed yet —
-  // NOT `first scheduled time > now`. When a sailing is boarding past its
-  // scheduled time, "time > now" skips it and credits its lineup to the NEXT
-  // sailing, so that next sailing's timelapse wrongly opens with the current
-  // sailing's crowd. matchedDepartureTime (set by the poll once a sailing
-  // leaves) marks departed sailings; scheduleWindowEnd (bounded by the next
-  // entry's own time, or +90min for the day's last sailing) excludes ancient
-  // sailings that were never matched (log gaps) so they can't become a
-  // permanent target — while still crediting a sailing that's simply running
-  // very late, however late, right up until the next one supersedes it.
-  const schedule = data.bowenSchedule || []
-  const nextDep = schedule.find((s, i) => {
-    if (s.matchedDepartureTime) return false
-    const t = timeToDate(s.time)
-    return t && now.isBefore(scheduleWindowEnd(schedule, i))
-  })
-  if (!nextDep) return { capture: false }
-  if (parseInt(nextDep.time.split(':')[0], 10) >= 21) return { capture: false }
-
-  if (now.diff(lastDep, 'minute') < LINEUP_WAIT_AFTER_DEP_MIN) return { capture: false }
-
-  // Ferry is back at the dock: the lineup has stopped building (it's
-  // draining onto the boat) and the terminal camera has taken over.
-  if (bowenArrivalForCurrentCycle(data, now)) return { capture: false }
-
-  return { capture: true, sailingTime: nextDep.time }
-}
-
 export async function captureLineupTimelapse(db, data) {
-  const decision = timelapseDecision(data, nowInVancouver())
+  const now = nowInVancouver()
+  const decision = timelapseDecision(data, now)
   if (!decision.capture) return
 
   const samples = await captureSamples(COMMUNITY_WEBCAM_URL)
@@ -313,52 +250,13 @@ export async function captureLineupTimelapse(db, data) {
     addLineupTs: timestamp,
   })
 
+  logAttribution('Lineup timelapse', decision, now)
   logger.log(`Saved lineup timelapse frame: ${blobPath} (${best.length}B)`)
 }
 
-// Departure timelapse: the Bowen TERMINAL camera as the ferry loads. Unlike
-// the lineup (community) timelapse, capture EVERY minute (no 5-min gate),
-// from max(ferry arrival at Bowen, 10 min before the scheduled time) —
-// loading can't start before the boat is back, so a late ferry shouldn't
-// burn frames on an empty berth — and continuing until the ferry actually
-// leaves. Departure is detected via matchedDepartureTime, which the poll's
-// final matchDepartures sets on the schedule entry once the sailing has
-// left — so once it departs, the target no longer matches and capture stops
-// on its own. Safety bounds for when detection fails: at most CAP_MIN past
-// the effective start (missed departure), never a sailing whose
-// scheduleWindowEnd has passed (a never-matched ghost entry would otherwise
-// adopt the next cycle's arrival and capture again — see scheduleWindowEnd
-// in matching.js; bounded by the NEXT entry's own time, not a flat minute
-// count, so a sailing that's simply running very late keeps its frames no
-// matter how late, right up until the next one supersedes it). When arrival
-// can't be seen at all (AIS out, empty log) fall back to the legacy
-// schedule-only window so an outage degrades precision, not coverage.
-const DEPARTURE_PRE_MIN = 10 // window opens T−10
-const DEPARTURE_CAP_MIN = 30 // stop 30 min after effective start
-const DEPARTURE_LEGACY_LATE_MIN = 20 // degraded mode: legacy T−10..T+20
-
-export function departureTimelapseDecision(data, now) {
-  const degraded = !arrivalSignalAvailable(data)
-  const arrivedAt = degraded ? null : bowenArrivalForCurrentCycle(data, now)
-  const schedule = data.bowenSchedule || []
-  const target = schedule.find((s, i) => {
-    if (s.matchedDepartureTime) return false // already departed
-    const t = timeToDate(s.time)
-    if (!t) return false
-    if (!now.isBefore(scheduleWindowEnd(schedule, i))) return false // ghost target
-    const windowStart = t.subtract(DEPARTURE_PRE_MIN, 'minute')
-    if (now.isBefore(windowStart)) return false
-    if (degraded) return now.diff(t, 'minute') <= DEPARTURE_LEGACY_LATE_MIN
-    if (!arrivedAt) return false // detection healthy, ferry not back yet
-    const effStart = arrivedAt.isAfter(windowStart) ? arrivedAt : windowStart
-    return now.diff(effStart, 'minute') <= DEPARTURE_CAP_MIN
-  })
-  if (!target) return { capture: false }
-  return { capture: true, sailingTime: target.time }
-}
-
 export async function captureDepartureTimelapse(db, data) {
-  const decision = departureTimelapseDecision(data, nowInVancouver())
+  const now = nowInVancouver()
+  const decision = departureTimelapseDecision(data, now)
   if (!decision.capture) return
 
   const samples = await captureSamples(WEBCAM_URL)
@@ -398,6 +296,7 @@ export async function captureDepartureTimelapse(db, data) {
     addDepartureTs: timestamp,
   })
 
+  logAttribution('Departure timelapse', decision, now)
   logger.log(`Saved departure timelapse frame: ${blobPath} (${best.length}B)`)
 }
 

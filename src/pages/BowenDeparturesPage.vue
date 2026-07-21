@@ -3,60 +3,65 @@
     <div class="row items-center q-mb-sm">
       <div class="text-h6">Bowen Departures</div>
       <q-space />
+      <q-btn flat dense round icon="refresh" :loading="loading" @click="loadSailings" />
+    </div>
+    <!-- Day + time share their own row so they stay on one line on mobile
+         (the title used to crowd them onto a second line). -->
+    <div class="row no-wrap items-center q-mb-sm">
       <q-select
         v-model="filterDay"
         :options="dayOptions"
         label="Day"
+        multiple
         dense
         outlined
         emit-value
         map-options
         clearable
         options-dense
-        class="q-mr-sm"
-        style="min-width: 130px"
+        class="col q-mr-sm"
+        style="min-width: 0"
       />
       <q-select
         v-model="filterTime"
         :options="sailingTimeOptions"
         label="Sailing"
+        multiple
         dense
         outlined
         emit-value
         map-options
         clearable
         options-dense
-        class="q-mr-sm"
-        style="min-width: 130px"
+        class="col"
+        style="min-width: 0"
       />
-      <q-btn flat dense round icon="refresh" :loading="loading" @click="loadSailings" />
     </div>
     <div class="text-body2 text-grey-7 q-mb-sm">
       These photos capture Bowen-side sailings (departures to Horseshoe Bay) over the last six
       weeks. Record how full the ferry was — your reports fill in sailings BC Ferries didn't
       record.
     </div>
-    <q-btn
-      flat
-      dense
-      no-caps
-      color="primary"
-      icon="emoji_events"
-      label="Reporter Leaderboard"
-      to="/leaderboard"
-      class="q-mb-md"
-    />
+    <div class="row no-wrap items-center q-mb-md">
+      <q-toggle v-model="untaggedOnly" label="Untagged only" dense />
+      <q-space />
+      <q-btn
+        flat
+        dense
+        no-caps
+        color="primary"
+        icon="emoji_events"
+        label="Reporter Leaderboard"
+        to="/leaderboard"
+      />
+    </div>
 
     <div v-if="loading && !filteredSailings.length" class="q-py-xl text-center">
       <q-spinner color="primary" size="32px" />
     </div>
 
     <div v-else-if="!filteredSailings.length" class="q-py-xl text-center text-grey-6">
-      {{
-        filterTime || filterDay
-          ? 'No photos for this sailing in the last six weeks.'
-          : 'No webcam photos available yet — photos are kept for six weeks.'
-      }}
+      {{ emptyMessage }}
     </div>
 
     <q-card
@@ -123,8 +128,9 @@ const { loadRecentUserReports } = useLeaderboard()
 
 const loading = ref(false)
 const allSailings = ref([])
-const filterTime = ref(null)
-const filterDay = ref(null)
+const filterTime = ref([])
+const filterDay = ref([])
+const untaggedOnly = ref(false)
 const showSignInDialog = ref(false)
 // Query params are only synced to the URL once the initial ?time/?day values
 // (if any) have been applied — otherwise that sync would fire first and wipe
@@ -141,13 +147,35 @@ const dayOptions = computed(() => {
   return DAY_KEYS.filter((d) => days.has(d)).map((d) => ({ label: d, value: d }))
 })
 
+// A sailing "needs a report" when no human has recorded anything about how full
+// it was — neither a capacity rating nor a full-to-crosswalk mark. lastCapacity
+// and crosswalkFullAt persist on the sailing record, so a sailing tagged weeks
+// ago still counts as reported even though the reports/crosswalkReports arrays
+// (loaded from a 30-day window) may be empty. To HSB sailings never get
+// automated capacity, so any lastCapacity here is a human tag.
+function isUnreported(s) {
+  const hasCapacity = s.lastCapacity != null || (s.reports?.length ?? 0) > 0
+  const hasCrosswalk = s.crosswalkFullAt != null || (s.crosswalkReports?.length ?? 0) > 0
+  return !hasCapacity && !hasCrosswalk
+}
+
 const filteredSailings = computed(() =>
   allSailings.value.filter(
     (s) =>
-      (!filterTime.value || s.sailingTime === filterTime.value) &&
-      (!filterDay.value || dayjs(s.dateIso).format('dddd') === filterDay.value),
+      (!filterTime.value.length || filterTime.value.includes(s.sailingTime)) &&
+      (!filterDay.value.length || filterDay.value.includes(dayjs(s.dateIso).format('dddd'))) &&
+      (!untaggedOnly.value || isUnreported(s)),
   ),
 )
+
+const emptyMessage = computed(() => {
+  if (untaggedOnly.value) {
+    return 'No untagged sailings here — every sailing in view already has a report. 🎉'
+  }
+  return filterTime.value.length || filterDay.value.length
+    ? 'No photos for this sailing in the last six weeks.'
+    : 'No webcam photos available yet — photos are kept for six weeks.'
+})
 
 watch(needsSignIn, (v) => {
   if (v) {
@@ -286,20 +314,32 @@ function onRate(sailing, { sailingKey, capacity, filledAt }) {
 // this page itself). Time is matched by normalized time so a stored "7:30"
 // and a passed "07:30" still line up; day is matched as-is against DAY_KEYS.
 function applyFiltersFromQuery() {
-  const t = route.query.time
-  if (t) {
-    const target = normalizeTime(String(t))
+  // Multi-select params arrive as a single string (one value), an array (several),
+  // or undefined (none) — normalize all three to an array. Each requested time is
+  // matched to a real sailingTime so a stored "7:30" and a passed "07:30" line up.
+  const asArray = (v) => (v == null ? [] : Array.isArray(v) ? v : [v])
+  filterTime.value = asArray(route.query.time).map((raw) => {
+    const target = normalizeTime(String(raw))
     const match = allSailings.value.find((s) => normalizeTime(s.sailingTime) === target)
-    filterTime.value = match ? match.sailingTime : target
-  }
-  const d = route.query.day
-  if (d && DAY_KEYS.includes(String(d))) filterDay.value = String(d)
+    return match ? match.sailingTime : target
+  })
+  filterDay.value = asArray(route.query.day)
+    .map(String)
+    .filter((d) => DAY_KEYS.includes(d))
+  untaggedOnly.value = String(route.query.untagged) === 'true'
 }
 
 // Keep the URL in sync with the filters so they're shareable/bookmarkable.
-watch([filterTime, filterDay], ([time, day]) => {
+watch([filterTime, filterDay, untaggedOnly], ([time, day, untagged]) => {
   if (!queryReady) return
-  router.replace({ query: { ...route.query, time: time || undefined, day: day || undefined } })
+  router.replace({
+    query: {
+      ...route.query,
+      time: time.length ? time : undefined,
+      day: day.length ? day : undefined,
+      untagged: untagged || undefined,
+    },
+  })
 })
 
 onMounted(async () => {

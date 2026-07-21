@@ -58,9 +58,9 @@ departure to a schedule entry. Skipped when the sailing already has a
   departure;
 - there is a later not-yet-departed Bowen sailing today, scheduled **before
   9 pm** (the 21:30 / 22:30 / 23:30 boats get no timelapse);
-- frames attribute to the earliest sailing that hasn't departed yet (with a
-  30-minute grace so a boat boarding past its scheduled time keeps its own
-  frames).
+- frames attribute to the earliest sailing that hasn't departed yet — however
+  late it's running, right up until its **schedule window** closes (see
+  "Attribution windowing" below).
 
 So the lineup timelapse covers **from 15 min after the previous departure
 until the ferry arrives back** — typically ~7–11 frames per cycle.
@@ -81,13 +81,68 @@ Safety bounds for when detection fails:
 
 - at most **30 minutes after the effective start** (missed departure can't
   capture forever);
-- never a sailing more than **60 minutes past its scheduled time** (a
-  never-matched ghost entry can't adopt the next cycle's arrival);
+- never a sailing whose **schedule window** has closed (a never-matched ghost
+  entry can't adopt the next cycle's arrival — see "Attribution windowing"
+  below);
 - **degraded mode**: when arrival is undetectable at all (AIS out *and* no
   Bowen events in the log), fall back to the legacy schedule-only window
   `T−10 … T+20` — an outage degrades precision, not coverage.
 
 Typical run: arrival → departure ≈ 10–15 frames per sailing.
+
+## Attribution windowing
+
+Both timelapse decisions (path 3 and path 4) need to answer "which sailing is
+this frame for?" using only the schedule + the arrival/departure log — there's
+no ground truth to check against until much later. Early versions used a flat
+wall-clock ceiling (30 min for the lineup, 60 min for the departure timelapse)
+to stop an old, never-matched schedule entry from soaking up frames forever.
+That backfired the first time the ferry ran **more than 30–60 minutes late**:
+once a sailing crossed the ceiling, both functions gave up on it mid-boarding
+and started stamping new frames onto the *next* scheduled sailing instead —
+frames land on the wrong sailingKey, and the mismatch isn't visible until
+someone looks at the departures page and sees the crowd/photo for the wrong
+time slot.
+
+The fix (`scheduleWindowEnd` in `functions/lib/matching.js`, used by both
+decision functions in `functions/lib/webcam-decision.js`) replaces the flat
+ceiling with a **schedule-relative** one: an unmatched entry stays "in play"
+until 5 minutes before the *next* scheduled entry's time (or +90 min for the
+day's last sailing). This mirrors the windowing `buildPast` already uses to
+attribute a `Departed` event to a schedule slot (same file), just applied
+prospectively. A sailing can now run arbitrarily late and keep its own frames
+— it only loses them once the next sailing's own window opens, i.e. once
+there's a genuinely competing candidate.
+
+### Debugging a misattribution
+
+If photos on the Bowen Departures page look like they belong to the wrong
+sailing (crowd size or timestamp inconsistent with the labeled time):
+
+1. **Staging debug button** (bug icon, top of the home page, staging only):
+   copies a JSON payload to the clipboard containing `webcamAttribution` — a
+   live rerun of `timelapseDecision`/`departureTimelapseDecision` against the
+   current `ferryData` snapshot, with a per-schedule-entry breakdown
+   (`windowEnd`, `windowOpen`, `matchedDepartureTime`, `lateMinutes`) — plus
+   `bowenSailings`, the actual most-recently-captured sailing records
+   (`sailingKey`, timelapse frame timestamps). Compare a frame's capture
+   timestamp against the `windowEnd` of the sailing it's stamped on: if the
+   frame's timestamp falls outside that sailing's window, or a later sailing's
+   window was already open at capture time, that's the misattribution.
+2. **Cloud Functions logs**: every successful capture logs
+   `"Lineup/Departure timelapse attributed to {time} ({N}m late)"`
+   (`logAttribution` in `functions/lib/webcam.js`), escalated to `warn` past
+   45 minutes late — search/filter on this to see exactly which sailing each
+   frame was credited to and how late it was at capture time, without waiting
+   for a repro.
+3. **Reproduce locally**: the staging debug tools also include a "delay
+   departures" button (clock icon) that adds cumulative artificial delay to
+   `recentActivity` in the dev session, letting you exercise the late-running
+   path against `webcamAttribution` without waiting for a real delay.
+4. **Regression tests**: `functions/test/timelapse-decision.test.js` and
+   `functions/test/departure-timelapse.test.js` pin this behavior, including
+   cases well past the old flat ceilings and the ghost-entry exclusion at the
+   window boundary.
 
 ## Where the photos land
 

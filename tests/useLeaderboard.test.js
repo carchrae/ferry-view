@@ -146,23 +146,31 @@ describe('aggregateLeaderboard', () => {
 })
 
 describe('aggregateRideLeaderboard', () => {
-  it('gives one credit per ride and ranks by post count', () => {
+  it('credits offers at 10 and requests at 5, and ranks by credits', () => {
     const rides = [
-      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 1 },
-      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 2 },
-      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 3 },
-      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 4 },
-      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 5 },
-      { authorUid: 'C', authorName: 'Cy Gamma', createdAt: 6 }, // single ride — excluded
+      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 1, type: 'offer' },
+      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 2, type: 'offer' },
+      { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 3, type: 'request' },
+      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 4, type: 'offer' },
+      { authorUid: 'B', authorName: 'Bob Beta', createdAt: 5, type: 'offer' },
+      { authorUid: 'C', authorName: 'Cy Gamma', createdAt: 6, type: 'offer' }, // single ride — excluded
     ]
     const board = aggregateRideLeaderboard(rides)
     assert.equal(board.length, 2)
-    assert.equal(board[0].userUid, 'A')
-    assert.equal(board[0].credits, 3.0)
+    assert.equal(board[0].userUid, 'A') // 10 + 10 + 5 = 25
+    assert.equal(board[0].credits, 25.0)
     assert.equal(board[0].reportCount, 3)
-    assert.equal(board[1].userUid, 'B')
-    assert.equal(board[1].credits, 2.0)
+    assert.equal(board[1].userUid, 'B') // 10 + 10 = 20
+    assert.equal(board[1].credits, 20.0)
     assert.ok(!board.some((e) => e.userUid === 'C'))
+  })
+
+  it('treats a missing/unknown type as a request (5 credits)', () => {
+    const board = aggregateRideLeaderboard([
+      { authorUid: 'A', authorName: 'A', createdAt: 1 },
+      { authorUid: 'A', authorName: 'A', createdAt: 2 },
+    ])
+    assert.equal(board[0].credits, 10.0)
   })
 
   it('excludes riders with only one ride', () => {
