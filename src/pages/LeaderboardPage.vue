@@ -3,8 +3,17 @@
     <div class="row items-center q-mb-sm">
       <div class="text-h6">Bowen Heroes</div>
       <q-space />
-      <q-btn flat dense round icon="refresh" :loading="loading" @click="load" />
+      <q-btn
+        flat
+        dense
+        no-caps
+        color="primary"
+        icon="help_outline"
+        :label="$q.screen.lt.sm ? undefined : 'How scoring works'"
+        @click="showScoring = true"
+      />
     </div>
+    <ScoringExplainDialog v-model="showScoring" />
 
     <q-banner v-if="user" dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
       <template v-if="user.displayName">
@@ -25,9 +34,9 @@
       <div class="col-12 col-md-6">
         <div class="text-subtitle1 text-weight-medium q-mb-xs">Capacity Reporters</div>
         <div class="text-body2 text-grey-7 q-mb-sm">
-          Ranked by credits earned reporting how full Bowen departures are over the last 30 days.
-          You earn a credit for being first to report a sailing; confirming others earns a little
-          too.
+          Ranked by credits earned over the last 30 days reporting how full Bowen departures are
+          and when lineups reach the crosswalk. You earn a credit for being first to report a
+          sailing; confirming others earns a little too.
         </div>
         <div v-if="loading && !board.length" class="q-py-lg text-center">
           <q-spinner color="primary" size="28px" />
@@ -85,14 +94,17 @@
           <q-spinner color="primary" size="28px" />
         </q-card-section>
         <q-list v-else separator>
-          <q-item v-for="r in userReports" :key="r.sailingKey">
+          <q-item v-for="r in userReports" :key="r.sailingKey + (r.crosswalkAt ? '-cw' : '')">
             <q-item-section>
               <q-item-label>{{ sailingLabel(r.sailingKey) }}</q-item-label>
               <q-item-label caption>{{ reportedAtLabel(r.recordedAt) }}</q-item-label>
             </q-item-section>
             <q-item-section side class="items-end">
-              <q-badge :color="getDeckColor(r.capacity)">
+              <q-badge v-if="r.capacity" :color="getDeckColor(r.capacity)">
                 {{ capacityFullLabel(r.capacity) }}
+              </q-badge>
+              <q-badge v-else color="deep-orange">
+                crosswalk @ {{ crosswalkLabel(r.crosswalkAt) }}
               </q-badge>
               <div class="text-caption text-grey-7 q-mt-xs">+{{ round1(r.credit).toFixed(1) }}</div>
             </q-item-section>
@@ -114,6 +126,7 @@ import { round1 } from '../../functions/lib/leaderboard-score.js'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { useAuth } from 'src/composables/useAuth'
 import LeaderboardList from 'src/components/LeaderboardList.vue'
+import ScoringExplainDialog from 'src/components/ScoringExplainDialog.vue'
 import { dayjs, formatTime12h, TZ } from '../../functions/lib/time.js'
 
 const $q = useQuasar()
@@ -125,6 +138,7 @@ const board = ref([])
 const rideBoard = ref([])
 let unsubscribe = null
 
+const showScoring = ref(false)
 const showUser = ref(false)
 const userLoading = ref(false)
 const userReports = ref([])
@@ -142,8 +156,12 @@ function reportedAtLabel(ts) {
   return ts ? `Reported ${dayjs(ts).tz(TZ).format('MMM D, h:mm a')}` : ''
 }
 
-// Client-side fallback: used before the server has seeded aggregates/leaderboard,
-// and by the manual refresh button.
+function crosswalkLabel(ts) {
+  return dayjs(ts).tz(TZ).format('h:mm a')
+}
+
+// Client-side fallback: used only until the server has seeded
+// aggregates/leaderboard (or if the subscription fails).
 async function load() {
   loading.value = true
   try {

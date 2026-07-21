@@ -3,15 +3,14 @@
 // objects: { sailingKey, capacity, recordedAt, userUid, userName }.
 //
 // Credit model (see plan / schema.md capacity semantics):
-//   Reports collapse into two agreement CAMPS, because "Not Full" agrees with
-//   any non-Full value:
-//     FULL     = "Full"
-//     NOTFULL  = "Not Full", "25%" (75% full), "10%" (90% full), any percent
+//   Reports are compared by their EXACT reported value ("Full", "Not Full",
+//   "25%" = 75% full, "10%" = 90% full) — any two different values disagree.
 //   Per sailing, keep each user's LATEST report, order by recordedAt, then:
-//     - Undisputed (one camp only):   first reporter 1.0, later agreers +0.1
-//     - Disputed & resolved (both camps, one has a strict plurality):
-//         winning camp first 1.0, other winners 0.5 each, losers 0.1 each
-//     - Disputed & tied (both camps equal): everyone 0.1, sailing "Conflicting"
+//     - Undisputed (one value only):  first reporter 1.0, later agreers +0.1
+//     - Disputed & resolved (several values, one has a strict plurality):
+//         winning value first 1.0, other winners 0.5 each, losers 0.1 each
+//     - Disputed & tied (top values equal): everyone 0.1, sailing shows a
+//       disagreement
 
 export const CREDIT_FIRST = 1.0 // first correct reporter of the winning camp
 export const CREDIT_CONFIRM = 0.5 // additional reporter who confirms a disputed win
@@ -19,13 +18,6 @@ export const CREDIT_AGREE = 0.1 // redundant agreement / participation / losing 
 
 export const RIDE_OFFER_CREDIT = 10 // posting a ride offer (has a spare seat)
 export const RIDE_REQUEST_CREDIT = 5 // posting a ride request (looking for a seat)
-
-// Which agreement camp a reported value belongs to. Only "Full" means the deck
-// filled; everything else ("Not Full" and any percent-available) agrees that
-// there was room.
-export function capacityCamp(value) {
-  return value === 'Full' ? 'FULL' : 'NOTFULL'
-}
 
 // Keep only each user's most recent report, sorted oldest-first by recordedAt.
 function latestPerUser(reports) {
@@ -38,71 +30,109 @@ function latestPerUser(reports) {
   return [...latest.values()].sort((a, b) => (a.recordedAt || 0) - (b.recordedAt || 0))
 }
 
-// Score a single sailing's reports.
-// Returns { credits: Map<uid, number>, disputed, resolved, winner }.
-//   disputed  — both a FULL and a NOTFULL report exist
+// Group a latest-per-user list by key and find the plurality winner.
+// Returns { disputed, resolved, winnerKey, winners }:
+//   disputed  — more than one distinct key
 //   resolved  — a clear winner is known (undisputed, or a strict plurality)
-//   winner    — 'FULL' | 'NOTFULL' | null (null only while disputed & tied)
-export function scoreSailing(reports) {
-  const list = latestPerUser(reports || [])
-  const credits = new Map()
-  if (list.length === 0) return { credits, disputed: false, resolved: false, winner: null }
-
-  const camps = { FULL: [], NOTFULL: [] }
-  for (const r of list) camps[capacityCamp(r.capacity)].push(r) // preserves time order
-  const nFull = camps.FULL.length
-  const nNot = camps.NOTFULL.length
-  const disputed = nFull > 0 && nNot > 0
-
-  // Undisputed: single camp. First reporter earns the base credit; every later
-  // agreer earns the participation credit.
-  if (!disputed) {
-    list.forEach((r, i) => credits.set(r.userUid, i === 0 ? CREDIT_FIRST : CREDIT_AGREE))
-    return { credits, disputed: false, resolved: true, winner: capacityCamp(list[0].capacity) }
+//   winnerKey — the winning key (null while disputed & tied)
+//   winners   — the reports carrying the winning key, in time order (empty
+//               while tied)
+function pluralityBy(list, keyFn) {
+  const groups = new Map()
+  for (const r of list) {
+    const k = keyFn(r)
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k).push(r) // preserves time order
   }
-
-  // Disputed & tied: nobody is confirmed correct yet — everyone gets the
-  // participation credit and the sailing is flagged as conflicting.
-  if (nFull === nNot) {
-    for (const r of list) credits.set(r.userUid, CREDIT_AGREE)
-    return { credits, disputed: true, resolved: false, winner: null }
+  const ranked = [...groups.values()].sort((a, b) => b.length - a.length)
+  const disputed = groups.size > 1
+  const resolved = groups.size > 0 && (!disputed || ranked[0].length > ranked[1].length)
+  return {
+    disputed,
+    resolved,
+    winnerKey: resolved ? keyFn(ranked[0][0]) : null,
+    winners: resolved ? ranked[0] : [],
   }
-
-  // Disputed & resolved: the larger camp wins. Its earliest reporter was first &
-  // correct (1.0); the others confirmed a contested result (0.5). The losing
-  // camp still earns the participation credit (0.1).
-  const winner = nFull > nNot ? 'FULL' : 'NOTFULL'
-  const loser = winner === 'FULL' ? 'NOTFULL' : 'FULL'
-  camps[winner].forEach((r, i) => credits.set(r.userUid, i === 0 ? CREDIT_FIRST : CREDIT_CONFIRM))
-  for (const r of camps[loser]) credits.set(r.userUid, CREDIT_AGREE)
-  return { credits, disputed: true, resolved: true, winner }
 }
 
-// Aggregate a flat list of reports (across many sailings) into a ranked
-// leaderboard. Returns [{ userUid, userName, userPhoto, credits, reportCount }]
-// sorted by credits desc, then report count desc.
-export function aggregateLeaderboard(reports) {
-  const bySailing = new Map()
-  for (const r of reports || []) {
-    if (!r || !r.userUid || !r.sailingKey) continue
-    if (!bySailing.has(r.sailingKey)) bySailing.set(r.sailingKey, [])
-    bySailing.get(r.sailingKey).push(r)
-  }
+// Assign credits to a latest-per-user list grouped by key: the winning key's
+// earliest reporter was first & correct (1.0); the other winners either agreed
+// with an unopposed value (0.1) or confirmed a contested one (0.5); everyone
+// else — losers, or everybody while tied — earns the participation credit (0.1).
+function creditsByPlurality(list, keyFn) {
+  const credits = new Map()
+  if (list.length === 0)
+    return { credits, disputed: false, resolved: false, winnerKey: null, winners: [] }
 
+  const { disputed, resolved, winnerKey, winners } = pluralityBy(list, keyFn)
+  winners.forEach((r, i) =>
+    credits.set(r.userUid, i === 0 ? CREDIT_FIRST : disputed ? CREDIT_CONFIRM : CREDIT_AGREE),
+  )
+  for (const r of list) if (!credits.has(r.userUid)) credits.set(r.userUid, CREDIT_AGREE)
+  return { credits, disputed, resolved, winnerKey, winners }
+}
+
+// Score a single sailing's capacity reports.
+// Returns { credits: Map<uid, number>, disputed, resolved, winner }.
+//   disputed  — reports name more than one capacity value
+//   resolved  — a clear winner is known (undisputed, or a strict plurality)
+//   winner    — the winning capacity value (null only while disputed & tied)
+export function scoreSailing(reports) {
+  const list = latestPerUser(reports || [])
+  const { credits, disputed, resolved, winnerKey } = creditsByPlurality(list, (r) => r.capacity)
+  return { credits, disputed, resolved, winner: winnerKey }
+}
+
+// Score a single sailing's full-to-crosswalk marks — same credit model as
+// capacity. Marks are timestamps, so exact equality is meaningless: each
+// user's latest mark is bucketed into a CROSSWALK_BUCKET_MS window and buckets
+// are compared like capacity values — different buckets disagree, a strict
+// plurality resolves.
+// Returns { credits, disputed, resolved, winners } — winners are the marks in
+// the winning bucket, or every mark while undisputed/tied (so nothing
+// disappears from the UI).
+export const CROSSWALK_BUCKET_MS = 5 * 60 * 1000
+export function scoreCrosswalk(reports, bucketMs = CROSSWALK_BUCKET_MS) {
+  const list = latestPerUser(reports || [])
+  const { credits, disputed, resolved, winners } = creditsByPlurality(list, (r) =>
+    Math.round((r.crosswalkAt || 0) / bucketMs),
+  )
+  return { credits, disputed, resolved, winners: disputed && resolved ? winners : list }
+}
+
+// Aggregate flat lists of capacity reports and crosswalk marks (across many
+// sailings) into one ranked reporter leaderboard. Both earn under the same
+// credit model, scored per sailing. Returns
+// [{ userUid, userName, userPhoto, credits, reportCount }] sorted by credits
+// desc, then report count desc.
+export function aggregateLeaderboard(reports, crosswalkReports = []) {
   const totals = new Map() // uid -> { userUid, userName, credits, reportCount }
-  for (const sailingReports of bySailing.values()) {
-    const { credits } = scoreSailing(sailingReports)
-    // Latest-per-user, so each user counts once per sailing for both credit and
-    // report count. Track the newest userName we've seen for the display label.
-    const latest = latestPerUser(sailingReports)
-    for (const r of latest) {
-      const entry = totals.get(r.userUid) || newEntry(r.userUid)
-      entry.credits += credits.get(r.userUid) || 0
-      entry.reportCount += 1
-      applyIdentity(entry, r.recordedAt || 0, r.userName, r.userPhoto, r.anonymous)
-      totals.set(r.userUid, entry)
+
+  // Group one kind of report by sailingKey, score each sailing with scoreFn,
+  // and fold each user's credit into the shared totals. Latest-per-user, so
+  // each user counts once per sailing for both credit and report count; track
+  // the newest userName we've seen for the display label.
+  function fold(list, scoreFn) {
+    const bySailing = new Map()
+    for (const r of list || []) {
+      if (!r || !r.userUid || !r.sailingKey) continue
+      if (!bySailing.has(r.sailingKey)) bySailing.set(r.sailingKey, [])
+      bySailing.get(r.sailingKey).push(r)
+    }
+    for (const sailingReports of bySailing.values()) {
+      const { credits } = scoreFn(sailingReports)
+      for (const r of latestPerUser(sailingReports)) {
+        const entry = totals.get(r.userUid) || newEntry(r.userUid)
+        entry.credits += credits.get(r.userUid) || 0
+        entry.reportCount += 1
+        applyIdentity(entry, r.recordedAt || 0, r.userName, r.userPhoto, r.anonymous)
+        totals.set(r.userUid, entry)
+      }
     }
   }
+
+  fold(reports, scoreSailing)
+  fold(crosswalkReports, scoreCrosswalk)
 
   return finalizeBoard(totals)
 }

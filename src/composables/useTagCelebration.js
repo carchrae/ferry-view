@@ -1,4 +1,5 @@
-import { scoreSailing } from '../../functions/lib/leaderboard-score.js'
+import { Dialog } from 'quasar'
+import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 
 // Loot-box feedback for recording a capacity tag / full-to-crosswalk time:
 // a synthesized "kerching" plus a fireworks burst and a floating "+N pt"
@@ -24,7 +25,70 @@ export function estimateCredits(otherReports, mine) {
   }
 }
 
+// Same, for a full-to-crosswalk mark (scored by 5-minute time bucket).
+export function estimateCrosswalkCredits(otherMarks, mine) {
+  try {
+    const { credits } = scoreCrosswalk([...(otherMarks || []), mine])
+    return credits.get(mine.userUid) ?? 0.1
+  } catch {
+    return 0.1
+  }
+}
+
+// --- Effects preference --------------------------------------------------
+// 'on'/'off' in localStorage; unset means the rider was never asked (effects
+// default on). After the 3rd tag of a session — session count only, prior
+// sessions aren't tracked — we ask once whether to keep them; the answer can
+// be changed anytime on the profile page.
+
+const EFFECTS_KEY = 'celebrationEffects'
+
+export function effectsEnabled() {
+  try {
+    return localStorage.getItem(EFFECTS_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+export function setEffectsEnabled(on) {
+  try {
+    localStorage.setItem(EFFECTS_KEY, on ? 'on' : 'off')
+  } catch {
+    /* private mode — the session just keeps the default */
+  }
+}
+
+function effectsChosen() {
+  try {
+    return localStorage.getItem(EFFECTS_KEY) != null
+  } catch {
+    return true
+  }
+}
+
+let sessionTagCount = 0
+
+function askAboutEffects() {
+  Dialog.create({
+    title: 'Keep the fireworks?',
+    message:
+      "You've tagged 3 sailings — want to keep the celebration fireworks and sound? " +
+      'You can change this anytime on your profile page.',
+    ok: { label: 'Keep them', color: 'primary', noCaps: true },
+    cancel: { label: 'Turn off', flat: true, noCaps: true },
+  })
+    .onOk(() => setEffectsEnabled(true))
+    .onCancel(() => setEffectsEnabled(false))
+}
+
 export function celebrate(credits, { label } = {}) {
+  // Dismissing the dialog without choosing stores nothing, so the next
+  // session's 3rd tag asks again.
+  sessionTagCount++
+  if (sessionTagCount === 3 && !effectsChosen()) askAboutEffects()
+  if (!effectsEnabled()) return
+
   const tier = credits >= 1 ? 'jackpot' : credits >= 0.5 ? 'nice' : 'plink'
   try {
     playSound(tier)

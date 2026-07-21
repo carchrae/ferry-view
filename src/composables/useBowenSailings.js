@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore'
 import { db, storageBucket } from 'src/boot/firebase'
 import { nowInVancouver, dayjs, formatTime12h, timeToDate, TZ } from '../../functions/lib/time.js'
 
@@ -183,30 +183,31 @@ async function fetchDirectBounded() {
 // TTL — the boarding sailing gains a frame every 5 minutes, so a stale cache
 // would show only the frames captured before the last fetch. Opening the
 // dialog forces a refresh so all frames appear (now one aggregate doc read).
-async function fetchRawSailings(force = false) {
-  if (!force && cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSailings
-
-  const raw = (await fetchFromAggregate()) ?? (await fetchDirectBounded())
-
-  // Media-less sailings never earn a card (a capacity-only tag can land in
-  // the aggregate before any photo does).
-  const sailings = raw.filter(
+// Media-less sailings never earn a card (a capacity-only tag can land in the
+// aggregate before any photo does). Returns newest-first.
+function normalizeRaw(expanded) {
+  const sailings = expanded.filter(
     (s) =>
       s.webcamSnapshotPath ||
       s.communitySnapshotPath ||
       s.lineupTimelapsePaths?.length ||
       s.departureTimelapsePaths?.length,
   )
-
   sailings.sort((a, b) =>
     a.dateIso !== b.dateIso
       ? b.dateIso.localeCompare(a.dateIso)
       : b.sailingTime.localeCompare(a.sailingTime),
   )
-
-  cachedSailings = sailings
-  cachedAt = Date.now()
   return sailings
+}
+
+async function fetchRawSailings(force = false) {
+  if (!force && cachedSailings && Date.now() - cachedAt < CACHE_TTL_MS) return cachedSailings
+
+  const raw = normalizeRaw((await fetchFromAggregate()) ?? (await fetchDirectBounded()))
+  cachedSailings = raw
+  cachedAt = Date.now()
+  return raw
 }
 
 // Load Bowen-side sailings (departures to Horseshoe Bay) from the last six
@@ -217,12 +218,40 @@ async function fetchRawSailings(force = false) {
 // photo-less placeholder cards. (Its lineup is exposed separately via
 // loadUpcomingLineup.) This is the single source of truth for both the Bowen
 // Departures page and the home page's "Last Bowen Sailing" dialog.
-export async function loadBowenSailings(force = false) {
+function deriveSailings(raw) {
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
-  const raw = await fetchRawSailings(force)
   return finalize(
     raw.filter((s) => s.webcamSnapshotPath || s.communitySnapshotPath),
     todayIso,
+  )
+}
+
+export async function loadBowenSailings(force = false) {
+  return deriveSailings(await fetchRawSailings(force))
+}
+
+// Live-subscribe to the aggregate doc so the page updates the moment a capture
+// or tag rewrites it — the arriving/departing sailing's new frame, the
+// live→timelapse swap when a departure photo lands, a fresh capacity/crosswalk
+// value. This is ONE document listener: it bills one read per change to that
+// one doc, which already holds every sailing the page renders, so it's far
+// cheaper than re-scanning sailingStatus. onData receives { sailings, upcoming }
+// already finalized; a missing or >24h-stale aggregate is ignored (the caller's
+// one-shot load covers the broken-backend fallback). Returns the unsubscribe fn.
+export function subscribeBowenSailings(onData, onError) {
+  return onSnapshot(
+    doc(db, 'aggregates', 'bowenSailings'),
+    (snap) => {
+      if (!snap.exists()) return
+      const agg = snap.data()
+      if (!Array.isArray(agg.sailings)) return
+      if (!agg.updatedAt || Date.now() - agg.updatedAt > AGGREGATE_MAX_AGE_MS) return
+      const raw = normalizeRaw(agg.sailings.map(expandAggregateRecord))
+      cachedSailings = raw
+      cachedAt = Date.now()
+      onData({ sailings: deriveSailings(raw), upcoming: deriveUpcomingLineup(raw) })
+    },
+    onError,
   )
 }
 
@@ -236,10 +265,9 @@ export async function loadBowenSailings(force = false) {
 // that is boarding late (past its scheduled time, not yet departed).
 const UPCOMING_LATE_GRACE_MIN = 20
 
-export async function loadUpcomingLineup() {
+function deriveUpcomingLineup(raw) {
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
   const cutoff = nowInVancouver().subtract(UPCOMING_LATE_GRACE_MIN, 'minute')
-  const raw = await fetchRawSailings()
   const candidates = raw.filter((x) => {
     if (x.dateIso !== todayIso) return false
     if (x.webcamSnapshotPath || x.communitySnapshotPath) return false
@@ -257,6 +285,10 @@ export async function loadUpcomingLineup() {
     crosswalkFullAt: s.crosswalkFullAt,
     timelapse: buildTimelapse(s.lineupTimelapsePaths),
   }
+}
+
+export async function loadUpcomingLineup() {
+  return deriveUpcomingLineup(await fetchRawSailings())
 }
 
 function finalize(sailings, todayIso) {

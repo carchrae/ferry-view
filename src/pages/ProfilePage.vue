@@ -63,6 +63,25 @@
 
         <q-separator class="q-my-md" />
 
+        <div class="row items-center no-wrap">
+          <q-avatar
+            size="40px"
+            class="q-mr-sm"
+            icon="celebration"
+            color="amber-2"
+            text-color="amber-9"
+          />
+          <div class="col">
+            <div class="text-subtitle2">Celebration effects</div>
+            <div class="text-caption text-grey-7">
+              Fireworks and a kerching sound when you record a report.
+            </div>
+          </div>
+          <q-toggle v-model="effects" @update:model-value="setEffectsEnabled" />
+        </div>
+
+        <q-separator class="q-my-md" />
+
         <div class="text-subtitle2 q-mb-xs">Profile photo</div>
         <div class="text-caption text-grey-7">
           Your photo comes from your Google account, or from
@@ -92,6 +111,7 @@ import { ref, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuth } from 'src/composables/useAuth'
 import { isAnonymous, setAnonymous } from 'src/composables/useAnonymity'
+import { effectsEnabled, setEffectsEnabled } from 'src/composables/useTagCelebration'
 import SignInOptions from 'src/components/SignInOptions.vue'
 import anonymousIcon from 'src/assets/cat.svg'
 
@@ -102,6 +122,7 @@ const name = ref(user.value?.displayName || '')
 const saving = ref(false)
 const error = ref(null)
 const anonymous = ref(isAnonymous(user.value?.uid))
+const effects = ref(effectsEnabled())
 
 // Keep the field + anonymity toggle in sync once auth resolves (or user switches).
 watch(user, (u) => {

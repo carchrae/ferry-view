@@ -390,6 +390,12 @@ export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (
       logger.error('Status refresh after lineup report failed:', e)
     }
   }
+  // Crosswalk marks earn leaderboard credit like capacity reports do.
+  try {
+    await recomputeLeaderboard(db)
+  } catch (e) {
+    logger.error('Leaderboard recompute after lineup report failed:', e)
+  }
 })
 
 // Any ride create/edit/delete changes the ride-share board (a deleted ride must

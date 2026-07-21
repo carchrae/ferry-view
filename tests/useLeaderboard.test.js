@@ -1,8 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  capacityCamp,
   scoreSailing,
+  scoreCrosswalk,
+  CROSSWALK_BUCKET_MS,
   aggregateLeaderboard,
   aggregateRideLeaderboard,
   formatReporterName,
@@ -13,37 +14,32 @@ function rep(userUid, capacity, recordedAt, extra = {}) {
   return { sailingKey: 'S', userUid, capacity, recordedAt, ...extra }
 }
 
-describe('capacityCamp', () => {
-  it('only "Full" is the FULL camp; everything else is NOTFULL', () => {
-    assert.equal(capacityCamp('Full'), 'FULL')
-    assert.equal(capacityCamp('Not Full'), 'NOTFULL')
-    assert.equal(capacityCamp('25%'), 'NOTFULL') // 75% full
-    assert.equal(capacityCamp('10%'), 'NOTFULL') // 90% full
-    assert.equal(capacityCamp('0%'), 'NOTFULL')
-  })
-})
-
 describe('scoreSailing', () => {
   it('single reporter earns the base credit', () => {
     const { credits, disputed, resolved, winner } = scoreSailing([rep('A', 'Full', 1)])
     assert.equal(credits.get('A'), 1.0)
     assert.equal(disputed, false)
     assert.equal(resolved, true)
-    assert.equal(winner, 'FULL')
+    assert.equal(winner, 'Full')
   })
 
   it('undisputed agreement: first 1.0, later agreer +0.1', () => {
-    const { credits, disputed } = scoreSailing([rep('A', 'Full', 1), rep('B', 'Full', 2)])
+    const { credits, disputed, winner } = scoreSailing([rep('A', 'Full', 1), rep('B', 'Full', 2)])
     assert.equal(credits.get('A'), 1.0)
     assert.equal(credits.get('B'), 0.1)
     assert.equal(disputed, false)
+    assert.equal(winner, 'Full')
   })
 
-  it('"Not Full" agrees with a percent report (no dispute)', () => {
-    // 75%-full (stored "25%") and "Not Full" are the same NOTFULL camp.
-    const { credits, disputed } = scoreSailing([rep('A', 'Not Full', 1), rep('B', '25%', 2)])
-    assert.equal(disputed, false)
-    assert.equal(credits.get('A'), 1.0)
+  it('any two different values dispute — even "Not Full" vs a percent', () => {
+    const { credits, disputed, resolved, winner } = scoreSailing([
+      rep('A', 'Not Full', 1),
+      rep('B', '25%', 2), // 75% full
+    ])
+    assert.equal(disputed, true)
+    assert.equal(resolved, false)
+    assert.equal(winner, null)
+    assert.equal(credits.get('A'), 0.1)
     assert.equal(credits.get('B'), 0.1)
   })
 
@@ -59,7 +55,7 @@ describe('scoreSailing', () => {
     assert.equal(winner, null)
   })
 
-  it("user's resolve example: A 1.0 (first correct), C 0.5 (confirm), B 0.1 (loser)", () => {
+  it('a strict plurality resolves: first correct 1.0, confirmer 0.5, loser 0.1', () => {
     const { credits, disputed, resolved, winner } = scoreSailing([
       rep('A', 'Full', 1),
       rep('B', '25%', 2), // 75% full — loses
@@ -70,7 +66,35 @@ describe('scoreSailing', () => {
     assert.equal(credits.get('B'), 0.1)
     assert.equal(disputed, true)
     assert.equal(resolved, true)
-    assert.equal(winner, 'FULL')
+    assert.equal(winner, 'Full')
+  })
+
+  it('resolves same-camp value splits too (75% full beats Not Full 2-1)', () => {
+    const { credits, disputed, resolved, winner } = scoreSailing([
+      rep('A', '25%', 1),
+      rep('B', 'Not Full', 2),
+      rep('C', '25%', 3),
+    ])
+    assert.equal(disputed, true)
+    assert.equal(resolved, true)
+    assert.equal(winner, '25%')
+    assert.equal(credits.get('A'), 1.0)
+    assert.equal(credits.get('C'), 0.5)
+    assert.equal(credits.get('B'), 0.1)
+  })
+
+  it('a top-count tie stays unresolved even with a third value present', () => {
+    const { credits, disputed, resolved, winner } = scoreSailing([
+      rep('A', 'Full', 1),
+      rep('B', 'Full', 2),
+      rep('C', '10%', 3),
+      rep('D', '10%', 4),
+      rep('E', 'Not Full', 5),
+    ])
+    assert.equal(disputed, true)
+    assert.equal(resolved, false)
+    assert.equal(winner, null)
+    for (const uid of ['A', 'B', 'C', 'D', 'E']) assert.equal(credits.get(uid), 0.1)
   })
 
   it('deduplicates to each user\'s latest report', () => {
@@ -91,6 +115,67 @@ describe('scoreSailing', () => {
   })
 })
 
+describe('scoreCrosswalk', () => {
+  // Helper: a crosswalk mark. Bucket N means crosswalkAt ≈ N * 5 minutes,
+  // placed on the bucket boundary so rounding can't straddle it.
+  function mark(userUid, bucket, recordedAt) {
+    return { userUid, crosswalkAt: bucket * CROSSWALK_BUCKET_MS, recordedAt }
+  }
+
+  it('marks in the same 5-minute bucket agree: first 1.0, agreer 0.1', () => {
+    const { credits, disputed, resolved, winners } = scoreCrosswalk([
+      mark('A', 100, 1),
+      { userUid: 'B', crosswalkAt: 100 * CROSSWALK_BUCKET_MS + 60_000, recordedAt: 2 },
+    ])
+    assert.equal(disputed, false)
+    assert.equal(resolved, true)
+    assert.equal(winners.length, 2)
+    assert.equal(credits.get('A'), 1.0)
+    assert.equal(credits.get('B'), 0.1)
+  })
+
+  it('marks in different buckets disagree and stay tied 1-1 at 0.1 each', () => {
+    const { credits, disputed, resolved, winners } = scoreCrosswalk([
+      mark('A', 100, 1),
+      mark('B', 104, 2), // 20 minutes later
+    ])
+    assert.equal(disputed, true)
+    assert.equal(resolved, false)
+    // While unresolved every mark stays visible.
+    assert.equal(winners.length, 2)
+    assert.equal(credits.get('A'), 0.1)
+    assert.equal(credits.get('B'), 0.1)
+  })
+
+  it("a strict plurality resolves to the winning bucket's marks and credits", () => {
+    const { credits, disputed, resolved, winners } = scoreCrosswalk([
+      mark('A', 100, 1),
+      mark('B', 104, 2),
+      mark('C', 100, 3),
+    ])
+    assert.equal(disputed, true)
+    assert.equal(resolved, true)
+    assert.deepEqual(
+      winners.map((r) => r.userUid),
+      ['A', 'C'],
+    )
+    assert.equal(credits.get('A'), 1.0)
+    assert.equal(credits.get('C'), 0.5)
+    assert.equal(credits.get('B'), 0.1)
+  })
+
+  it('uses each user\'s latest mark only', () => {
+    // A re-marked into B's bucket — no disagreement remains.
+    const { disputed, resolved } = scoreCrosswalk([
+      mark('A', 100, 1),
+      mark('B', 104, 2),
+      mark('A', 104, 3),
+    ])
+    assert.equal(disputed, false)
+    assert.equal(resolved, true)
+  })
+})
+
 describe('aggregateLeaderboard', () => {
   it('sums credits per user across sailings and ranks them', () => {
     const reports = [
@@ -108,6 +193,25 @@ describe('aggregateLeaderboard', () => {
     assert.equal(board[0].reportCount, 2)
     assert.equal(board[1].userUid, 'A')
     assert.equal(board[1].credits, 1.0)
+  })
+
+  it('adds crosswalk-mark credits into the same totals', () => {
+    const reports = [
+      { sailingKey: 'S1', userUid: 'A', userName: 'Ann Alpha', capacity: 'Full', recordedAt: 1 },
+    ]
+    const crosswalkReports = [
+      // A also marked the crosswalk on S1 (first: 1.0); B agreed in the same
+      // bucket (+0.1).
+      { sailingKey: 'S1', userUid: 'A', crosswalkAt: 100 * CROSSWALK_BUCKET_MS, recordedAt: 2 },
+      { sailingKey: 'S1', userUid: 'B', crosswalkAt: 100 * CROSSWALK_BUCKET_MS, recordedAt: 3 },
+    ]
+    const board = aggregateLeaderboard(reports, crosswalkReports)
+    const a = board.find((e) => e.userUid === 'A')
+    const b = board.find((e) => e.userUid === 'B')
+    assert.equal(a.credits, 2.0) // 1.0 capacity + 1.0 crosswalk
+    assert.equal(a.reportCount, 2)
+    assert.equal(b.credits, 0.1)
+    assert.equal(b.reportCount, 1)
   })
 
   it('keeps the most recent userName for a user', () => {

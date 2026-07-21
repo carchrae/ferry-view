@@ -57,12 +57,23 @@
               <q-tooltip>Reported by a rider</q-tooltip>
             </q-icon>
           </div>
-          <div class="text-caption text-grey-7 q-mb-sm">
+          <!-- Terse one-line-per-button wording on phones so no description wraps. -->
+          <div v-if="brief" class="text-caption text-grey-7 q-mb-sm">
+            <strong>75% Full</strong> — cars on the hill, not all the way up
+            <br />
+            <strong>90% Full</strong> — cars as far as you can see
+            <br />
+            <strong>Not Full</strong> — had room, can't tell how much
+          </div>
+          <div v-else class="text-caption text-grey-7 q-mb-sm">
             Select <strong>75% Full</strong> — are there cars on the hill but not all the way
             up?
             <br />
             Select <strong>90% Full</strong> — does the community photo show cars as far as
             you can see?
+            <br />
+            Select <strong>Not Full</strong> — only when nothing more specific fits: the ferry
+            had room but you can't tell how much.
           </div>
           <div class="row q-gutter-sm">
             <q-btn
@@ -84,6 +95,16 @@
               label="90% Full"
               :disable="isLocked(arrival)"
               @click="rate(arrival, '10%')"
+            />
+            <q-btn
+              no-caps
+              outlined
+              no-wrap
+              class="col tag-btn"
+              color="positive"
+              label="Not Full"
+              :disable="isLocked(arrival)"
+              @click="rate(arrival, 'Not Full')"
             />
           </div>
           <div v-if="isLocked(arrival)" class="text-caption text-grey-6 q-mt-xs">
@@ -157,11 +178,13 @@
             sailing leaves.
           </div>
           <template v-else>
-            <div class="text-caption text-grey-7 q-mb-sm">
+            <div v-if="brief" class="text-caption text-grey-7 q-mb-sm">
+              <strong>Full</strong> — cars left behind? watch the playback
+            </div>
+            <div v-else class="text-caption text-grey-7 q-mb-sm">
               Select <strong>Full</strong> — if there are many cars in the photo after the ferry
-              loaded.<br />
-              Select <strong>Not Full</strong> — if the ferry had room but you can't tell how
-              full it was.
+              loaded. Watch the playback to check the cars shown didn't arrive too late to
+              board.
             </div>
             <div class="row q-gutter-sm">
               <q-btn
@@ -173,16 +196,6 @@
                 label="Full"
                 :disable="isLocked(departure)"
                 @click="rate(departure, 'Full')"
-              />
-              <q-btn
-                no-caps
-                outlined
-                no-wrap
-                class="col tag-btn"
-                color="positive"
-                label="Not Full"
-                :disable="isLocked(departure)"
-                @click="rate(departure, 'Not Full')"
               />
             </div>
             <div v-if="isLocked(departure)" class="text-caption text-grey-6 q-mt-xs">
@@ -197,7 +210,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useQuasar } from 'quasar'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
@@ -225,6 +239,10 @@ defineProps({
 
 const emit = defineEmits(['rate', 'crosswalk'])
 
+const $q = useQuasar()
+// Phone-width screens get the terse captions so each fits on one line.
+const brief = computed(() => $q.screen.lt.sm)
+
 const zoomSrc = ref(null)
 const zoomOpen = ref(false)
 
@@ -240,6 +258,22 @@ function isLocked(card) {
 }
 
 function rate(card, capacity) {
+  // A rider already tagged this sailing with a different capacity — confirm
+  // the new tagger actually disagrees rather than silently overwriting.
+  if (card.capacitySource === 'user' && card.currentCapacity && card.currentCapacity !== capacity) {
+    const newLabel = capacityFullLabel(capacity)
+    $q.dialog({
+      title: 'Already tagged',
+      message:
+        `Someone already tagged this sailing ${capacityFullLabel(card.currentCapacity)}. ` +
+        `Only choose ${newLabel} if you disagree with them.`,
+      cancel: { label: 'Keep their tag', flat: true, noCaps: true },
+      ok: { label: `${newLabel} — I disagree`, color: 'primary', noCaps: true },
+    }).onOk(() => {
+      emit('rate', { sailingKey: card.sailingKey, capacity, filledAt: null })
+    })
+    return
+  }
   emit('rate', {
     sailingKey: card.sailingKey,
     capacity,

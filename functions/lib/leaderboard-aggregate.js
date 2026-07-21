@@ -34,6 +34,23 @@ export async function recomputeLeaderboard(db) {
     })
   })
 
+  // Crosswalk marks — scored into the same reporter board as capacity reports.
+  const cwSnap = await db.collection('lineupReports').where('recordedAt', '>=', cutoff).get()
+  const crosswalkReports = []
+  cwSnap.forEach((doc) => {
+    const d = doc.data()
+    if (!d.userUid || typeof d.crosswalkAt !== 'number') return
+    crosswalkReports.push({
+      sailingKey: d.sailingKey,
+      crosswalkAt: d.crosswalkAt,
+      recordedAt: d.recordedAt || 0,
+      userUid: d.userUid,
+      userName: d.userName || null,
+      userPhoto: d.userPhoto || null,
+      anonymous: d.anonymous || false,
+    })
+  })
+
   // Ride sharers.
   const rideSnap = await db
     .collection('rides')
@@ -53,7 +70,7 @@ export async function recomputeLeaderboard(db) {
     })
   })
 
-  const reporters = aggregateLeaderboard(reports).slice(0, MAX_ENTRIES)
+  const reporters = aggregateLeaderboard(reports, crosswalkReports).slice(0, MAX_ENTRIES)
   const riders = aggregateRideLeaderboard(rides).slice(0, MAX_ENTRIES)
 
   await db

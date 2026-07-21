@@ -2,10 +2,12 @@ import { collection, doc, getDocs, onSnapshot, query, where, Timestamp } from 'f
 import { db } from 'src/boot/firebase'
 import {
   scoreSailing,
+  scoreCrosswalk,
   aggregateLeaderboard,
   aggregateRideLeaderboard,
   formatReporterName,
 } from '../../functions/lib/leaderboard-score.js'
+import { loadRecentLineupReports } from 'src/composables/useLineupReport'
 
 // Reads the user-submitted capacity reports (capacityHistory is world-readable)
 // and derives the reporter leaderboard + per-sailing report/conflict info. All
@@ -43,10 +45,14 @@ export function useLeaderboard() {
     return reports
   }
 
-  // Ranked leaderboard for the past `days` days.
+  // Ranked leaderboard for the past `days` days. Crosswalk marks earn credit
+  // alongside capacity reports.
   async function getLeaderboard(days = 30) {
-    const reports = await loadRecentUserReports(days)
-    return aggregateLeaderboard(reports)
+    const [reports, crosswalkReports] = await Promise.all([
+      loadRecentUserReports(days),
+      loadRecentLineupReports(days),
+    ])
+    return aggregateLeaderboard(reports, crosswalkReports)
   }
 
   // All rides (offers + requests) posted in the last `days` days.
@@ -96,30 +102,43 @@ export function useLeaderboard() {
     )
   }
 
-  // A single user's reports over the past `days` days, newest first, each
-  // annotated with the credit it earned within its sailing.
+  // A single user's reports (capacity + crosswalk marks) over the past `days`
+  // days, newest first, each annotated with the credit it earned within its
+  // sailing. Crosswalk entries carry `crosswalkAt` instead of `capacity`.
   async function getUserReports(userUid, days = 30) {
-    const reports = await loadRecentUserReports(days)
-    const bySailing = new Map()
-    for (const r of reports) {
-      if (!bySailing.has(r.sailingKey)) bySailing.set(r.sailingKey, [])
-      bySailing.get(r.sailingKey).push(r)
+    const [reports, crosswalkReports] = await Promise.all([
+      loadRecentUserReports(days),
+      loadRecentLineupReports(days),
+    ])
+
+    // One entry per sailing the user reported on: their latest report of that
+    // kind plus the credit the scoring model gives it.
+    function collect(list, scoreFn, pick) {
+      const bySailing = new Map()
+      for (const r of list) {
+        if (!bySailing.has(r.sailingKey)) bySailing.set(r.sailingKey, [])
+        bySailing.get(r.sailingKey).push(r)
+      }
+      const out = []
+      for (const [sailingKey, sailingReports] of bySailing) {
+        const mine = sailingReports.filter((r) => r.userUid === userUid)
+        if (!mine.length) continue
+        const latest = mine.reduce((a, b) => ((b.recordedAt || 0) > (a.recordedAt || 0) ? b : a))
+        const { credits } = scoreFn(sailingReports)
+        out.push({
+          sailingKey,
+          recordedAt: latest.recordedAt,
+          credit: credits.get(userUid) || 0,
+          ...pick(latest),
+        })
+      }
+      return out
     }
 
-    const out = []
-    for (const [sailingKey, sailingReports] of bySailing) {
-      const mine = sailingReports.filter((r) => r.userUid === userUid)
-      if (!mine.length) continue
-      const latest = mine.reduce((a, b) => ((b.recordedAt || 0) > (a.recordedAt || 0) ? b : a))
-      const { credits } = scoreSailing(sailingReports)
-      out.push({
-        sailingKey,
-        capacity: latest.capacity,
-        recordedAt: latest.recordedAt,
-        credit: credits.get(userUid) || 0,
-      })
-    }
-    return out.sort((a, b) => (b.recordedAt || 0) - (a.recordedAt || 0))
+    return [
+      ...collect(reports, scoreSailing, (r) => ({ capacity: r.capacity })),
+      ...collect(crosswalkReports, scoreCrosswalk, (r) => ({ crosswalkAt: r.crosswalkAt })),
+    ].sort((a, b) => (b.recordedAt || 0) - (a.recordedAt || 0))
   }
 
   return {

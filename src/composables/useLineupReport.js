@@ -61,6 +61,7 @@ export async function loadRecentLineupReports(days = 14) {
       recordedAt: d.recordedAt || 0,
       userUid: d.userUid,
       userName: d.userName || null,
+      userPhoto: d.userPhoto || null,
       anonymous: d.anonymous || false,
     })
   })
