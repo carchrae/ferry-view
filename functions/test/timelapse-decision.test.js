@@ -43,6 +43,18 @@ describe('timelapseDecision', () => {
     expect(timelapseDecision(d, at('08:50'))).toEqual({ capture: true, sailingTime: '08:45' })
   })
 
+  it('keeps crediting a sailing running very late (past the old 30-min ceiling), until the next sailing supersedes it', () => {
+    const d = data({
+      bowenSchedule: sched(['07:30', '08:45', '10:00'], '07:30'),
+      recentActivity: [departed('07:31')],
+    })
+    // 08:45 is 55 min late — well past the old flat 30-min ceiling, but its
+    // window (bounded by 10:00) stays open until 09:55.
+    expect(timelapseDecision(d, at('09:40'))).toEqual({ capture: true, sailingTime: '08:45' })
+    // Once 08:45's window closes (5 min before 10:00), the next sailing takes over.
+    expect(timelapseDecision(d, at('09:55'))).toEqual({ capture: true, sailingTime: '10:00' })
+  })
+
   it('moves to the next sailing once the current one has departed', () => {
     const d = data({
       bowenSchedule: sched(['07:30', '08:45', '10:00'], '08:45'),
@@ -87,8 +99,10 @@ describe('timelapseDecision', () => {
 
   it('falls back to the last past scheduled time when the log has no Bowen departure', () => {
     const d = data({ recentActivity: [{ action: 'Arrived', location: 'Bowen', time: '13:40' }] })
-    // Last scheduled sailing in the past is 13:55; 14:30 is 35 min later.
-    expect(timelapseDecision(d, at('14:30'))).toEqual({ capture: true, sailingTime: '15:15' })
+    // Last scheduled sailing in the past is 13:55; 14:30 is 35 min later — still
+    // well within 13:55's window (open until 15:10, 5 min before 15:15), so it
+    // stays the target rather than being abandoned to the next sailing.
+    expect(timelapseDecision(d, at('14:30'))).toEqual({ capture: true, sailingTime: '13:55' })
     expect(timelapseDecision(d, at('14:05')).capture).toBe(false) // only 10 min
   })
 

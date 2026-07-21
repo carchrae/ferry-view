@@ -56,13 +56,25 @@ describe('departureTimelapseDecision', () => {
     expect(departureTimelapseDecision(late, at('10:36')).capture).toBe(false)
   })
 
-  it('never targets a sailing more than 60 minutes past schedule', () => {
+  it('never targets a sailing whose window has closed (superseded by the next cycle)', () => {
     // A never-matched 10:00 ghost must not adopt the arrival that belongs to
-    // the 14:05 sailing's cycle.
+    // the 14:05 sailing's cycle — its window (bounded by 14:05) closed at 14:00.
     const d = data([{ time: '10:00' }, { time: '14:05' }], dockedSince('13:55'))
     expect(departureTimelapseDecision(d, at('14:00'))).toEqual({
       capture: true,
       sailingTime: '14:05',
+    })
+  })
+
+  it('keeps targeting a sailing running very late (past the old flat 60-min ceiling) given a fresh arrival', () => {
+    // 10:00 is 90 min late, but its window (bounded by the much-later 12:35)
+    // is still wide open, and the ferry only just docked — unlike the ghost
+    // test above, this is genuinely the same cycle running late, not a stale
+    // never-matched entry adopting an unrelated later arrival.
+    const d = data([{ time: '10:00' }, { time: '12:35' }], dockedSince('11:25'))
+    expect(departureTimelapseDecision(d, at('11:30'))).toEqual({
+      capture: true,
+      sailingTime: '10:00',
     })
   })
 

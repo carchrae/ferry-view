@@ -2,6 +2,7 @@ import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { BACKUP_COLLECTIONS } from './lib/backup-collections.js'
 
 function detectProjectId() {
   const flag = process.argv.indexOf('--project')
@@ -30,8 +31,6 @@ if (!getApps().length) {
   initializeApp({ projectId, credential: applicationDefault() })
 }
 const db = getFirestore()
-
-const COLLECTIONS = ['ferryStatus', 'ferryStatusHistory', 'sailingStatus', 'capacityHistory', 'snapshots', 'rides', 'pushSubscriptions']
 
 const OUT_DIR = process.argv.includes('--path')
   ? process.argv[process.argv.indexOf('--path') + 1]
@@ -67,7 +66,7 @@ async function main() {
   mkdirSync(OUT_DIR, { recursive: true })
   console.log(`Backing up project: ${projectId} → ${OUT_DIR}/`)
   let total = 0
-  for (const name of COLLECTIONS) {
+  for (const name of BACKUP_COLLECTIONS) {
     const docs = await backupCollection(name)
     if (!docs.length) {
       console.log(`  ${name}: empty`)

@@ -21,6 +21,7 @@
     "dev": "quasar dev -m spa",
     "build": "quasar build -m pwa",
     "postinstall": "quasar prepare",
+    "staging:start": "bash scripts/staging-refresh.sh",
     "staging:refresh": "bash scripts/staging-refresh.sh",
     "staging:run-until": "node functions/staging-run-until.js",
     "firebase-config": "bash scripts/get-firebase-config.sh",

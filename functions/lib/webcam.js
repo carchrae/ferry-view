@@ -6,6 +6,7 @@ import sharp from 'sharp'
 import { isRecent, nowInVancouver, timeToDate, dayjs, TZ } from './time.js'
 import { classifyLineup } from './lineup-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
+import { scheduleWindowEnd } from './matching.js'
 
 // Photo filenames are timestamped and never rewritten, so browsers can cache
 // them forever — without this, GCS's default 1-hour max-age makes every
@@ -233,13 +234,16 @@ export function timelapseDecision(data, now) {
   // scheduled time, "time > now" skips it and credits its lineup to the NEXT
   // sailing, so that next sailing's timelapse wrongly opens with the current
   // sailing's crowd. matchedDepartureTime (set by the poll once a sailing
-  // leaves) marks departed sailings; the 30-min grace excludes ancient
+  // leaves) marks departed sailings; scheduleWindowEnd (bounded by the next
+  // entry's own time, or +90min for the day's last sailing) excludes ancient
   // sailings that were never matched (log gaps) so they can't become a
-  // permanent target.
-  const nextDep = (data.bowenSchedule || []).find((s) => {
+  // permanent target — while still crediting a sailing that's simply running
+  // very late, however late, right up until the next one supersedes it.
+  const schedule = data.bowenSchedule || []
+  const nextDep = schedule.find((s, i) => {
     if (s.matchedDepartureTime) return false
     const t = timeToDate(s.time)
-    return t && t > now.subtract(30, 'minute')
+    return t && now.isBefore(scheduleWindowEnd(schedule, i))
   })
   if (!nextDep) return { capture: false }
   if (parseInt(nextDep.time.split(':')[0], 10) >= 21) return { capture: false }
@@ -321,24 +325,27 @@ export async function captureLineupTimelapse(db, data) {
 // final matchDepartures sets on the schedule entry once the sailing has
 // left — so once it departs, the target no longer matches and capture stops
 // on its own. Safety bounds for when detection fails: at most CAP_MIN past
-// the effective start (missed departure), never a sailing more than
-// STALE_TARGET_MIN past schedule (a never-matched ghost entry would
-// otherwise adopt the next cycle's arrival and capture again). When arrival
+// the effective start (missed departure), never a sailing whose
+// scheduleWindowEnd has passed (a never-matched ghost entry would otherwise
+// adopt the next cycle's arrival and capture again — see scheduleWindowEnd
+// in matching.js; bounded by the NEXT entry's own time, not a flat minute
+// count, so a sailing that's simply running very late keeps its frames no
+// matter how late, right up until the next one supersedes it). When arrival
 // can't be seen at all (AIS out, empty log) fall back to the legacy
 // schedule-only window so an outage degrades precision, not coverage.
 const DEPARTURE_PRE_MIN = 10 // window opens T−10
 const DEPARTURE_CAP_MIN = 30 // stop 30 min after effective start
 const DEPARTURE_LEGACY_LATE_MIN = 20 // degraded mode: legacy T−10..T+20
-const DEPARTURE_STALE_TARGET_MIN = 60 // never target a sailing >60 min past schedule
 
 export function departureTimelapseDecision(data, now) {
   const degraded = !arrivalSignalAvailable(data)
   const arrivedAt = degraded ? null : bowenArrivalForCurrentCycle(data, now)
-  const target = (data.bowenSchedule || []).find((s) => {
+  const schedule = data.bowenSchedule || []
+  const target = schedule.find((s, i) => {
     if (s.matchedDepartureTime) return false // already departed
     const t = timeToDate(s.time)
     if (!t) return false
-    if (now.diff(t, 'minute') > DEPARTURE_STALE_TARGET_MIN) return false // ghost target
+    if (!now.isBefore(scheduleWindowEnd(schedule, i))) return false // ghost target
     const windowStart = t.subtract(DEPARTURE_PRE_MIN, 'minute')
     if (now.isBefore(windowStart)) return false
     if (degraded) return now.diff(t, 'minute') <= DEPARTURE_LEGACY_LATE_MIN

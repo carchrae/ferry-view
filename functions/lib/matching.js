@@ -6,6 +6,18 @@ import {
   getUpcomingLateColor,
 } from './constants.js'
 
+// How long an unmatched schedule entry stays "in play" as a live target
+// before the next entry supersedes it — the same windowing buildPast uses
+// (below) to bound which Departed event belongs to which schedule slot,
+// applied prospectively instead of retrospectively.
+export function scheduleWindowEnd(scheduleItems, index) {
+  const next = scheduleItems[index + 1]
+  const nextT = next && timeToDate(next.time)
+  const t = timeToDate(scheduleItems[index].time)
+  const rawEnd = nextT || t.add(90, 'minute')
+  return rawEnd.subtract(5, 'minute')
+}
+
 export function parseDeckSpace(deckSpace, label) {
   if (label === 'Bowen') return { deckSpace: null, full: null }
   if (deckSpace === 'Full') return { deckSpace: 'Full', full: 'Full' }

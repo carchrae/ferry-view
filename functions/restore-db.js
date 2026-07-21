@@ -3,6 +3,7 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import diff from 'microdiff'
+import { BACKUP_COLLECTIONS } from './lib/backup-collections.js'
 
 function detectProjectId() {
   const flag = process.argv.indexOf('--project')
@@ -41,8 +42,6 @@ if (!BACKUP_DIR) {
   console.error('  e.g. node restore-db.js --path tmp/backup/bowen-ferry-migrated')
   process.exit(1)
 }
-
-const COLLECTIONS = ['ferryStatus', 'ferryStatusHistory', 'sailingStatus', 'capacityHistory', 'snapshots', 'rides', 'pushSubscriptions']
 
 function deserializeData(data) {
   if (data === null || data === undefined || typeof data !== 'object') return data
@@ -113,7 +112,7 @@ async function restoreCollection(name) {
 async function main() {
   console.log(`Restoring project: ${projectId} ← ${BACKUP_DIR}/`)
   let total = 0
-  for (const name of COLLECTIONS) {
+  for (const name of BACKUP_COLLECTIONS) {
     const count = await restoreCollection(name)
     if (count) console.log(`  ${name}: ${count} doc(s) written`)
     total += count

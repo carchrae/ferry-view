@@ -1,6 +1,7 @@
 import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { readFileSync, existsSync } from 'node:fs'
+import { BACKUP_COLLECTIONS } from './lib/backup-collections.js'
 
 function detectProjectId() {
   const flag = process.argv.indexOf('--project')
@@ -30,8 +31,6 @@ if (!getApps().length) {
 }
 const db = getFirestore()
 
-const COLLECTIONS = ['ferryStatus', 'ferryStatusHistory', 'sailingStatus', 'capacityHistory', 'snapshots', 'rides', 'pushSubscriptions']
-
 async function deleteAllDocs(collectionId) {
   const snap = await db.collection(collectionId).listDocuments()
   if (!snap.length) return 0
@@ -43,7 +42,7 @@ async function main() {
   const dryRun = process.argv.includes('--dry-run')
   console.log(`${dryRun ? 'DRY RUN: would delete' : 'Deleting'} all collections in project: ${projectId}`)
   let total = 0
-  for (const name of COLLECTIONS) {
+  for (const name of BACKUP_COLLECTIONS) {
     const snap = await db.collection(name).listDocuments()
     if (!snap.length) continue
     console.log(`  ${name}: ${snap.length} doc(s)${dryRun ? ' (skipped)' : ''}`)

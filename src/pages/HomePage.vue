@@ -369,16 +369,16 @@
               @click="showFullDialog = true"
             />
           </div>
-          <div class="col" v-if="lastBowenSailing">
+          <div class="col">
             <q-btn
               no-caps
               dense
               outline
               color="primary"
               icon="photo_camera"
-              label="Last Bowen Sailing"
+              label="Bowen Departures"
               class="full-width no-wrap"
-              @click="openSnapshotDialog"
+              to="/bowen-departures"
             />
           </div>
         </div>
@@ -607,99 +607,6 @@
           {{ allCamLabels[fullscreenIndex] }}
         </div>
       </div>
-    </q-dialog>
-
-    <!-- Snapshot dialog -->
-    <q-dialog v-model="showSnapshotDialog" position="top">
-      <q-card
-        :style="{
-          minWidth: $q.screen.gt.xs ? '400px' : '95vw',
-          maxWidth: '95vw',
-          maxHeight: '100vh',
-        }"
-      >
-        <q-card-section class="q-pb-none">
-          <div class="row items-start no-wrap">
-            <div class="text-body2 text-weight-medium col">
-              These photos capture how full the last sailing from Bowen was. You can record how full
-              the ferry was!
-            </div>
-            <q-btn
-              flat
-              dense
-              icon="close"
-              aria-label="Close"
-              @click="showSnapshotDialog = false"
-              class="q-ml-sm"
-            />
-          </div>
-        </q-card-section>
-        <q-separator />
-        <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <!-- Arrival & departure sections: each shows its timelapse (community
-               lineup / terminal cam) when frames exist, else the single photo. -->
-          <SailingTagCards
-            :arrival="lastBowenSailing?.arrival"
-            :departure="lastBowenSailing?.departure"
-            @rate="onDialogRate"
-            @crosswalk="onCardCrosswalk"
-          />
-          <ReportChips :reports="dialogReports" :crosswalk-reports="dialogCrosswalkReports" />
-
-          <!-- The upcoming (boarding) sailing's lineup, at the bottom — only
-               shown once that sailing actually has frames (loadUpcomingLineup
-               gates it to a genuinely-upcoming sailing, so it never shows a
-               departed sailing's stale last frame). -->
-          <template v-if="upcomingLineup?.timelapse?.length">
-            <q-separator class="q-my-sm" />
-            <div class="text-subtitle2 q-mb-xs row items-center">
-              <span>
-                Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
-              </span>
-              <q-badge
-                v-if="upcomingLineup.crosswalkFullAt"
-                rounded
-                color="deep-orange"
-                class="q-ml-sm"
-                dense
-              >
-                crosswalk {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
-                <q-tooltip>
-                  Lineup reached the crosswalk at
-                  {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
-                </q-tooltip>
-              </q-badge>
-            </div>
-            <LineupTimelapse
-              :key="`up-${upcomingLineup.sailingKey}-${upcomingLineup.timelapse.length}`"
-              :frames="upcomingLineup.timelapse"
-              :crosswalk-full-at="upcomingLineup.crosswalkFullAt || null"
-              taggable
-              @crosswalk="onUpcomingCrosswalk"
-            />
-          </template>
-
-          <div class="q-mt-sm text-center">
-            <q-btn
-              flat
-              no-caps
-              color="primary"
-              icon="photo_camera"
-              label="See other departures"
-              to="/bowen-departures"
-              @click="showSnapshotDialog = false"
-            />
-            <q-btn
-              v-if="$q.screen.xs"
-              flat
-              color="grey-7"
-              icon="close"
-              label="Close"
-              @click="showSnapshotDialog = false"
-            />
-          </div>
-        </q-card-section>
-      </q-card>
     </q-dialog>
 
     <!-- Full schedule dialog -->
@@ -1003,13 +910,11 @@
         </q-card-section>
       </q-card>
     </q-dialog>
-
-    <SignInDialog v-model="showSignInDialog" />
   </q-page>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
@@ -1017,18 +922,10 @@ import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
 import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 import { isStaging } from 'src/boot/firebase'
-import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
 import RideCard from 'src/components/RideCard.vue'
-import SignInDialog from 'src/components/SignInDialog.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
-import SailingTagCards from 'src/components/SailingTagCards.vue'
-import ReportChips from 'src/components/ReportChips.vue'
-import LineupTimelapse from 'src/components/LineupTimelapse.vue'
-import { useLineupReport, loadRecentLineupReports } from 'src/composables/useLineupReport'
-import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor } from 'src/composables/useCapacityDisplay'
-import { celebrate } from 'src/composables/useTagCelebration'
 import anonymousIcon from 'src/assets/cat.svg'
 import {
   useHistoricalStats,
@@ -1049,13 +946,10 @@ const nowMs = () => Date.now()
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 
-const showSignInDialog = ref(false)
-
 // Current leaderboard champions, celebrated in a row under the sailing buttons:
 // the top capacity reporter and the top ride sharer ("hero"). Read live from the
 // server-precomputed board; failures are non-fatal (each cell just hides).
-const { getLeaderboard, getRideLeaderboard, subscribeLeaderboard, loadRecentUserReports } =
-  useLeaderboard()
+const { getLeaderboard, getRideLeaderboard, subscribeLeaderboard } = useLeaderboard()
 const champion = ref(null)
 const rideChampion = ref(null)
 const championsLoaded = ref(false)
@@ -1126,161 +1020,6 @@ onMounted(() => {
 onUnmounted(() => {
   if (unsubscribeLeaderboard) unsubscribeLeaderboard()
 })
-
-// The "Last Bowen Sailing" dialog shows the newest Bowen departure, built from
-// the same sailingStatus source as the Bowen Departures page so its two photos
-// are always the correctly-paired arrival/departure of one sailing.
-const lastBowenSailing = ref(null)
-const upcomingLineup = ref(null)
-const showSnapshotDialog = ref(false)
-
-async function loadLastBowenSailing(force = false) {
-  try {
-    // Both come from the same query — force refreshes it (see below), then
-    // loadUpcomingLineup reads the same freshened cache: one read set.
-    const built = await loadBowenSailings(force)
-    lastBowenSailing.value = built[0] || null
-    upcomingLineup.value = await loadUpcomingLineup()
-  } catch (err) {
-    console.error('Failed to load last Bowen sailing:', err)
-  }
-}
-onMounted(() => loadLastBowenSailing())
-
-function openSnapshotDialog() {
-  // Force a refresh on open: the boarding sailing gains a timelapse frame
-  // every 5 min, so the cached set would be stale and play too few frames.
-  loadLastBowenSailing(true).then(loadDialogReports)
-  showSnapshotDialog.value = true
-}
-
-// Reporter chips for the dialog's sailing (who tagged capacity / marked the
-// crosswalk). Loaded only when the dialog opens — two small user-report
-// queries per open, never on page mount.
-const dialogReports = ref([])
-const dialogCrosswalkReports = ref([])
-
-async function loadDialogReports() {
-  const key = lastBowenSailing.value?.sailingKey
-  dialogReports.value = []
-  dialogCrosswalkReports.value = []
-  if (!key) return
-  try {
-    const [userReports, lineupReports] = await Promise.all([
-      loadRecentUserReports(),
-      loadRecentLineupReports(),
-    ])
-    dialogReports.value = userReports.filter((r) => r.sailingKey === key)
-    dialogCrosswalkReports.value = lineupReports.filter((r) => r.sailingKey === key)
-  } catch (err) {
-    console.error('Failed to load dialog reports:', err)
-  }
-}
-
-const crosswalkAtLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
-
-const { user, saveRating } = useCapacityRating()
-
-function scheduleEntryForKey(sailingKey) {
-  const m = sailingKey?.match(/^\d{4}-\d{2}-\d{2}_(.+)_(To\s.+)$/)
-  if (!m || !ferryData.value) return null
-  const [, time, direction] = m
-  const schedule =
-    direction === 'To HSB' ? ferryData.value.bowenSchedule : ferryData.value.hsbSchedule
-  return schedule?.find((e) => e.time === time) || null
-}
-
-// The live-cam departure placeholder must not outlive its sailing: once the
-// poll marks that sailing departed, refetch the cards (one cheap aggregate
-// read) so the real departure photo replaces the live view without a browser
-// refresh. The photo lands seconds-to-a-minute after departure is detected,
-// so this retries on each subsequent ferryData update until the live flag is
-// gone (finalize() stops inserting it once the photo path exists).
-watch(ferryData, () => {
-  const card = lastBowenSailing.value
-  if (!card?.departure?.live) return
-  if (scheduleEntryForKey(card.sailingKey)?.matchedDepartureTime) {
-    loadLastBowenSailing(true)
-  }
-})
-
-function onDialogRate({ sailingKey, capacity, filledAt }) {
-  saveRating(sailingKey, capacity, filledAt)
-    .then((saved) => {
-      if (!saved) {
-        showSignInDialog.value = true
-        return
-      }
-      const entry = scheduleEntryForKey(sailingKey)
-      if (entry) {
-        entry.lastCapacity = capacity
-        entry.capacitySource = 'user'
-        entry.filledAt = capacity === 'Full' ? filledAt || 'user_reported' : null
-      }
-      showSnapshotDialog.value = false
-      // Other users' reports aren't loaded here, so assume the jackpot case
-      // (this dialog tags the latest sailing, which is usually unreported).
-      celebrate(1)
-    })
-    .catch((err) => {
-      console.error('Failed to save capacity rating:', err)
-    })
-}
-
-const { saveCrosswalkMark } = useLineupReport()
-
-// The rider paused a timelapse on the frame where cars reach the crosswalk
-// and confirmed — record that frame's capture time. `apply` reflects it
-// optimistically on whichever reactive object owns the crosswalkFullAt the
-// player reads.
-function recordCrosswalk(sailingKey, { ts, timeLabel }, apply) {
-  if (!sailingKey) return
-  saveCrosswalkMark(sailingKey, ts)
-    .then((saved) => {
-      if (!saved) {
-        showSignInDialog.value = true
-        return
-      }
-      apply(ts)
-      // Crosswalk marks aren't leaderboard-scored — mid-tier fanfare, no
-      // points label.
-      celebrate(0.5, { label: null })
-      $q.notify({
-        type: 'positive',
-        message: `Full to crosswalk recorded at ${timeLabel} — thanks!`,
-      })
-    })
-    .catch((err) => {
-      console.error('Failed to save crosswalk mark:', err)
-      $q.notify({ type: 'negative', message: 'Failed to record crosswalk time' })
-    })
-}
-
-// From the arrival card's lineup timelapse (carries its own sailingKey).
-const onCardCrosswalk = ({ sailingKey, ts, timeLabel }) =>
-  recordCrosswalk(sailingKey, { ts, timeLabel }, (v) => {
-    if (lastBowenSailing.value?.arrival) lastBowenSailing.value.arrival.crosswalkFullAt = v
-    // Reflect the mark in the dialog's report chips immediately (ReportChips
-    // keeps each user's latest, so appending is enough).
-    if (sailingKey === lastBowenSailing.value?.sailingKey) {
-      dialogCrosswalkReports.value = [
-        ...dialogCrosswalkReports.value,
-        {
-          sailingKey,
-          crosswalkAt: v,
-          recordedAt: Date.now(),
-          userUid: user.value?.uid,
-          userName: user.value?.displayName || user.value?.email || null,
-        },
-      ]
-    }
-  })
-
-// From the upcoming (boarding) lineup section.
-const onUpcomingCrosswalk = (e) =>
-  recordCrosswalk(upcomingLineup.value?.sailingKey, e, (v) => {
-    if (upcomingLineup.value) upcomingLineup.value.crosswalkFullAt = v
-  })
 
 function captureDebugData() {
   const payload = {
