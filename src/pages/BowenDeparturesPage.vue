@@ -40,9 +40,11 @@
       />
     </div>
     <div class="text-body2 text-grey-7 q-mb-sm">
-      These photos capture Bowen-side sailings (departures to Horseshoe Bay) over the last six
-      weeks. Record how full the ferry was — your reports fill in sailings BC Ferries didn't
-      record.
+      These photos capture Bowen-side sailings (departures to Horseshoe Bay). Record how full
+      the ferry was — your reports fill in sailings BC Ferries didn't record.
+      <template v-if="!hasFilters && daysBack === 0">
+        Showing today's sailings — filter, or Load More below, to browse the last six weeks.
+      </template>
     </div>
     <!-- Short labels on phones so both toggles + the leaderboard button stay
          on one line. -->
@@ -82,11 +84,12 @@
     </q-banner>
 
     <!-- The sailing that's boarding right now: the community-cam lineup building
-         before the ferry arrives. Shown at the top (not subject to the day/time
-         filters) only while that sailing has frames but no photo yet, so it
-         never lingers as a departed sailing's stale last frame. -->
+         before the ferry arrives. Only on the default (unfiltered) view — a
+         rider browsing history with filters isn't watching the live lineup —
+         and only while that sailing has frames but no photo yet, so it never
+         lingers as a departed sailing's stale last frame. -->
     <q-card
-      v-if="upcomingLineup?.timelapse?.length"
+      v-if="!hasFilters && upcomingLineup?.timelapse?.length"
       flat
       bordered
       class="q-mb-md upcoming-lineup"
@@ -169,6 +172,20 @@
       </q-card-section>
     </q-card>
 
+    <!-- Extends the visible window a week further back per click. Shown even
+         when the current window has no matches (e.g. untagged/disagreement
+         filters), so riders can keep searching back through the six weeks. -->
+    <div v-if="hasMore" class="q-py-md text-center">
+      <q-btn
+        outline
+        no-caps
+        color="primary"
+        icon="history"
+        label="Load More"
+        @click="daysBack += CHUNK_DAYS"
+      />
+    </div>
+
     <SignInDialog v-model="showSignInDialog" />
   </q-page>
 </template>
@@ -184,7 +201,7 @@ import LineupTimelapse from 'src/components/LineupTimelapse.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import ReportChips from 'src/components/ReportChips.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
-import { useLineupReport, loadRecentLineupReports } from 'src/composables/useLineupReport'
+import { useLineupReport, loadLineupReportsForSailings } from 'src/composables/useLineupReport'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
@@ -204,7 +221,7 @@ const route = useRoute()
 const router = useRouter()
 const { user, needsSignIn, saveRating, deleteRating } = useCapacityRating()
 const { saveCrosswalkMark, deleteCrosswalkMark } = useLineupReport()
-const { loadRecentUserReports } = useLeaderboard()
+const { loadReportsForSailings } = useLeaderboard()
 
 const loading = ref(false)
 const allSailings = ref([])
@@ -224,6 +241,30 @@ const disagreementOnly = ref(false)
 const showSignInDialog = ref(false)
 
 const crosswalkAtLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
+const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
+
+// Hides the live lineup card and the "showing today" hint while any filter is
+// active.
+const hasFilters = computed(() =>
+  Boolean(
+    filterTime.value?.length ||
+      filterDay.value?.length ||
+      untaggedOnly.value ||
+      disagreementOnly.value,
+  ),
+)
+
+// The visible date window: today by default, extended a week further back per
+// "Load More" click. Day/time filters override the window and match across the
+// whole six weeks; untagged/disagreement only filter within the window.
+const CHUNK_DAYS = 7
+const daysBack = ref(0)
+const windowStartIso = computed(() =>
+  dayjs(todayIso).subtract(daysBack.value, 'day').format('YYYY-MM-DD'),
+)
+const dateFiltersActive = computed(() =>
+  Boolean(filterTime.value?.length || filterDay.value?.length),
+)
 // Query params are only synced to the URL once the initial ?time/?day values
 // (if any) have been applied — otherwise that sync would fire first and wipe
 // them before loadSailings/applyFiltersFromQuery gets a chance to read them.
@@ -251,15 +292,34 @@ function isUnreported(s) {
   return !hasCapacity && !hasCrosswalk
 }
 
+// The sailings in scope before the untagged/disagreement toggles: either the
+// day/time-filtered set (whole six weeks) or the Load-More date window.
+// Reports are fetched for this whole set so those toggles can evaluate
+// conflict/untagged state for everything they filter over.
+const scopedSailings = computed(() =>
+  allSailings.value.filter((s) =>
+    dateFiltersActive.value
+      ? // ?. because clearing a q-select emits null (the model isn't always an array).
+        (!filterTime.value?.length || filterTime.value.includes(s.sailingTime)) &&
+        (!filterDay.value?.length || filterDay.value.includes(dayjs(s.dateIso).format('dddd')))
+      : s.dateIso >= windowStartIso.value,
+  ),
+)
+
 const filteredSailings = computed(() =>
-  allSailings.value.filter(
+  scopedSailings.value.filter(
     (s) =>
-      // ?. because clearing a q-select emits null (the model isn't always an array).
-      (!filterTime.value?.length || filterTime.value.includes(s.sailingTime)) &&
-      (!filterDay.value?.length || filterDay.value.includes(dayjs(s.dateIso).format('dddd'))) &&
       (!untaggedOnly.value || isUnreported(s)) &&
       (!disagreementOnly.value || s.conflict || s.crosswalkConflict),
   ),
+)
+
+// "Load More" appears while older sailings exist beyond the window (day/time
+// filters already span the whole six weeks, so it hides then).
+const hasMore = computed(
+  () =>
+    !dateFiltersActive.value &&
+    allSailings.value.some((s) => s.dateIso < windowStartIso.value),
 )
 
 // The disagreement toggle only appears while some sailing actually has an
@@ -273,15 +333,16 @@ watch(hasDisagreement, (v) => {
 })
 
 const emptyMessage = computed(() => {
+  const more = hasMore.value ? ' Load More below searches further back.' : ''
   if (disagreementOnly.value) {
-    return 'No disagreements match these filters.'
+    return `No disagreements in this range.${more}`
   }
   if (untaggedOnly.value) {
-    return 'No untagged sailings here — every sailing in view already has a report. 🎉'
+    return `No untagged sailings in this range — every sailing in view already has a report. 🎉${more}`
   }
-  return filterTime.value?.length || filterDay.value?.length
+  return dateFiltersActive.value
     ? 'No photos for this sailing in the last six weeks.'
-    : 'No webcam photos available yet — photos are kept for six weeks.'
+    : `No sailing photos for today yet.${more}`
 })
 
 watch(needsSignIn, (v) => {
@@ -307,39 +368,68 @@ function attachAllReports(sailings) {
   }
 }
 
-// Fetch user capacity reports + crosswalk marks and index them by sailingKey.
-async function refreshReports() {
-  const [userReports, lineupReports] = await Promise.all([
-    loadRecentUserReports(),
-    loadRecentLineupReports(),
-  ])
-  const rbk = new Map()
-  for (const r of userReports) {
-    if (!rbk.has(r.sailingKey)) rbk.set(r.sailingKey, [])
-    rbk.get(r.sailingKey).push(r)
+// Fetch reports + crosswalk marks for specific sailings only, caching by
+// sailingKey so nothing is fetched twice (keys are marked before the await so
+// concurrent callers dedupe; unmarked again on failure so a retry can work).
+// Chips render only for visible sailings, so the page pays for what it shows.
+const fetchedReportKeys = new Set()
+async function fetchReportsFor(keys, force = false) {
+  const wanted = [...new Set(force ? keys : keys.filter((k) => !fetchedReportKeys.has(k)))]
+  if (!wanted.length) return
+  wanted.forEach((k) => fetchedReportKeys.add(k))
+  try {
+    const [userReports, lineupReports] = await Promise.all([
+      loadReportsForSailings(wanted),
+      loadLineupReportsForSailings(wanted),
+    ])
+    // Server truth replaces whatever we held for these keys (a just-saved
+    // optimistic entry is included — getDocs after addDoc is consistent).
+    for (const k of wanted) {
+      reportsByKey.value.set(k, [])
+      crosswalkByKey.value.set(k, [])
+    }
+    for (const r of userReports) reportsByKey.value.get(r.sailingKey)?.push(r)
+    for (const r of lineupReports) crosswalkByKey.value.get(r.sailingKey)?.push(r)
+    const wantedSet = new Set(wanted)
+    for (const sailing of allSailings.value) {
+      if (wantedSet.has(sailing.sailingKey)) {
+        attachReports(sailing, reportsByKey.value.get(sailing.sailingKey) || [])
+        attachCrosswalkReports(sailing, crosswalkByKey.value.get(sailing.sailingKey) || [])
+      }
+    }
+  } catch (err) {
+    wanted.forEach((k) => fetchedReportKeys.delete(k))
+    console.error('Failed to load reports:', err)
   }
-  const cbk = new Map()
-  for (const r of lineupReports) {
-    if (!cbk.has(r.sailingKey)) cbk.set(r.sailingKey, [])
-    cbk.get(r.sailingKey).push(r)
-  }
-  reportsByKey.value = rbk
-  crosswalkByKey.value = cbk
 }
 
-// Manual load / refresh: force bypasses the composable's 5-minute cache so the
-// button genuinely re-reads (the live subscription keeps photos current on its
-// own — this mainly pulls in other people's fresh report chips).
+// Whenever the in-scope set changes (Load More, filters, new sailings from the
+// live aggregate), pull reports for any sailings we haven't covered yet — the
+// untagged/disagreement toggles then evaluate against complete data for the
+// window they filter.
+watch(
+  () => scopedSailings.value.map((s) => s.sailingKey),
+  (keys) => {
+    fetchReportsFor(keys)
+  },
+)
+
+// Manual load / refresh: force bypasses the composable's 5-minute cache and
+// re-fetches the visible sailings' report chips (the live subscription keeps
+// photos current on its own).
 async function loadSailings(force = false) {
   loading.value = true
   try {
     const built = await loadBowenSailings(force)
-    await refreshReports()
     attachAllReports(built)
     allSailings.value = built
     // The sailing boarding right now (community-cam lineup, no photo yet).
     // Reads the same freshened cache as loadBowenSailings — no extra reads.
     upcomingLineup.value = await loadUpcomingLineup()
+    await fetchReportsFor(
+      scopedSailings.value.map((s) => s.sailingKey),
+      force,
+    )
   } catch (err) {
     console.error('Failed to load sailings:', err)
     $q.notify({ type: 'negative', message: 'Failed to load sailings' })

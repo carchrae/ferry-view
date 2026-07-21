@@ -14,6 +14,18 @@ import { loadRecentLineupReports } from 'src/composables/useLineupReport'
 // scoring lives in the Firebase-free functions/lib/leaderboard-score.js module,
 // shared with the server-side recompute.
 export function useLeaderboard() {
+  function mapReportDoc(d) {
+    return {
+      sailingKey: d.sailingKey,
+      capacity: d.capacity,
+      recordedAt: d.recordedAt,
+      userUid: d.userUid,
+      userName: d.userName || null,
+      userPhoto: d.userPhoto || null,
+      anonymous: d.anonymous || false,
+    }
+  }
+
   // All user reports (userUid present) recorded in the last `days` days.
   // Grouping by sailingKey means a sailing is scored from the reports inside the
   // window — fine for a rolling 30-day board (older sailings lose their photos).
@@ -32,16 +44,38 @@ export function useLeaderboard() {
     snap.forEach((docSnap) => {
       const d = docSnap.data()
       if (!d.userUid) return // defensive: automated records shouldn't match anyway
-      reports.push({
-        sailingKey: d.sailingKey,
-        capacity: d.capacity,
-        recordedAt: d.recordedAt,
-        userUid: d.userUid,
-        userName: d.userName || null,
-        userPhoto: d.userPhoto || null,
-        anonymous: d.anonymous || false,
-      })
+      reports.push(mapReportDoc(d))
     })
+    return reports
+  }
+
+  // User reports for a specific set of sailings, via chunked `in` queries (30
+  // keys per Firestore disjunction limit, chunks in parallel). Costs only the
+  // matching docs instead of a whole-window scan — the departures page pays
+  // for the sailings it renders, not all six weeks.
+  async function loadReportsForSailings(sailingKeys) {
+    const keys = [...sailingKeys]
+    const chunks = []
+    for (let i = 0; i < keys.length; i += 30) chunks.push(keys.slice(i, i + 30))
+    const snaps = await Promise.all(
+      chunks.map((chunk) =>
+        getDocs(
+          query(
+            collection(db, 'capacityHistory'),
+            where('userReport', '==', true),
+            where('sailingKey', 'in', chunk),
+          ),
+        ),
+      ),
+    )
+    const reports = []
+    for (const snap of snaps) {
+      snap.forEach((docSnap) => {
+        const d = docSnap.data()
+        if (!d.userUid) return
+        reports.push(mapReportDoc(d))
+      })
+    }
     return reports
   }
 
@@ -143,6 +177,7 @@ export function useLeaderboard() {
 
   return {
     loadRecentUserReports,
+    loadReportsForSailings,
     getLeaderboard,
     getUserReports,
     getRideLeaderboard,

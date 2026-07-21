@@ -59,9 +59,20 @@ export function useLineupReport() {
   return { user, needsSignIn, saveCrosswalkMark, deleteCrosswalkMark }
 }
 
+function mapLineupDoc(d) {
+  return {
+    sailingKey: d.sailingKey,
+    crosswalkAt: d.crosswalkAt,
+    recordedAt: d.recordedAt || 0,
+    userUid: d.userUid,
+    userName: d.userName || null,
+    userPhoto: d.userPhoto || null,
+    anonymous: d.anonymous || false,
+  }
+}
+
 // All crosswalk marks recorded in the last `days` days (lineupReports is
-// world-readable), for showing who marked what on the departures page. The
-// default window matches the page's two-week photo range.
+// world-readable), used by the leaderboard.
 export async function loadRecentLineupReports(days = 14) {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
   const snap = await getDocs(
@@ -71,15 +82,30 @@ export async function loadRecentLineupReports(days = 14) {
   snap.forEach((docSnap) => {
     const d = docSnap.data()
     if (!d.userUid || typeof d.crosswalkAt !== 'number') return
-    reports.push({
-      sailingKey: d.sailingKey,
-      crosswalkAt: d.crosswalkAt,
-      recordedAt: d.recordedAt || 0,
-      userUid: d.userUid,
-      userName: d.userName || null,
-      userPhoto: d.userPhoto || null,
-      anonymous: d.anonymous || false,
-    })
+    reports.push(mapLineupDoc(d))
   })
+  return reports
+}
+
+// Crosswalk marks for a specific set of sailings, via chunked `in` queries
+// (30 keys per Firestore disjunction limit, chunks in parallel) — the
+// departures page pays only for the sailings it renders.
+export async function loadLineupReportsForSailings(sailingKeys) {
+  const keys = [...sailingKeys]
+  const chunks = []
+  for (let i = 0; i < keys.length; i += 30) chunks.push(keys.slice(i, i + 30))
+  const snaps = await Promise.all(
+    chunks.map((chunk) =>
+      getDocs(query(collection(db, 'lineupReports'), where('sailingKey', 'in', chunk))),
+    ),
+  )
+  const reports = []
+  for (const snap of snaps) {
+    snap.forEach((docSnap) => {
+      const d = docSnap.data()
+      if (!d.userUid || typeof d.crosswalkAt !== 'number') return
+      reports.push(mapLineupDoc(d))
+    })
+  }
   return reports
 }
