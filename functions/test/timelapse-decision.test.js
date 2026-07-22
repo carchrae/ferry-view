@@ -114,19 +114,24 @@ describe('timelapseDecision', () => {
     expect(timelapseDecision(d, at('23:05')).capture).toBe(false)
   })
 
-  it('stops once the ferry arrives back at Bowen (Arrived event)', () => {
+  it('keeps capturing for 10 minutes after the ferry arrives (Arrived event)', () => {
     const d = data({
       recentActivity: [{ action: 'Arrived', location: 'Bowen', time: '13:45' }, departed('12:36')],
     })
-    expect(timelapseDecision(d, at('13:50')).capture).toBe(false)
+    // 5 min after arrival: still capturing (the lineup draining onto the boat,
+    // and late-arriving cars, are worth seeing).
+    expect(timelapseDecision(d, at('13:50'))).toEqual({ capture: true, sailingTime: '13:55' })
+    // 10 min after arrival: done.
+    expect(timelapseDecision(d, at('13:55')).capture).toBe(false)
   })
 
-  it('stops once the ferry arrives back at Bowen (AIS level signal)', () => {
+  it('keeps capturing for 10 minutes after the ferry arrives (AIS level signal)', () => {
     const d = data({
       aisLocation: 'Bowen',
       aisLocationSince: at('13:45').valueOf(),
     })
-    expect(timelapseDecision(d, at('13:50')).capture).toBe(false)
+    expect(timelapseDecision(d, at('13:50'))).toEqual({ capture: true, sailingTime: '13:55' })
+    expect(timelapseDecision(d, at('13:55')).capture).toBe(false)
   })
 
   it("ignores the previous cycle's arrival (event predates the last departure)", () => {

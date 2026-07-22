@@ -71,11 +71,13 @@ export function arrivalSignalAvailable(data) {
 //   - only from 15 min after the previous Bowen departure (before that the
 //     lot is mostly empty — and sailings that fill up do so early, so the
 //     window opens well before the lineup peaks),
-//   - until the ferry arrives back at Bowen (loading from there on is the
-//     terminal camera's job — see departureTimelapseDecision),
+//   - until 10 minutes AFTER the ferry arrives back at Bowen — the tail
+//     frames show whether late-arriving cars made the boat (loading itself
+//     is the terminal camera's job — see departureTimelapseDecision),
 //   - never for departures scheduled at/after 9 pm,
 //   - attributed to the next upcoming Bowen departure.
 const LINEUP_WAIT_AFTER_DEP_MIN = 15
+const LINEUP_STOP_AFTER_ARRIVAL_MIN = 10
 
 export function timelapseDecision(data, now) {
   if (now.minute() % 5 !== 0) return { capture: false }
@@ -104,9 +106,15 @@ export function timelapseDecision(data, now) {
 
   if (now.diff(lastDep, 'minute') < LINEUP_WAIT_AFTER_DEP_MIN) return { capture: false }
 
-  // Ferry is back at the dock: the lineup has stopped building (it's
-  // draining onto the boat) and the terminal camera has taken over.
-  if (bowenArrivalForCurrentCycle(data, now)) return { capture: false }
+  // Ferry has been back at the dock for a while: the lineup finished
+  // draining onto the boat and the terminal camera has taken over. The first
+  // 10 minutes after arrival still capture — AIS can flag "docked" a few
+  // minutes before the recorded arrival time, which used to cut the last
+  // lineup frames short, and the drain itself is worth seeing.
+  const arrivedAt = bowenArrivalForCurrentCycle(data, now)
+  if (arrivedAt && now.diff(arrivedAt, 'minute') >= LINEUP_STOP_AFTER_ARRIVAL_MIN) {
+    return { capture: false }
+  }
 
   return { capture: true, sailingTime: nextDep.time }
 }
