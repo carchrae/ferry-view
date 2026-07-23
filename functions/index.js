@@ -33,6 +33,7 @@ import {
   augmentFromBCFerries,
 } from './lib/bcferries-departures.js'
 import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.js'
+import { arrivalLineupTarget } from './lib/webcam-decision.js'
 import { applyUserCapacityReport } from './lib/user-capacity.js'
 import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-aggregate.js'
 import { recomputeHistoricalStats } from './lib/history-aggregate.js'
@@ -236,25 +237,17 @@ function captureWebcams(bowenPast, data) {
   }
 
   // Capture Bowen community webcam when the ferry arrives at Bowen. The lineup
-  // this predicts is the next scheduled Bowen departure strictly after the
-  // arrival's own time — not "whatever departure was last matched so far".
-  // That distinction matters when an arrival and the departure that follows
-  // it land in the same poll (a batched/delayed atberth log update): using
-  // "last matched" would already reflect that later departure and mis-pair
-  // this arrival with the *next* sailing after it, leaving a stale lineup
-  // photo attached to a sailing that hasn't actually happened yet.
+  // this predicts is the sailing the arrival serves — the first schedule entry
+  // departing after the arrival (see arrivalLineupTarget) — so the photo lands
+  // on the same sailing as the lineup timelapse frames, including when the
+  // ferry arrives after that sailing's scheduled time (late boarder).
   const bowenArrivals = data.recentActivity.filter(
     (e) => e.action === 'Arrived' && e.location === 'Bowen',
   )
   if (bowenArrivals.length > 0) {
     const latest = bowenArrivals[0]
     const latestTime = timeToDate(latest.time)
-    const nextDep = latestTime
-      ? data.bowenSchedule.find((s) => {
-          const t = timeToDate(s.time)
-          return t && t > latestTime
-        })
-      : null
+    const nextDep = latestTime ? arrivalLineupTarget(data, latestTime, nowInVancouver()) : null
     if (!nextDep) {
       logger.error('No upcoming Bowen departure for community webcam capture')
       return

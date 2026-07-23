@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPast, buildUpcoming } from '../lib/matching.js'
+import { buildPast, buildUpcoming, calculateLateness } from '../lib/matching.js'
 import { timeToDate } from '../lib/time.js'
 
 const at = (hhmm) => timeToDate(hhmm)
@@ -85,5 +85,47 @@ describe('dangerous cargo / repositioning sailings', () => {
     const entry = upcoming.find((e) => e.shortTime === '13:55')
     expect(entry).toBeDefined()
     expect(entry.repositioning).toBe(true)
+  })
+})
+
+describe('calculateLateness', () => {
+  const bowen = ['10:00', '11:15', '12:35'].map((time) => ({ time }))
+  const hsb = ['10:50', '12:05'].map((time) => ({ time }))
+  const dep = (time, location = 'Bowen') => ({ action: 'Departed', location, time })
+
+  it('reports lateness against the sailing the departure served', () => {
+    expect(calculateLateness(dep('10:29'), bowen, hsb, 'Bowen')).toEqual({
+      minutes: 29,
+      direction: 'to HSB',
+    })
+  })
+
+  it('stays on the served sailing past half the gap (never reports a phantom early boat)', () => {
+    // 10:00 departing 10:45 is closer to 11:15 by absolute difference — the
+    // old closest-match rule reported "30 min early" for 11:15. The boat is
+    // never early, so this is 45 min late for 10:00 (2026-07-23 incident:
+    // compounding lateness all day).
+    expect(calculateLateness(dep('10:45'), bowen, hsb, 'Bowen')).toEqual({
+      minutes: 45,
+      direction: 'to HSB',
+    })
+  })
+
+  it('allows up to 5 minutes early for the matched sailing', () => {
+    expect(calculateLateness(dep('11:11'), bowen, hsb, 'Bowen')).toEqual({
+      minutes: -4,
+      direction: 'to HSB',
+    })
+  })
+
+  it('returns null for an event before the first sailing', () => {
+    expect(calculateLateness(dep('09:40'), bowen, hsb, 'Bowen')).toBeNull()
+  })
+
+  it('uses the HSB schedule for Horseshoe Bay departures', () => {
+    expect(calculateLateness(dep('11:20', 'Horseshoe Bay'), bowen, hsb, 'Horseshoe Bay')).toEqual({
+      minutes: 30,
+      direction: 'to Bowen',
+    })
   })
 })

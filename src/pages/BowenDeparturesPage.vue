@@ -141,6 +141,9 @@
       <q-card-section class="q-py-sm row items-center">
         <div class="text-subtitle1 text-weight-medium">
           {{ formatTime12h(sailing.sailingTime) }} — {{ sailing.dayLabel }}
+          <span v-if="latenessLabel(sailing)" :class="`text-${getLateColor(sailing.latenessMins)}`">
+            — {{ latenessLabel(sailing) }}
+          </span>
         </div>
         <q-space />
         <q-badge
@@ -195,6 +198,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { formatTime12h, normalizeTime, dayjs, TZ } from '../../functions/lib/time.js'
+import { isOnTime, isLate, getLateColor } from '../../functions/lib/constants.js'
 import { DAY_KEYS } from 'src/composables/useHistoricalStats'
 import SailingTagCards from 'src/components/SailingTagCards.vue'
 import LineupTimelapse from 'src/components/LineupTimelapse.vue'
@@ -269,6 +273,17 @@ const dateFiltersActive = computed(() =>
 // (if any) have been applied — otherwise that sync would fire first and wipe
 // them before loadSailings/applyFiltersFromQuery gets a chance to read them.
 let queryReady = false
+
+// Title suffix: how the sailing actually ran, using the same thresholds and
+// colors as the home page (≤4 min early through <2 min late reads "on time").
+// Null (never departed / not yet departed) appends nothing.
+function latenessLabel(sailing) {
+  const m = sailing.latenessMins
+  if (m == null) return null
+  if (isOnTime(m)) return 'on time'
+  if (isLate(m)) return `${m} min late`
+  return `${Math.abs(m)} min early`
+}
 
 const sailingTimeOptions = computed(() => {
   const times = [...new Set(allSailings.value.map((s) => s.sailingTime))].sort()

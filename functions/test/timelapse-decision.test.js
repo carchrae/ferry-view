@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { timelapseDecision } from '../lib/webcam.js'
+import { arrivalLineupTarget } from '../lib/webcam-decision.js'
 import { timeToDate } from '../lib/time.js'
 
 const at = (hhmm) => timeToDate(hhmm)
@@ -159,5 +160,51 @@ describe('timelapseDecision', () => {
       ],
     })
     expect(timelapseDecision(d, at('14:30'))).toEqual({ capture: true, sailingTime: '15:15' })
+  })
+})
+
+describe('arrivalLineupTarget', () => {
+  it('picks the next scheduled sailing for an on-time arrival', () => {
+    const d = data() // 12:35 departed; next is 13:55
+    expect(arrivalLineupTarget(d, at('13:45'), at('13:45'))?.time).toBe('13:55')
+  })
+
+  it('keeps a late-boarding sailing even when the arrival is past its scheduled time', () => {
+    // Ferry arrives at 14:01 for the 13:55 sailing (running late, not yet
+    // departed). The photo must land on 13:55 — where the lineup frames are —
+    // not 15:15 (the old "next scheduled time after the arrival" rule).
+    const d = data()
+    expect(arrivalLineupTarget(d, at('14:01'), at('14:01'))?.time).toBe('13:55')
+  })
+
+  it('still pairs correctly when the arrival and following departure land in one poll', () => {
+    // Batched atberth update: arrival 13:45 and the 13:55 sailing's departure
+    // arrive in the same poll. 13:55 already carries matchedDepartureTime
+    // (13:55), but that departure came after this arrival, so the arrival
+    // still belongs to it.
+    const d = data({ bowenSchedule: sched(MIDDAY, '13:55') })
+    expect(arrivalLineupTarget(d, at('13:45'), at('14:00'))?.time).toBe('13:55')
+  })
+
+  it('keeps a sailing running 20+ min late (2026-07-23 incident)', () => {
+    // Real data: ferry ~25-40 min late all day; the 11:15 sailing's ferry
+    // docked at 11:37 (22 min past scheduled). The old rule stamped the photo
+    // on 12:35 — every arrival photo that day landed one sailing forward.
+    const d = data({
+      bowenSchedule: sched(['10:00', '11:15', '12:35', '13:55'], '10:00'),
+      recentActivity: [departed('10:29')],
+    })
+    expect(arrivalLineupTarget(d, at('11:37'), at('11:37'))?.time).toBe('11:15')
+  })
+
+  it('skips sailings that departed before the arrival', () => {
+    // 12:35 departed at 12:35 — an arrival at 13:45 serves 13:55, not 12:35.
+    const d = data()
+    expect(arrivalLineupTarget(d, at('13:45'), at('13:45'))?.time).toBe('13:55')
+  })
+
+  it('returns null when nothing is left to serve', () => {
+    const d = data({ bowenSchedule: sched(['12:35'], '12:35') })
+    expect(arrivalLineupTarget(d, at('13:45'), at('13:45'))).toBeNull()
   })
 })

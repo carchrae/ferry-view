@@ -27,11 +27,17 @@ Bowen, loads, and **departs** again.
 ### 1. Arrival photo — community cam, one shot per arrival
 
 `captureBowenCommunityWebcam`, event-driven: fires when a poll detects an
-`Arrived`/`Bowen` event, and is attributed to the **next scheduled Bowen
-departure after the arrival time** (the lineup it shows is for that sailing).
-Deduplicated per arrival via the `snapshots/latestBowenArrival` singleton;
-skipped when the target sailing isn't within 10 minutes of now (stale poll
-guard).
+`Arrived`/`Bowen` event, and is attributed to the **sailing the arrival
+serves** (`arrivalLineupTarget` in `functions/lib/webcam-decision.js`): the
+first schedule entry that departed — or is still due to depart — after the
+arrival. This mirrors the lineup timelapse's windowing, so the photo lands on
+the same sailing as the frames even when the ferry docks after that sailing's
+scheduled time (late boarder) — the old "next scheduled time after the
+arrival" rule shifted a late ferry's photo onto the *next* sailing, splitting
+it from its timelapse. Deduplicated per arrival via the
+`snapshots/latestBowenArrival` singleton; skipped when the **arrival event**
+is more than 10 minutes old (stale poll guard — gating on the sailing's
+scheduled time instead would skip any ferry running >10 min late).
 
 ### 2. Departure photo — terminal cam, one shot per departure
 

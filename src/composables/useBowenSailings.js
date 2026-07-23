@@ -38,6 +38,21 @@ function buildTimelapse(paths) {
     .sort((a, b) => a.ts - b.ts)
 }
 
+// Minutes the sailing actually departed after its scheduled time, or null when
+// it hasn't departed (or the departure was never logged). timeToDate binds
+// HH:mm to today, so a departure logged just past midnight for a late-evening
+// sailing comes out ~a day "early" — the boat is never early beyond a few
+// minutes, so wrap anything that implausible forward by 24h.
+function latenessMins(s) {
+  if (!s.actualDepartureTime || !s.sailingTime) return null
+  const sched = timeToDate(s.sailingTime)
+  const dep = timeToDate(s.actualDepartureTime)
+  if (!sched || !dep) return null
+  let mins = Math.round(dep.diff(sched, 'minute', true))
+  if (mins < -720) mins += 1440
+  return mins
+}
+
 // Both photos of a sailing share its sailingStatus doc, so they carry the same
 // sailingKey and capacity (unlike the two independently-written snapshot
 // singleton docs, where the lineup photo can belong to a different sailing than
@@ -64,6 +79,7 @@ function buildCards(s, todayIso) {
   return {
     ...s,
     dayLabel: dayLabel(s.dateIso, todayIso),
+    latenessMins: latenessMins(s),
     arrival:
       s.communitySnapshotPath || arrivalTimelapse.length
         ? {
@@ -116,6 +132,7 @@ function expandAggregateRecord(r) {
     webcamSnapshotPath: r.wp,
     communitySnapshotPath: r.cp,
     communityArrivalTime: r.ca,
+    actualDepartureTime: r.dep,
     lineupTimelapsePaths: (r.lt || []).map(
       (ts) => `webcams/community/${r.d}/timelapse/${r.t}_To HSB_${ts}.jpg`,
     ),
@@ -169,6 +186,7 @@ async function fetchDirectBounded() {
       webcamSnapshotPath: d.webcamSnapshotPath,
       communitySnapshotPath: d.communitySnapshotPath,
       communityArrivalTime: d.communityArrivalTime,
+      actualDepartureTime: d.actualDepartureTime,
       lineupTimelapsePaths: d.lineupTimelapsePaths || [],
       departureTimelapsePaths: d.departureTimelapsePaths || [],
       crosswalkFullAt: d.crosswalkFullAt || null,
@@ -261,9 +279,14 @@ export function subscribeBowenSailings(onData, onError) {
 // null. Gated to genuinely-upcoming sailings by scheduled time — a sailing
 // that already departed but never got its arrival photo (capture failed) also
 // stays photo-less-with-frames, and picking the newest such doc would show
-// that previous sailing's last frame. The 20-minute grace keeps a sailing
-// that is boarding late (past its scheduled time, not yet departed).
-const UPCOMING_LATE_GRACE_MIN = 20
+// that previous sailing's last frame. The grace keeps a sailing that is
+// running late (past its scheduled time, not yet arrived/departed) — on this
+// single-boat route lateness compounds across the day (40+ min observed,
+// e.g. 2026-07-23), so it must comfortably exceed real lateness. The
+// competing failure mode the gate exists for (a departed sailing lingering
+// because its captures failed) needs BOTH its arrival and departure photo
+// captures to fail, which is far rarer than a plain late ferry.
+const UPCOMING_LATE_GRACE_MIN = 60
 
 function deriveUpcomingLineup(raw) {
   const todayIso = nowInVancouver().format('YYYY-MM-DD')

@@ -137,12 +137,22 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, dateIso, r
   })
 
   await statusRef.set({ webcamSnapshotPath: blobPath }, { merge: true })
-  await upsertBowenSailing(db, { dateIso, sailingTime, wp: blobPath })
+  // recentTime is the actual (matched) departure time — carry it into the
+  // aggregate so the departures page can label lateness without waiting for
+  // the nightly rebuild to pick up sailingStatus.actualDepartureTime.
+  await upsertBowenSailing(db, { dateIso, sailingTime, wp: blobPath, dep: recentTime })
   logger.log(`Saved webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
 export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arrivalTime) {
-  if (!isRecent(sailingTime, 10 * 60 * 1000)) return
+  // Stale-poll guard on the ARRIVAL's recency, not the sailing's scheduled
+  // time: a late boarder's target sailing is already minutes past its
+  // scheduled time when the ferry docks (arrivalLineupTarget keeps such a
+  // sailing as the target on purpose), so gating on sailingTime would skip
+  // the photo for any ferry running >10 min late — the exact case the
+  // late-boarder targeting exists for. An arrival event older than 10 min is
+  // a replayed/stale log, not a fresh docking.
+  if (!isRecent(arrivalTime, 10 * 60 * 1000)) return
   const arrivalRef = db.collection('snapshots').doc('latestBowenArrival')
   const snap = await arrivalRef.get()
   if (snap.exists && snap.data().arrivalTime === arrivalTime) return

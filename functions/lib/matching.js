@@ -170,6 +170,14 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
     .sort((a, b) => a.sortTime - b.sortTime)
 }
 
+// Single boat, lateness compounds across the day, and the ferry is never more
+// than ~5 minutes early — so a departure belongs to the LATEST schedule entry
+// at/before the event time (with the 5-min early allowance), not the closest
+// entry by absolute difference. "Closest" flips to the next sailing once
+// lateness exceeds half the gap between sailings (~35 min midday) and then
+// reports a phantom early departure.
+const EARLY_ALLOWANCE_MS = 5 * 60000
+
 export function calculateLateness(event, bowenSchedule, hsbSchedule, location) {
   const eventTime = timeToDate(event.time)
   if (!eventTime) return null
@@ -177,21 +185,17 @@ export function calculateLateness(event, bowenSchedule, hsbSchedule, location) {
   const schedule = location === 'Bowen' ? bowenSchedule : hsbSchedule
   if (!schedule?.length) return null
 
-  let closestScheduled = null
-  let minDiff = Infinity
   const direction = location === 'Bowen' ? 'to HSB' : 'to Bowen'
 
+  let matched = null
   for (const entry of schedule) {
     const schTime = timeToDate(entry.time)
     if (!schTime) continue
-    const diff = Math.abs(eventTime - schTime)
-    if (diff < minDiff) {
-      minDiff = diff
-      closestScheduled = schTime
-    }
+    if (schTime - eventTime > EARLY_ALLOWANCE_MS) continue
+    if (!matched || schTime > matched) matched = schTime
   }
 
-  if (!closestScheduled) return null
-  const minutesLate = Math.round((eventTime - closestScheduled) / 60000)
+  if (!matched) return null
+  const minutesLate = Math.round((eventTime - matched) / 60000)
   return { minutes: minutesLate, direction }
 }

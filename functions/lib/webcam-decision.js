@@ -119,6 +119,31 @@ export function timelapseDecision(data, now) {
   return { capture: true, sailingTime: nextDep.time }
 }
 
+// Which sailing does an arrival at `arrivalTime` serve? The first schedule
+// entry that departed — or is still due to depart — AFTER the arrival:
+//   - an entry already matched to a departure belongs to this arrival only if
+//     that departure came after it (covers a batched poll where the arrival
+//     and the departure following it land together),
+//   - an unmatched entry with its window still open is the boarding target
+//     even when its scheduled time has passed (a late boarder keeps its
+//     photo — mirroring timelapseDecision, so the arrival photo lands on the
+//     same sailing as the lineup frames; the old "next scheduled time after
+//     the arrival" rule pushed a late ferry's photo onto the NEXT sailing,
+//     splitting it from its timelapse).
+export function arrivalLineupTarget(data, arrivalTime, now) {
+  const schedule = data.bowenSchedule || []
+  return (
+    schedule.find((s, i) => {
+      if (s.matchedDepartureTime) {
+        const dep = timeToDate(s.matchedDepartureTime)
+        return dep && dep > arrivalTime
+      }
+      const t = timeToDate(s.time)
+      return t && now.isBefore(scheduleWindowEnd(schedule, i))
+    }) || null
+  )
+}
+
 // Departure timelapse: the Bowen TERMINAL camera as the ferry loads. Unlike
 // the lineup (community) timelapse, capture EVERY minute (no 5-min gate),
 // from max(ferry arrival at Bowen, 10 min before the scheduled time) —

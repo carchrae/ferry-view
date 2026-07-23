@@ -80,6 +80,7 @@ describe('sailingToRecord', () => {
       lastCapacity: '30%',
       capacitySource: 'automated',
       webcamSnapshotPath: 'webcams/bowen/x.jpg_1752300000000.jpg',
+      actualDepartureTime: '10:27',
       crosswalkFullAt: { toMillis: () => 1752310000000 },
       lineupTimelapsePaths: [
         lineupPath(yesterday, '10:00', 1752300200000),
@@ -94,6 +95,7 @@ describe('sailingToRecord', () => {
       cap: '30%',
       src: 'automated',
       wp: 'webcams/bowen/x.jpg_1752300000000.jpg',
+      dep: '10:27',
       cw: 1752310000000,
       lt: [1752300100000, 1752300200000],
       dt: [1752300300000],

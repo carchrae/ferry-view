@@ -14,7 +14,8 @@ export const BOWEN_SAILINGS_DAYS = 42
 //   d = dateIso, t = sailingTime, cap = lastCapacity, src = capacitySource,
 //   wp = webcamSnapshotPath, cp = communitySnapshotPath,
 //   ca = communityArrivalTime, cw = crosswalkFullAt (epoch ms),
-//   lt / dt = lineup / departure timelapse frame epochs.
+//   dep = actualDepartureTime (drives the "on time"/"late" title on the
+//   departures page), lt / dt = lineup / departure timelapse frame epochs.
 // Timelapse Storage paths are deterministic —
 // webcams/{community|bowen}/{d}/timelapse/{t}_To HSB_{epoch}.jpg — so only
 // the epoch suffix is stored (13 chars vs ~65 per frame, keeping the doc far
@@ -44,6 +45,7 @@ export function sailingToRecord(s) {
   if (s.webcamSnapshotPath != null) rec.wp = s.webcamSnapshotPath
   if (s.communitySnapshotPath != null) rec.cp = s.communitySnapshotPath
   if (s.communityArrivalTime != null) rec.ca = s.communityArrivalTime
+  if (s.actualDepartureTime != null) rec.dep = s.actualDepartureTime
   if (s.crosswalkFullAt != null) rec.cw = flattenMs(s.crosswalkFullAt)
   if (lt.length) rec.lt = lt.sort((a, b) => a - b)
   if (dt.length) rec.dt = dt.sort((a, b) => a - b)
