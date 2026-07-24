@@ -14,6 +14,8 @@ export const BOWEN_SAILINGS_DAYS = 42
 //   d = dateIso, t = sailingTime, cap = lastCapacity, src = capacitySource,
 //   wp = webcamSnapshotPath, cp = communitySnapshotPath,
 //   ca = communityArrivalTime, cw = crosswalkFullAt (epoch ms),
+//   cwa / cwp = crosswalkFullAtAuto (epoch ms) / crosswalkAutoProb — the
+//   classifier's prediction, feeding the "Robot says…" agree-tag,
 //   dep = actualDepartureTime (drives the "on time"/"late" title on the
 //   departures page), lt / dt = lineup / departure timelapse frame epochs.
 // Timelapse Storage paths are deterministic —
@@ -47,6 +49,8 @@ export function sailingToRecord(s) {
   if (s.communityArrivalTime != null) rec.ca = s.communityArrivalTime
   if (s.actualDepartureTime != null) rec.dep = s.actualDepartureTime
   if (s.crosswalkFullAt != null) rec.cw = flattenMs(s.crosswalkFullAt)
+  if (s.crosswalkFullAtAuto != null) rec.cwa = flattenMs(s.crosswalkFullAtAuto)
+  if (s.crosswalkAutoProb != null) rec.cwp = s.crosswalkAutoProb
   if (lt.length) rec.lt = lt.sort((a, b) => a - b)
   if (dt.length) rec.dt = dt.sort((a, b) => a - b)
   return rec

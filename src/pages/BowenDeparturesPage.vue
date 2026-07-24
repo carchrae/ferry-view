@@ -169,8 +169,10 @@
         <ReportChips
           :reports="sailing.reports"
           :crosswalk-reports="sailing.crosswalkReports"
+          :auto-crosswalk-at="sailing.crosswalkFullAtAuto ?? null"
           @delete-report="onDeleteReport(sailing, $event)"
           @delete-crosswalk="onDeleteCrosswalk(sailing, $event)"
+          @agree-crosswalk="onAgreeCrosswalk(sailing)"
         />
       </q-card-section>
     </q-card>
@@ -206,6 +208,7 @@ import SignInDialog from 'src/components/SignInDialog.vue'
 import ReportChips from 'src/components/ReportChips.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadLineupReportsForSailings } from 'src/composables/useLineupReport'
+import { predictCrosswalk, browserClassifierReady } from 'src/composables/useLineupClassifier'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
@@ -426,8 +429,48 @@ watch(
   () => scopedSailings.value.map((s) => s.sailingKey),
   (keys) => {
     fetchReportsFor(keys)
+    queueBrowserPredictions(scopedSailings.value)
   },
 )
+
+// Phase-1 browser-side classifier: predict crosswalk times for in-scope
+// sailings the server hasn't stamped — no backfill needed, any sailing whose
+// frames are still in Storage classifies on the spot, and results land on
+// the card as the "Robot says…" agree-tag. One sailing at a time (each is up
+// to ~10 small frame fetches, early-stopped and per-device cached), so a
+// page of cards doesn't fan out dozens of requests at once.
+const predictedKeys = new Set()
+let predictionChain = Promise.resolve()
+function queueBrowserPredictions(sailings) {
+  if (!browserClassifierReady) return
+  const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
+  const cutoffIso = dayjs().tz(TZ).subtract(14, 'day').format('YYYY-MM-DD')
+  for (const sailing of sailings) {
+    if (sailing.crosswalkFullAtAuto != null) continue
+    if (predictedKeys.has(sailing.sailingKey)) continue
+    if ((sailing.lineupTimelapsePaths?.length ?? 0) < 2) continue
+    if (sailing.dateIso < cutoffIso) continue // frames aged out of Storage
+    // A finished sailing gains no more frames, so its "no detection" is
+    // final (cacheable) and needs no retry; today's boarding sailing stays
+    // eligible for re-runs as frames arrive.
+    const final = sailing.actualDepartureTime != null || sailing.dateIso < todayIso
+    if (final) predictedKeys.add(sailing.sailingKey)
+    predictionChain = predictionChain.then(async () => {
+      try {
+        const pred = await predictCrosswalk(sailing.sailingKey, sailing.lineupTimelapsePaths, {
+          final,
+        })
+        if (pred) {
+          sailing.crosswalkFullAtAuto = pred.ts
+          sailing.crosswalkAutoProb = pred.prob
+          sailing.crosswalkAutoSource = 'browser'
+        }
+      } catch (err) {
+        console.error('Browser lineup prediction failed:', err)
+      }
+    })
+  }
+}
 
 // Manual load / refresh: force bypasses the composable's 5-minute cache and
 // re-fetches the visible sailings' report chips (the live subscription keeps
@@ -520,8 +563,8 @@ function attachCrosswalkReports(sailing, reports) {
   sailing.crosswalkConflict = disputed && !resolved
 }
 
-function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
-  saveCrosswalkMark(sailingKey, ts)
+function onCrosswalk(sailing, { sailingKey, ts, timeLabel }, extra = {}) {
+  saveCrosswalkMark(sailingKey, ts, extra)
     .then((saved) => {
       if (!saved) {
         showSignInDialog.value = true
@@ -548,6 +591,26 @@ function onCrosswalk(sailing, { sailingKey, ts, timeLabel }) {
       console.error('Failed to save crosswalk mark:', err)
       $q.notify({ type: 'negative', message: 'Failed to record crosswalk time' })
     })
+}
+
+// A rider tapped the "Robot says…" chip: save the classifier's predicted time
+// as their own crosswalk report, flagged as an agreement so the training data
+// can tell confirmations from independent marks.
+function onAgreeCrosswalk(sailing) {
+  const ts = sailing.crosswalkFullAtAuto
+  if (!ts) return
+  onCrosswalk(
+    sailing,
+    { sailingKey: sailing.sailingKey, ts, timeLabel: crosswalkAtLabel(ts) },
+    {
+      agreedWithAuto: true,
+      // Whether the prediction came from the server's capture-time classifier
+      // or this browser's (canvas preprocessing differs slightly) — lets the
+      // accuracy analysis separate the two.
+      autoSource: sailing.crosswalkAutoSource || 'server',
+      ...(sailing.crosswalkAutoProb != null ? { autoProb: sailing.crosswalkAutoProb } : {}),
+    },
+  )
 }
 
 // Latest entry of a report list by recordedAt, or null when empty.

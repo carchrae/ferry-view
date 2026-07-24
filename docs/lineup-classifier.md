@@ -117,12 +117,14 @@ into the training data on the next export (see
 A frame either shows cars past the crosswalk line or it doesn't — a fixed
 camera, a fixed crop, a binary question. That needs only:
 
-- **Features** (`functions/lib/lineup-features.js`): crop a fixed region of
-  interest (ROI), downscale to 48×27 grayscale, normalize to [0,1]. The
-  *same module* runs at training and inference, so preprocessing can never
-  drift. The ROI is the road band marked in `crop-area.png` (repo root):
-  full width, y 0.33–0.81 of the frame. An ROI change invalidates trained
-  weights — retrain after touching it.
+- **Features** (`functions/lib/lineup-features.js`): crop two fixed regions
+  (`REGIONS`), downscale each to a grayscale grid (left lane 48×27 +
+  crosswalk 24×14), normalize to [0,1], concatenate. The *same module* runs
+  at training and inference, so preprocessing can never drift. The regions
+  were hand-drawn with the report's ROI picker: the left lane carries the
+  strong "long line" signal, the crosswalk region confirms the crossing
+  (recall 0.86 → 0.93 in the ROI experiments). A region change invalidates
+  trained weights — retrain after touching it.
 - **Model** (`functions/models/lineup-classifier.json`): logistic-regression
   weights as JSON, a few KB. Ships **disabled** (`enabled: false`) until a
   trained model is committed.

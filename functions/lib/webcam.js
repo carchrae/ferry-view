@@ -275,6 +275,11 @@ export async function captureLineupTimelapse(db, data) {
     dateIso: data.dateIso,
     sailingTime: decision.sailingTime,
     addLineupTs: timestamp,
+    // Confirmed auto-detection → surface it to the client aggregate so the
+    // departures page can show the "Robot says…" agree-tag.
+    ...(autoFields.crosswalkFullAtAuto
+      ? { cwa: autoFields.crosswalkFullAtAuto, cwp: autoFields.crosswalkAutoProb }
+      : {}),
   })
 
   logAttribution('Lineup timelapse', decision, now)

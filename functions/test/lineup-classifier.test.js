@@ -104,9 +104,17 @@ describe('firstSustainedPositiveTs', () => {
 })
 
 describe('classifyLineup', () => {
-  it('returns null with the shipped placeholder model (disabled)', async () => {
+  it('returns a well-formed verdict with the shipped (trained, enabled) model', async () => {
+    const verdict = await classifyLineup(await solidJpeg(255))
+    expect(verdict).not.toBe(null)
+    expect(verdict.probability).toBeGreaterThanOrEqual(0)
+    expect(verdict.probability).toBeLessThanOrEqual(1)
+    expect(typeof verdict.fullToCrosswalk).toBe('boolean')
+  })
+
+  it('returns null when the model is disabled', async () => {
     const buf = await solidJpeg(255)
-    expect(await classifyLineup(buf)).toBe(null)
+    expect(await classifyLineup(buf, { enabled: false })).toBe(null)
   })
 
   it('classifies bright vs dark ROI with a hand-built model', async () => {

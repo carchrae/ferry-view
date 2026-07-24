@@ -17,8 +17,11 @@ export function useLineupReport() {
   // crosswalk — the capture time of the timelapse frame the rider paused on,
   // NOT the time they tapped. Returns true when saved; false when the user
   // must sign in first (needsSignIn is set so the parent can open the
-  // sign-in dialog).
-  async function saveCrosswalkMark(sailingKey, crosswalkAt) {
+  // sign-in dialog). `extra` merges additional fields into the report — used
+  // by the "Robot says…" tag to record that the rider agreed with the
+  // classifier ({ agreedWithAuto: true, autoProb }), which also makes these
+  // reports identifiable in the training data.
+  async function saveCrosswalkMark(sailingKey, crosswalkAt, extra = {}) {
     if (!user.value) {
       needsSignIn.value = true
       return false
@@ -36,6 +39,7 @@ export function useLineupReport() {
       userName: anonymous ? null : user.value.displayName || user.value.email || null,
       userPhoto: anonymous ? null : await resolveAvatarUrl(user.value),
       anonymous,
+      ...extra,
     })
     return true
   }

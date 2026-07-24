@@ -140,6 +140,8 @@ function expandAggregateRecord(r) {
       (ts) => `webcams/bowen/${r.d}/timelapse/${r.t}_To HSB_${ts}.jpg`,
     ),
     crosswalkFullAt: r.cw || null,
+    crosswalkFullAtAuto: r.cwa || null,
+    crosswalkAutoProb: r.cwp ?? null,
   }
 }
 
@@ -190,6 +192,8 @@ async function fetchDirectBounded() {
       lineupTimelapsePaths: d.lineupTimelapsePaths || [],
       departureTimelapsePaths: d.departureTimelapsePaths || [],
       crosswalkFullAt: d.crosswalkFullAt || null,
+      crosswalkFullAtAuto: d.crosswalkFullAtAuto || null,
+      crosswalkAutoProb: d.crosswalkAutoProb ?? null,
     })
   })
   return sailings

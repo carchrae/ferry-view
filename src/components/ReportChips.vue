@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="capacityChips.length || crosswalkChips.length"
+    v-if="capacityChips.length || crosswalkChips.length || showRobotChip"
     class="row items-center q-gutter-xs q-mt-sm"
   >
     <span class="text-caption text-grey-7 q-mr-xs">Reports:</span>
@@ -74,6 +74,24 @@
         {{ timeLabel(r.recordedAt) }}
       </q-tooltip>
     </q-chip>
+    <q-chip
+      v-if="showRobotChip"
+      dense
+      square
+      clickable
+      color="indigo"
+      text-color="white"
+      icon="smart_toy"
+      class="q-my-none"
+      @click="emit('agree-crosswalk')"
+    >
+      Robot says {{ timeLabel(autoCrosswalkAt) }} — agree?
+      <q-tooltip>
+        The classifier thinks the lineup passed the crosswalk at
+        {{ timeLabel(autoCrosswalkAt) }}. Tap to agree — that saves it as your own
+        crosswalk report.
+      </q-tooltip>
+    </q-chip>
     <ScoringExplainDialog v-model="showScoring" />
   </div>
 </template>
@@ -100,11 +118,15 @@ import { dayjs, TZ } from '../../functions/lib/time.js'
 const props = defineProps({
   reports: { type: Array, default: () => [] }, // { userUid, userName, capacity, recordedAt }
   crosswalkReports: { type: Array, default: () => [] }, // { userUid, userName, crosswalkAt, recordedAt }
+  // The classifier's predicted crosswalk time (epoch ms), when it has one —
+  // shows the "Robot says…" chip; tapping it emits agree-crosswalk and the
+  // parent saves it as the viewer's own report.
+  autoCrosswalkAt: { type: Number, default: null },
 })
 
 // The viewer's own chips get an X (q-chip removable) that asks the parent to
 // delete that report; other riders' chips are read-only.
-const emit = defineEmits(['delete-report', 'delete-crosswalk'])
+const emit = defineEmits(['delete-report', 'delete-crosswalk', 'agree-crosswalk'])
 const { user } = useAuth()
 const meUid = computed(() => user.value?.uid)
 
@@ -143,6 +165,14 @@ const disagreement = computed(
 )
 
 const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
+
+// Offer the robot's prediction until the viewer has their own mark on this
+// sailing (agreeing creates one, so the chip swaps for theirs on tap).
+const showRobotChip = computed(
+  () =>
+    props.autoCrosswalkAt != null &&
+    !(props.crosswalkReports || []).some((r) => r.userUid && r.userUid === meUid.value),
+)
 </script>
 
 <style scoped>

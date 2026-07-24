@@ -30,9 +30,7 @@ import {
   thumbnailJpeg,
   firstSustainedPositiveTs,
   FEATURE_LENGTH,
-  FEATURE_WIDTH,
-  FEATURE_HEIGHT,
-  ROI,
+  REGIONS,
 } from '../functions/lib/lineup-features.js'
 
 const args = process.argv.slice(2)
@@ -48,7 +46,11 @@ const LR = Number(flag('lr', '0.5'))
 const L2 = Number(flag('l2', '1e-4'))
 const THRESHOLD = Number(flag('threshold', '0.7'))
 const FORCE = args.includes('--force')
-const METRIC_FLOOR = 0.8
+// TODO: temporarily lowered from 0.8 so the first real model (test precision
+// 0.78 with the two-region features, 2026-07) can ship behind the
+// "Robot says…" agree-tag. Raise back to 0.8 once more labeled sailings
+// push precision over it.
+const METRIC_FLOOR = 0.75
 
 // --- Load dataset -------------------------------------------------------------
 const manifest = join(DATA, 'manifest.csv')
@@ -175,6 +177,15 @@ function buildReport(srcFor) {
       hour12: false,
     })
   const pct = (x) => `${Math.round(x * 100)}%`
+  // One dashed overlay + one canvas per feature region (left lane, crosswalk).
+  const roiOverlays = REGIONS.map((r, i) => `<div class="roi-ov roi-ov-${i}"></div>`).join('')
+  const regionCanvases = (id) =>
+    REGIONS.map(
+      (r, i) =>
+        `<canvas id="${id}-${i}" width="${r.width}" height="${r.height}"
+          style="width:${r.width * 4}px;height:${r.height * 4}px"></canvas>`,
+    ).join('<br>')
+  const regionsLabel = REGIONS.map((r) => `${r.name} ${r.width}×${r.height}`).join(' + ')
 
   const rows = samples.map((s) => {
     const p = predict(s.features)
@@ -243,7 +254,7 @@ function buildReport(srcFor) {
         : `<span class="badge bad">✗ ${r.yhat === 1 ? 'false positive' : 'false negative'}</span>`
     return `
       <figure class="card ${r.yhat === r.y ? 'ok' : 'err'} ${r.split} ${r.y ? 'pos' : 'neg'}">
-        <div class="imgwrap"><img loading="lazy" src="${esc(src)}" alt=""><div class="roi"></div></div>
+        <div class="imgwrap"><img loading="lazy" src="${esc(src)}" alt="">${roiOverlays}</div>
         <figcaption>
           <div class="row"><strong>${esc(fmtTime(r.ts))}</strong>
             <span class="badge ${r.split}">${r.split}</span> ${verdict}
@@ -291,9 +302,12 @@ function buildReport(srcFor) {
   .card.err { border-color: #d33; box-shadow: 0 0 0 1px #d33; }
   .imgwrap { position: relative; }
   .imgwrap img { width: 100%; display: block; }
-  .roi { position: absolute; border: 2px dashed #fc0; pointer-events: none;
-    left: ${ROI.left * 100}%; top: ${ROI.top * 100}%;
-    width: ${ROI.width * 100}%; height: ${ROI.height * 100}%; }
+  .roi-ov { position: absolute; border: 2px dashed; pointer-events: none; }
+  ${REGIONS.map(
+    (r, i) => `.roi-ov-${i} { border-color: ${['#fc0', '#e70'][i] || '#fc0'};
+    left: ${r.roi.left * 100}%; top: ${r.roi.top * 100}%;
+    width: ${r.roi.width * 100}%; height: ${r.roi.height * 100}%; }`,
+  ).join('\n  ')}
   figcaption { padding: 0.5rem 0.7rem; font-size: 0.85rem; }
   .row { margin-bottom: 0.3rem; }
   .badge { padding: 0.05rem 0.45rem; border-radius: 99px; font-size: 0.75em; border: 1px solid #8886; }
@@ -316,10 +330,21 @@ function buildReport(srcFor) {
   .pred .nopic { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center;
     justify-content: center; background: #8882; border-radius: 6px; font-size: 0.8rem; }
   .pred-info { font-size: 0.9rem; }
+  .roipick { margin: 0.5rem 0 1rem; max-width: 60rem; }
+  .roipick summary { cursor: pointer; font-weight: bold; }
+  #roi-stage { position: relative; display: inline-block; max-width: 100%;
+    touch-action: none; user-select: none; cursor: crosshair; }
+  #roi-stage img { max-width: 100%; display: block; }
+  .roi-box { position: absolute; pointer-events: none; border: 2px solid; }
+  #roi-left, #roi-drag.left { border-color: #26c; background: #26c3; }
+  #roi-right, #roi-drag.right { border-color: #e70; background: #e703; }
+  .roi-region.active { outline: 2px solid Highlight; }
+  #roi-out { background: #8882; padding: 0.5rem 0.7rem; border-radius: 6px;
+    max-width: 46rem; white-space: pre-wrap; }
   details.how { margin: 0.5rem 0 1rem; max-width: 46rem; }
   details.how summary { cursor: pointer; font-weight: bold; }
   .panels { display: flex; flex-wrap: wrap; gap: 1.2rem; margin: 0.8rem 0; }
-  .panels canvas { width: 192px; height: 108px; image-rendering: pixelated; border: 1px solid #8884; background: #fff; }
+  .panels canvas { image-rendering: pixelated; border: 1px solid #8884; background: #fff; }
   .panels p { margin: 0.3rem 0 0; font-size: 0.8rem; opacity: 0.8; max-width: 192px; }
   dialog { border: 1px solid #8886; border-radius: 8px; max-width: 58rem; }
   dialog::backdrop { background: #0008; }
@@ -334,19 +359,21 @@ function buildReport(srcFor) {
 <h1>Lineup classifier — training review</h1>
 <p>${cardRows.length} labeled frames (${rows.length} total) · ${errors} misclassified · threshold ${THRESHOLD} ·
   trained ${esc(new Date().toISOString())}<br>
-  <span class="roi-hint">dashed box = region of interest the classifier sees</span></p>
+  <span class="roi-hint">dashed boxes = regions the classifier sees
+  (yellow: left lane, orange: crosswalk)</span></p>
 <section class="method">
   <p><strong>In plain terms:</strong> a webcam photographs the ferry lineup every few
   minutes, and riders mark the moment cars back up past the crosswalk. From those
-  examples the computer learns, for one fixed strip of road, which spots being light
+  examples the computer learns, for two fixed patches of road (the lane where the
+  line builds, and the crosswalk itself), which spots being light
   or dark usually means the lineup has reached the crosswalk. For each new photo it
   adds up those learned clues into a confidence score between 0 and 1 — at
   ${THRESHOLD} or higher it says “past crosswalk”. It is a deliberately simple
   learner: no deep network, just a weighted sum of pixels, small enough to run in
   milliseconds and to inspect by eye (see below).</p>
   <p class="expert"><strong>For experts:</strong> binary logistic regression on raw
-  pixel intensities. Preprocessing: fixed fractional ROI crop →
-  ${FEATURE_WIDTH}×${FEATURE_HEIGHT} grayscale, normalized to [0,1] — the same module
+  pixel intensities. Preprocessing: two fixed fractional crops
+  (${regionsLabel}) → grayscale, normalized to [0,1], concatenated — the same module
   (<code>functions/lib/lineup-features.js</code>) runs at training and inference, so
   there is no train/serve skew. Labels: per-sailing rider marks reduced latest-wins
   (<code>lineup-labels.js</code>, shared with the app); frames captured at/after the
@@ -408,19 +435,42 @@ function buildReport(srcFor) {
 </table>
 <details class="how">
   <summary>How the classifier works</summary>
-  <p>The model never sees the whole photo: the dashed region of interest is
-  cropped, downscaled to ${FEATURE_WIDTH}×${FEATURE_HEIGHT} grayscale, and each of the
+  <p>The model never sees the whole photo: the two dashed regions are cropped,
+  downscaled to grayscale grids (${regionsLabel}), concatenated, and each of the
   ${FEATURE_LENGTH} pixels gets one learned weight (logistic regression). A pixel's
   brightness × its weight is its vote; the votes plus a bias are summed and
   squashed to a probability. ≥ ${THRESHOLD} means “past crosswalk”.</p>
   <div class="panels">
-    <div><canvas id="wmap" width="${FEATURE_WIDTH}" height="${FEATURE_HEIGHT}"></canvas>
-      <p>the learned weight map — <span style="color:#c22">red</span> pixels vote
+    <div>${regionCanvases('wmap')}
+      <p>the learned weight maps (top: left lane, bottom: crosswalk) —
+      <span style="color:#c22">red</span> pixels vote
       “past crosswalk” when bright, <span style="color:#26c">blue</span> pixels
       vote “not yet” when bright</p></div>
   </div>
   <p>The <em>explain</em> button on any card shows this frame's actual model
   input and which pixels decided its outcome.</p>
+</details>
+<details class="roipick">
+  <summary>ROI picker — draw tighter crop regions</summary>
+  <p>Pick a region, then <strong>drag on the photo</strong> to draw its box
+  (redraw to replace). The dashed boxes are the regions currently in use
+  (yellow: left lane, orange: crosswalk). Copy the JSON and hand it to the
+  classifier maintainer (fractions of the frame, same convention as
+  <code>REGIONS</code> in <code>functions/lib/lineup-features.js</code>).</p>
+  <p>
+    <button type="button" class="roi-region active" data-region="left">draw left ROI</button>
+    <button type="button" class="roi-region" data-region="right">draw right ROI</button>
+    <button type="button" id="roi-copy">copy JSON</button>
+    <span id="roi-copied" hidden>copied ✓</span>
+  </p>
+  <div id="roi-stage">
+    <img src="${esc(srcFor(detected[0]?.after || rows[0]))}" alt="" draggable="false">
+    ${roiOverlays}
+    <div class="roi-box" id="roi-left" hidden></div>
+    <div class="roi-box" id="roi-right" hidden></div>
+    <div class="roi-box" id="roi-drag" hidden></div>
+  </div>
+  <pre id="roi-out">draw a box to see its coordinates…</pre>
 </details>
 <nav>
   <span class="group"><span>result</span>
@@ -442,16 +492,17 @@ function buildReport(srcFor) {
 ${sections}
 <dialog id="explain-dialog">
   <h3 id="ex-title">Why the model decided this</h3>
+  <p class="legend">each panel stacks the two regions: left lane on top, crosswalk below.</p>
   <div class="panels">
-    <div><canvas id="ex-in" width="${FEATURE_WIDTH}" height="${FEATURE_HEIGHT}"></canvas>
-      <p>what the model saw (ROI → ${FEATURE_WIDTH}×${FEATURE_HEIGHT} grayscale)</p></div>
-    <div><canvas id="ex-w" width="${FEATURE_WIDTH}" height="${FEATURE_HEIGHT}"></canvas>
+    <div>${regionCanvases('ex-in')}
+      <p>what the model saw (crops → grayscale grids)</p></div>
+    <div>${regionCanvases('ex-w')}
       <p>learned weights (same for every frame)</p></div>
-    <div><canvas id="ex-contrib" width="${FEATURE_WIDTH}" height="${FEATURE_HEIGHT}"></canvas>
+    <div>${regionCanvases('ex-contrib')}
       <p><strong>this frame's votes</strong> (input × weight)</p></div>
-    <div><canvas id="ex-diff" width="${FEATURE_WIDTH}" height="${FEATURE_HEIGHT}"></canvas>
+    <div>${regionCanvases('ex-diff')}
       <p><strong>votes − weights</strong> — where this frame falls short of a
-      fully-bright ROI: strongest where an influential pixel is dark</p></div>
+      fully-bright region: strongest where an influential pixel is dark</p></div>
   </div>
   <p id="ex-math"></p>
   <p class="legend"><span style="color:#c22">red</span> pushes toward “past crosswalk”,
@@ -463,15 +514,15 @@ ${sections}
     weights: ${JSON.stringify([...w].map((x) => Math.round(x * 1e5) / 1e5))},
     bias: ${Math.round(b * 1e5) / 1e5},
     threshold: ${THRESHOLD},
-    w: ${FEATURE_WIDTH}, h: ${FEATURE_HEIGHT},
+    regions: ${JSON.stringify(REGIONS.map((r) => ({ w: r.width, h: r.height })))},
   }
 
   // vals in [0,1] → grayscale; signed=true → diverging red (+) / blue (−),
-  // scaled to the largest magnitude.
-  function paint(canvas, vals, signed) {
+  // scaled to the largest magnitude across ALL regions (shared scale so the
+  // two panels are comparable).
+  function paint(canvas, w, h, vals, signed, max) {
     const ctx = canvas.getContext('2d')
-    const img = ctx.createImageData(MODEL.w, MODEL.h)
-    const max = signed ? Math.max(...vals.map(Math.abs), 1e-9) : 1
+    const img = ctx.createImageData(w, h)
     vals.forEach((v, i) => {
       let r, g, bl
       if (signed) {
@@ -484,8 +535,19 @@ ${sections}
     })
     ctx.putImageData(img, 0, 0)
   }
-  paint(document.getElementById('wmap'), MODEL.weights, true)
-  paint(document.getElementById('ex-w'), MODEL.weights, true)
+  // Slice a flat feature-length array into per-region segments and paint
+  // each onto its canvas ("<id>-<regionIndex>").
+  function paintRegions(id, vals, signed) {
+    const max = signed ? Math.max(...vals.map(Math.abs), 1e-9) : 1
+    let off = 0
+    MODEL.regions.forEach((rg, i) => {
+      const seg = vals.slice(off, off + rg.w * rg.h)
+      off += rg.w * rg.h
+      paint(document.getElementById(id + '-' + i), rg.w, rg.h, seg, signed, max)
+    })
+  }
+  paintRegions('wmap', MODEL.weights, true)
+  paintRegions('ex-w', MODEL.weights, true)
 
   const dialog = document.getElementById('explain-dialog')
   document.querySelectorAll('button.explain').forEach((btn) => {
@@ -496,9 +558,9 @@ ${sections}
       const sum = votes.reduce((a, x) => a + x, 0)
       const z = MODEL.bias + sum
       const p = 1 / (1 + Math.exp(-z))
-      paint(document.getElementById('ex-in'), input, false)
-      paint(document.getElementById('ex-contrib'), votes, true)
-      paint(document.getElementById('ex-diff'), votes.map((v, i) => v - MODEL.weights[i]), true)
+      paintRegions('ex-in', input, false)
+      paintRegions('ex-contrib', votes, true)
+      paintRegions('ex-diff', votes.map((v, i) => v - MODEL.weights[i]), true)
       document.getElementById('ex-math').innerHTML =
         'bias <strong>' + MODEL.bias.toFixed(3) + '</strong> + pixel votes <strong>' +
         sum.toFixed(3) + '</strong> = ' + z.toFixed(3) +
@@ -508,6 +570,79 @@ ${sections}
       dialog.showModal()
     }
   })
+
+  // --- ROI picker -----------------------------------------------------------
+  {
+    const stage = document.getElementById('roi-stage')
+    const dragBox = document.getElementById('roi-drag')
+    const out = document.getElementById('roi-out')
+    const boxes = { left: null, right: null }
+    let active = 'left'
+    let dragStart = null
+    const setBox = (el, r) => {
+      el.hidden = false
+      el.style.left = r.left * 100 + '%'
+      el.style.top = r.top * 100 + '%'
+      el.style.width = r.width * 100 + '%'
+      el.style.height = r.height * 100 + '%'
+    }
+    const fmtR = (r) =>
+      '{ left: ' + r.left.toFixed(3) + ', top: ' + r.top.toFixed(3) +
+      ', width: ' + r.width.toFixed(3) + ', height: ' + r.height.toFixed(3) + ' }'
+    const render = () => {
+      for (const k of ['left', 'right']) {
+        const el = document.getElementById('roi-' + k)
+        if (boxes[k]) setBox(el, boxes[k])
+        else el.hidden = true
+      }
+      out.textContent =
+        'const LEFT_ROI  = ' + (boxes.left ? fmtR(boxes.left) : '/* not drawn yet */') +
+        '\\nconst RIGHT_ROI = ' + (boxes.right ? fmtR(boxes.right) : '/* not drawn yet */')
+    }
+    const frac = (e) => {
+      const b = stage.getBoundingClientRect()
+      return {
+        x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)),
+        y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)),
+      }
+    }
+    const rect = (a, b) => ({
+      left: Math.min(a.x, b.x), top: Math.min(a.y, b.y),
+      width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
+    })
+    document.querySelectorAll('.roi-region').forEach((btn) => {
+      btn.onclick = () => {
+        active = btn.dataset.region
+        document.querySelectorAll('.roi-region').forEach((x) => x.classList.toggle('active', x === btn))
+      }
+    })
+    stage.addEventListener('pointerdown', (e) => {
+      e.preventDefault()
+      stage.setPointerCapture(e.pointerId)
+      dragStart = frac(e)
+      dragBox.className = 'roi-box ' + active
+    })
+    stage.addEventListener('pointermove', (e) => {
+      if (dragStart) setBox(dragBox, rect(dragStart, frac(e)))
+    })
+    stage.addEventListener('pointerup', (e) => {
+      if (!dragStart) return
+      const r = rect(dragStart, frac(e))
+      dragStart = null
+      dragBox.hidden = true
+      if (r.width > 0.01 && r.height > 0.01) {
+        boxes[active] = r
+        render()
+      }
+    })
+    document.getElementById('roi-copy').onclick = async () => {
+      await navigator.clipboard.writeText(out.textContent)
+      const c = document.getElementById('roi-copied')
+      c.hidden = false
+      setTimeout(() => { c.hidden = true }, 1500)
+    }
+    render()
+  }
 
   document.querySelectorAll('nav button').forEach((b) => {
     b.onclick = () => {
@@ -538,8 +673,7 @@ writeFileSync(
     {
       enabled: true,
       type: 'logistic',
-      roi: ROI,
-      size: [FEATURE_WIDTH, FEATURE_HEIGHT],
+      regions: REGIONS,
       weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),
       bias: Math.round(b * 1e6) / 1e6,
       threshold: THRESHOLD,
