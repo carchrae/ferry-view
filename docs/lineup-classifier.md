@@ -37,7 +37,7 @@ webcams/community/<dateIso>/timelapse/<sailingTime>_To HSB_<epoch-ms>.jpg
 and appended to the sailing's `sailingStatus` doc as `lineupTimelapsePaths`
 (via `arrayUnion`). The capture decision uses only in-memory poll data —
 zero extra Firestore reads. Frames are public, served with immutable cache
-headers, and **deleted after 14 days** by the nightly `cleanupOldWebcams`.
+headers, and **deleted after 42 days** by the nightly `cleanupOldWebcams`.
 
 Volume: capture runs from 15 min after the previous departure until the
 ferry arrives back, so ~7–11 frames per sailing, ~90–140 frames/day —
@@ -197,18 +197,18 @@ the model) regenerates the **classifier-results pages** — shared builders in
 Two copies of the set: **`training-data/report/`** (local, full-size
 photos) and **`public/classifier-results/`** (ships with the webapp at
 `/classifier-results`, not linked from the app UI; committed thumbnails
-under `thumbs/`, since originals vanish from Storage after 14 days — commit
+under `thumbs/`, since originals vanish from Storage after 42 days — commit
 and deploy the webapp to publish).
 
 ## 6. Operations: the export cron
 
-**Frames are deleted from Storage after 14 days.** Labels live forever in
+**Frames are deleted from Storage after 42 days.** Labels live forever in
 Firestore, but the pixels don't — if the exporter doesn't run at least every
-two weeks, tagged frames are lost to training. Set it up on any workstation:
+six weeks, tagged frames are lost to training. Set it up on any workstation:
 
 ```bash
 crontab -e
-# weekly, Mondays 03:30 — well inside the 14-day retention window
+# weekly, Mondays 03:30 — well inside the 42-day retention window
 30 3 * * 1 /path/to/ferry-mirror/scripts/cron-export-lineup-dataset.sh
 ```
 

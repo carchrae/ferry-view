@@ -229,4 +229,4 @@ The `_{epoch-ms}.jpg` suffix is the capture time; clients parse it for frame
 time labels. Capture timing, expected daily counts, and volume live in
 [docs/webcams.md](docs/webcams.md).
 
-**Retention**: daily cleanup via `cleanupWebcams` (00:00 Vancouver) deletes files with `timeCreated` older than **14 days** (window matches the departures page's two-week tagging range). Firestore pointers/tags are kept forever; only the pixels expire — hence the lineup-dataset export cron ([docs/lineup-classifier.md §6](docs/lineup-classifier.md)).
+**Retention**: daily cleanup via `cleanupWebcams` (00:00 Vancouver) deletes files with `timeCreated` older than **42 days** (matches the six-week departures-page window). Firestore pointers/tags are kept forever; only the pixels expire — hence the lineup-dataset export cron ([docs/lineup-classifier.md §6](docs/lineup-classifier.md)).

@@ -4,8 +4,8 @@
 # What the exported dataset contains (and its known caveats):
 # docs/training-data.md
 #
-# Timelapse frames are DELETED from Storage after 14 days (cleanupOldWebcams),
-# so this must run at least every two weeks to archive labeled frames before
+# Timelapse frames are DELETED from Storage after 42 days (cleanupOldWebcams),
+# so this must run at least every six weeks to archive labeled frames before
 # they vanish. Weekly is comfortable:
 #
 #   crontab -e
@@ -18,7 +18,7 @@
 #
 # Optional env overrides:
 #   FERRY_PROJECT   Firebase project id (default: bowen-ferry)
-#   FERRY_DAYS      how many days of sailings to scan (default: 15)
+#   FERRY_DAYS      how many days of sailings to scan (default: 45)
 
 set -euo pipefail
 
@@ -54,10 +54,10 @@ fi
 trap 'rmdir "$LOCK_DIR"' EXIT
 
 {
-  echo "=== $(date '+%F %T') export starting (project=${FERRY_PROJECT:-bowen-ferry}) ==="
+  echo "=== $(date '+%F %T') export starting (project=${FERRY_PROJECT:-bowen-ferry}, days=${FERRY_DAYS:-45}) ==="
   node "$REPO_DIR/scripts/export-lineup-dataset.mjs" \
     --project "${FERRY_PROJECT:-bowen-ferry}" \
-    --days "${FERRY_DAYS:-15}"
+    --days "${FERRY_DAYS:-45}"
   echo "=== $(date '+%F %T') export finished ==="
 } >>"$LOG_FILE" 2>&1
 

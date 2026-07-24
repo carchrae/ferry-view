@@ -186,20 +186,20 @@ Firestore pointers written alongside each capture:
 | Lineup timelapse | ~13 sailings × 7–11 ≈ 90–140 | ~5–10 MB |
 | Departure timelapse | ~16 × 10–15 ≈ 160–240 | ~2–3.5 MB |
 
-≈ 280–410 files, ~8–15 MB/day → steady state ~110–210 MB under the 14-day
+≈ 280–410 files, ~8–15 MB/day → steady state ~330–630 MB under the 42-day
 window, inside the free Storage tier. Each timelapse frame also costs one
 `sailingStatus` write + one `aggregates/bowenSailings` write, so the arrival
 gating above is also the write-cost control.
 
 ## Retention
 
-- **Storage: 14 days.** `cleanupWebcams` (daily 00:00 Vancouver) deletes
-  everything under `webcams/` with `timeCreated` older than 14 days. The
+- **Storage: 42 days.** `cleanupWebcams` (daily 00:00 Vancouver) deletes
+  everything under `webcams/` with `timeCreated` older than 42 days. The
   window matches the departures page's two-week tagging range.
 - **Firestore: forever.** The path arrays, snapshots and tags outlive the
-  pixels; a photo-less sailing older than 14 days simply renders without
+  pixels; a photo-less sailing older than 42 days simply renders without
   images.
 - **Training data**: crosswalk labels reference frames by capture time, so
-  the lineup dataset exporter must run **at least every two weeks** or tagged
+  the lineup dataset exporter must run **at least every six weeks** or tagged
   frames are lost to training — see
   [lineup-classifier.md §6](lineup-classifier.md) for the cron setup.

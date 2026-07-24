@@ -1,8 +1,10 @@
 <template>
   <div v-if="autoAt != null || notFullAt != null" class="q-mt-xs">
-    <div class="row items-center q-gutter-xs">
+    <!-- Two columns: label left, content in a growing column so wrapped
+         chips/text never flow underneath the label. -->
+    <div class="row no-wrap items-start">
       <span
-        class="text-caption text-grey-7 q-mr-xs robot-label"
+        class="text-caption text-grey-7 q-mr-sm robot-label col-auto"
         role="button"
         tabindex="0"
         @click="showInfo = true"
@@ -11,6 +13,7 @@
         <q-icon name="smart_toy" size="14px" class="q-mr-xs" color="indigo" />Robot says:
         <q-icon name="info_outline" size="13px" class="q-ml-xs" />
       </span>
+      <div class="col row items-center q-gutter-xs robot-col">
       <!-- Crosswalk: no human mark yet → verify-then-agree button. -->
       <q-btn
         v-if="autoAt != null && !humanRef"
@@ -25,13 +28,24 @@
       />
       <!-- Crosswalk: human already marked → short wrappable verdict. -->
       <span v-else-if="autoAt != null" class="text-caption robot-text">{{ verdictText }}</span>
-    </div>
-    <!-- Fullness: the terminal camera's one-way "left not full" signal. -->
-    <div v-if="fullnessText" class="row items-center q-gutter-xs q-mt-xs">
-      <span class="text-caption text-grey-7 q-mr-xs fullness-indent">
-        <q-icon name="directions_boat" size="14px" class="q-mr-xs" color="indigo" />
+      <!-- Fullness: no capacity report yet → verify-then-confirm button;
+           otherwise a short verdict, flowing in the same section. -->
+      <q-btn
+        v-if="notFullAt != null && notFullAt !== false && !latestCapacity"
+        dense
+        no-caps
+        outline
+        color="indigo"
+        size="sm"
+        icon="directions_boat"
+        :label="`Not full${emptyWhen} — confirm?`"
+        @click="openFullnessVerify"
+      />
+      <span v-else-if="fullnessText" class="text-caption robot-text">
+        <template v-if="autoAt != null">·</template>
+        {{ fullnessText }}
       </span>
-      <span class="text-caption robot-text">{{ fullnessText }}</span>
+      </div>
     </div>
 
     <!-- Verify before agreeing: step through the frames the robot actually
@@ -83,14 +97,106 @@
         </p>
         <div class="row justify-end q-gutter-sm q-mt-md">
           <q-btn v-close-popup flat dense no-caps label="Not sure" />
+          <!-- One contextual action: on the robot's frame you can only agree;
+               on any other frame the same button becomes the correction. -->
+          <q-btn
+            v-if="!verifyFrame || verifyFrame.ts === autoAt"
+            v-close-popup
+            dense
+            no-caps
+            unelevated
+            color="indigo"
+            :label="`Agree — ${timeLabel(autoAt)}`"
+            @click="emit('agree')"
+          />
+          <q-btn
+            v-else
+            v-close-popup
+            dense
+            no-caps
+            unelevated
+            color="deep-orange"
+            :label="`${disagreeWord(autoAt)} It was ${verifyFrame.timeLabel}`"
+            @click="emit('mark', verifyFrame.ts)"
+          />
+        </div>
+      </q-card>
+    </q-dialog>
+
+    <!-- Fullness verification: step through the terminal frames the robot
+         judged; either answer records a capacity report. -->
+    <q-dialog v-model="showFullnessVerify">
+      <q-card class="q-pa-md verify-card">
+        <div class="text-subtitle2 q-mb-xs">
+          <q-icon name="smart_toy" color="indigo" class="q-mr-xs" />Verify before agreeing
+        </div>
+        <p class="text-caption q-mb-sm">
+          These are the terminal frames the robot judged. It thinks everyone
+          waiting got on<template v-if="typeof notFullAt === 'number'">
+            — terminal empty at <strong>{{ timeLabel(notFullAt) }}</strong></template>.
+          Make sure to actually verify, the robot has poor eyesight.
+        </p>
+        <template v-if="fullnessFrame">
+          <img :src="fullnessFrame.imageUrl" class="verify-img" alt="" />
+          <div class="row items-center justify-between q-mt-xs">
+            <q-btn
+              flat
+              dense
+              round
+              icon="chevron_left"
+              :disable="fullnessIndex <= 0"
+              @click="fullnessIndex--"
+            />
+            <div class="text-caption">
+              {{ fullnessFrame.timeLabel }}
+              <q-badge v-if="fullnessFrame.ts === notFullAt" color="indigo" class="q-ml-xs" dense>
+                robot's frame
+              </q-badge>
+            </div>
+            <q-btn
+              flat
+              dense
+              round
+              icon="chevron_right"
+              :disable="fullnessIndex >= terminalFrames.length - 1"
+              @click="fullnessIndex++"
+            />
+          </div>
+          <q-btn
+            v-if="fullnessFrame.ts !== notFullAt && fullnessRobotIndex >= 0"
+            flat
+            dense
+            no-caps
+            size="sm"
+            color="indigo"
+            icon="my_location"
+            :label="`Jump to the robot's frame (${timeLabel(notFullAt)})`"
+            class="q-mt-xs"
+            @click="fullnessIndex = fullnessRobotIndex"
+          />
+        </template>
+        <p v-else class="text-caption text-italic">
+          The frames are no longer available to view — trust your memory, not the robot's.
+        </p>
+        <div class="row justify-end q-gutter-sm q-mt-md">
+          <q-btn v-close-popup flat dense no-caps label="Not sure" />
+          <q-btn
+            v-close-popup
+            dense
+            no-caps
+            unelevated
+            color="deep-orange"
+            :label="`${disagreeWord(typeof notFullAt === 'number' ? notFullAt : 0)} It was Full`"
+            @click="emit('capacity', 'Full')"
+          />
           <q-btn
             v-close-popup
             dense
             no-caps
             unelevated
             color="indigo"
-            label="Verified — agree"
-            @click="emit('agree')"
+            label="Agree — Not Full"
+            @click="emit('capacity', 'Not Full')"
           />
         </div>
       </q-card>
@@ -148,13 +254,25 @@ const props = defineProps({
   // timeless, from the server aggregate's nf flag).
   notFullAt: { type: [Number, Boolean], default: null },
   capacityReports: { type: Array, default: () => [] }, // { userName, capacity, recordedAt }
+  // Terminal (departure) timelapse frames — shown in the fullness dialog.
+  terminalFrames: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['agree'])
+// agree: robot's crosswalk time confirmed · mark: rider disagreed and marks
+// the viewed frame's ts instead · capacity: 'Not Full' | 'Full' from the
+// fullness dialog.
+const emit = defineEmits(['agree', 'mark', 'capacity'])
 
 const showInfo = ref(false)
 const showVerify = ref(false)
 const verifyIndex = ref(0)
+const showFullnessVerify = ref(false)
+const fullnessIndex = ref(0)
 const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
+
+// Rotating openers for the disagree buttons — picked deterministically per
+// prediction so the label doesn't reshuffle while stepping frames.
+const DISAGREE_WORDS = ['Disagree!', 'I object!', 'No way —', 'Nope.', 'Objection!', 'Hard no —']
+const disagreeWord = (seed) => DISAGREE_WORDS[Math.abs(seed || 0) % DISAGREE_WORDS.length]
 
 const robotFrameIndex = computed(() => props.frames.findIndex((f) => f.ts === props.autoAt))
 const verifyFrame = computed(() => props.frames[verifyIndex.value] || null)
@@ -163,6 +281,26 @@ function openVerify() {
   verifyIndex.value = robotFrameIndex.value >= 0 ? robotFrameIndex.value : props.frames.length - 1
   showVerify.value = true
 }
+
+const fullnessRobotIndex = computed(() =>
+  props.terminalFrames.findIndex((f) => f.ts === props.notFullAt),
+)
+const fullnessFrame = computed(() => props.terminalFrames[fullnessIndex.value] || null)
+
+function openFullnessVerify() {
+  fullnessIndex.value =
+    fullnessRobotIndex.value >= 0 ? fullnessRobotIndex.value : props.terminalFrames.length - 1
+  showFullnessVerify.value = true
+}
+
+const emptyWhen = computed(() =>
+  typeof props.notFullAt === 'number' ? ` (empty ${timeLabel(props.notFullAt)})` : '',
+)
+
+const latestCapacity = computed(
+  () =>
+    [...props.capacityReports].sort((a, b) => (b.recordedAt || 0) - (a.recordedAt || 0))[0] || null,
+)
 
 const humanRef = computed(() => {
   const winners = scoreCrosswalk(props.crosswalkReports).winners
@@ -200,21 +338,14 @@ const verdictText = computed(() => {
   return agrees ? pick(humanRef.value.name || 'the humans') : pick(timeLabel(props.autoAt))
 })
 
-// Fullness line: only when the terminal saw a confirmed empty (one-way — no
-// "ferry was full" claims). Compared against the latest capacity report.
+// Fullness verdict text — only when a capacity report already exists (no
+// report → the confirm button shows instead). One-way: no "was full" claims.
 const fullnessText = computed(() => {
-  if (props.notFullAt == null || props.notFullAt === false) return ''
-  const when = typeof props.notFullAt === 'number' ? ` at ${timeLabel(props.notFullAt)}` : ''
-  const latestCap = [...props.capacityReports].sort(
-    (a, b) => (b.recordedAt || 0) - (a.recordedAt || 0),
-  )[0]
-  if (latestCap?.capacity === 'Full') {
-    return `Terminal looked empty${when} — not full by these pixels. ${formatReporterName(latestCap.userName)} says Full. Awkward.`
+  if (props.notFullAt == null || props.notFullAt === false || !latestCapacity.value) return ''
+  if (latestCapacity.value.capacity === 'Full') {
+    return `Not full by these pixels${emptyWhen.value} — Full? Hmm.`
   }
-  if (latestCap) {
-    return `Left not full — terminal emptied${when}. ${formatReporterName(latestCap.userName)} concurs.`
-  }
-  return `Left not full — everyone waiting got on (terminal emptied${when}).`
+  return `Not full${emptyWhen.value} — ${formatReporterName(latestCapacity.value.userName)} concurs.`
 })
 </script>
 
@@ -222,6 +353,12 @@ const fullnessText = computed(() => {
 .robot-label {
   cursor: pointer;
   white-space: nowrap;
+  /* Optically center against the first row of buttons/text. */
+  padding-top: 4px;
+}
+
+.robot-col {
+  min-width: 0;
 }
 .robot-text {
   overflow-wrap: anywhere;
@@ -235,8 +372,5 @@ const fullnessText = computed(() => {
   width: 100%;
   border-radius: 6px;
   display: block;
-}
-.fullness-indent {
-  white-space: nowrap;
 }
 </style>

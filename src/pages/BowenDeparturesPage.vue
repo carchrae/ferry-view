@@ -123,6 +123,7 @@
               :human-at="upcomingLineup.crosswalkFullAt ?? null"
               :frames="upcomingLineup.timelapse"
               @agree="onAgreeUpcoming"
+              @mark="onUpcomingRobotMark"
             />
           </div>
         </div>
@@ -189,7 +190,10 @@
                 :frames="sailing.arrival?.timelapse || []"
                 :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
                 :capacity-reports="sailing.reports || []"
+                :terminal-frames="sailing.departure?.timelapse || []"
                 @agree="onAgreeCrosswalk(sailing)"
+                @mark="onRobotMark(sailing, $event)"
+                @capacity="onRobotCapacity(sailing, $event)"
               />
             </div>
           </template>
@@ -208,7 +212,10 @@
             :frames="sailing.arrival?.timelapse || []"
             :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
             :capacity-reports="sailing.reports || []"
+            :terminal-frames="sailing.departure?.timelapse || []"
             @agree="onAgreeCrosswalk(sailing)"
+            @mark="onRobotMark(sailing, $event)"
+            @capacity="onRobotCapacity(sailing, $event)"
           />
         </div>
       </q-card-section>
@@ -490,7 +497,7 @@ let predictionChain = Promise.resolve()
 function queueBrowserPredictions(sailings) {
   if (!browserClassifierReady && !terminalClassifierReady) return
   const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
-  const cutoffIso = dayjs().tz(TZ).subtract(14, 'day').format('YYYY-MM-DD')
+  const cutoffIso = dayjs().tz(TZ).subtract(42, 'day').format('YYYY-MM-DD')
   for (const sailing of sailings) {
     if (sailing.dateIso < cutoffIso) continue // frames aged out of Storage
     const wantCrosswalk =
@@ -693,6 +700,39 @@ watch(
     }
   },
 )
+
+// Rider reviewed the robot's frames and DISAGREED — their chosen frame's time
+// becomes their mark, flagged so the training data records the correction.
+function onRobotMark(sailing, ts) {
+  onCrosswalk(
+    sailing,
+    { sailingKey: sailing.sailingKey, ts, timeLabel: crosswalkAtLabel(ts) },
+    {
+      disagreedWithAuto: true,
+      autoAt: sailing.crosswalkFullAtAuto ?? null,
+      autoSource: sailing.crosswalkAutoSource || 'server',
+    },
+  )
+}
+
+function onUpcomingRobotMark(ts) {
+  const up = upcomingLineup.value
+  if (!up) return
+  onUpcomingCrosswalk(
+    { ts, timeLabel: crosswalkAtLabel(ts) },
+    {
+      disagreedWithAuto: true,
+      autoAt: up.crosswalkFullAtAuto ?? null,
+      autoSource: up.crosswalkAutoSource || 'browser',
+    },
+  )
+}
+
+// Fullness dialog outcome — either answer is a normal capacity report
+// ('Not Full' agrees with the robot, 'Full' corrects it).
+function onRobotCapacity(sailing, capacity) {
+  onRate(sailing, { sailingKey: sailing.sailingKey, capacity, filledAt: null })
+}
 
 // A rider tapped the robot's suggestion: save the classifier's predicted time
 // as their own crosswalk report, flagged as an agreement so the training data

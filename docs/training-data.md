@@ -23,7 +23,7 @@ training-data/report/                 classifier-results pages (index/crosswalk/
   `webcams/community/<date>/timelapse/`) for sailings in the last `--days`
   (default 15). Each frame's capture time is the epoch-ms suffix of its
   filename. Downloads are incremental; frames already aged out of Storage
-  (deleted after 14 days) are skipped but their manifest rows are kept.
+  (deleted after 42 days) are skipped but their manifest rows are kept.
 - **Raw tags** (`lineup-reports.json`): every `lineupReports` doc, verbatim,
   keyed by Firestore doc id and merged across runs — a report the user later
   deletes stays archived with `deleted: true`. This is the permanent record;
@@ -60,7 +60,7 @@ of native deps (no `sharp`), so the exporter runs without installing
 
 ## Operations
 
-Run at least every 14 days or tagged frames are lost (Storage retention) —
+Run at least every 42 days or tagged frames are lost (Storage retention) —
 `sailingStatus`/`lineupReports` docs are never deleted server-side, so
 labels can always be recomputed; only the pixels expire. Cron setup:
 [lineup-classifier.md §6](lineup-classifier.md). Logs:

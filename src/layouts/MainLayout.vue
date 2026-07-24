@@ -130,6 +130,15 @@
               </q-item-section>
               <q-item-section side><q-icon name="email" size="xs" /></q-item-section>
             </q-item>
+            <q-item>
+              <q-item-section avatar><q-icon name="smart_toy" color="primary" /></q-item-section>
+              <q-item-section>
+                <q-item-label>Big Pickle &amp; Claude</q-item-label>
+                <q-item-label caption>
+                  Mashing tools — both challenged by the illogical nature of the ferry
+                </q-item-label>
+              </q-item-section>
+            </q-item>
           </q-list>
         </q-card-section>
       </q-card>

@@ -13,15 +13,15 @@
 // manifest rows are recomputed on every run, so corrections and deletions
 // made in the app propagate into old rows too.
 //
-// IMPORTANT: Storage frames are deleted after 14 days (cleanupOldWebcams).
-// Run this at least every 2 weeks so labeled frames are archived before they
+// IMPORTANT: Storage frames are deleted after 42 days (cleanupOldWebcams).
+// Run this at least every 6 weeks so labeled frames are archived before they
 // vanish. Downloads are incremental (existing files are skipped) and the
 // manifest is merged, so old rows survive even after their Storage objects
 // are gone. sailingStatus docs are never deleted, so labels can always be
 // rebuilt — only the pixels expire.
 //
 // Usage:
-//   node scripts/export-lineup-dataset.mjs [--project bowen-ferry] [--days 15]
+//   node scripts/export-lineup-dataset.mjs [--project bowen-ferry] [--days 45]
 //
 // Output (gitignored):
 //   training-data/frames/<storage path>   downloaded JPEGs (community + bowen)
@@ -45,7 +45,7 @@ function flag(name, dflt) {
   return i >= 0 ? args[i + 1] : dflt
 }
 const PROJECT = flag('project', 'bowen-ferry')
-const DAYS = Number(flag('days', '15'))
+const DAYS = Number(flag('days', '45'))
 const BUCKET = `${PROJECT}.firebasestorage.app`
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'training-data')
 const FRAMES_DIR = join(ROOT, 'frames')

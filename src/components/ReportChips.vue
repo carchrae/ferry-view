@@ -1,10 +1,9 @@
 <template>
-  <div
-    v-if="capacityChips.length || crosswalkChips.length"
-    class="row items-center q-gutter-xs q-mt-sm"
-  >
+  <!-- Two columns: the label never has chips wrapping underneath it — wrapped
+       chip rows stay aligned in the growing right column. -->
+  <div v-if="capacityChips.length || crosswalkChips.length" class="row no-wrap items-start q-mt-sm">
     <span
-      class="text-caption text-grey-7 q-mr-xs reports-label"
+      class="text-caption text-grey-7 q-mr-sm reports-label col-auto"
       role="button"
       tabindex="0"
       aria-label="How scoring works"
@@ -13,6 +12,7 @@
     >
       Reports: <q-icon name="info_outline" size="13px" />
     </span>
+    <div class="col row items-center q-gutter-xs chips-col">
     <q-chip
       v-if="disagreement"
       dense
@@ -73,6 +73,7 @@
         {{ timeLabel(r.recordedAt) }}
       </q-tooltip>
     </q-chip>
+    </div>
     <ScoringExplainDialog v-model="showScoring" />
   </div>
 </template>
@@ -160,5 +161,11 @@ const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 .reports-label {
   cursor: pointer;
   white-space: nowrap;
+  /* Optically center against the first row of dense chips. */
+  padding-top: 5px;
+}
+
+.chips-col {
+  min-width: 0;
 }
 </style>
