@@ -31,3 +31,16 @@ export function labelForTimestamp(frameTs, crosswalkAt) {
   if (typeof frameTs !== 'number' || typeof crosswalkAt !== 'number') return null
   return frameTs >= crosswalkAt ? 1 : 0
 }
+
+// The sequence decision: the lineup "passed the crosswalk" at the ts of the
+// first positive frame that is immediately confirmed by the next frame also
+// being positive — a lone positive (glare, a passing truck) is noise, two in
+// a row is a lineup. `frames` is capture-ordered [{ ts, positive }].
+// Returns the first frame's ts, or null when never confirmed. The streaming
+// equivalent in webcam.js (pending → confirm) must match this rule.
+export function firstSustainedPositiveTs(frames) {
+  for (let i = 0; i + 1 < (frames?.length || 0); i++) {
+    if (frames[i].positive && frames[i + 1].positive) return frames[i].ts
+  }
+  return null
+}

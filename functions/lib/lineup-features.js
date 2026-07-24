@@ -7,10 +7,11 @@ import sharp from 'sharp'
 // The community camera never moves, so the classifier only looks at a fixed
 // region of interest: the car lane approaching the terminal, up to the
 // crosswalk. Fractions of the frame, not pixels, so the crop survives a
-// camera resolution change. PLACEHOLDER: currently the lower half of the
-// frame — tune by eye against real timelapse frames before the first real
-// training run (any ROI change invalidates trained weights; retrain).
-export const ROI = { left: 0.0, top: 0.5, width: 1.0, height: 0.5 }
+// camera resolution change. Bounding box of the road band marked with red
+// lines in crop-area.png (repo root) — measured from the red pixels, the
+// band spans the full width, y 0.328–0.805. Any ROI change invalidates
+// trained weights; retrain.
+export const ROI = { left: 0.0, top: 0.33, width: 1.0, height: 0.48 }
 
 export const FEATURE_WIDTH = 48
 export const FEATURE_HEIGHT = 27
@@ -42,7 +43,11 @@ export async function extractFeatures(buf) {
 // Tag→label semantics live in lineup-labels.js (shared with the app's
 // triggers and the exporter, and free of the sharp dependency); re-exported
 // here so feature+label consumers (the trainer) have one import.
-export { labelForTimestamp, effectiveCrosswalkAt } from './lineup-labels.js'
+export {
+  labelForTimestamp,
+  effectiveCrosswalkAt,
+  firstSustainedPositiveTs,
+} from './lineup-labels.js'
 
 // Small review-page thumbnail. Lives here (not in the trainer) because sharp
 // resolves against functions/node_modules — repo-root scripts can't import

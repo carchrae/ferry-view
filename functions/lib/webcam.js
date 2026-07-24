@@ -232,14 +232,31 @@ export async function captureLineupTimelapse(db, data) {
   // Automated crosswalk detection (no-op until a trained model is committed —
   // see lib/lineup-classifier.js). Kept separate from the human-tagged
   // crosswalkFullAt so agreement can be measured before the auto value is
-  // trusted anywhere. First positive frame wins, mirroring onLineupReport.
+  // trusted anywhere. Streaming form of firstSustainedPositiveTs()
+  // (lineup-labels.js): a positive frame only becomes crosswalkFullAtAuto
+  // once the NEXT frame is also positive — a lone positive is noise, so it
+  // parks as crosswalkAutoPending and a negative frame clears it. The
+  // stamped time is the FIRST frame of the confirmed pair.
   const autoFields = {}
   const verdict = await classifyLineup(best)
-  if (verdict?.fullToCrosswalk) {
+  if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
-    if (!snap.exists || !snap.data().crosswalkFullAtAuto) {
-      autoFields.crosswalkFullAtAuto = timestamp
-      autoFields.crosswalkAutoProb = Math.round(verdict.probability * 1000) / 1000
+    const cur = snap.exists ? snap.data() : {}
+    if (!cur.crosswalkFullAtAuto) {
+      if (verdict.fullToCrosswalk) {
+        if (cur.crosswalkAutoPending) {
+          autoFields.crosswalkFullAtAuto = cur.crosswalkAutoPending.ts
+          autoFields.crosswalkAutoProb = cur.crosswalkAutoPending.prob
+          autoFields.crosswalkAutoPending = FieldValue.delete()
+        } else {
+          autoFields.crosswalkAutoPending = {
+            ts: timestamp,
+            prob: Math.round(verdict.probability * 1000) / 1000,
+          }
+        }
+      } else if (cur.crosswalkAutoPending) {
+        autoFields.crosswalkAutoPending = FieldValue.delete()
+      }
     }
   }
 

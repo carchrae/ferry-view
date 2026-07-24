@@ -5,7 +5,7 @@ import {
   labelForTimestamp,
   FEATURE_LENGTH,
 } from '../lib/lineup-features.js'
-import { effectiveCrosswalkAt } from '../lib/lineup-labels.js'
+import { effectiveCrosswalkAt, firstSustainedPositiveTs } from '../lib/lineup-labels.js'
 import { classifyLineup, scoreFeatures } from '../lib/lineup-classifier.js'
 
 async function solidJpeg(shade, width = 1280, height = 720) {
@@ -81,6 +81,25 @@ describe('effectiveCrosswalkAt', () => {
         { userUid: 'b', crosswalkAt: 2000, recordedAt: 1 },
       ]),
     ).toBe(2000)
+  })
+})
+
+describe('firstSustainedPositiveTs', () => {
+  const f = (ts, positive) => ({ ts, positive })
+
+  it('returns the first of two consecutive positives', () => {
+    expect(firstSustainedPositiveTs([f(1, false), f(2, true), f(3, true), f(4, true)])).toBe(2)
+  })
+
+  it('ignores a lone positive blip', () => {
+    expect(firstSustainedPositiveTs([f(1, true), f(2, false), f(3, true), f(4, true)])).toBe(3)
+  })
+
+  it('returns null when never confirmed', () => {
+    expect(firstSustainedPositiveTs([f(1, false), f(2, true), f(3, false)])).toBe(null)
+    expect(firstSustainedPositiveTs([f(1, true)])).toBe(null)
+    expect(firstSustainedPositiveTs([])).toBe(null)
+    expect(firstSustainedPositiveTs(undefined)).toBe(null)
   })
 })
 

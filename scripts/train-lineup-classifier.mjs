@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto'
 import {
   extractFeatures,
   thumbnailJpeg,
+  firstSustainedPositiveTs,
   FEATURE_LENGTH,
   FEATURE_WIDTH,
   FEATURE_HEIGHT,
@@ -52,30 +53,32 @@ const METRIC_FLOOR = 0.8
 // --- Load dataset -------------------------------------------------------------
 const manifest = join(DATA, 'manifest.csv')
 const lines = readFileSync(manifest, 'utf8').trim().split('\n').slice(1)
+// ALL frames with pixels on disk — unlabeled ones (y: null) can't train, but
+// the per-sailing sequence prediction in the report classifies every frame.
 const samples = []
 for (const line of lines) {
   const [path, sailingKey, ts, label, crosswalkAt] = line.split(',')
-  if (label !== '0' && label !== '1') continue
   const file = join(DATA, 'frames', path)
   if (!existsSync(file)) continue
   samples.push({
     path,
     sailingKey,
     ts: Number(ts),
-    crosswalkAt: Number(crosswalkAt),
-    y: Number(label),
+    crosswalkAt: crosswalkAt ? Number(crosswalkAt) : null,
+    y: label === '0' ? 0 : label === '1' ? 1 : null,
     features: await extractFeatures(readFileSync(file)),
   })
 }
-if (samples.length < 20) {
-  console.error(`Only ${samples.length} labeled frames with pixels on disk — not enough to train.`)
+const labeled = samples.filter((s) => s.y != null)
+if (labeled.length < 20) {
+  console.error(`Only ${labeled.length} labeled frames with pixels on disk — not enough to train.`)
   process.exit(1)
 }
 
 // Deterministic ~80/20 split by sailing.
 const isTest = (key) => createHash('md5').update(key).digest()[0] % 5 === 0
-const train = samples.filter((s) => !isTest(s.sailingKey))
-const test = samples.filter((s) => isTest(s.sailingKey))
+const train = labeled.filter((s) => !isTest(s.sailingKey))
+const test = labeled.filter((s) => isTest(s.sailingKey))
 const pos = (set) => set.filter((s) => s.y === 1).length
 console.log(
   `train: ${train.length} frames (${pos(train)} positive) — test: ${test.length} frames (${pos(test)} positive)`,
@@ -177,21 +180,60 @@ function buildReport(srcFor) {
     const p = predict(s.features)
     const yhat = p >= THRESHOLD ? 1 : 0
     // The exact 48×27 grayscale the model saw, one byte per pixel — lets the
-    // page reproduce the decision pixel-for-pixel client-side.
-    const fb64 = Buffer.from(Uint8Array.from(s.features, (f) => Math.round(f * 255))).toString(
-      'base64',
-    )
+    // page reproduce the decision pixel-for-pixel client-side. Only labeled
+    // frames get a card (and hence an explain button).
+    const fb64 =
+      s.y == null
+        ? null
+        : Buffer.from(Uint8Array.from(s.features, (f) => Math.round(f * 255))).toString('base64')
     return { ...s, p, yhat, fb64, split: isTest(s.sailingKey) ? 'test' : 'train' }
   })
-  const errors = rows.filter((r) => r.yhat !== r.y).length
+  const cardRows = rows.filter((r) => r.y != null)
+  const errors = cardRows.filter((r) => r.yhat !== r.y).length
 
   // Group by sailing, most recent first; frames in capture order.
   const groups = new Map()
-  for (const r of rows) {
+  for (const r of cardRows) {
     if (!groups.has(r.sailingKey)) groups.set(r.sailingKey, [])
     groups.get(r.sailingKey).push(r)
   }
   const groupKeys = [...groups.keys()].sort().reverse()
+
+  // --- Sequence predictions: when did the lineup pass the crosswalk? ---------
+  // Every frame of every sailing (labeled or not), in capture order, through
+  // the shared rule: first positive confirmed by the next frame.
+  const seqGroups = new Map()
+  for (const r of rows) {
+    if (!seqGroups.has(r.sailingKey)) seqGroups.set(r.sailingKey, [])
+    seqGroups.get(r.sailingKey).push(r)
+  }
+  const predictions = [...seqGroups.keys()]
+    .sort()
+    .reverse()
+    .map((key) => {
+      const frames = seqGroups.get(key).sort((a, b) => a.ts - b.ts)
+      const detectedTs = firstSustainedPositiveTs(
+        frames.map((f) => ({ ts: f.ts, positive: f.yhat === 1 })),
+      )
+      const idx = frames.findIndex((f) => f.ts === detectedTs)
+      return {
+        key,
+        frames,
+        detectedTs,
+        before: idx > 0 ? frames[idx - 1] : null,
+        after: idx >= 0 ? frames[idx] : null,
+        humanTs: frames[0].crosswalkAt,
+      }
+    })
+  const detected = predictions.filter((s) => s.detectedTs != null)
+  const compared = detected.filter((s) => s.humanTs != null)
+  const meanAbsMin = compared.length
+    ? Math.round(
+        compared.reduce((a, s) => a + Math.abs(s.detectedTs - s.humanTs), 0) /
+          compared.length /
+          60000,
+      )
+    : null
 
   const card = (r) => {
     const src = srcFor(r)
@@ -265,6 +307,15 @@ function buildReport(srcFor) {
   button.explain { float: right; font-size: 0.75em; padding: 0.1rem 0.5rem; cursor: pointer; }
   .method { max-width: 46rem; }
   .method .expert { font-size: 0.85rem; opacity: 0.85; }
+  .pred { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
+    padding: 0.6rem 0; border-bottom: 1px solid #8883; }
+  .pred figure { margin: 0; width: 240px; }
+  .pred img { width: 100%; display: block; border-radius: 6px; }
+  .pred figure.hit img { outline: 2px solid #2a7; }
+  .pred figcaption { font-size: 0.75rem; opacity: 0.85; margin-top: 0.15rem; }
+  .pred .nopic { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center;
+    justify-content: center; background: #8882; border-radius: 6px; font-size: 0.8rem; }
+  .pred-info { font-size: 0.9rem; }
   details.how { margin: 0.5rem 0 1rem; max-width: 46rem; }
   details.how summary { cursor: pointer; font-weight: bold; }
   .panels { display: flex; flex-wrap: wrap; gap: 1.2rem; margin: 0.8rem 0; }
@@ -281,7 +332,7 @@ function buildReport(srcFor) {
   body[data-split="train"] .card:not(.train) { display: none; }
 </style>
 <h1>Lineup classifier — training review</h1>
-<p>${rows.length} labeled frames · ${errors} misclassified · threshold ${THRESHOLD} ·
+<p>${cardRows.length} labeled frames (${rows.length} total) · ${errors} misclassified · threshold ${THRESHOLD} ·
   trained ${esc(new Date().toISOString())}<br>
   <span class="roi-hint">dashed box = region of interest the classifier sees</span></p>
 <section class="method">
@@ -304,6 +355,51 @@ function buildReport(srcFor) {
   key) since frames within a sailing are near-duplicates and a frame-level split
   would leak. Decision threshold ${THRESHOLD}; the model ships as JSON weights and
   runs in ~5 ms/frame on CPU inside the existing Cloud Function poll.</p>
+</section>
+<section class="predictions">
+  <h2>Predicted crosswalk times</h2>
+  <p>Frames of each sailing are classified <em>in capture order</em>; the lineup is
+  deemed past the crosswalk at the <strong>first positive frame confirmed by the next
+  frame also being positive</strong> (a lone positive is treated as noise).
+  Detected ${detected.length} of ${predictions.length} sailings${
+    meanAbsMin != null
+      ? ` · mean |Δ| vs human tag: ${meanAbsMin} min over ${compared.length} tagged sailings`
+      : ''
+  }.</p>
+  ${detected
+    .map((s) => {
+      const d = s.humanTs != null ? Math.round((s.detectedTs - s.humanTs) / 60000) : null
+      return `
+  <div class="pred">
+    <figure>${
+      s.before
+        ? `<img loading="lazy" src="${esc(srcFor(s.before))}" alt="">
+      <figcaption>before · ${esc(fmtTime(s.before.ts))} · p ${s.before.p.toFixed(2)}</figcaption>`
+        : `<div class="nopic">no earlier frame</div><figcaption>detection at first frame</figcaption>`
+    }</figure>
+    <figure class="hit"><img loading="lazy" src="${esc(srcFor(s.after))}" alt="">
+      <figcaption>first past-crosswalk · ${esc(fmtTime(s.after.ts))} · p ${s.after.p.toFixed(2)}</figcaption></figure>
+    <div class="pred-info">
+      <strong>${esc(s.key)}</strong><br>
+      predicted: <strong>${esc(fmtTime(s.detectedTs))}</strong><br>
+      ${
+        s.humanTs != null
+          ? `human tag: ${esc(fmtTime(s.humanTs))} (Δ ${d > 0 ? '+' : ''}${d} min)`
+          : 'no human tag'
+      }
+    </div>
+  </div>`
+    })
+    .join('')}
+  ${
+    predictions.length > detected.length
+      ? `<details><summary>${predictions.length - detected.length} sailings with no detection</summary>
+  <p>${predictions
+    .filter((s) => s.detectedTs == null)
+    .map((s) => esc(`${s.key} (${s.frames.length} frames)`))
+    .join(' · ')}</p></details>`
+      : ''
+  }
 </section>
 <table>
   <tr><th></th><th>accuracy</th><th>precision</th><th>recall</th></tr>
@@ -329,13 +425,13 @@ function buildReport(srcFor) {
 <nav>
   <span class="group"><span>result</span>
     <button data-group="verdict" data-value="" class="active">all</button>
-    <button data-group="verdict" data-value="ok">correct (${rows.length - errors})</button>
+    <button data-group="verdict" data-value="ok">correct (${cardRows.length - errors})</button>
     <button data-group="verdict" data-value="err">misclassified (${errors})</button>
   </span>
   <span class="group"><span>human answer</span>
     <button data-group="label" data-value="" class="active">all</button>
-    <button data-group="label" data-value="neg">not yet (${rows.filter((r) => !r.y).length})</button>
-    <button data-group="label" data-value="pos">past crosswalk (${rows.filter((r) => r.y).length})</button>
+    <button data-group="label" data-value="neg">not yet (${cardRows.filter((r) => !r.y).length})</button>
+    <button data-group="label" data-value="pos">past crosswalk (${cardRows.filter((r) => r.y).length})</button>
   </span>
   <span class="group"><span>split</span>
     <button data-group="split" data-value="" class="active">all</button>

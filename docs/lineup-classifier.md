@@ -120,9 +120,9 @@ camera, a fixed crop, a binary question. That needs only:
 - **Features** (`functions/lib/lineup-features.js`): crop a fixed region of
   interest (ROI), downscale to 48×27 grayscale, normalize to [0,1]. The
   *same module* runs at training and inference, so preprocessing can never
-  drift. ⚠️ The ROI is currently a placeholder (lower half of frame) —
-  before the first real training run, tune it to frame just the lane up to
-  the crosswalk, then retrain (an ROI change invalidates weights).
+  drift. The ROI is the road band marked in `crop-area.png` (repo root):
+  full width, y 0.33–0.81 of the frame. An ROI change invalidates trained
+  weights — retrain after touching it.
 - **Model** (`functions/models/lineup-classifier.json`): logistic-regression
   weights as JSON, a few KB. Ships **disabled** (`enabled: false`) until a
   trained model is committed.
@@ -131,8 +131,13 @@ camera, a fixed crop, a binary question. That needs only:
   CPU, ~100 frames/day → effectively free.
 
 Inference is hooked into `captureLineupTimelapse`: every captured frame is
-classified, and the first positive frame stamps `crosswalkFullAtAuto` +
-`crosswalkAutoProb` on the sailing doc. This is kept **separate** from the
+classified **in capture order**, and the lineup counts as past the crosswalk
+at the first positive frame that the *next* frame confirms (a lone positive
+is noise — the rule is `firstSustainedPositiveTs()` in `lineup-labels.js`;
+the streaming version parks the candidate as `crosswalkAutoPending` and
+stamps `crosswalkFullAtAuto` + `crosswalkAutoProb` with the FIRST frame's
+time once confirmed, clearing the candidate on a negative frame). This is
+kept **separate** from the
 human `crosswalkFullAt` so agreement can be measured before the automatic
 value is surfaced anywhere. Human tags labeling frames the model got wrong
 are exactly the examples the next training run needs.
@@ -214,6 +219,7 @@ PATH, a lock against overlapping runs, and dated logs under
 3. Set up the export cron (§6).
 4. Collect tags for a few weeks; eyeball `training-data/manifest.csv` label
    counts.
-5. Tune `ROI` in `lineup-features.js`; train; review printed metrics; deploy.
+5. Train; review printed metrics and the report's predicted-times section;
+   deploy.
 6. Compare `crosswalkFullAtAuto` vs human `crosswalkFullAt` for a few weeks
    before showing the auto value in the UI.
