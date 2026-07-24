@@ -213,7 +213,41 @@ PATH, a lock against overlapping runs, and dated logs under
 `training-data/logs/` (pruned after 60 days). Check
 `training-data/logs/export-<date>.log` if the dataset stops growing.
 
-## 7. Rollout checklist
+## 7. Ferry-fullness signals (terminal-cars classifier)
+
+A second, fully independent classifier answers a different question from the
+**Bowen terminal camera's** departure timelapse: *are there cars waiting in
+the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
+
+- An **empty terminal frame before departure** means everyone waiting got on
+  → `ferryNotFullAuto`. Cars in the *final* frame prove nothing — they may
+  have arrived past the cutoff — so a car-filled ending never negates an
+  earlier empty frame (`terminalEmptyFrameTs()` in `lineup-labels.js`).
+- Independently, if the **crosswalk classifier** never detected the lineup
+  past the crosswalk, the ferry was definitely not full — the trainer saves
+  this per sailing as `notFullByCrosswalk` in
+  `training-data/predictions.json`.
+
+Pipeline (mirrors the crosswalk one, separate everywhere):
+`functions/lib/terminal-features.js` (region + 32×32 grid — placeholder,
+refine before serious training) → `functions/models/terminal-cars-classifier.json`
+(ships disabled) → `functions/lib/terminal-classifier.js` (runtime, hooked
+into `captureDepartureTimelapse`; stamps `terminalEmptyFrameTs` /
+`ferryNotFullAuto`, aggregate key `nf`). Training:
+
+```bash
+npm run lineup:export      # also downloads terminal frames + terminal-manifest.csv
+npm run terminal:train     # writes training-data/terminal-labeling.html
+# label frames on that page (click: cars / no cars), copy JSON →
+#   training-data/terminal-labels.json
+npm run lineup:export      # re-joins labels
+npm run terminal:train     # trains → functions/models/terminal-cars-classifier.json
+```
+
+Planned next: a third classifier on **HSB Camera 1** to estimate how many
+cars were left behind at Horseshoe Bay.
+
+## 8. Rollout checklist
 
 1. Deploy (`npm run deploy:all` — rules for `lineupReports` ship with it).
 2. Confirm frames appear under `webcams/community/<date>/timelapse/` on

@@ -8,9 +8,13 @@ What `scripts/export-lineup-dataset.mjs` (run weekly by
 ## What is included
 
 ```
-training-data/frames/<storage path>   downloaded JPEGs
+training-data/frames/<storage path>   downloaded JPEGs (community + bowen terminal)
 training-data/manifest.csv            path,sailingKey,ts,label,crosswalkAt
+training-data/terminal-manifest.csv   path,sailingKey,ts,label (terminal-cars classifier)
+training-data/terminal-labels.json    hand labels for terminal frames ({path: 0|1})
+training-data/terminal-labeling.html  click-to-label page (npm run terminal:label)
 training-data/lineup-reports.json     raw lineupReports archive
+training-data/predictions.json        per-sailing crosswalk predictions + notFullByCrosswalk
 training-data/report.html             per-example review of the last training run
 ```
 

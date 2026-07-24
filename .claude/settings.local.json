@@ -6,7 +6,9 @@
       "Bash(npm run *)",
       "Bash(npx eslint *)",
       "Bash(node *)",
-      "Bash(curl -s -o /dev/null -w \"/api probe: %{http_code} %{content_type}\\\\n\" \"https://app.bowenlift.com/api/\")"
+      "Bash(curl -s -o /dev/null -w \"/api probe: %{http_code} %{content_type}\\\\n\" \"https://app.bowenlift.com/api/\")",
+      "Bash(curl -s -o early.jpg \"https://storage.googleapis.com/bowen-ferry.firebasestorage.app/webcams/bowen/2026-07-23/timelapse/18%3A00_To%20HSB_1784856847706.jpg\")",
+      "Bash(curl -s -o late.jpg \"https://storage.googleapis.com/bowen-ferry.firebasestorage.app/webcams/bowen/2026-07-23/timelapse/18%3A00_To%20HSB_1784858107510.jpg\")"
     ]
   }
 }

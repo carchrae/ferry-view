@@ -133,6 +133,91 @@ const testM = metrics(test)
 console.log('train:', trainM)
 console.log('test :', testM)
 
+// --- Per-frame predictions & sequence results (shared by report + JSON) -------
+const rows = samples.map((s) => {
+  const p = predict(s.features)
+  const yhat = p >= THRESHOLD ? 1 : 0
+  // The exact grayscale the model saw, one byte per pixel — lets the page
+  // reproduce the decision pixel-for-pixel client-side. Only labeled frames
+  // get a card (and hence an explain button).
+  const fb64 =
+    s.y == null
+      ? null
+      : Buffer.from(Uint8Array.from(s.features, (f) => Math.round(f * 255))).toString('base64')
+  return { ...s, p, yhat, fb64, split: isTest(s.sailingKey) ? 'test' : 'train' }
+})
+const cardRows = rows.filter((r) => r.y != null)
+const errors = cardRows.filter((r) => r.yhat !== r.y).length
+
+// Group by sailing, most recent first; frames in capture order.
+const groups = new Map()
+for (const r of cardRows) {
+  if (!groups.has(r.sailingKey)) groups.set(r.sailingKey, [])
+  groups.get(r.sailingKey).push(r)
+}
+const groupKeys = [...groups.keys()].sort().reverse()
+
+// Sequence predictions: every frame of every sailing (labeled or not), in
+// capture order, through the shared rule (first positive confirmed by the
+// next frame).
+const seqGroups = new Map()
+for (const r of rows) {
+  if (!seqGroups.has(r.sailingKey)) seqGroups.set(r.sailingKey, [])
+  seqGroups.get(r.sailingKey).push(r)
+}
+const predictions = [...seqGroups.keys()]
+  .sort()
+  .reverse()
+  .map((key) => {
+    const frames = seqGroups.get(key).sort((a, b) => a.ts - b.ts)
+    const detectedTs = firstSustainedPositiveTs(
+      frames.map((f) => ({ ts: f.ts, positive: f.yhat === 1 })),
+    )
+    const idx = frames.findIndex((f) => f.ts === detectedTs)
+    return {
+      key,
+      frames,
+      detectedTs,
+      before: idx > 0 ? frames[idx - 1] : null,
+      after: idx >= 0 ? frames[idx] : null,
+      humanTs: frames[0].crosswalkAt,
+    }
+  })
+const detected = predictions.filter((s) => s.detectedTs != null)
+const compared = detected.filter((s) => s.humanTs != null)
+const meanAbsMin = compared.length
+  ? Math.round(
+      compared.reduce((a, s) => a + Math.abs(s.detectedTs - s.humanTs), 0) /
+        compared.length /
+        60000,
+    )
+  : null
+
+// Persist per-sailing conclusions for downstream use (the fullness pipeline
+// joins these with the terminal-cars classifier). notFullByCrosswalk: the
+// lineup never confirmed past the crosswalk, so the ferry DEFINITELY left
+// with room — except for today's still-boarding sailing (inProgress), where
+// the lineup may simply not have built yet.
+const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' })
+const PREDICTIONS_JSON = join(DATA, 'predictions.json')
+writeFileSync(
+  PREDICTIONS_JSON,
+  JSON.stringify(
+    predictions.map((s) => ({
+      sailingKey: s.key,
+      frames: s.frames.length,
+      crosswalkDetectedTs: s.detectedTs,
+      crosswalkDetectedProb: s.after ? Math.round(s.after.p * 1000) / 1000 : null,
+      humanCrosswalkTs: s.humanTs,
+      notFullByCrosswalk: s.detectedTs == null && s.frames.length >= 2,
+      inProgress: s.key.startsWith(todayIso),
+    })),
+    null,
+    1,
+  ) + '\n',
+)
+console.log(`Per-sailing predictions saved: ${PREDICTIONS_JSON}`)
+
 // --- Per-example review report ------------------------------------------------
 // Always written — even when the metric floor blocks the model below, a failed
 // run is exactly the one worth reviewing. One card per frame: the photo (with
@@ -186,65 +271,6 @@ function buildReport(srcFor) {
           style="width:${r.width * 4}px;height:${r.height * 4}px"></canvas>`,
     ).join('<br>')
   const regionsLabel = REGIONS.map((r) => `${r.name} ${r.width}×${r.height}`).join(' + ')
-
-  const rows = samples.map((s) => {
-    const p = predict(s.features)
-    const yhat = p >= THRESHOLD ? 1 : 0
-    // The exact 48×27 grayscale the model saw, one byte per pixel — lets the
-    // page reproduce the decision pixel-for-pixel client-side. Only labeled
-    // frames get a card (and hence an explain button).
-    const fb64 =
-      s.y == null
-        ? null
-        : Buffer.from(Uint8Array.from(s.features, (f) => Math.round(f * 255))).toString('base64')
-    return { ...s, p, yhat, fb64, split: isTest(s.sailingKey) ? 'test' : 'train' }
-  })
-  const cardRows = rows.filter((r) => r.y != null)
-  const errors = cardRows.filter((r) => r.yhat !== r.y).length
-
-  // Group by sailing, most recent first; frames in capture order.
-  const groups = new Map()
-  for (const r of cardRows) {
-    if (!groups.has(r.sailingKey)) groups.set(r.sailingKey, [])
-    groups.get(r.sailingKey).push(r)
-  }
-  const groupKeys = [...groups.keys()].sort().reverse()
-
-  // --- Sequence predictions: when did the lineup pass the crosswalk? ---------
-  // Every frame of every sailing (labeled or not), in capture order, through
-  // the shared rule: first positive confirmed by the next frame.
-  const seqGroups = new Map()
-  for (const r of rows) {
-    if (!seqGroups.has(r.sailingKey)) seqGroups.set(r.sailingKey, [])
-    seqGroups.get(r.sailingKey).push(r)
-  }
-  const predictions = [...seqGroups.keys()]
-    .sort()
-    .reverse()
-    .map((key) => {
-      const frames = seqGroups.get(key).sort((a, b) => a.ts - b.ts)
-      const detectedTs = firstSustainedPositiveTs(
-        frames.map((f) => ({ ts: f.ts, positive: f.yhat === 1 })),
-      )
-      const idx = frames.findIndex((f) => f.ts === detectedTs)
-      return {
-        key,
-        frames,
-        detectedTs,
-        before: idx > 0 ? frames[idx - 1] : null,
-        after: idx >= 0 ? frames[idx] : null,
-        humanTs: frames[0].crosswalkAt,
-      }
-    })
-  const detected = predictions.filter((s) => s.detectedTs != null)
-  const compared = detected.filter((s) => s.humanTs != null)
-  const meanAbsMin = compared.length
-    ? Math.round(
-        compared.reduce((a, s) => a + Math.abs(s.detectedTs - s.humanTs), 0) /
-          compared.length /
-          60000,
-      )
-    : null
 
   const card = (r) => {
     const src = srcFor(r)
@@ -428,7 +454,9 @@ function buildReport(srcFor) {
   </details>
   ${
     predictions.length > detected.length
-      ? `<details><summary>${predictions.length - detected.length} sailings with no detection</summary>
+      ? `<details><summary>${predictions.length - detected.length} sailings with no detection —
+  the lineup never confirmed past the crosswalk, so the robot believes these
+  ferries left <strong>not full</strong></summary>
   <p>${predictions
     .filter((s) => s.detectedTs == null)
     .map((s) => esc(`${s.key} (${s.frames.length} frames)`))

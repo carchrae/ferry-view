@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "type": "logistic",
+  "note": "Placeholder — train with scripts/train-terminal-classifier.mjs once terminal frames are labeled (training-data/terminal-labels.json).",
+  "regions": [],
+  "weights": [],
+  "bias": 0,
+  "threshold": 0.5
+}

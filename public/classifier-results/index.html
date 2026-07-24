@@ -76,8 +76,8 @@
   body[data-split="train"] .card:not(.train) { display: none; }
 </style>
 <h1>Lineup classifier — training review</h1>
-<p>625 labeled frames (1097 total) · 56 misclassified · threshold 0.7 ·
-  trained 2026-07-24T06:05:38.458Z<br>
+<p>637 labeled frames (1127 total) · 58 misclassified · threshold 0.7 ·
+  trained 2026-07-24T06:48:25.953Z<br>
   <span class="roi-hint">dashed boxes = regions the classifier sees
   (yellow: left lane, orange: crosswalk)</span></p>
 <section class="method">
@@ -107,7 +107,7 @@
   <p>Frames of each sailing are classified <em>in capture order</em>; the lineup is
   deemed past the crosswalk at the <strong>first positive frame confirmed by the next
   frame also being positive</strong> (a lone positive is treated as noise).
-  Detected 65 of 126 sailings · mean |Δ| vs human tag: 4 min over 62 tagged sailings.</p>
+  Detected 65 of 129 sailings · mean |Δ| vs human tag: 4 min over 63 tagged sailings.</p>
   <details class="predlist">
   <summary>65 detected sailings — predicted times with before/after photos</summary>
   
@@ -119,7 +119,7 @@
     <div class="pred-info">
       <strong>2026-07-23_16:40_To HSB</strong><br>
       predicted: <strong>Jul 23, 16:25</strong><br>
-      no human tag
+      human tag: Jul 23, 16:35 (Δ -10 min)
     </div>
   </div>
   <div class="pred">
@@ -822,13 +822,15 @@
     </div>
   </div>
   </details>
-  <details><summary>61 sailings with no detection</summary>
-  <p>2026-07-23_06:15_To HSB (9 frames) · 2026-07-22_20:25_To HSB (11 frames) · 2026-07-22_19:15_To HSB (10 frames) · 2026-07-22_13:55_To HSB (12 frames) · 2026-07-22_12:35_To HSB (11 frames) · 2026-07-22_06:15_To HSB (9 frames) · 2026-07-21_20:25_To HSB (8 frames) · 2026-07-21_19:15_To HSB (9 frames) · 2026-07-21_18:00_To HSB (8 frames) · 2026-07-21_15:15_To HSB (7 frames) · 2026-07-21_13:55_To HSB (9 frames) · 2026-07-21_12:35_To HSB (9 frames) · 2026-07-21_07:30_To HSB (8 frames) · 2026-07-21_06:15_To HSB (7 frames) · 2026-07-20_20:25_To HSB (7 frames) · 2026-07-20_19:15_To HSB (6 frames) · 2026-07-20_18:00_To HSB (9 frames) · 2026-07-20_15:15_To HSB (9 frames) · 2026-07-20_13:55_To HSB (7 frames) · 2026-07-20_07:30_To HSB (8 frames) · 2026-07-20_06:15_To HSB (7 frames) · 2026-07-19_20:25_To HSB (7 frames) · 2026-07-19_15:15_To HSB (7 frames) · 2026-07-19_10:00_To HSB (8 frames) · 2026-07-19_08:45_To HSB (8 frames) · 2026-07-19_07:30_To HSB (8 frames) · 2026-07-18_19:15_To HSB (6 frames) · 2026-07-18_18:00_To HSB (8 frames) · 2026-07-18_15:15_To HSB (8 frames) · 2026-07-18_13:55_To HSB (10 frames) · 2026-07-18_12:35_To HSB (9 frames) · 2026-07-18_11:15_To HSB (9 frames) · 2026-07-18_10:00_To HSB (9 frames) · 2026-07-18_08:45_To HSB (8 frames) · 2026-07-18_07:30_To HSB (8 frames) · 2026-07-18_06:15_To HSB (7 frames) · 2026-07-17_20:25_To HSB (8 frames) · 2026-07-17_19:15_To HSB (9 frames) · 2026-07-17_18:00_To HSB (8 frames) · 2026-07-17_16:40_To HSB (8 frames) · 2026-07-17_11:15_To HSB (7 frames) · 2026-07-17_08:45_To HSB (8 frames) · 2026-07-17_07:30_To HSB (8 frames) · 2026-07-17_06:15_To HSB (7 frames) · 2026-07-16_20:25_To HSB (7 frames) · 2026-07-16_19:15_To HSB (10 frames) · 2026-07-16_13:55_To HSB (10 frames) · 2026-07-16_06:15_To HSB (6 frames) · 2026-07-15_20:25_To HSB (7 frames) · 2026-07-15_19:15_To HSB (10 frames) · 2026-07-15_18:00_To HSB (8 frames) · 2026-07-15_13:55_To HSB (8 frames) · 2026-07-15_06:15_To HSB (5 frames) · 2026-07-14_20:25_To HSB (9 frames) · 2026-07-14_18:00_To HSB (10 frames) · 2026-07-14_15:15_To HSB (8 frames) · 2026-07-14_13:55_To HSB (11 frames) · 2026-07-14_06:15_To HSB (7 frames) · 2026-07-13_20:25_To HSB (7 frames) · 2026-07-13_19:15_To HSB (9 frames) · 2026-07-13_18:00_To HSB (10 frames)</p></details>
+  <details><summary>64 sailings with no detection —
+  the lineup never confirmed past the crosswalk, so the robot believes these
+  ferries left <strong>not full</strong></summary>
+  <p>2026-07-23_20:25_To HSB (9 frames) · 2026-07-23_19:15_To HSB (9 frames) · 2026-07-23_18:00_To HSB (12 frames) · 2026-07-23_06:15_To HSB (9 frames) · 2026-07-22_20:25_To HSB (11 frames) · 2026-07-22_19:15_To HSB (10 frames) · 2026-07-22_13:55_To HSB (12 frames) · 2026-07-22_12:35_To HSB (11 frames) · 2026-07-22_06:15_To HSB (9 frames) · 2026-07-21_20:25_To HSB (8 frames) · 2026-07-21_19:15_To HSB (9 frames) · 2026-07-21_18:00_To HSB (8 frames) · 2026-07-21_15:15_To HSB (7 frames) · 2026-07-21_13:55_To HSB (9 frames) · 2026-07-21_12:35_To HSB (9 frames) · 2026-07-21_07:30_To HSB (8 frames) · 2026-07-21_06:15_To HSB (7 frames) · 2026-07-20_20:25_To HSB (7 frames) · 2026-07-20_19:15_To HSB (6 frames) · 2026-07-20_18:00_To HSB (9 frames) · 2026-07-20_15:15_To HSB (9 frames) · 2026-07-20_13:55_To HSB (7 frames) · 2026-07-20_07:30_To HSB (8 frames) · 2026-07-20_06:15_To HSB (7 frames) · 2026-07-19_20:25_To HSB (7 frames) · 2026-07-19_15:15_To HSB (7 frames) · 2026-07-19_10:00_To HSB (8 frames) · 2026-07-19_08:45_To HSB (8 frames) · 2026-07-19_07:30_To HSB (8 frames) · 2026-07-18_19:15_To HSB (6 frames) · 2026-07-18_18:00_To HSB (8 frames) · 2026-07-18_15:15_To HSB (8 frames) · 2026-07-18_13:55_To HSB (10 frames) · 2026-07-18_12:35_To HSB (9 frames) · 2026-07-18_11:15_To HSB (9 frames) · 2026-07-18_10:00_To HSB (9 frames) · 2026-07-18_08:45_To HSB (8 frames) · 2026-07-18_07:30_To HSB (8 frames) · 2026-07-18_06:15_To HSB (7 frames) · 2026-07-17_20:25_To HSB (8 frames) · 2026-07-17_19:15_To HSB (9 frames) · 2026-07-17_18:00_To HSB (8 frames) · 2026-07-17_16:40_To HSB (8 frames) · 2026-07-17_11:15_To HSB (7 frames) · 2026-07-17_08:45_To HSB (8 frames) · 2026-07-17_07:30_To HSB (8 frames) · 2026-07-17_06:15_To HSB (7 frames) · 2026-07-16_20:25_To HSB (7 frames) · 2026-07-16_19:15_To HSB (10 frames) · 2026-07-16_13:55_To HSB (10 frames) · 2026-07-16_06:15_To HSB (6 frames) · 2026-07-15_20:25_To HSB (7 frames) · 2026-07-15_19:15_To HSB (10 frames) · 2026-07-15_18:00_To HSB (8 frames) · 2026-07-15_13:55_To HSB (8 frames) · 2026-07-15_06:15_To HSB (5 frames) · 2026-07-14_20:25_To HSB (9 frames) · 2026-07-14_18:00_To HSB (10 frames) · 2026-07-14_15:15_To HSB (8 frames) · 2026-07-14_13:55_To HSB (11 frames) · 2026-07-14_06:15_To HSB (7 frames) · 2026-07-13_20:25_To HSB (7 frames) · 2026-07-13_19:15_To HSB (9 frames) · 2026-07-13_18:00_To HSB (10 frames)</p></details>
 </section>
 <table>
   <tr><th></th><th>accuracy</th><th>precision</th><th>recall</th></tr>
   <tr><th>train (522)</th><td>0.92</td><td>0.92</td><td>0.905</td></tr>
-  <tr><th>test (103)</th><td>0.864</td><td>0.78</td><td>0.929</td></tr>
+  <tr><th>test (115)</th><td>0.861</td><td>0.783</td><td>0.94</td></tr>
 </table>
 <details class="how">
   <summary>How the classifier works</summary>
@@ -874,21 +876,170 @@
 <nav>
   <span class="group"><span>result</span>
     <button data-group="verdict" data-value="" class="active">all</button>
-    <button data-group="verdict" data-value="ok">correct (569)</button>
-    <button data-group="verdict" data-value="err">misclassified (56)</button>
+    <button data-group="verdict" data-value="ok">correct (579)</button>
+    <button data-group="verdict" data-value="err">misclassified (58)</button>
   </span>
   <span class="group"><span>human answer</span>
     <button data-group="label" data-value="" class="active">all</button>
-    <button data-group="label" data-value="neg">not yet (342)</button>
-    <button data-group="label" data-value="pos">past crosswalk (283)</button>
+    <button data-group="label" data-value="neg">not yet (346)</button>
+    <button data-group="label" data-value="pos">past crosswalk (291)</button>
   </span>
   <span class="group"><span>split</span>
     <button data-group="split" data-value="" class="active">all</button>
-    <button data-group="split" data-value="test">test (103)</button>
+    <button data-group="split" data-value="test">test (115)</button>
     <button data-group="split" data-value="train">train (522)</button>
   </span>
 </nav>
 
+      <details class="sailing">
+        <summary>2026-07-23_16:40_To HSB <small>mark at Jul 23, 16:35 ·
+          12 frames · <em>2 misclassified</em></small></summary>
+        <div class="cards">
+      <figure class="card ok test neg">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/4c14890b30d8ac24.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:15</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="ICkhERkeHRYWGx4YLCoUFxssNy8jIh8YHSoiIx8yMjU3Oz4UHxUWGy9AOjg6VHV3GBgYGh8eFRofHhodKDIfKyooOSQUFBMaHx8eGRMfLzIsKTYbIBQVBl1PO11vaUUpGRoZERQaHScvKigsIh0VGRUOIyIWFRMbIBoZFxInOSwkI01HPh8dKldfW1FDOy0lGR0hHiInKSklGRkWFBQSGRcTHCIeGhIbHxsYFhMmKCQtMkNZa1tYW0YxO0FIRDguHSIfGhIRGhsaGR4eGh0dHBkZHB4eFhQdHRYZGxUcFiRATFFbU11taGFTUU5NVE40Ew4PEg8aIRwcGh8hHB4ZHRsZHSAaFxYgHRETFBgoNURNTERDSFFhcG56fXRwaUk2ExQZGRccGRYbHCMbIB4UHRsSFRkXFxMbHxssPEZKQj9AQ05QV01FV15zgoeHeGxZEhQXGx0aHRsaICUdHhsbHx0aERUYGSQ5REVEOjQ2OEFDRktERzs2OldqioiHlImJDRQWGBUOFR0QFRgcFRkhHB8kJDA6QUA8MikvPEE5OD08QkRINj1ETUdPi5DL8sZvDxUUERQNCxkNFRwaHyYtOkJIRDo0MzEvOEBHPzIxPUZJSEk7QlM8LytOkWyloWVbDw0QDxEfKB4kREs9RktHQkA1MDpAQEVEQUZMPDY1PkFKRkk0YTcuNCp3umyAZpreGBYaJEJNS0FGRURCOTQ6QEJERD82PTo9OktbQz49Oj0/SF1ZGycoMEeX/+2ot+m0LC8vMjk9Pj0+QDo5O0JFQjUxNDA1PkJEPUFZTzs4OkxmfodnMENoi6VzlOra4d+MKCsqOkZCSUBAQUQ+PTw2NTYyMTVBSEFBQTxPU0pbeIiMiYqMj5idlpt3oXqXtVc6JC05S0ZDRjw8Mjw4Ozw8Oz44Oj9AQT5AQ1JdcICIi4mKkZiZk5OVnKV+aHI9JD5uPEJBPzc0Oi85Nzw6Pj4+Pj1APjs4OkpfcXt7gIqcpJCRkpmYmZ6ck5l3MEFfgLXWOjk9Pjs2Pjo7OkBHQkI/Pjg3NzxTbXh4d32Ggouaj5GTraeal5eWrsCZiZSio8fdOjo+RD05PUA+P0JFPzw2NUBPY3Z5d3l8g4eGk8HYyr29upuTmJWd6e/k5qqKqdnPOTg5Qzw5OT9FRUA3NDlNYnJ4dXV7gYSEgoeewu7z793ryJyQmJ2z9Pr696aZ3P/1Nzc4PkE9Pj0+OjdBV211dnN0fIJ8dHx/haDN3Ovu6enx0pyg28jK9/b54ajG/vHAOTU3Oz47NjM7UWd3dnJwdn+Ae3VocYaTlZLU7+vv6eXuwqKs5Nrv9fb769/nv7LQNDc4NzI0RVpvdnFvc3l7e3RwcoKIjYmSoZ3S7uvu7+zrsY7X2MXl6/7/6bWy1PbsNjItOU1lcXFtb3d8d3BscXmBmZGPhZioztzk7/L07OPdqMH41aDCx+y6qtD19+znNEdZa21pa3B4e3Zva3F8f4SnmZ24pMnP6PHz8Ozr5tnb1O71052VYKbS+Pfp7uzxYWdmZWlwc29tanF4f4V/qqOSn9bQ4efv8uvo5+bp5Njl6O/+z46Uecz85uv0+MHqYGJpb2xnZWl0fYOEfnGR5sTA3ubs8O3n5OLk5efo59js7ui5jKy1faj17fP2983tZmZgX2Frc3h9fXl3gZK23M/k7ezo4d7g4eLj5ufn6OHf3eLc3djBi8b99ff29PLXKjNffWdFKCwsKicyNhwhICEhN0VdUpR8ZIJsPigjJSYpKiAyMxoiHh8YLU1nUnd0Wy44MiooKCUlKSY4NR0hHx4bLDxsVH2HJCNVOiopKCwsKCxAOCQhJiYfKzqCV4F5NCs7MS0uMTc5MjRJNDA5KzEvNzhzi3pMMS8xNDg4ODk7OTJJPXOAOT9FTU5xkm5KMDZFP0A7PD9ES0xkeripgHR6gI+isaRlREhJTltnbXZ/hoWOd1lYboaHi6TB5suYd3p+eo+fopiQkJGMeVRklbKkkXuX5LhtlZWVmZSRpaelnJecqp6x3t3bxNzd0al8mpSZm522mJCZqLC34K7K4dT06ea+mYGFp5qansnjuZmPlZrB/u3q9fTdwMe7kWBslpKZvvz/35WNk5yl6vjx5Ly9vsS3kXtqlLPI6v79+7WNmKir5e/rwaqxusq+iXNP" data-p="0.01065186809641838">explain</button></div>
+          <div class="row">human: <strong>not yet</strong>
+            &nbsp;·&nbsp; model: <strong>0.011</strong> → not yet</div>
+          <div class="prob"><div class="fill " style="width:1%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test neg">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/24a432c9bf9e3fbb.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:20</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="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" data-p="0.008215950033373708">explain</button></div>
+          <div class="row">human: <strong>not yet</strong>
+            &nbsp;·&nbsp; model: <strong>0.008</strong> → not yet</div>
+          <div class="prob"><div class="fill " style="width:1%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card err test neg">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/4413c9d1b2cd5a46.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:25</strong>
+            <span class="badge test">test</span> <span class="badge bad">✗ false positive</span>
+            <button class="explain" data-f="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" data-p="0.9781382023956385">explain</button></div>
+          <div class="row">human: <strong>not yet</strong>
+            &nbsp;·&nbsp; model: <strong>0.978</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:98%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card err test neg">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/6741d35e8f7f16c9.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:30</strong>
+            <span class="badge test">test</span> <span class="badge bad">✗ false positive</span>
+            <button class="explain" data-f="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" data-p="0.9951749159966362">explain</button></div>
+          <div class="row">human: <strong>not yet</strong>
+            &nbsp;·&nbsp; model: <strong>0.995</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/b1979ea3a65c8860.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:35</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="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" data-p="0.9999999524969911">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/ddb2232cd201c1bc.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:40</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="LTQnFiIpIRkZICUoICQeHydAQUg9LB4YJTM7SUMuR0VRT1MZKBwgIDVFOTg+VnJuISEiHCkpFyAjHSczLSQkLCo8NhwbFBgiKy0+Olw2Ozw3N0geKRsaCWBTPFtoX0szIiMiFxskJS40LS87LSIVGBMkJxgcFxQhJBwgHiVBSDotLlxURiolMWdmVE9DQjwzIyMqIScxMzEsGRodFxgWGhchKR0lIBEhIxYcFhIzQzM2QFxuemliYVA6OUJPTEg+JykmHBUdKCEiHCMgHyEfIB8eJSMgGBMkHxMcGxYhGzJRW15mZnh3fHVjWVFUY2JEGBUXFxQlLSQkIConIiMfISAdKCUcGBYmIRIXGRstP1JXU1JRV2ltj5GTkYFzblpGHRwhHhwmIBoiIygeJSMZIR0TGh4aGBYfJiE1SE5PTFJZYGl7y8ZqgHqWoaS5wIJrGxofISMkJSAkLSYkIiAfIyEeFB0fIS9FSk1KPz5JU11gYGJgweFwVX2Hr+Lr4LqfFBwgIBwWHiAUHR8mGR8lIykwMjtGSUtAODU7T1pRUlZRWVpGRXdmRHyXuri9po+oGSAbGRgVEB8SGSQkJSw3Rk1SSUQ6Oz49SlReWEpJV15gW1+BV6CVP5Dnv41sWHm6GBUXFxklMSgxV1dJU1dOTEdCN0FpWVhaV15nVE1UW1lmV7H8x9SORGGYUCpPrcHBIBwiLlBWVUlOTk9LQz5GTlFJaKi9bkZST2d6XlhaUlddWZTv4utxKFGUQzp3hL7FNDg3PkVLTUdHUUdFSVNWUU18tMHUfUtZUFl5cFMyZG1wn3jDb6mLc4JbNjpqjLzJMzk6SlVUXVJTVVVPTkpEOnjhuMqYbVFUUVFseEE8b6OttJ2Uf4efV01hh522y83NNTxTZWBZW05ORE1ISUlHO211XF9HTUc8VGt+VTVjlqWRrX9NhkhSfaW9ytLPztTYT1tYUEFGTj9LSk1ETEpVfGeXdjY7OkdHX6N2VY+Shlhplm9NX5G2ydHRzc3T3+ffTU1UVU1JUExKS1RbSz6X7qqdRjA8NksxYq51dXFsUU15tLS5vc3Mz8/S19/f3+rlWE1PWE9KUVJSTk5US011zJE2Rz4tJyAUbbxtTUtEXom/ycbFysvP1dzi3+Dg2ejnhkxKVlJYVExYTzc4XFlxTl9YPCUmIDpehKdkVIWox87JyMrLz9nl6t/V1Nzn6vTxZUdLUVRhWURZWUEfMj9JPEw/ITAfFTJwmr+8w8vJwsnJy87Z4uHd29PU2eHu9+rDKS5NSk1pYTxPQS49NS47TlhbRBQbOGWYxsjEw8PIyMzQ2N7c1dLY3NfZ4/XmwbfOMjtGR2NlO2ZQNz84LjeAmGRMUkiBrsrOxMLCwcPQ193a08/W3d7i3t3o4cG20fPpJS9JWT5tY2JIMTItUlSCf3Jtlb/Rz83IxsPH0Nni1srIy9DX4OLn6tu+sc7v8OPpGydXVHB9aHheOSQVSmSfrbPByNTW1czGy9Xb2NPVyMjJ0NLQ5O/eua3P8O/j5unxPSp2a1w1ZYllQC1Pc6q7u8PR1tbV1dTX2dTKxs7UyMfJ1dzl2bety+zt4ubu6Ojwcj1DV04WQ31hYZKuura3v9HW1dzj4tnJyc7M0dfPx8fZ4eC1q8/u6+Hk6e3y3uXxjHMoIxsne5+ksK+xtL7BydHX5eTYx8HE0dPT1tTQz9TZ2d7X7+vf4enu8fHv5OrYOz5XdWZFLTMyMy89PiIsKCopSlhpfqJ0YHZkPy0oLS8yMyo/PSErJiQiOlxtbImAVzNBOjMuLywtNTBFPSQnJiQkOlFxZ5SNMS5eQzQzMjc2NDpTQzEwMDMnNVtvcIRiPjRFOTY5PUVHQURdSjNXUElOWISnp4NXPDg+P0RERkpLSkJeVDE4MWJMbF6btYVaPURUTVFKTFJWX2OAimhleFFie4yjkLKAVFhaYXCAipajqrCvs7nCx8fP6fLt5L6JkZOYl67Fw8K7vcKxt8THzNDR4L7D6LV9u729xL+6uMDYzs/BytLX1cTKzOTP2K6FwcLFyMufcFO56uzX3un23tXs6uTEqpSGztDQy75/emZw4+zG0eT/8/jixcvCmXxrzdTT1M50a0lo9cRmdYDR5sLCx8vBn46H4+vc08hnQm/Cs8DT0JNzvbC6xcm1l49z" data-p="0.9999999994561302">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/78f53472b7d0aead.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:45</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="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" data-p="0.9999999998350086">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/2a47762aea3cb92a.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:50</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="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" data-p="0.9999999816726294">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/1e7343939345d642.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 16:55</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="LjImFR4iIBkbISUlIyAbGx81PDo2KyAaIik1P0AzPkBBRkgcJRsgITRFPkFFXnJvIyEhGiIiGh4iISUyJyMiKyoxNiAdGxYeJio2LT0yNzc1Mz8eKBscDmNVPmBuaFI2JSQfFhcdISszLi01LB8YGRUYKh0bGxUfJB4iHRgrPjcpLFVHPiYjL2JgWFRLSUY8JCUlHyMqLS4qGxsdHhgYGhgZKSEhHxUfIhkeHBgrMi0zOkxjb19bXXM4O0lSU05EJikiHBUXJCAeGR8gHh8cHh0dISQgGxYhJBgeHhkhGCtHUVZdXWtpbGdZU1ZWYWBMGRcTFhMgKiIhHiMiHh4dHx4eISQdGRcjIBYZGBwsOEpSTktJS1Red2qAgXhtZ1pHHhweHBogHhseHiUeICAXHh0XGh4bGRYfIyEwQUtLSklMT1ZlvLdccHeDiZSuuHtQHhscICEfHxwfJiMgHx8bISAcFhobHyg+SkpHPTtDSE9OUVNTsthvSmlvmNHd0qNuFRsfHxwWHB4XGxsjGRsgHiQqLDc+REQ+OC82Rk5FRUhDS1E+PXNkQGqBnaazlX6PFh4ZGBYUEBoTFRsiISUyQUpORj41MjMzQk1VTkI9SVBRS1FzTZKKOnzBpH9iUm+eFBUXFiAkKiIrS09DS09LRT03KzZbT0xPTlRbSURCSkdUSJ/ovcmAO1mHTC1Kk6GgGx0iK1RXT0NNTEdHPDY7QEU9VpGiZERMSVxtU0tKP0VNS4fk19xuKUp9PjtrbZujMjs5NkJbREI/R0FAQklNSEVqmqzEeEVTSk9rXkQqU1tbi2+8bp2HXF5EMT1ng52uMDU1PjtYUklJS09HRkI9NGnNtrqDWkxLR0hdZzUvZJCfj4GBdXqMS0VafIqdrby5MjpDU1BFTkZDO0VCREJBM2RtRkg0PjgqQVpsRipRdop7hmJEfUVLc5Wlqq+uuLyxSU5NSj08QThBPkU8Q0JNdFNzYi86Lzs8V4piPoF9cUxUd11GXYOhqq6sprTm9uy7QkNISkY+RUNCQkhOPDeH3J+SOyk5NUAwWI9maFpVQ0JhlJ2hpamnqqqrt+P9+Oy5TEVIT0VARUZHRkVGOkBpvIUlOzwuJx4VWZVXQT86U3qhp6WlqayprsXGyPP43rKmekJES0VJRUROQzEwTUdlSlRENSIhHDFIX39WTnWRqqikp6GmrrS2wu7y6fb02bGmWDtCSEhWTzpNTD0nLjs+OUg+GigcES1ddZugpaaio6igrbq6vLmysNj1+Pb97aiSHydEPz5QUDZDODE6NDAwRkxNORMYM1yEpaKdnZ2erbaxv8e2s9bkzN70+f/tvpqiLTY9O1RbMVxFMEE5LTludko/SD9zlqOjnZydm5ylutfruZ6gv+Xz7vb/7cGipLasIyo/TjBjUk4/NzsmT0NeZF9fg52dl5acmpqeqrPDzd3LnaGsxuP2++vBr9TUrKCtGyNGSWBpVWNQPCgWSFeKjpeblpOUmaOcn621sa+3usi5osPB7fvmvK3P+uezo6qyNiJhXVExVG9RQzBJYbvTn5WSlZWVmqewsaagpbHL0NK8rtHk47aozfT13cm9q7DAXzU6SUIYNmVZW4GTvt28pZiTmaarsKqdkpvC09fm5sSx0eK4rNTz9Orp5uS/qcHeeVwjIRkkZIaNlJSt2NPDrZCZtK6glI+Rlbrb4+bn6M7L3+Tc9vPp7PD2++WvvdjaPz9ZdWxONjw8PTpCRi41MTE1T1lykZp7YHJsSTUzNTg6OzJDRCwzLiwtQF9weomVWThGPjg1NjU2PDhIRC0vLSwsQVdgd6STNDJeRjk2Njw8Oj5RSDc3NjotR6R7fYZoPjdFPj0+QUhKRUNYSjpLSUdGZp+wroZkPTk/QUdKSUtOTUNaVTg2L1hLZGSmmnZePENSTlFNTlJVXF11g2JaakxWaX6cq5x/TFNWXm14foWSlpeZn5qcoKO34efh5byWgYaLiJyuraain6CZmp+ioqnd9rXK57CIoKKip6KeqLO3saWjpqWio5ql2u3X17CMpKOnqq2ppaXE1bisp7vEo7XQ4erHqZiDraypp6errbzs17jJ7Onr2fXnydHFmXdrqqeqr7W0t+j479HH9/7+9MbHyNDLo4+RuLGxrKq34vv/9NzD8fr5yq26x8qrnZJz" data-p="0.9999999987420722">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/987afbd56b0d8f53.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 17:00</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="Ky8mFCInIhobICUoIyEcHiY0PDs3KyMbJSo2QUcvP0BERkogKB0fIjVCPT9IXnFyJR8fHSUlGx4iHycwKiMhKiwyOCAiHhcdKCUuLEE3Njg3NUAiKhwdDWZUO2BxbFU6Ih8gGRsfIiwvLi83LCMXGxcdLh4dHBcgJh0fHRstQjcrLFNJPSclLV9fVVlPTUk/JSQnISYsLy8qHhwfHRsZHBsZKiQiIBghIxsfGxksMS00OlBgbFxZW0k2PExUVVJGKComIBgZJSEhHSIgIB8fHx8fIiUhGhciIRkfHhohGyxKUVhiX2psa2VWUFRWX19GHRkWGBYhKSMjISYlICAfIiAfIyYeGxkjIBgZGh4uPEtQT09NSVdfe3uBf3htZlhGIR4fHR0jIB0gICUgIiMaIB0XHh8bGhYdIyAvQkpLS0tNUllov7lccnaGjZWtuX5gHh0eISAhIx4iJyMiIiEeIx8fGhsbHig8SEtIPjxDR1BRUldUs9prSmVvm9Lg0qWLGRwgIB0WICEWHR4kGx0jICQpKzVBREVBOjM3RU5GRklGTFE+OXFmPGmGoqWxln2SGyAcGhcSERsVGB0gIigzPUVJRj83NjQ2QktVTUA+SU9TT1FzTZSKNn/JqH1jU26hGRYYFywpKyErSE5DTVFLSD87LjlaTU1OTVVaSUVFSktZS6LqvcqAOlmLTi9KlainIB4iKVVbUERJS0pJPjU8QUM9V5SmXT9LR1pqUEtMQkZST4bm2t9wK02BRDppcqKrMjg5Nj9JREFARkA+QEdKRUNqnq3GdEFRSU1pXkcrU11bimy8bZ6FZWlLNT1ngKKtMTIzPz1LUklISEtGRkM9MWjPtLyFW0lKRUdeZzkvZZGbloOEeXqNS0VYd4qbrs6/MjlEU1NNT0VFO0NBQkI/L2ZxT0cyPjcuQlprRipMfYh6jmlEfEVMcJKlra+/urfFSU5OST8+QjlBP0M7RD9Lc1R5ZS85MTpAVoxjP4B6cklYeVtEWIGeq66usLu9trixRUVISkQ+REFAQ0dPQjaD4J2QQCg1NEMzV5JlZV9YQj9hmp2gpq+wraqz4fjwv6epTUZITUVBRUlGRUZJPEFsuoQhOTouKyMbWptbQT88TnmkqKaoqauqrr7p/vrot6emdkNFTUVGRENMQzA2SVBsSVRENyYiHzFPZ4hVSXSPr7GmrKmoqbbIw8fv99q2p6urWTtDSUdbUzhNTDclLklDNUs+GygeFS1deKCipaqlrayhrbC4u83x5+bz7c2pqaCTIytEPT9YUjdEOic0MS0zQkxLOhYaM1iAo6SioKGgqbquuLmzqb7p9PT088+hjoqeNjc8OlddMVlHLz88KjBsfUxART5xlqWjnaCfpaunvdC9q7nQxcLl8PT97bOOnq6vIipBUj9nUFJCMTgtSkRraFtcgZ2hnJmanJ2fs8bUvquesN3y5eD1++u6nra2qKfBHSRITGBnVWZSNiwbRFKBkZibl5OXnJqaqq26zt3Tp6ectNfr8vrlvKm+vK2gprjiOCdgX1MvVnVUPzRHZJScmZOUl5ucmqO1v7Ww0Nm3nbCtyub14LmnzPfYoqKowNreYjg7TEMWN2lSVn+nsJaVl5WWlqOtrqujprW0xNaxqMLM7uu4qdHy89axqKqpwu/oe18jIxwkZoaOk67DpJeUlJWbqauik5SmssTS2tGuwNLa3+Pa9fHn28u+rq+tzu3gQj9YdG5ROj9APz1FSDA3NTU3TF13nZiKYHJpSTk3Ojo8PzRESDA1MTEvQmB0hI+SWztGQTw6OTc5PzhIRjEyMS8wQ2Nkhp6BNzVcSDs6OT9APT9TSzk6NzkxSJ95jH9lQDhIQkBAQklLRkVbTDtMSUlIaKOuqIdpPzxAREtMSUtNS0NaVTs6MltNammmqnxkPUVRTlBMTFFWW151f2Fda0tbbnyiepGLS1NWXmp3f4eQl5iaoZ2jpqvA4/Lk1LWTgISJh52ur6ikoqOaoKiqpsH268nf6LKOo6Wmqqaiq7e6saumq6qpp6DN4NnP2rGLqKirrq+tqqrKxr2qsb+wsrHO7OnHrJl/s7Guq6yxsNnptrrN2uzE3vfkydHJnHhuq6qvsra10u/01NHM+P3/9MnIys/LopaNr7W0uLTA7v/64efE8/v7zLC7ysmqnpd8" data-p="0.9999999962871782">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/5892fb797747d8a3.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 17:05</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="KjAlFSEmIxwbHiQmISEdHiU7OTwwKiEeIy81QT0uPzxER0gbKB4gIzRAOD9FWHR0Ix4eHSUlGx8hHCUuKCQjJy03Mx0eGRoiKi04MUw0NTUzNT4gKh4fEFxROl1paFc6IR4fGBofIywyLjA3LSIYGhYhJhsaGRojJR4jISU7PzQqK1RHPSYiLlhcVFpNS0c9IyMnIiUrLTEpHR0gGxoWGhkfJx8hIBgjIxkeGhUvPC8yOk1ha1xVVEk0OUtSU09DJygmIRoaJCAeGyAgIB8fHx8eJCMhGxckIBcgHhgiHCxEUVVgW2lqamRVTlNXYHNKGRcXGBcjKSEiICYkICAeISEfIyQfGxglIxcYFxorNklRT0xJRlZgeXd+fXhsZHVJHR4gHBwiHBshHyYgIiIZIR0XGh8dGRcfIiAvQUtIRkdITlVlubVeam2CiJCptnddHx0dISEeIRwhKCMiIx8eIyAcFR0dHic6SEpIPTxBRU1MTlFTsttyRm1zlM7b0aGIGRsfHhwWHh8YHh0jGh0jICMoKjg8QkVBNzA0RFBDP0dDSE07OXJkPGh/mKawl36PGx0aGRUUEx4WFR0hISYvPEdNSEAyNjU0QUlRSzxNYkdPTE9xTo+DOHi8oHtkUmibGRcWFyknLCIpR01DSk9KR0A6LTdbTUtLSlJYSD1TZUJVSJznvsl/OFSDSypIj56bHx4fJllOT0JJTElGPjc8QUE5VJOkXT1GRVhoT0hHP0NMSYbi2NxtK0d6PjhnaJmhLzU1NENCQj4/RD49P0RJRENomqrDcT9NSUxlWUMpSlVVhWq4aJuBX2BGMjxkfJ+lMjQyO0FHUUpISkpDREE8M2fJsLaFWEZIRUdaYjI0YY2YjX6Cc3eOSUFYdIaisKCjLzhEU09MTUVFOkE/QT8+MmJtVEUsOjQsPldrQiVNfY97gmJGeURNc5Ohq6zC0rGpSE1MSkY+QzhAPkQ9Qj5MbluAXSw6MjY5UodfOXZ6c0xSdVtDVoKfqaeluLituLatQkFGR0Q7REBAQEVLPTWD3Z2MOygxMUMwVYtgZF1ZQEBelJucoailpbDAuLO0qqKiSkNGSkM+Q0ZGRERGP0JouYImOjYsKCEZVpFTQUA6UXWbpKCkqaSjruD767Obn5+gdkBCSUNFQkVMQzAzSkZjR05KOCQiHi9KXHtSSnOMpq+qoZ+hoq6+6fr35K6dnJ+jWzxAR0VUTDlLSTYgLzg7NUY7HSgbFC5gcJacn6WepK2hoKO1wrjG7+nRs5+ho5qRIyhCPTtRUDRBNyYzMCQsQ0xHOBUbMlmBn52am6CbqbOmrbTV6dni6960m6KbiIeqMzM6N1BUK1dDLTwxKCtnd0pCSDxwkZ6blpmcmpuht7ynnqbN7O7w6tCsl4eElai6JCs8UztjS0tBLzAnRz5fY1xfgJaXkpCUmZmYsc27qKissrDO6+vx+dWNfZampam1HCFES15oUGBNMiUWQkx3ipKYko2QkJGSnK69vKudn8jm3sng8ffjuKappqWoqrfPNyNdXlEwUWtPOytHYImRjYmMj5CNnKKnttDLoJGUq8vl5Oj03bCersSvlqDGzdXyXzQ8SUIZM2FTVHuSk4mGi4+QjpSwwqipz9iykZibssrp6ue2p8zWrpeZqru+0PTyeFojIxskXn6IkZaRi4yMi4uToqSnpquw0MScmry13OLd3uHY9O69mp6myNmr3/HbSD1Xb2dPOT08OzpDRS81MzQ3T2BsequEYnBlRzc4Ojk6PDVDRC4zMC8vQl1xbIqHVzpFPzs5ODc2PDlGQzAxLy8xRVd6Z5mSNTJfRzs6OD09Oj1QRzc4NzsyS5+KdIlzPzdIQD4/P0ZIQ0RYSzlJSkFNdIytoItlPDs+Q0dHQ0ZMSUJZVDk5MVO0oFqPnXleO0JQTE9LVVtUW152f2JbZlCvnXagopN9SlBVXGZtbHGSlJaZn5mcoJhmp9vp3a+YgISJiYGCQU2inJ+Xmp2fodr37s6+6bd+n5+go2taSmeuqaGeoaCelb3q2/XM1bGGoKCloG9aPXa0tLWnpKOspKPn7OXIqJiGqamnn2leh8qznLHC4rDA4+zex9DFm3hypaSnra+93PXVuNnL8Onz9MbFxdDMoYyTqLGysbDe/fra4OnD8f/6yKq4xsSvnI6B" data-p="0.999999948038548">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure>
+      <figure class="card ok test pos">
+        <div class="imgwrap"><img loading="lazy" src="thumbs/86c2bd4d69d4cbc2.jpg" alt=""><div class="roi-ov roi-ov-0"></div><div class="roi-ov roi-ov-1"></div></div>
+        <figcaption>
+          <div class="row"><strong>Jul 23, 17:10</strong>
+            <span class="badge test">test</span> <span class="badge ok">✓ correct</span>
+            <button class="explain" data-f="KjAkFyEmIRodISYmISEeHig+NjwxKiIdJC4zPzgtPjpBQ0UfKSAkJDRDOTtGWm9zIyAdGSQkGiIjICYuKCIlKyw5Lh0gGxwjKi44OEsxNDQyMz8iKiEjE11POVpqaFdAJCEfFhshIiswKy84KyIZGxcjJB0gGxojJCAmIys6PjErLlJKQSsoMFVXUVVNTUlBIyYmIScsLi4nHBwdHBwbGxoiJiElIBgkIhwgHRkyOS0yOklbal1YWEg1OUlTVlJJIyckIRkbJCAeGiAgISMhICAgJSMhGxolIRofHhwkHSpETVFaW2dkaWZVTlNWY2NKGhcWGRgiKiEhHyUlIyIgIiAgJiMfHBomIxobGR0sOUpPTUdFQ1NcdHZ7fHdvaltJHR4gHx0jHxwhICciJSIbIh8ZHSAdHBohJCEwQElLSUVESlJjtrJcZmN9ho+ruH5jHRweISIgIh4gKCUkIyAeIiMgGR0dICo7RUpGPjg8QEVJTE9SsNZtRWxuk8zZzKaLGRwhIB4XHx8VHyAkHB4hICQpKzVAREQ/Ni0zQUtEP0JASEw8PW1iNVp2maKpkHqMHCAbHBgWFBsXGiEeHyUyO0NJRz0yNDU0PUZORElBP0pNSU13U395XbC3n3dfU2eXGhkYF0ExKCErRks/R01KRz87MDZXSkhLSE1UQTY6RENQRJvouq1odYRyVFFLi5uZIR4iJ1NOS0BHSUhEOjQ8QkI7U46hXz1GQVJjSEFCO0FHRoPhzYlmVEd2cIRpZJOaMzc2NjQ+QD49Qz07PEVKREFnlqm+cz5KREdgVUApSlFTf2q3bmh5Xnl3Wk9fepecLzIxOj9BTkNFRUdBQkA9MmfEq7WAWUNEQkNVXzUzXYOOin14VYRpTXxaLk6VoaCeLTVATEpKS0BAOD89Pz8+MV9kTT4oNDIrPlJjQCpOeIVugmc+aIpDkGtfSIOjn6SpQ0lJRkI8PjM9O0I6QD9KbVd6XjtTQjM8UH9aPnh6bkZLd19CV02w65KPgpOnq6+xQEBDREA7QT49PURLOzKA3JuHQGVROz81U4JfaGBZPj5bjpSOYjphkl1yeKOmpZ+kSUBDST87P0JCQENHOzxluXskOkEoJCEcVItXQDs4TnKYnZSDVEtUiol/fV9YoJ2scTw+R0FIQD9IQDMzSEVeRVJJNyMjHi9JVnVWSGyJoqGXmZSMhXR2kIBybkBNnZ6tVjg9QkRSRzVJSzQhLzc7NEM8HCcbFC5daJCZnKOkoaGVmZymsYltSz9aOChqo5iMIig/OjlOUTJCNTQ7LiMyP0VDNhUZMVZ8m5yXmqScn6ibrbKuyqdBQTEnPGOKiIWbKzE3OFJTKlRELjwuJixkdFBBQztrjZqZlpmXn6Ocqra629PSv2k1L0hshIKJpKioIyc6TTZdSUk+Ky4pRzxZYl9cfZOVj5SYk5CWsbyrpKS14urbhnVpboF/fpOvvbXQGyFCRV1nTFtKMiUZQUhxh4+Tj4iLj5ORorq0qJeVm6+72+q6hZOIe36Tp6akvOX5NiNbWE4xTmpROixEXIONiIaIioyNkJutwLaekrDOyrLI4evQiImHlqWhm6a6v+LzWjE5RT4ZMl5UU3mLjIWDiIuIjpeesMC0oZKUqdPh3Mzn6OaxmcO7n5myuLa3zu/wcFQhIBoiXHuDjYeEg4eKiYOauKSZucmmkpCSsNHf4N/c2dm/w7GZmKTH38qu6ezaT0JVbmZQPkE/PzxHSTI5Ojc9UWB3kat/YmxkSDo6Ojw9PjhISTI5NDY1RmN0epGLVzxIQz08Ozo6PzxNSTQ1MjQ0RGpreJ2CNzVeSz48PEBAPkFSSTw7OTw0Tp99hIhlQDpKQ0FCQ0lKRkdaTTxHR0ZIZ5qvnotsPz5BRUxJSUtNS0RcVj1NQVdGbpagl31kPkNST1FLTE9RXV90gVRjZ0tZX2Sdn5SDTFNVW2hzeoKShZOZomw6Y6HE3LXb0KmVf4SGhJmoqaGNT0Z5n4V0rO/59MrD57CHnJ6epJ2aoq5hUVJim6Ohqtvo3OzL2rKKnp+hpqahmKCCW0lvmqCplsT36ujErJqHp6amo6KotqVvRVyVu7bL3enkydPJnHt3oaCkrbHG68aTiK7AxeD/9cnIydLQpJKOo6ysps/t9O7N5u/D8v/6yqy6ysWxpI2C" data-p="0.9999952605114598">explain</button></div>
+          <div class="row">human: <strong>past crosswalk</strong>
+            &nbsp;·&nbsp; model: <strong>1.000</strong> → past crosswalk</div>
+          <div class="prob"><div class="fill pos" style="width:100%"></div>
+            <div class="thresh" style="left:70%"></div></div>
+        </figcaption>
+      </figure></div>
+      </details>
       <details class="sailing">
         <summary>2026-07-23_15:15_To HSB <small>mark at Jul 23, 15:35 ·
           10 frames</small></summary>

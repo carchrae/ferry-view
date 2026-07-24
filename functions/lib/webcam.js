@@ -5,6 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
 import { isRecent, nowInVancouver, timeToDate, dayjs } from './time.js'
 import { classifyLineup } from './lineup-classifier.js'
+import { classifyTerminal } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import {
   lastBowenDeparture,
@@ -311,6 +312,20 @@ export async function captureDepartureTimelapse(db, data) {
   })
   await file.makePublic()
 
+  // Terminal-cars detection (no-op until a trained model is committed — see
+  // lib/terminal-classifier.js). An EMPTY terminal frame before departure
+  // means everyone waiting got on → the ferry left with room
+  // (ferryNotFullAuto). One-way signal, per terminalEmptyFrameTs() in
+  // lineup-labels.js: cars in a late frame prove nothing (they may have
+  // arrived past the cutoff), so a car-filled frame never clears the flag.
+  const terminalFields = {}
+  const verdict = await classifyTerminal(best)
+  if (verdict && !verdict.carsPresent) {
+    terminalFields.terminalEmptyFrameTs = timestamp
+    terminalFields.ferryNotFullAuto = true
+    terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
+  }
+
   const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
   await db.collection('sailingStatus').doc(snapshotKey).set(
     {
@@ -319,6 +334,7 @@ export async function captureDepartureTimelapse(db, data) {
       direction: 'To HSB',
       dateIso: data.dateIso,
       departureTimelapsePaths: FieldValue.arrayUnion(blobPath),
+      ...terminalFields,
     },
     { merge: true },
   )
@@ -326,6 +342,7 @@ export async function captureDepartureTimelapse(db, data) {
     dateIso: data.dateIso,
     sailingTime: decision.sailingTime,
     addDepartureTs: timestamp,
+    ...(terminalFields.ferryNotFullAuto ? { nf: true } : {}),
   })
 
   logAttribution('Departure timelapse', decision, now)

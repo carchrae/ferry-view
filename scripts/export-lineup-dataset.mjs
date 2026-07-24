@@ -24,8 +24,12 @@
 //   node scripts/export-lineup-dataset.mjs [--project bowen-ferry] [--days 15]
 //
 // Output (gitignored):
-//   training-data/frames/<storage path>   downloaded JPEGs
+//   training-data/frames/<storage path>   downloaded JPEGs (community + bowen)
 //   training-data/manifest.csv            path,sailingKey,ts,label,crosswalkAt
+//   training-data/terminal-manifest.csv   path,sailingKey,ts,label — Bowen
+//     terminal (departure) frames for the terminal-cars classifier; labels
+//     joined from hand-written training-data/terminal-labels.json
+//     ({ "<storage path>": 0|1 }, 1 = cars present)
 //   training-data/lineup-reports.json     raw lineupReports archive (by doc id)
 //
 // Full description of what is (and is not) exported: docs/training-data.md
@@ -46,6 +50,8 @@ const BUCKET = `${PROJECT}.firebasestorage.app`
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'training-data')
 const FRAMES_DIR = join(ROOT, 'frames')
 const MANIFEST = join(ROOT, 'manifest.csv')
+const TERMINAL_MANIFEST = join(ROOT, 'terminal-manifest.csv')
+const TERMINAL_LABELS = join(ROOT, 'terminal-labels.json')
 const REPORTS_JSON = join(ROOT, 'lineup-reports.json')
 
 const FIRESTORE = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`
@@ -135,7 +141,11 @@ const sailings = (
   })
 )
   .map(fields)
-  .filter((s) => Array.isArray(s.lineupTimelapsePaths) && s.lineupTimelapsePaths.length)
+  .filter(
+    (s) =>
+      (Array.isArray(s.lineupTimelapsePaths) && s.lineupTimelapsePaths.length) ||
+      (Array.isArray(s.departureTimelapsePaths) && s.departureTimelapsePaths.length),
+  )
 console.log(`sailingStatus: ${sailings.length} sailings with timelapse frames since ${since}`)
 
 // --- 3. Merge into the manifest ---------------------------------------------
@@ -148,7 +158,7 @@ if (existsSync(MANIFEST)) {
   }
 }
 for (const s of sailings) {
-  for (const path of s.lineupTimelapsePaths) {
+  for (const path of s.lineupTimelapsePaths || []) {
     const ts = frameTs(path)
     if (!ts) continue
     rows.set(path, { path, sailingKey: s.sailingKey, ts: String(ts) })
@@ -163,10 +173,36 @@ for (const row of rows.values()) {
   row.crosswalkAt = crosswalkAt != null ? String(crosswalkAt) : ''
 }
 
+// --- 3b. Terminal (departure) frames for the terminal-cars classifier -------
+// Same merge shape as the lineup manifest; labels come from the hand-written
+// training-data/terminal-labels.json ({ "<storage path>": 0|1 }, 1 = cars
+// present) and are re-joined on every run, so relabeling rewrites history.
+const terminalRows = new Map()
+if (existsSync(TERMINAL_MANIFEST)) {
+  for (const line of readFileSync(TERMINAL_MANIFEST, 'utf8').trim().split('\n').slice(1)) {
+    const [path, sailingKey, ts] = line.split(',')
+    if (path) terminalRows.set(path, { path, sailingKey, ts })
+  }
+}
+for (const s of sailings) {
+  for (const path of s.departureTimelapsePaths || []) {
+    const ts = frameTs(path)
+    if (!ts) continue
+    terminalRows.set(path, { path, sailingKey: s.sailingKey, ts: String(ts) })
+  }
+}
+const terminalLabels = existsSync(TERMINAL_LABELS)
+  ? JSON.parse(readFileSync(TERMINAL_LABELS, 'utf8'))
+  : {}
+for (const row of terminalRows.values()) {
+  const label = terminalLabels[row.path]
+  row.label = label === 0 || label === 1 ? String(label) : ''
+}
+
 // --- 4. Download frames we don't have yet ------------------------------------
 let downloaded = 0
 let gone = 0
-for (const row of rows.values()) {
+for (const row of [...rows.values(), ...terminalRows.values()]) {
   const dest = join(FRAMES_DIR, row.path)
   if (existsSync(dest)) continue
   const url = `https://storage.googleapis.com/${BUCKET}/${encodeURIComponent(row.path).replace(/%2F/g, '/')}`
@@ -193,3 +229,14 @@ const labeled = sorted.filter((r) => r.label !== '').length
 console.log(
   `manifest: ${sorted.length} frames (${labeled} labeled) — downloaded ${downloaded} new, ${gone} already aged out of Storage`,
 )
+
+const tSorted = [...terminalRows.values()].sort((a, b) => a.path.localeCompare(b.path))
+writeFileSync(
+  TERMINAL_MANIFEST,
+  [
+    'path,sailingKey,ts,label',
+    ...tSorted.map((r) => [r.path, r.sailingKey, r.ts, r.label].join(',')),
+  ].join('\n') + '\n',
+)
+const tLabeled = tSorted.filter((r) => r.label !== '').length
+console.log(`terminal-manifest: ${tSorted.length} frames (${tLabeled} labeled)`)
