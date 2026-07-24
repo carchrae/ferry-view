@@ -10,7 +10,7 @@
         @click="showInfo = true"
         @keyup.enter="showInfo = true"
       >
-        <q-icon name="smart_toy" size="14px" class="q-mr-xs" color="indigo" />Robot says:
+        <q-icon name="smart_toy" size="14px" class="q-mr-xs" color="indigo" />Robot:
         <q-icon name="info_outline" size="13px" class="q-ml-xs" />
       </span>
       <div class="col robot-col">
@@ -378,6 +378,8 @@ const fullnessText = computed(() => {
 .robot-label {
   cursor: pointer;
   white-space: nowrap;
+  /* Shared fixed width with the Reports: label so the two columns align. */
+  width: 84px;
 }
 
 /* gap instead of q-gutter: gutter's child top-margins pushed the first chip

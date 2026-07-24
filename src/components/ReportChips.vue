@@ -160,6 +160,8 @@ const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 .reports-label {
   cursor: pointer;
   white-space: nowrap;
+  /* Shared fixed width with the Robot: label so the two columns align. */
+  width: 84px;
 }
 
 /* gap instead of q-gutter: gutter's child top-margins pushed the first chip
