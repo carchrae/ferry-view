@@ -21,7 +21,7 @@
 //   node scripts/train-terminal-classifier.mjs [--label-only]
 //     [--epochs 300] [--lr 0.5] [--l2 1e-4] [--threshold 0.5] [--force]
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
@@ -30,6 +30,16 @@ import {
   TERMINAL_FEATURE_LENGTH,
   TERMINAL_REGIONS,
 } from '../functions/lib/terminal-features.js'
+import { thumbnailJpeg } from '../functions/lib/lineup-features.js'
+import { terminalEmptyFrameTs } from '../functions/lib/lineup-labels.js'
+import {
+  buildExamplesPage,
+  buildSummaryPage,
+  esc as escHtml,
+  fmtTime,
+  thumbName,
+  encodeFeatures,
+} from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
 const flag = (name, dflt) => {
@@ -47,9 +57,9 @@ const THRESHOLD = Number(flag('threshold', '0.5'))
 const FORCE = args.includes('--force')
 const LABEL_ONLY = args.includes('--label-only')
 const MIN_LABELS = 60
-// Mirrors the (temporarily lowered) crosswalk floor — see
-// train-lineup-classifier.mjs.
-const METRIC_FLOOR = 0.75
+// Mirrors the crosswalk floor — the held-out split is small, so a run can
+// dip under while CV says the true metrics are fine; --force knowingly.
+const METRIC_FLOOR = 0.8
 
 // --- Load manifest ------------------------------------------------------------
 const manifest = join(DATA, 'terminal-manifest.csv')
@@ -178,17 +188,22 @@ if (LABEL_ONLY || labeled.length < MIN_LABELS) {
   process.exit(0)
 }
 
+// ALL frames get features — unlabeled ones can't train, but the per-sailing
+// not-full verdicts in the report classify every frame.
 const samples = []
-for (const r of labeled) {
+for (const r of rows) {
   samples.push({
+    path: r.path,
     sailingKey: r.sailingKey,
-    y: Number(r.label),
+    ts: r.ts,
+    y: r.label === '0' || r.label === '1' ? Number(r.label) : null,
     features: await extractTerminalFeatures(readFileSync(join(DATA, 'frames', r.path))),
   })
 }
+const labeledSamples = samples.filter((s) => s.y != null)
 const isTest = (key) => createHash('md5').update(key).digest()[0] % 5 === 0
-const train = samples.filter((s) => !isTest(s.sailingKey))
-const test = samples.filter((s) => isTest(s.sailingKey))
+const train = labeledSamples.filter((s) => !isTest(s.sailingKey))
+const test = labeledSamples.filter((s) => isTest(s.sailingKey))
 console.log(`train: ${train.length} frames — test: ${test.length} frames`)
 if (!train.length || !test.length) {
   console.error('Empty train or test split — need labels across more sailings.')
@@ -230,6 +245,164 @@ const trainM = metrics(train)
 const testM = metrics(test)
 console.log('train:', trainM)
 console.log('test :', testM)
+
+// --- Report pages (always written, even when the floor blocks the model) ------
+const freshModel = {
+  weights: [...w],
+  bias: b,
+  threshold: THRESHOLD,
+  metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
+  trainedAt: new Date().toISOString(),
+}
+
+// Per-sailing verdicts over EVERY archived frame, via the shared
+// confirmed-pair rule.
+const bySailing = new Map()
+for (const s of samples) {
+  if (!bySailing.has(s.sailingKey)) bySailing.set(s.sailingKey, [])
+  bySailing.get(s.sailingKey).push(s)
+}
+const verdicts = [...bySailing.keys()]
+  .sort()
+  .reverse()
+  .map((key) => {
+    const frames = bySailing.get(key).sort((a, b) => a.ts - b.ts)
+    const seq = frames.map((s) => {
+      const p = predict(s.features)
+      return { ...s, p, carsPresent: p >= THRESHOLD }
+    })
+    const emptyTs = terminalEmptyFrameTs(seq)
+    const idx = seq.findIndex((f) => f.ts === emptyTs)
+    // Context photo: the last cars-present frame before the confirming pair.
+    const before = idx >= 0 ? [...seq.slice(0, idx)].reverse().find((f) => f.carsPresent) : null
+    return { key, frames: seq, emptyTs, hit: idx >= 0 ? seq[idx] : null, before }
+  })
+const flagged = verdicts.filter((v) => v.emptyTs != null)
+
+const cardRows = labeledSamples.map((s) => {
+  const p = predict(s.features)
+  return {
+    ...s,
+    p,
+    yhat: p >= THRESHOLD ? 1 : 0,
+    fb64: encodeFeatures(s.features, -0.5),
+    split: isTest(s.sailingKey) ? 'test' : 'train',
+  }
+})
+
+function verdictsSectionHtml(srcFor) {
+  return `
+<section class="predictions">
+  <h2>Ferry not-full verdicts</h2>
+  <p>Every archived frame of every sailing is classified in capture order; the
+  ferry counts as having left <strong>not full</strong> when the terminal reads
+  empty in <strong>two consecutive frames</strong> before departure (a lone empty
+  frame misreads ~25% of the time). The signal is one-way: late-arriving cars in
+  the final frames never cancel an earlier confirmed-empty pair.
+  Flagged ${flagged.length} of ${verdicts.length} sailings.</p>
+  <details class="predlist">
+  <summary>${flagged.length} sailings flagged not full — context and confirming photos</summary>
+  ${flagged
+    .map(
+      (v) => `
+  <div class="pred">
+    <figure>${
+      v.before
+        ? `<img loading="lazy" src="${escHtml(srcFor(v.before))}" alt="">
+      <figcaption>last cars seen · ${escHtml(fmtTime(v.before.ts))} · p ${v.before.p.toFixed(2)}</figcaption>`
+        : `<div class="nopic">no earlier cars frame</div><figcaption>empty from the start</figcaption>`
+    }</figure>
+    <figure class="hit"><img loading="lazy" src="${escHtml(srcFor(v.hit))}" alt="">
+      <figcaption>confirmed empty · ${escHtml(fmtTime(v.hit.ts))} · p ${v.hit.p.toFixed(2)}</figcaption></figure>
+    <div class="pred-info">
+      <strong>${escHtml(v.key)}</strong><br>
+      not full — terminal empty at <strong>${escHtml(fmtTime(v.emptyTs))}</strong><br>
+      ${v.frames.length} frames
+    </div>
+  </div>`,
+    )
+    .join('')}
+  </details>
+</section>`
+}
+
+function terminalPage(srcFor) {
+  return buildExamplesPage({
+    title: 'Terminal-cars classifier — examples',
+    modelName: 'terminal',
+    model: freshModel,
+    regions: TERMINAL_REGIONS,
+    foff: -0.5,
+    posLabel: 'cars waiting',
+    negLabel: 'no cars',
+    statsLine: `${labeledSamples.length} labeled frames (${samples.length} total) · threshold ${THRESHOLD} · trained ${escHtml(freshModel.trainedAt)}`,
+    topSections: verdictsSectionHtml(srcFor),
+    rows: cardRows,
+    groupSummary: (key, list) => {
+      const bad = list.filter((r) => r.yhat !== r.y).length
+      return `${list.length} labeled frames${bad ? ` · <em>${bad} misclassified</em>` : ''}`
+    },
+    pickerSrc: srcFor(flagged[0]?.hit || cardRows[0]),
+    srcFor,
+  })
+}
+
+function summaryPage() {
+  let crosswalk = null
+  try {
+    const cm = JSON.parse(
+      readFileSync(join(repoRoot, 'functions/models/lineup-classifier.json'), 'utf8'),
+    )
+    if (cm.enabled) {
+      const cLines = readFileSync(join(DATA, 'manifest.csv'), 'utf8').trim().split('\n').slice(1)
+      crosswalk = {
+        model: cm,
+        regions: cm.regions,
+        foff: 0,
+        statsLine: `${cLines.filter((l) => /,[01],\d*$/.test(l)).length} labeled of ${cLines.length} archived lineup frames`,
+      }
+    }
+  } catch {
+    // No crosswalk model — placeholder shown.
+  }
+  return buildSummaryPage({
+    crosswalk,
+    terminal: {
+      model: freshModel,
+      regions: TERMINAL_REGIONS,
+      foff: -0.5,
+      statsLine: `${labeledSamples.length} labeled of ${samples.length} archived terminal frames · ${flagged.length}/${verdicts.length} sailings flagged not full`,
+    },
+  })
+}
+
+const LOCAL_DIR = join(DATA, 'report')
+mkdirSync(LOCAL_DIR, { recursive: true })
+const localSrc = (r) => '../frames/' + r.path.split('/').map(encodeURIComponent).join('/')
+writeFileSync(join(LOCAL_DIR, 'terminal.html'), terminalPage(localSrc))
+writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage())
+console.log(`Report pages: file://${encodeURI(join(LOCAL_DIR, 'index.html'))}`)
+
+// Public copy: thumbs only for frames the pages actually reference (labeled
+// cards + verdict photos) — the full terminal archive would be ~25 MB.
+const PUB_DIR = join(repoRoot, 'public', 'classifier-results')
+const THUMBS = join(PUB_DIR, 'thumbs')
+mkdirSync(THUMBS, { recursive: true })
+const referenced = new Map()
+for (const r of cardRows) referenced.set(r.path, r)
+for (const v of flagged) {
+  if (v.before) referenced.set(v.before.path, v.before)
+  referenced.set(v.hit.path, v.hit)
+}
+for (const r of referenced.values()) {
+  const dest = join(THUMBS, thumbName(r.path))
+  if (existsSync(dest)) continue
+  writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', r.path))))
+}
+const pubSrc = (r) => 'thumbs/' + thumbName(r.path)
+writeFileSync(join(PUB_DIR, 'terminal.html'), terminalPage(pubSrc))
+writeFileSync(join(PUB_DIR, 'index.html'), summaryPage())
+console.log(`Webapp copy: ${join(PUB_DIR, 'terminal.html')}`)
 
 if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {
   console.error(

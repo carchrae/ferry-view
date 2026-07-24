@@ -1668,12 +1668,12 @@
       "recall": 0.905
     },
     "test": {
-      "accuracy": 0.864,
-      "precision": 0.78,
-      "recall": 0.929
+      "accuracy": 0.861,
+      "precision": 0.783,
+      "recall": 0.94
     },
     "trainFrames": 522,
-    "testFrames": 103
+    "testFrames": 115
   },
-  "trainedAt": "2026-07-24T05:40:50.938Z"
+  "trainedAt": "2026-07-24T07:23:19.495Z"
 }

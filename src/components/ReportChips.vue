@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="capacityChips.length || crosswalkChips.length || showRobotChip"
+    v-if="capacityChips.length || crosswalkChips.length"
     class="row items-center q-gutter-xs q-mt-sm"
   >
     <span class="text-caption text-grey-7 q-mr-xs">Reports:</span>
@@ -74,42 +74,6 @@
         {{ timeLabel(r.recordedAt) }}
       </q-tooltip>
     </q-chip>
-    <q-chip
-      v-if="showRobotChip"
-      dense
-      square
-      clickable
-      color="indigo"
-      text-color="white"
-      icon="smart_toy"
-      class="report-chip"
-      @click="emit('agree-crosswalk')"
-    >
-      Robot says {{ timeLabel(autoCrosswalkAt) }} — agree?
-      <q-tooltip>
-        The classifier thinks the lineup passed the crosswalk at
-        {{ timeLabel(autoCrosswalkAt) }}. Tap to agree — that saves it as your own
-        crosswalk report.
-      </q-tooltip>
-    </q-chip>
-    <q-chip
-      v-if="robotVerdict"
-      dense
-      square
-      outline
-      color="indigo"
-      icon="smart_toy"
-      class="report-chip"
-    >
-      {{ robotVerdict.message }}
-      <q-tooltip>
-        The classifier's own read of the timelapse: past the crosswalk at
-        {{ timeLabel(autoCrosswalkAt) }} —
-        {{ robotVerdict.agrees ? 'within' : 'more than' }} 5 minutes
-        {{ robotVerdict.agrees ? 'of' : 'from' }} the human mark. Robots don't
-        earn leaderboard points. Yet.
-      </q-tooltip>
-    </q-chip>
     <ScoringExplainDialog v-model="showScoring" />
   </div>
 </template>
@@ -119,12 +83,7 @@ import { ref, computed } from 'vue'
 import { useAuth } from 'src/composables/useAuth'
 import { formatReporterName } from 'src/composables/useLeaderboard'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
-import {
-  scoreSailing,
-  scoreCrosswalk,
-  round1,
-  CROSSWALK_BUCKET_MS,
-} from '../../functions/lib/leaderboard-score.js'
+import { scoreSailing, scoreCrosswalk, round1 } from '../../functions/lib/leaderboard-score.js'
 import ScoringExplainDialog from 'src/components/ScoringExplainDialog.vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 
@@ -141,15 +100,11 @@ import { dayjs, TZ } from '../../functions/lib/time.js'
 const props = defineProps({
   reports: { type: Array, default: () => [] }, // { userUid, userName, capacity, recordedAt }
   crosswalkReports: { type: Array, default: () => [] }, // { userUid, userName, crosswalkAt, recordedAt }
-  // The classifier's predicted crosswalk time (epoch ms), when it has one —
-  // shows the "Robot says…" chip; tapping it emits agree-crosswalk and the
-  // parent saves it as the viewer's own report.
-  autoCrosswalkAt: { type: Number, default: null },
 })
 
 // The viewer's own chips get an X (q-chip removable) that asks the parent to
 // delete that report; other riders' chips are read-only.
-const emit = defineEmits(['delete-report', 'delete-crosswalk', 'agree-crosswalk'])
+const emit = defineEmits(['delete-report', 'delete-crosswalk'])
 const { user } = useAuth()
 const meUid = computed(() => user.value?.uid)
 
@@ -189,48 +144,6 @@ const disagreement = computed(
 
 const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 
-// The "tap to agree" button only exists while NO human has tagged the
-// sailing — once anyone has, the robot switches to commentary (below) and
-// stops collecting agreements.
-const showRobotChip = computed(
-  () => props.autoCrosswalkAt != null && crosswalkChips.value.length === 0,
-)
-
-// When a human HAS tagged and the robot also has a prediction, the robot
-// weighs in on the record: it compares its time against the first tagger's
-// (the earliest mark — the one that earns the most points) using the same
-// 5-minute bucket the leaderboard scores with. Non-interactive by design.
-const AGREE_QUIPS = [
-  (name) => `Beep boop — the robot checked the pixels and ${name} nailed it.`,
-  (name) => `Robot's verdict: ${name} called it. Certified correct by machine.`,
-  (name) => `The robot agrees with ${name} — great minds, one of them electric.`,
-  (name) => `${name} said it, the robot confirms it. Case closed.`,
-]
-const DISAGREE_QUIPS = [
-  (rtime) => `The robot begs to differ — its money's on ${rtime}.`,
-  (rtime) => `Robot's second opinion: ${rtime}. Agree to disagree.`,
-  (rtime) => `Hmm. The robot saw ${rtime} — one of us needs new glasses.`,
-  (rtime) => `The robot squints at the pixels and says ${rtime}.`,
-]
-
-const robotVerdict = computed(() => {
-  if (props.autoCrosswalkAt == null || !crosswalkChips.value.length) return null
-  const first = crosswalkChips.value.reduce(
-    (a, b) => ((b.recordedAt || 0) < (a.recordedAt || 0) ? b : a),
-    crosswalkChips.value[0],
-  )
-  const agrees = Math.abs(props.autoCrosswalkAt - first.crosswalkAt) <= CROSSWALK_BUCKET_MS
-  // Deterministic variation per sailing — stable across re-renders, varied
-  // across sailings.
-  const quips = agrees ? AGREE_QUIPS : DISAGREE_QUIPS
-  const pick = quips[Math.abs(first.recordedAt || 0) % quips.length]
-  return {
-    agrees,
-    message: agrees
-      ? pick(formatReporterName(first.userName))
-      : pick(timeLabel(props.autoCrosswalkAt)),
-  }
-})
 </script>
 
 <style scoped>

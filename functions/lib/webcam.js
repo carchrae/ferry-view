@@ -313,17 +313,28 @@ export async function captureDepartureTimelapse(db, data) {
   await file.makePublic()
 
   // Terminal-cars detection (no-op until a trained model is committed — see
-  // lib/terminal-classifier.js). An EMPTY terminal frame before departure
-  // means everyone waiting got on → the ferry left with room
-  // (ferryNotFullAuto). One-way signal, per terminalEmptyFrameTs() in
-  // lineup-labels.js: cars in a late frame prove nothing (they may have
-  // arrived past the cutoff), so a car-filled frame never clears the flag.
+  // lib/terminal-classifier.js). Streaming form of terminalEmptyFrameTs()
+  // (lineup-labels.js): an empty frame only counts once the NEXT frame is
+  // also empty — a lone empty is noise, so it parks as terminalEmptyPending
+  // and a cars-present frame clears it. A confirmed pair stamps
+  // ferryNotFullAuto, which is one-way: later car-filled frames (late
+  // arrivals) never clear it.
   const terminalFields = {}
   const verdict = await classifyTerminal(best)
-  if (verdict && !verdict.carsPresent) {
-    terminalFields.terminalEmptyFrameTs = timestamp
-    terminalFields.ferryNotFullAuto = true
-    terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
+  if (verdict) {
+    const snap = await db.collection('sailingStatus').doc(`${data.dateIso}_${decision.sailingTime}_To HSB`).get()
+    const cur = snap.exists ? snap.data() : {}
+    if (!verdict.carsPresent) {
+      if (cur.terminalEmptyPending) {
+        terminalFields.terminalEmptyFrameTs = timestamp
+        terminalFields.ferryNotFullAuto = true
+        terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
+      } else {
+        terminalFields.terminalEmptyPending = { ts: timestamp }
+      }
+    } else if (cur.terminalEmptyPending) {
+      terminalFields.terminalEmptyPending = FieldValue.delete()
+    }
   }
 
   const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`

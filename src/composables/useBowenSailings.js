@@ -310,6 +310,10 @@ function deriveUpcomingLineup(raw) {
     sailingTime: s.sailingTime,
     dateIso: s.dateIso,
     crosswalkFullAt: s.crosswalkFullAt,
+    crosswalkFullAtAuto: s.crosswalkFullAtAuto ?? null,
+    crosswalkAutoProb: s.crosswalkAutoProb ?? null,
+    // Raw storage paths, for the browser-side classifier.
+    lineupTimelapsePaths: s.lineupTimelapsePaths,
     timelapse: buildTimelapse(s.lineupTimelapsePaths),
   }
 }

@@ -48,14 +48,25 @@ export function firstSustainedPositiveTs(frames) {
 // Terminal-camera "ferry was not full" rule. `frames` is capture-ordered
 // [{ ts, carsPresent }] from the departure timelapse. An empty terminal
 // frame before departure means everyone waiting got on — the ferry left
-// with room. The signal is one-way: cars in the FINAL frame prove nothing
-// (they may have arrived past the cutoff), so a car-filled ending never
-// negates an earlier empty frame. Returns the ts of the last empty frame,
-// or null when no frame was empty (inconclusive — NOT "full").
+// with room. Two safeguards:
+//  - CONFIRMATION: a lone empty frame is noise (per-frame false-empty rate
+//    was ~25% in the 2026-07 evaluation) — it takes two CONSECUTIVE empty
+//    frames to count, mirroring firstSustainedPositiveTs.
+//  - ONE-WAY: cars in the FINAL frames prove nothing (they may have arrived
+//    past the cutoff), so a car-filled ending never negates an earlier
+//    confirmed-empty pair.
+// Returns the ts of the last frame of the last confirmed-empty pair, or
+// null when never confirmed (inconclusive — NOT "full").
 export function terminalEmptyFrameTs(frames) {
   let last = null
-  for (const f of frames || []) {
-    if (f && f.carsPresent === false && typeof f.ts === 'number') last = f.ts
+  for (let i = 0; i + 1 < (frames?.length || 0); i++) {
+    if (
+      frames[i]?.carsPresent === false &&
+      frames[i + 1]?.carsPresent === false &&
+      typeof frames[i + 1].ts === 'number'
+    ) {
+      last = frames[i + 1].ts
+    }
   }
   return last
 }

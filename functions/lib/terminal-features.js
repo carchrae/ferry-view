@@ -5,17 +5,28 @@ import sharp from 'sharp'
 // classifier (lineup-features.js): its own region, grid, and model file.
 //
 // The terminal camera looks down the loading road; cars queue along the
-// center-left lane. The region covers that lane and excludes the timestamp
-// banner across the bottom and the static pole/sign on the right edge.
-// PLACEHOLDER drawn by eye from 2026-07-23 frames — refine with the report's
-// ROI picker workflow before serious training (a region change invalidates
-// trained weights; retrain).
+// center-left lane, receding up-left with perspective. Two regions, tuned by
+// eye against 2026-07 frames with overlays:
+//  - near lane: the queue front — the last part to empty before departure.
+//    Right edge stops at the road's center line so oncoming (unloading)
+//    traffic and the static blue sign stay out.
+//  - far queue: the uphill tail. Starts high enough (top 42%) to clear the
+//    ebike shop's golf cart, which parks in the LOWER left third of the
+//    frame and must never read as a waiting car.
+// The bottom timestamp banner (y > 0.87) is excluded from both.
+// A region change invalidates trained weights; retrain.
 export const TERMINAL_REGIONS = [
   {
-    name: 'loading lane',
-    roi: { left: 0.2, top: 0.05, width: 0.55, height: 0.75 },
+    name: 'near lane',
+    roi: { left: 0.34, top: 0.42, width: 0.27, height: 0.45 },
+    width: 24,
+    height: 24,
+  },
+  {
+    name: 'far queue',
+    roi: { left: 0.18, top: 0.05, width: 0.42, height: 0.37 },
     width: 32,
-    height: 32,
+    height: 12,
   },
 ]
 
@@ -24,9 +35,12 @@ export const TERMINAL_FEATURE_LENGTH = TERMINAL_REGIONS.reduce(
   0,
 )
 
-// JPEG buffer → Float32Array of TERMINAL_FEATURE_LENGTH grayscale values in
-// [0, 1] — same crop→downscale→greyscale→normalize shape as the crosswalk
-// pipeline, so the trainer/runtime code mirrors it.
+// JPEG buffer → Float32Array of TERMINAL_FEATURE_LENGTH grayscale values,
+// PER-FRAME MEAN-CENTERED (each value minus the frame's mean brightness).
+// The terminal cam spans full daylight to night: raw intensities encode
+// time-of-day more than content, and centering removes that global term —
+// in the 2026-07 experiments it lifted test accuracy from 0.60 to 0.84.
+// Same code at training and inference, so there is no skew.
 export async function extractTerminalFeatures(buf) {
   const meta = await sharp(buf).metadata()
   const out = new Float32Array(TERMINAL_FEATURE_LENGTH)
@@ -49,5 +63,9 @@ export async function extractTerminalFeatures(buf) {
     for (let i = 0; i < raw.length; i++) out[offset + i] = raw[i] / 255
     offset += raw.length
   }
+  let mean = 0
+  for (let i = 0; i < out.length; i++) mean += out[i]
+  mean /= out.length
+  for (let i = 0; i < out.length; i++) out[i] -= mean
   return out
 }

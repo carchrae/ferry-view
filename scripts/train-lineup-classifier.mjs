@@ -17,9 +17,10 @@
 // the metrics. Refuses to write a model whose test precision or recall is
 // below 0.8 unless --force.
 //
-// Every run also writes <data>/report.html — a per-example review page
-// (photo + ROI overlay, human answer, model probability) — and prints its
-// file:// link. It is written even when the metric floor blocks the model.
+// Every run also regenerates the classifier-results pages (summary +
+// crosswalk examples; see scripts/lib/classifier-report.mjs) locally under
+// <data>/report/ and in public/classifier-results/, even when the metric
+// floor blocks the model.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -32,6 +33,14 @@ import {
   FEATURE_LENGTH,
   REGIONS,
 } from '../functions/lib/lineup-features.js'
+import {
+  buildExamplesPage,
+  buildSummaryPage,
+  esc,
+  fmtTime,
+  thumbName,
+  encodeFeatures,
+} from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
 function flag(name, dflt) {
@@ -46,11 +55,11 @@ const LR = Number(flag('lr', '0.5'))
 const L2 = Number(flag('l2', '1e-4'))
 const THRESHOLD = Number(flag('threshold', '0.7'))
 const FORCE = args.includes('--force')
-// TODO: temporarily lowered from 0.8 so the first real model (test precision
-// 0.78 with the two-region features, 2026-07) can ship behind the
-// "Robot says…" agree-tag. Raise back to 0.8 once more labeled sailings
-// push precision over it.
-const METRIC_FLOOR = 0.75
+// A model only ships when the held-out split clears this. Note the split is
+// small (~100 frames), so a run can dip under it while 5-fold CV says the
+// true metrics are fine (2026-07-24: CV precision 0.875) — use --force in
+// that case, knowingly.
+const METRIC_FLOOR = 0.8
 
 // --- Load dataset -------------------------------------------------------------
 const manifest = join(DATA, 'manifest.csv')
@@ -218,202 +227,28 @@ writeFileSync(
 )
 console.log(`Per-sailing predictions saved: ${PREDICTIONS_JSON}`)
 
-// --- Per-example review report ------------------------------------------------
+// --- Report pages -------------------------------------------------------------
 // Always written — even when the metric floor blocks the model below, a failed
-// run is exactly the one worth reviewing. One card per frame: the photo (with
-// the ROI the classifier actually sees outlined), the human answer, and the
-// model's probability.
-//
-// Two copies:
-//  - training-data/report.html — local, full-size photos from frames/
-//  - public/classifier-results/index.html — ships with the webapp (served at
-//    /classifier-results; not linked from the app). Frames vanish from
-//    Storage after 14 days, so this copy uses small committed thumbnails
-//    (hashed filenames: colon/space-free and Windows-safe).
-const REPORT = join(DATA, 'report.html')
-writeFileSync(
-  REPORT,
-  buildReport((r) => 'frames/' + r.path.split('/').map(encodeURIComponent).join('/')),
-)
-console.log(`\nPer-example review report: file://${encodeURI(REPORT)}`)
-
-const PUB_DIR = join(repoRoot, 'public', 'classifier-results')
-const THUMBS = join(PUB_DIR, 'thumbs')
-mkdirSync(THUMBS, { recursive: true })
-const thumbName = (path) => createHash('md5').update(path).digest('hex').slice(0, 16) + '.jpg'
-for (const s of samples) {
-  const dest = join(THUMBS, thumbName(s.path))
-  if (existsSync(dest)) continue // frames are immutable
-  writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', s.path))))
+// run is exactly the one worth reviewing. Pages (shared builders in
+// scripts/lib/classifier-report.mjs):
+//   index.html      summary of BOTH classifiers
+//   crosswalk.html  this classifier's examples + predicted times + ROI picker
+// written twice: training-data/report/ (full-size ../frames/ photos) and
+// public/classifier-results/ (committed thumbnails; ships with the webapp at
+// /classifier-results, not linked from the app UI).
+const freshModel = {
+  weights: [...w],
+  bias: b,
+  threshold: THRESHOLD,
+  metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
+  trainedAt: new Date().toISOString(),
 }
-writeFileSync(join(PUB_DIR, 'index.html'), buildReport((r) => 'thumbs/' + thumbName(r.path)))
-console.log(`Webapp copy: ${join(PUB_DIR, 'index.html')} (commit + deploy → /classifier-results)\n`)
 
-function buildReport(srcFor) {
-  const esc = (s) =>
-    String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
-  const fmtTime = (ms) =>
-    new Date(ms).toLocaleString('en-CA', {
-      timeZone: 'America/Vancouver',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-  const pct = (x) => `${Math.round(x * 100)}%`
-  // One dashed overlay + one canvas per feature region (left lane, crosswalk).
-  const roiOverlays = REGIONS.map((r, i) => `<div class="roi-ov roi-ov-${i}"></div>`).join('')
-  const regionCanvases = (id) =>
-    REGIONS.map(
-      (r, i) =>
-        `<canvas id="${id}-${i}" width="${r.width}" height="${r.height}"
-          style="width:${r.width * 4}px;height:${r.height * 4}px"></canvas>`,
-    ).join('<br>')
-  const regionsLabel = REGIONS.map((r) => `${r.name} ${r.width}×${r.height}`).join(' + ')
+const cardRowsFor = () =>
+  cardRows.map((r) => ({ ...r, fb64: r.fb64 ?? encodeFeatures(r.features, 0) }))
 
-  const card = (r) => {
-    const src = srcFor(r)
-    const verdict =
-      r.yhat === r.y
-        ? `<span class="badge ok">✓ correct</span>`
-        : `<span class="badge bad">✗ ${r.yhat === 1 ? 'false positive' : 'false negative'}</span>`
-    return `
-      <figure class="card ${r.yhat === r.y ? 'ok' : 'err'} ${r.split} ${r.y ? 'pos' : 'neg'}">
-        <div class="imgwrap"><img loading="lazy" src="${esc(src)}" alt="">${roiOverlays}</div>
-        <figcaption>
-          <div class="row"><strong>${esc(fmtTime(r.ts))}</strong>
-            <span class="badge ${r.split}">${r.split}</span> ${verdict}
-            <button class="explain" data-f="${r.fb64}" data-p="${r.p}">explain</button></div>
-          <div class="row">human: <strong>${r.y ? 'past crosswalk' : 'not yet'}</strong>
-            &nbsp;·&nbsp; model: <strong>${r.p.toFixed(3)}</strong> → ${r.yhat ? 'past crosswalk' : 'not yet'}</div>
-          <div class="prob"><div class="fill ${r.yhat ? 'pos' : ''}" style="width:${pct(r.p)}"></div>
-            <div class="thresh" style="left:${pct(THRESHOLD)}"></div></div>
-        </figcaption>
-      </figure>`
-  }
-
-  const sections = groupKeys
-    .map((key) => {
-      const list = groups.get(key)
-      list.sort((a, b) => a.ts - b.ts)
-      const mark = list.find((r) => Number.isFinite(r.crosswalkAt))?.crosswalkAt
-      const bad = list.filter((r) => r.yhat !== r.y).length
-      return `
-      <details class="sailing">
-        <summary>${esc(key)} <small>mark at ${mark ? esc(fmtTime(mark)) : '—'} ·
-          ${list.length} frames${bad ? ` · <em>${bad} misclassified</em>` : ''}</small></summary>
-        <div class="cards">${list.map(card).join('')}</div>
-      </details>`
-    })
-    .join('')
-
-  const m = (label, x) =>
-    `<tr><th>${label}</th><td>${x.accuracy ?? '—'}</td><td>${x.precision ?? '—'}</td><td>${x.recall ?? '—'}</td></tr>`
-
-  return `<!doctype html>
-<meta charset="utf-8">
-<title>Lineup classifier — training review</title>
-<style>
-  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-  body { margin: 1.5rem; }
-  h2 small { font-weight: normal; opacity: 0.7; font-size: 0.8em; }
-  table { border-collapse: collapse; margin: 0.5rem 0 1rem; }
-  th, td { padding: 0.2rem 0.8rem; text-align: left; border-bottom: 1px solid #8884; }
-  nav { position: sticky; top: 0; padding: 0.5rem 0; background: Canvas; z-index: 1; }
-  nav button { margin-right: 0.4rem; padding: 0.3rem 0.8rem; cursor: pointer; }
-  nav button.active { outline: 2px solid Highlight; }
-  .cards { display: flex; flex-wrap: wrap; gap: 1rem; }
-  .card { margin: 0; width: 320px; border: 1px solid #8884; border-radius: 8px; overflow: hidden; }
-  .card.err { border-color: #d33; box-shadow: 0 0 0 1px #d33; }
-  .imgwrap { position: relative; }
-  .imgwrap img { width: 100%; display: block; }
-  .roi-ov { position: absolute; border: 2px dashed; pointer-events: none; }
-  ${REGIONS.map(
-    (r, i) => `.roi-ov-${i} { border-color: ${['#fc0', '#e70'][i] || '#fc0'};
-    left: ${r.roi.left * 100}%; top: ${r.roi.top * 100}%;
-    width: ${r.roi.width * 100}%; height: ${r.roi.height * 100}%; }`,
-  ).join('\n  ')}
-  figcaption { padding: 0.5rem 0.7rem; font-size: 0.85rem; }
-  .row { margin-bottom: 0.3rem; }
-  .badge { padding: 0.05rem 0.45rem; border-radius: 99px; font-size: 0.75em; border: 1px solid #8886; }
-  .badge.ok { background: #2a72; } .badge.bad { background: #d334; }
-  .prob { position: relative; height: 8px; border-radius: 4px; background: #8883; }
-  .prob .fill { height: 100%; border-radius: 4px; background: #888; }
-  .prob .fill.pos { background: #2a7; }
-  .prob .thresh { position: absolute; top: -3px; width: 2px; height: 14px; background: #fc0; }
-  nav .group { display: inline-block; margin-right: 1.2rem; }
-  nav .group > span { opacity: 0.6; font-size: 0.8rem; margin-right: 0.3rem; }
-  button.explain { float: right; font-size: 0.75em; padding: 0.1rem 0.5rem; cursor: pointer; }
-  .method { max-width: 46rem; }
-  .method .expert { font-size: 0.85rem; opacity: 0.85; }
-  .pred { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
-    padding: 0.6rem 0; border-bottom: 1px solid #8883; }
-  .pred figure { margin: 0; width: 240px; }
-  .pred img { width: 100%; display: block; border-radius: 6px; }
-  .pred figure.hit img { outline: 2px solid #2a7; }
-  .pred figcaption { font-size: 0.75rem; opacity: 0.85; margin-top: 0.15rem; }
-  .pred .nopic { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center;
-    justify-content: center; background: #8882; border-radius: 6px; font-size: 0.8rem; }
-  .pred-info { font-size: 0.9rem; }
-  details.sailing { margin: 0.6rem 0; }
-  details.sailing > summary, details.predlist > summary { cursor: pointer;
-    font-size: 1.1rem; font-weight: bold; padding: 0.3rem 0; }
-  details.sailing > summary small, details.predlist > summary small {
-    font-weight: normal; opacity: 0.7; font-size: 0.8em; }
-  .roipick { margin: 0.5rem 0 1rem; max-width: 60rem; }
-  .roipick summary { cursor: pointer; font-weight: bold; }
-  #roi-stage { position: relative; display: inline-block; max-width: 100%;
-    touch-action: none; user-select: none; cursor: crosshair; }
-  #roi-stage img { max-width: 100%; display: block; }
-  .roi-box { position: absolute; pointer-events: none; border: 2px solid; }
-  #roi-left, #roi-drag.left { border-color: #26c; background: #26c3; }
-  #roi-right, #roi-drag.right { border-color: #e70; background: #e703; }
-  .roi-region.active { outline: 2px solid Highlight; }
-  #roi-out { background: #8882; padding: 0.5rem 0.7rem; border-radius: 6px;
-    max-width: 46rem; white-space: pre-wrap; }
-  details.how { margin: 0.5rem 0 1rem; max-width: 46rem; }
-  details.how summary { cursor: pointer; font-weight: bold; }
-  .panels { display: flex; flex-wrap: wrap; gap: 1.2rem; margin: 0.8rem 0; }
-  .panels canvas { image-rendering: pixelated; border: 1px solid #8884; background: #fff; }
-  .panels p { margin: 0.3rem 0 0; font-size: 0.8rem; opacity: 0.8; max-width: 192px; }
-  dialog { border: 1px solid #8886; border-radius: 8px; max-width: 58rem; }
-  dialog::backdrop { background: #0008; }
-  .legend { font-size: 0.8rem; opacity: 0.8; }
-  body[data-verdict="ok"] .card:not(.ok) { display: none; }
-  body[data-verdict="err"] .card:not(.err) { display: none; }
-  body[data-label="pos"] .card:not(.pos) { display: none; }
-  body[data-label="neg"] .card:not(.neg) { display: none; }
-  body[data-split="test"] .card:not(.test) { display: none; }
-  body[data-split="train"] .card:not(.train) { display: none; }
-</style>
-<h1>Lineup classifier — training review</h1>
-<p>${cardRows.length} labeled frames (${rows.length} total) · ${errors} misclassified · threshold ${THRESHOLD} ·
-  trained ${esc(new Date().toISOString())}<br>
-  <span class="roi-hint">dashed boxes = regions the classifier sees
-  (yellow: left lane, orange: crosswalk)</span></p>
-<section class="method">
-  <p><strong>In plain terms:</strong> a webcam photographs the ferry lineup every few
-  minutes, and riders mark the moment cars back up past the crosswalk. From those
-  examples the computer learns, for two fixed patches of road (the lane where the
-  line builds, and the crosswalk itself), which spots being light
-  or dark usually means the lineup has reached the crosswalk. For each new photo it
-  adds up those learned clues into a confidence score between 0 and 1 — at
-  ${THRESHOLD} or higher it says “past crosswalk”. It is a deliberately simple
-  learner: no deep network, just a weighted sum of pixels, small enough to run in
-  milliseconds and to inspect by eye (see below).</p>
-  <p class="expert"><strong>For experts:</strong> binary logistic regression on raw
-  pixel intensities. Preprocessing: two fixed fractional crops
-  (${regionsLabel}) → grayscale, normalized to [0,1], concatenated — the same module
-  (<code>functions/lib/lineup-features.js</code>) runs at training and inference, so
-  there is no train/serve skew. Labels: per-sailing rider marks reduced latest-wins
-  (<code>lineup-labels.js</code>, shared with the app); frames captured at/after the
-  mark are positive. Optimizer: full-batch gradient descent, ${EPOCHS} epochs,
-  lr ${LR}, L2 ${L2}. Split: ~80/20 <em>by sailing</em> (md5 bucket of the sailing
-  key) since frames within a sailing are near-duplicates and a frame-level split
-  would leak. Decision threshold ${THRESHOLD}; the model ships as JSON weights and
-  runs in ~5 ms/frame on CPU inside the existing Cloud Function poll.</p>
-</section>
+function predictionsSectionHtml(srcFor) {
+  return `
 <section class="predictions">
   <h2>Predicted crosswalk times</h2>
   <p>Frames of each sailing are classified <em>in capture order</em>; the lineup is
@@ -463,238 +298,82 @@ function buildReport(srcFor) {
     .join(' · ')}</p></details>`
       : ''
   }
-</section>
-<table>
-  <tr><th></th><th>accuracy</th><th>precision</th><th>recall</th></tr>
-  ${m(`train (${train.length})`, trainM)}
-  ${m(`test (${test.length})`, testM)}
-</table>
-<details class="how">
-  <summary>How the classifier works</summary>
-  <p>The model never sees the whole photo: the two dashed regions are cropped,
-  downscaled to grayscale grids (${regionsLabel}), concatenated, and each of the
-  ${FEATURE_LENGTH} pixels gets one learned weight (logistic regression). A pixel's
-  brightness × its weight is its vote; the votes plus a bias are summed and
-  squashed to a probability. ≥ ${THRESHOLD} means “past crosswalk”.</p>
-  <div class="panels">
-    <div>${regionCanvases('wmap')}
-      <p>the learned weight maps (top: left lane, bottom: crosswalk) —
-      <span style="color:#c22">red</span> pixels vote
-      “past crosswalk” when bright, <span style="color:#26c">blue</span> pixels
-      vote “not yet” when bright</p></div>
-  </div>
-  <p>The <em>explain</em> button on any card shows this frame's actual model
-  input and which pixels decided its outcome.</p>
-</details>
-<details class="roipick">
-  <summary>ROI picker — draw tighter crop regions</summary>
-  <p>Pick a region, then <strong>drag on the photo</strong> to draw its box
-  (redraw to replace). The dashed boxes are the regions currently in use
-  (yellow: left lane, orange: crosswalk). Copy the JSON and hand it to the
-  classifier maintainer (fractions of the frame, same convention as
-  <code>REGIONS</code> in <code>functions/lib/lineup-features.js</code>).</p>
-  <p>
-    <button type="button" class="roi-region active" data-region="left">draw left ROI</button>
-    <button type="button" class="roi-region" data-region="right">draw right ROI</button>
-    <button type="button" id="roi-copy">copy JSON</button>
-    <span id="roi-copied" hidden>copied ✓</span>
-  </p>
-  <div id="roi-stage">
-    <img src="${esc(srcFor(detected[0]?.after || rows[0]))}" alt="" draggable="false">
-    ${roiOverlays}
-    <div class="roi-box" id="roi-left" hidden></div>
-    <div class="roi-box" id="roi-right" hidden></div>
-    <div class="roi-box" id="roi-drag" hidden></div>
-  </div>
-  <pre id="roi-out">draw a box to see its coordinates…</pre>
-</details>
-<nav>
-  <span class="group"><span>result</span>
-    <button data-group="verdict" data-value="" class="active">all</button>
-    <button data-group="verdict" data-value="ok">correct (${cardRows.length - errors})</button>
-    <button data-group="verdict" data-value="err">misclassified (${errors})</button>
-  </span>
-  <span class="group"><span>human answer</span>
-    <button data-group="label" data-value="" class="active">all</button>
-    <button data-group="label" data-value="neg">not yet (${cardRows.filter((r) => !r.y).length})</button>
-    <button data-group="label" data-value="pos">past crosswalk (${cardRows.filter((r) => r.y).length})</button>
-  </span>
-  <span class="group"><span>split</span>
-    <button data-group="split" data-value="" class="active">all</button>
-    <button data-group="split" data-value="test">test (${test.length})</button>
-    <button data-group="split" data-value="train">train (${train.length})</button>
-  </span>
-</nav>
-${sections}
-<dialog id="explain-dialog">
-  <h3 id="ex-title">Why the model decided this</h3>
-  <p class="legend">each panel stacks the two regions: left lane on top, crosswalk below.</p>
-  <div class="panels">
-    <div>${regionCanvases('ex-in')}
-      <p>what the model saw (crops → grayscale grids)</p></div>
-    <div>${regionCanvases('ex-w')}
-      <p>learned weights (same for every frame)</p></div>
-    <div>${regionCanvases('ex-contrib')}
-      <p><strong>this frame's votes</strong> (input × weight)</p></div>
-    <div>${regionCanvases('ex-diff')}
-      <p><strong>votes − weights</strong> — where this frame falls short of a
-      fully-bright region: strongest where an influential pixel is dark</p></div>
-  </div>
-  <p id="ex-math"></p>
-  <p class="legend"><span style="color:#c22">red</span> pushes toward “past crosswalk”,
-    <span style="color:#26c">blue</span> toward “not yet”; stronger color = stronger pull.</p>
-  <form method="dialog"><button>close</button></form>
-</dialog>
-<script>
-  const MODEL = {
-    weights: ${JSON.stringify([...w].map((x) => Math.round(x * 1e5) / 1e5))},
-    bias: ${Math.round(b * 1e5) / 1e5},
-    threshold: ${THRESHOLD},
-    regions: ${JSON.stringify(REGIONS.map((r) => ({ w: r.width, h: r.height })))},
-  }
-
-  // vals in [0,1] → grayscale; signed=true → diverging red (+) / blue (−),
-  // scaled to the largest magnitude across ALL regions (shared scale so the
-  // two panels are comparable).
-  function paint(canvas, w, h, vals, signed, max) {
-    const ctx = canvas.getContext('2d')
-    const img = ctx.createImageData(w, h)
-    vals.forEach((v, i) => {
-      let r, g, bl
-      if (signed) {
-        const t = v / max
-        r = t > 0 ? 255 : 255 * (1 + t)
-        bl = t < 0 ? 255 : 255 * (1 - t)
-        g = 255 * (1 - Math.abs(t))
-      } else r = g = bl = v * 255
-      img.data.set([r, g, bl, 255], i * 4)
-    })
-    ctx.putImageData(img, 0, 0)
-  }
-  // Slice a flat feature-length array into per-region segments and paint
-  // each onto its canvas ("<id>-<regionIndex>").
-  function paintRegions(id, vals, signed) {
-    const max = signed ? Math.max(...vals.map(Math.abs), 1e-9) : 1
-    let off = 0
-    MODEL.regions.forEach((rg, i) => {
-      const seg = vals.slice(off, off + rg.w * rg.h)
-      off += rg.w * rg.h
-      paint(document.getElementById(id + '-' + i), rg.w, rg.h, seg, signed, max)
-    })
-  }
-  paintRegions('wmap', MODEL.weights, true)
-  paintRegions('ex-w', MODEL.weights, true)
-
-  const dialog = document.getElementById('explain-dialog')
-  document.querySelectorAll('button.explain').forEach((btn) => {
-    btn.onclick = () => {
-      const bytes = Uint8Array.from(atob(btn.dataset.f), (c) => c.charCodeAt(0))
-      const input = [...bytes].map((v) => v / 255)
-      const votes = input.map((v, i) => v * MODEL.weights[i])
-      const sum = votes.reduce((a, x) => a + x, 0)
-      const z = MODEL.bias + sum
-      const p = 1 / (1 + Math.exp(-z))
-      paintRegions('ex-in', input, false)
-      paintRegions('ex-contrib', votes, true)
-      paintRegions('ex-diff', votes.map((v, i) => v - MODEL.weights[i]), true)
-      document.getElementById('ex-math').innerHTML =
-        'bias <strong>' + MODEL.bias.toFixed(3) + '</strong> + pixel votes <strong>' +
-        sum.toFixed(3) + '</strong> = ' + z.toFixed(3) +
-        ' → probability <strong>' + p.toFixed(3) + '</strong> ' +
-        (p >= MODEL.threshold ? '≥' : '<') + ' threshold ' + MODEL.threshold +
-        ' → <strong>' + (p >= MODEL.threshold ? 'past crosswalk' : 'not yet') + '</strong>'
-      dialog.showModal()
-    }
-  })
-
-  // --- ROI picker -----------------------------------------------------------
-  {
-    const stage = document.getElementById('roi-stage')
-    const dragBox = document.getElementById('roi-drag')
-    const out = document.getElementById('roi-out')
-    const boxes = { left: null, right: null }
-    let active = 'left'
-    let dragStart = null
-    const setBox = (el, r) => {
-      el.hidden = false
-      el.style.left = r.left * 100 + '%'
-      el.style.top = r.top * 100 + '%'
-      el.style.width = r.width * 100 + '%'
-      el.style.height = r.height * 100 + '%'
-    }
-    const fmtR = (r) =>
-      '{ left: ' + r.left.toFixed(3) + ', top: ' + r.top.toFixed(3) +
-      ', width: ' + r.width.toFixed(3) + ', height: ' + r.height.toFixed(3) + ' }'
-    const render = () => {
-      for (const k of ['left', 'right']) {
-        const el = document.getElementById('roi-' + k)
-        if (boxes[k]) setBox(el, boxes[k])
-        else el.hidden = true
-      }
-      out.textContent =
-        'const LEFT_ROI  = ' + (boxes.left ? fmtR(boxes.left) : '/* not drawn yet */') +
-        '\\nconst RIGHT_ROI = ' + (boxes.right ? fmtR(boxes.right) : '/* not drawn yet */')
-    }
-    const frac = (e) => {
-      const b = stage.getBoundingClientRect()
-      return {
-        x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)),
-        y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)),
-      }
-    }
-    const rect = (a, b) => ({
-      left: Math.min(a.x, b.x), top: Math.min(a.y, b.y),
-      width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y),
-    })
-    document.querySelectorAll('.roi-region').forEach((btn) => {
-      btn.onclick = () => {
-        active = btn.dataset.region
-        document.querySelectorAll('.roi-region').forEach((x) => x.classList.toggle('active', x === btn))
-      }
-    })
-    stage.addEventListener('pointerdown', (e) => {
-      e.preventDefault()
-      stage.setPointerCapture(e.pointerId)
-      dragStart = frac(e)
-      dragBox.className = 'roi-box ' + active
-    })
-    stage.addEventListener('pointermove', (e) => {
-      if (dragStart) setBox(dragBox, rect(dragStart, frac(e)))
-    })
-    stage.addEventListener('pointerup', (e) => {
-      if (!dragStart) return
-      const r = rect(dragStart, frac(e))
-      dragStart = null
-      dragBox.hidden = true
-      if (r.width > 0.01 && r.height > 0.01) {
-        boxes[active] = r
-        render()
-      }
-    })
-    document.getElementById('roi-copy').onclick = async () => {
-      await navigator.clipboard.writeText(out.textContent)
-      const c = document.getElementById('roi-copied')
-      c.hidden = false
-      setTimeout(() => { c.hidden = true }, 1500)
-    }
-    render()
-  }
-
-  document.querySelectorAll('nav button').forEach((b) => {
-    b.onclick = () => {
-      document.body.dataset[b.dataset.group] = b.dataset.value
-      document
-        .querySelectorAll('nav button[data-group="' + b.dataset.group + '"]')
-        .forEach((x) => x.classList.toggle('active', x === b))
-      document.querySelectorAll('details.sailing').forEach((sec) => {
-        const any = [...sec.querySelectorAll('.card')].some((c) => getComputedStyle(c).display !== 'none')
-        sec.style.display = any ? '' : 'none'
-      })
-    }
-  })
-</script>
-`
+</section>`
 }
+
+function crosswalkPage(srcFor) {
+  return buildExamplesPage({
+    title: 'Crosswalk classifier — examples',
+    modelName: 'crosswalk',
+    model: freshModel,
+    regions: REGIONS,
+    foff: 0,
+    posLabel: 'past crosswalk',
+    negLabel: 'not yet',
+    statsLine: `${cardRows.length} labeled frames (${rows.length} total) · threshold ${THRESHOLD} · trained ${esc(freshModel.trainedAt)}`,
+    topSections: predictionsSectionHtml(srcFor),
+    rows: cardRowsFor(),
+    groupSummary: (key, list) => {
+      const mark = list.find((r) => Number.isFinite(r.crosswalkAt))?.crosswalkAt
+      const bad = list.filter((r) => r.yhat !== r.y).length
+      return `mark at ${mark ? esc(fmtTime(mark)) : '—'} · ${list.length} frames${bad ? ` · <em>${bad} misclassified</em>` : ''}`
+    },
+    pickerSrc: srcFor(detected[0]?.after || rows[0]),
+    srcFor,
+  })
+}
+
+// Summary page covers both classifiers: fresh in-memory data for this one,
+// the shipped model file for the other (absent → placeholder note).
+function summaryPage() {
+  let terminal = null
+  try {
+    const tm = JSON.parse(readFileSync(join(repoRoot, 'functions/models/terminal-cars-classifier.json'), 'utf8'))
+    if (tm.enabled) {
+      const tmanifest = join(DATA, 'terminal-manifest.csv')
+      const tRows = existsSync(tmanifest)
+        ? readFileSync(tmanifest, 'utf8').trim().split('\n').slice(1)
+        : []
+      terminal = {
+        model: tm,
+        regions: tm.regions,
+        foff: -0.5,
+        statsLine: `${tRows.filter((l) => /,[01]$/.test(l)).length} labeled of ${tRows.length} archived terminal frames`,
+      }
+    }
+  } catch {
+    // No terminal model yet — the summary shows a placeholder.
+  }
+  return buildSummaryPage({
+    crosswalk: {
+      model: freshModel,
+      regions: REGIONS,
+      foff: 0,
+      statsLine: `${cardRows.length} labeled of ${rows.length} archived lineup frames`,
+    },
+    terminal,
+  })
+}
+
+const LOCAL_DIR = join(DATA, 'report')
+mkdirSync(LOCAL_DIR, { recursive: true })
+const localSrc = (r) => '../frames/' + r.path.split('/').map(encodeURIComponent).join('/')
+writeFileSync(join(LOCAL_DIR, 'crosswalk.html'), crosswalkPage(localSrc))
+writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage())
+console.log(`\nReport pages: file://${encodeURI(join(LOCAL_DIR, 'index.html'))}`)
+
+const PUB_DIR = join(repoRoot, 'public', 'classifier-results')
+const THUMBS = join(PUB_DIR, 'thumbs')
+mkdirSync(THUMBS, { recursive: true })
+for (const s of samples) {
+  const dest = join(THUMBS, thumbName(s.path))
+  if (existsSync(dest)) continue // frames are immutable
+  writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', s.path))))
+}
+const pubSrc = (r) => 'thumbs/' + thumbName(r.path)
+writeFileSync(join(PUB_DIR, 'crosswalk.html'), crosswalkPage(pubSrc))
+writeFileSync(join(PUB_DIR, 'index.html'), summaryPage())
+console.log(`Webapp copy: ${join(PUB_DIR, 'index.html')} (commit + deploy → /classifier-results)\n`)
 
 if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {
   console.error(

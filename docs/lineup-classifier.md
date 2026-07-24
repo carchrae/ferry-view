@@ -181,20 +181,24 @@ near-duplicates, so a frame-level split would leak and inflate metrics — and
 refuses to write a model with test precision or recall below 0.8 (override
 with `--force`). The written model carries its metrics and training date.
 
-Every training run also writes a per-example review page (link printed at
-the end of the run, even when the metric floor blocks the model): one card
-per labeled frame — the photo with the classifier's ROI outlined, the human
-answer, and the model's probability against the threshold — grouped by
-sailing, with composable filters (correct/misclassified, not-yet/past-
-crosswalk, train/test). This is the main tool for reviewing what the model
-gets wrong and for spotting mislabeled frames worth re-tagging. Two copies:
+Every training run (of either trainer, even when the metric floor blocks
+the model) regenerates the **classifier-results pages** — shared builders in
+`scripts/lib/classifier-report.mjs`:
 
-- **`training-data/report.html`** — local, full-size photos.
-- **`public/classifier-results/index.html`** — ships with the webapp at
-  `/classifier-results` (not linked from the app UI). Uses small committed
-  thumbnails under `public/classifier-results/thumbs/`, since the original
-  frames vanish from Storage after 14 days. Commit and deploy the webapp to
-  publish it.
+- **`index.html`** — summary of BOTH classifiers: plain/expert method
+  descriptions, metrics, learned weight maps, links to the example pages.
+- **`crosswalk.html`** — every labeled lineup frame as a card (photo with
+  region overlays, human answer, model probability, per-frame "explain"
+  dialog), the predicted crosswalk times with before/after photos, filters
+  (correct/misclassified, label, split), and the ROI picker.
+- **`terminal.html`** — same card layout for terminal frames, plus the
+  ferry not-full verdicts with context/confirming photos.
+
+Two copies of the set: **`training-data/report/`** (local, full-size
+photos) and **`public/classifier-results/`** (ships with the webapp at
+`/classifier-results`, not linked from the app UI; committed thumbnails
+under `thumbs/`, since originals vanish from Storage after 14 days — commit
+and deploy the webapp to publish).
 
 ## 6. Operations: the export cron
 
@@ -229,11 +233,19 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   `training-data/predictions.json`.
 
 Pipeline (mirrors the crosswalk one, separate everywhere):
-`functions/lib/terminal-features.js` (region + 32×32 grid — placeholder,
-refine before serious training) → `functions/models/terminal-cars-classifier.json`
-(ships disabled) → `functions/lib/terminal-classifier.js` (runtime, hooked
-into `captureDepartureTimelapse`; stamps `terminalEmptyFrameTs` /
-`ferryNotFullAuto`, aggregate key `nf`). Training:
+`functions/lib/terminal-features.js` (two regions — "near lane" 24×24 and
+"far queue" 32×12, drawn to exclude the ebike shop's golf-cart parking spot
+in the lower-left third; features are per-frame mean-centered because the
+terminal cam spans day-to-night lighting) →
+`functions/models/terminal-cars-classifier.json` (trained 2026-07-24 on 399
+model-labeled frames: test acc 0.843, cars-precision 1.0, cars-recall 0.71;
+a lone empty frame misreads ~25% of the time, hence the two-consecutive
+confirmation) → `functions/lib/terminal-classifier.js` (runtime, hooked into
+`captureDepartureTimelapse`; a confirmed empty pair stamps
+`terminalEmptyFrameTs` / `ferryNotFullAuto`, aggregate key `nf`; a lone
+empty parks as `terminalEmptyPending`). Validated over 170 archived
+sailings: 104 flagged not-full, zero contradictions with rider capacity
+tags. Training:
 
 ```bash
 npm run lineup:export      # also downloads terminal frames + terminal-manifest.csv

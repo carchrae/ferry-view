@@ -118,6 +118,11 @@
               taggable
               @crosswalk="onUpcomingCrosswalk"
             />
+            <RobotSays
+              :auto-at="upcomingLineup.crosswalkFullAtAuto ?? null"
+              :human-at="upcomingLineup.crosswalkFullAt ?? null"
+              @agree="onAgreeUpcoming"
+            />
           </div>
         </div>
       </q-card-section>
@@ -169,10 +174,14 @@
         <ReportChips
           :reports="sailing.reports"
           :crosswalk-reports="sailing.crosswalkReports"
-          :auto-crosswalk-at="sailing.crosswalkFullAtAuto ?? null"
           @delete-report="onDeleteReport(sailing, $event)"
           @delete-crosswalk="onDeleteCrosswalk(sailing, $event)"
-          @agree-crosswalk="onAgreeCrosswalk(sailing)"
+        />
+        <RobotSays
+          :auto-at="sailing.crosswalkFullAtAuto ?? null"
+          :crosswalk-reports="sailing.crosswalkReports"
+          :human-at="sailing.crosswalkFullAt ?? null"
+          @agree="onAgreeCrosswalk(sailing)"
         />
       </q-card-section>
     </q-card>
@@ -206,6 +215,7 @@ import SailingTagCards from 'src/components/SailingTagCards.vue'
 import LineupTimelapse from 'src/components/LineupTimelapse.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import ReportChips from 'src/components/ReportChips.vue'
+import RobotSays from 'src/components/RobotSays.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadLineupReportsForSailings } from 'src/composables/useLineupReport'
 import { predictCrosswalk, browserClassifierReady } from 'src/composables/useLineupClassifier'
@@ -508,10 +518,10 @@ async function loadSailings(force = false) {
 // Crosswalk mark from the upcoming (boarding) lineup timelapse — the rider
 // paused on the frame where cars reach the crosswalk. Mirrors onCrosswalk,
 // but targets the upcomingLineup sailing (which isn't in allSailings yet).
-function onUpcomingCrosswalk({ ts, timeLabel }) {
+function onUpcomingCrosswalk({ ts, timeLabel }, extra = {}) {
   const sailingKey = upcomingLineup.value?.sailingKey
   if (!sailingKey) return
-  saveCrosswalkMark(sailingKey, ts)
+  saveCrosswalkMark(sailingKey, ts, extra)
     .then((saved) => {
       if (!saved) {
         showSignInDialog.value = true
@@ -602,7 +612,40 @@ function onCrosswalk(sailing, { sailingKey, ts, timeLabel }, extra = {}) {
     })
 }
 
-// A rider tapped the "Robot says…" chip: save the classifier's predicted time
+// Agreeing with the robot on the boarding sailing — same save path as a
+// manual upcoming mark, flagged as an agreement.
+function onAgreeUpcoming() {
+  const up = upcomingLineup.value
+  if (!up?.crosswalkFullAtAuto) return
+  onUpcomingCrosswalk(
+    { ts: up.crosswalkFullAtAuto, timeLabel: crosswalkAtLabel(up.crosswalkFullAtAuto) },
+    { agreedWithAuto: true, autoSource: up.crosswalkAutoSource || 'browser' },
+  )
+}
+
+// The boarding sailing has no card, so the card queue never classifies it —
+// run the browser classifier on it directly whenever its frame list grows.
+// Not `final`: more frames arrive every 5 minutes.
+watch(
+  () => upcomingLineup.value?.lineupTimelapsePaths?.length,
+  async () => {
+    const up = upcomingLineup.value
+    if (!browserClassifierReady || !up || up.crosswalkFullAtAuto != null) return
+    if ((up.lineupTimelapsePaths?.length ?? 0) < 2) return
+    try {
+      const pred = await predictCrosswalk(up.sailingKey, up.lineupTimelapsePaths, { final: false })
+      if (pred && upcomingLineup.value?.sailingKey === up.sailingKey) {
+        upcomingLineup.value.crosswalkFullAtAuto = pred.ts
+        upcomingLineup.value.crosswalkAutoProb = pred.prob
+        upcomingLineup.value.crosswalkAutoSource = 'browser'
+      }
+    } catch (err) {
+      console.error('Upcoming lineup prediction failed:', err)
+    }
+  },
+)
+
+// A rider tapped the robot's suggestion: save the classifier's predicted time
 // as their own crosswalk report, flagged as an agreement so the training data
 // can tell confirmations from independent marks.
 function onAgreeCrosswalk(sailing) {

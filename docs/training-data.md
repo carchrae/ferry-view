@@ -15,7 +15,7 @@ training-data/terminal-labels.json    hand labels for terminal frames ({path: 0|
 training-data/terminal-labeling.html  click-to-label page (npm run terminal:label)
 training-data/lineup-reports.json     raw lineupReports archive
 training-data/predictions.json        per-sailing crosswalk predictions + notFullByCrosswalk
-training-data/report.html             per-example review of the last training run
+training-data/report/                 classifier-results pages (index/crosswalk/terminal)
 ```
 
 - **Frames**: only the **community-camera lineup timelapse**

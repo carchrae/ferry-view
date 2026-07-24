@@ -21,21 +21,54 @@ describe('extractTerminalFeatures', () => {
 })
 
 describe('classifyTerminal', () => {
-  it('returns null with the shipped placeholder model (disabled)', async () => {
-    expect(await classifyTerminal(await solidJpeg(255))).toBe(null)
+  it('returns a well-formed verdict with the shipped (trained, enabled) model', async () => {
+    const verdict = await classifyTerminal(await solidJpeg(255))
+    expect(verdict).not.toBe(null)
+    expect(verdict.probability).toBeGreaterThanOrEqual(0)
+    expect(verdict.probability).toBeLessThanOrEqual(1)
+    expect(typeof verdict.carsPresent).toBe('boolean')
   })
 
-  it('classifies with a hand-built model', async () => {
-    const model = {
-      enabled: true,
-      weights: new Array(TERMINAL_FEATURE_LENGTH).fill(0.02),
-      bias: -6,
-      threshold: 0.5,
-    }
-    const bright = await classifyTerminal(await solidJpeg(250), model)
-    const dark = await classifyTerminal(await solidJpeg(5), model)
-    expect(bright.carsPresent).toBe(true)
-    expect(dark.carsPresent).toBe(false)
+  it('returns null when the model is disabled', async () => {
+    expect(await classifyTerminal(await solidJpeg(255), { enabled: false })).toBe(null)
+  })
+
+  it('classifies with a hand-built matched-filter model', async () => {
+    // Features are per-frame mean-centered, so solid frames are all zeros;
+    // use a bright-top/dark-bottom pattern and its inverse instead. The
+    // model's weights are the pattern's own features (matched filter):
+    // strongly positive dot product for the pattern, negative for the
+    // inverse.
+    const topBright = await sharp({
+      create: { width: 320, height: 240, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    })
+      .composite([
+        {
+          input: { create: { width: 320, height: 120, channels: 3, background: { r: 255, g: 255, b: 255 } } },
+          top: 0,
+          left: 0,
+        },
+      ])
+      .jpeg()
+      .toBuffer()
+    const bottomBright = await sharp({
+      create: { width: 320, height: 240, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    })
+      .composite([
+        {
+          input: { create: { width: 320, height: 120, channels: 3, background: { r: 0, g: 0, b: 0 } } },
+          top: 0,
+          left: 0,
+        },
+      ])
+      .jpeg()
+      .toBuffer()
+    const pattern = await extractTerminalFeatures(topBright)
+    const model = { enabled: true, weights: [...pattern].map((v) => v * 0.5), bias: 0, threshold: 0.5 }
+    const match = await classifyTerminal(topBright, model)
+    const anti = await classifyTerminal(bottomBright, model)
+    expect(match.carsPresent).toBe(true)
+    expect(anti.carsPresent).toBe(false)
   })
 
   it('scoreTerminalFeatures is a plain logistic', () => {
@@ -48,15 +81,21 @@ describe('classifyTerminal', () => {
 describe('terminalEmptyFrameTs', () => {
   const f = (ts, carsPresent) => ({ ts, carsPresent })
 
-  it('returns the last empty frame ts', () => {
+  it('returns the last ts of a confirmed (two consecutive) empty pair', () => {
     expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, false), f(4, true)])).toBe(3)
+    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, false)])).toBe(3)
   })
 
-  it('cars in the final frame never negate an earlier empty frame', () => {
-    expect(terminalEmptyFrameTs([f(1, false), f(2, true)])).toBe(1)
+  it('a lone empty frame is noise, not a confirmation', () => {
+    expect(terminalEmptyFrameTs([f(1, false), f(2, true)])).toBe(null)
+    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, true), f(4, false)])).toBe(null)
   })
 
-  it('returns null when no frame was empty (inconclusive, not "full")', () => {
+  it('cars in the final frames never negate an earlier confirmed pair', () => {
+    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, true), f(4, true)])).toBe(2)
+  })
+
+  it('returns null when never confirmed (inconclusive, not "full")', () => {
     expect(terminalEmptyFrameTs([f(1, true), f(2, true)])).toBe(null)
     expect(terminalEmptyFrameTs([])).toBe(null)
     expect(terminalEmptyFrameTs(undefined)).toBe(null)
