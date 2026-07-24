@@ -190,7 +190,19 @@ export default defineConfig((ctx) => {
       // injectPwaMetaTags: false,
       // extendPWACustomSWConf (esbuildConf) {},
       // extendGenerateSWOptions (cfg) {},
-      // extendInjectManifestOptions (cfg) {}
+      // The classifier training report (~10 MB of thumbnails) is a standalone
+      // page — keep it out of the precache manifest so PWA installs don't
+      // download it. The webpack InjectManifest plugin filters assets via
+      // `exclude` (globIgnores has no effect in webpack mode); the first two
+      // entries restate the plugin's defaults, which setting `exclude`
+      // replaces.
+      extendInjectManifestOptions(cfg) {
+        // Quasar invokes this hook twice — keep it idempotent.
+        cfg.exclude = cfg.exclude || [/\.map$/, /^manifest.*\.js$/]
+        if (!cfg.exclude.some((r) => String(r) === '/^classifier-results\\//')) {
+          cfg.exclude.push(/^classifier-results\//)
+        }
+      },
     },
 
     // https://v2.quasar.dev/quasar-cli-webpack/developing-cordova-apps/configuring-cordova

@@ -24,11 +24,19 @@ cleanupOutdatedCaches()
 
 // Non-SSR fallbacks to index.html
 // Production SSR fallbacks to offline.html (except for dev)
+// /classifier-results is a static page (training review report), not an app
+// route — let the network serve it instead of the app shell.
 if (process.env.MODE !== 'ssr' || process.env.PROD) {
   registerRoute(
     new NavigationRoute(
       createHandlerBoundToURL(process.env.PWA_FALLBACK_HTML),
-      { denylist: [new RegExp(process.env.PWA_SERVICE_WORKER_REGEX), /workbox-(.)*\.js$/] }
+      {
+        denylist: [
+          new RegExp(process.env.PWA_SERVICE_WORKER_REGEX),
+          /workbox-(.)*\.js$/,
+          /^\/classifier-results(\/|$)/,
+        ],
+      }
     )
   )
 }
