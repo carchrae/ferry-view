@@ -439,7 +439,14 @@ watch(
 // the card as the "Robot says…" agree-tag. One sailing at a time (each is up
 // to ~10 small frame fetches, early-stopped and per-device cached), so a
 // page of cards doesn't fan out dozens of requests at once.
-const predictedKeys = new Set()
+// The live aggregate subscription rebuilds every sailing object on each doc
+// change (about once a minute in service hours), wiping these client-side
+// stamps — so the queue must re-apply results on every pass, not just once
+// per sailing. That's cheap: a finished sailing's verdict comes straight
+// from the composable's localStorage cache (no network); only never-seen
+// sailings actually fetch frames. `inFlight` just stops the same sailing
+// from being queued twice while its run is still pending.
+const inFlight = new Set()
 let predictionChain = Promise.resolve()
 function queueBrowserPredictions(sailings) {
   if (!browserClassifierReady) return
@@ -447,14 +454,14 @@ function queueBrowserPredictions(sailings) {
   const cutoffIso = dayjs().tz(TZ).subtract(14, 'day').format('YYYY-MM-DD')
   for (const sailing of sailings) {
     if (sailing.crosswalkFullAtAuto != null) continue
-    if (predictedKeys.has(sailing.sailingKey)) continue
     if ((sailing.lineupTimelapsePaths?.length ?? 0) < 2) continue
     if (sailing.dateIso < cutoffIso) continue // frames aged out of Storage
+    if (inFlight.has(sailing.sailingKey)) continue
+    inFlight.add(sailing.sailingKey)
     // A finished sailing gains no more frames, so its "no detection" is
-    // final (cacheable) and needs no retry; today's boarding sailing stays
-    // eligible for re-runs as frames arrive.
+    // final (cacheable); today's boarding sailing stays eligible for
+    // re-runs as frames arrive.
     const final = sailing.actualDepartureTime != null || sailing.dateIso < todayIso
-    if (final) predictedKeys.add(sailing.sailingKey)
     predictionChain = predictionChain.then(async () => {
       try {
         const pred = await predictCrosswalk(sailing.sailingKey, sailing.lineupTimelapsePaths, {
@@ -467,6 +474,8 @@ function queueBrowserPredictions(sailings) {
         }
       } catch (err) {
         console.error('Browser lineup prediction failed:', err)
+      } finally {
+        inFlight.delete(sailing.sailingKey)
       }
     })
   }

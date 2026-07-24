@@ -21,7 +21,7 @@
       color="warning"
       text-color="dark"
       icon="sports_mma"
-      class="q-my-none"
+      class="report-chip"
     >
       Disagreement
       <q-tooltip>
@@ -37,7 +37,7 @@
       text-color="white"
       :icon="capacityResolvedWin ? 'emoji_events' : undefined"
       :removable="r.userUid === meUid"
-      class="q-my-none"
+      class="report-chip"
       :class="{ 'winner-chip': capacityResolvedWin }"
       @remove="emit('delete-report', r)"
     >
@@ -59,7 +59,7 @@
       text-color="white"
       icon="directions_walk"
       :removable="r.userUid === meUid"
-      class="q-my-none"
+      class="report-chip"
       :class="{ 'winner-chip': crosswalkResolvedWin }"
       @remove="emit('delete-crosswalk', r)"
     >
@@ -82,7 +82,7 @@
       color="indigo"
       text-color="white"
       icon="smart_toy"
-      class="q-my-none"
+      class="report-chip"
       @click="emit('agree-crosswalk')"
     >
       Robot says {{ timeLabel(autoCrosswalkAt) }} — agree?
@@ -99,7 +99,7 @@
       outline
       color="indigo"
       icon="smart_toy"
-      class="q-my-none"
+      class="report-chip"
     >
       {{ robotVerdict.message }}
       <q-tooltip>
@@ -236,5 +236,12 @@ const robotVerdict = computed(() => {
 <style scoped>
 .winner-chip {
   font-weight: 600;
+}
+
+/* Chips wrap on narrow cards; without a touch of vertical margin the rows
+   sit flush against each other. */
+.report-chip {
+  margin-top: 2px;
+  margin-bottom: 2px;
 }
 </style>
