@@ -2,7 +2,7 @@
   <div v-if="autoAt != null || notFullAt != null" class="q-mt-xs">
     <!-- Two columns: label left, content in a growing column so wrapped
          chips/text never flow underneath the label. -->
-    <div class="row no-wrap items-start">
+    <div class="row no-wrap items-center">
       <span
         class="text-caption text-grey-7 q-mr-sm robot-label col-auto"
         role="button"
@@ -13,7 +13,7 @@
         <q-icon name="smart_toy" size="14px" class="q-mr-xs" color="indigo" />Robot says:
         <q-icon name="info_outline" size="13px" class="q-ml-xs" />
       </span>
-      <div class="col row items-center q-gutter-xs robot-col">
+      <div class="col robot-col">
       <!-- Crosswalk: no human mark yet → verify-then-agree button. -->
       <q-btn
         v-if="autoAt != null && !humanRef"
@@ -26,10 +26,20 @@
         :label="`Past crosswalk ${timeLabel(autoAt)} — agree?`"
         @click="openVerify"
       />
-      <!-- Crosswalk: human already marked → short wrappable verdict. -->
-      <span v-else-if="autoAt != null" class="text-caption robot-text">{{ verdictText }}</span>
+      <!-- Crosswalk: human already marked → verdict chip (non-interactive). -->
+      <q-chip
+        v-else-if="autoAt != null"
+        dense
+        square
+        outline
+        :color="verdictAgrees ? 'indigo' : 'deep-orange'"
+        icon="directions_walk"
+        class="verdict-chip"
+      >
+        {{ verdictText }}
+      </q-chip>
       <!-- Fullness: no capacity report yet → verify-then-confirm button;
-           otherwise a short verdict, flowing in the same section. -->
+           otherwise a verdict chip in the same section. -->
       <q-btn
         v-if="notFullAt != null && notFullAt !== false && !latestCapacity"
         dense
@@ -41,10 +51,17 @@
         :label="`Not full${emptyWhen} — confirm?`"
         @click="openFullnessVerify"
       />
-      <span v-else-if="fullnessText" class="text-caption robot-text">
-        <template v-if="autoAt != null">·</template>
+      <q-chip
+        v-else-if="fullnessText"
+        dense
+        square
+        outline
+        :color="latestCapacity?.capacity === 'Full' ? 'deep-orange' : 'indigo'"
+        icon="directions_boat"
+        class="verdict-chip"
+      >
         {{ fullnessText }}
-      </span>
+      </q-chip>
       </div>
     </div>
 
@@ -95,7 +112,7 @@
         <p v-else class="text-caption text-italic">
           The frames are no longer available to view — trust your memory, not the robot's.
         </p>
-        <div class="row justify-end q-gutter-sm q-mt-md">
+        <div class="row justify-end dialog-actions q-mt-md">
           <q-btn v-close-popup flat dense no-caps label="Not sure" />
           <!-- One contextual action: on the robot's frame you can only agree;
                on any other frame the same button becomes the correction. -->
@@ -178,7 +195,7 @@
         <p v-else class="text-caption text-italic">
           The frames are no longer available to view — trust your memory, not the robot's.
         </p>
-        <div class="row justify-end q-gutter-sm q-mt-md">
+        <div class="row justify-end dialog-actions q-mt-md">
           <q-btn v-close-popup flat dense no-caps label="Not sure" />
           <q-btn
             v-close-popup
@@ -330,12 +347,20 @@ const DISAGREE_QUIPS = [
   (t) => `Squints at the pixels and says ${t}.`,
 ]
 
+const verdictAgrees = computed(
+  () =>
+    humanRef.value != null &&
+    props.autoAt != null &&
+    Math.abs(props.autoAt - humanRef.value.at) <= CROSSWALK_BUCKET_MS,
+)
+
 const verdictText = computed(() => {
   if (!humanRef.value || props.autoAt == null) return ''
-  const agrees = Math.abs(props.autoAt - humanRef.value.at) <= CROSSWALK_BUCKET_MS
-  const quips = agrees ? AGREE_QUIPS : DISAGREE_QUIPS
+  const quips = verdictAgrees.value ? AGREE_QUIPS : DISAGREE_QUIPS
   const pick = quips[Math.abs(humanRef.value.at || 0) % quips.length]
-  return agrees ? pick(humanRef.value.name || 'the humans') : pick(timeLabel(props.autoAt))
+  return verdictAgrees.value
+    ? pick(humanRef.value.name || 'the humans')
+    : pick(timeLabel(props.autoAt))
 })
 
 // Fullness verdict text — only when a capacity report already exists (no
@@ -353,12 +378,28 @@ const fullnessText = computed(() => {
 .robot-label {
   cursor: pointer;
   white-space: nowrap;
-  /* Optically center against the first row of buttons/text. */
-  padding-top: 4px;
 }
 
+/* gap instead of q-gutter: gutter's child top-margins pushed the first chip
+   row below the label's line. */
 .robot-col {
   min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  gap: 4px 6px;
+}
+
+.verdict-chip {
+  margin: 0;
+  /* Let long quips wrap inside the chip instead of overflowing. */
+  height: auto;
+  min-height: 24px;
+}
+.verdict-chip :deep(.q-chip__content) {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .robot-text {
   overflow-wrap: anywhere;
@@ -367,6 +408,10 @@ const fullnessText = computed(() => {
 .verify-card {
   width: 26rem;
   max-width: 92vw;
+}
+
+.dialog-actions {
+  gap: 10px;
 }
 .verify-img {
   width: 100%;

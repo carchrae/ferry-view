@@ -1,7 +1,7 @@
 <template>
   <!-- Two columns: the label never has chips wrapping underneath it — wrapped
        chip rows stay aligned in the growing right column. -->
-  <div v-if="capacityChips.length || crosswalkChips.length" class="row no-wrap items-start q-mt-sm">
+  <div v-if="capacityChips.length || crosswalkChips.length" class="row no-wrap items-center q-mt-sm">
     <span
       class="text-caption text-grey-7 q-mr-sm reports-label col-auto"
       role="button"
@@ -12,7 +12,7 @@
     >
       Reports: <q-icon name="info_outline" size="13px" />
     </span>
-    <div class="col row items-center q-gutter-xs chips-col">
+    <div class="col chips-col">
     <q-chip
       v-if="disagreement"
       dense
@@ -151,21 +151,25 @@ const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
   font-weight: 600;
 }
 
-/* Chips wrap on narrow cards; without a touch of vertical margin the rows
-   sit flush against each other. */
+/* Spacing comes from the container's gap; kill the q-chip default margins so
+   rows align flush with the label. */
 .report-chip {
-  margin-top: 2px;
-  margin-bottom: 2px;
+  margin: 0;
 }
 
 .reports-label {
   cursor: pointer;
   white-space: nowrap;
-  /* Optically center against the first row of dense chips. */
-  padding-top: 5px;
 }
 
+/* gap instead of q-gutter: gutter's child top-margins pushed the first chip
+   row below the label's line. */
 .chips-col {
   min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  gap: 4px 6px;
 }
 </style>
