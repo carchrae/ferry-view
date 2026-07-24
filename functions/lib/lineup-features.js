@@ -39,10 +39,14 @@ export async function extractFeatures(buf) {
   return out
 }
 
-// Label a timelapse frame from a human crosswalk tag: frames captured at or
-// after the tag show a lineup that has reached the crosswalk. Used by the
-// dataset exporter; kept here so it's unit-tested alongside the classifier.
-export function labelForTimestamp(frameTs, crosswalkAt) {
-  if (typeof frameTs !== 'number' || typeof crosswalkAt !== 'number') return null
-  return frameTs >= crosswalkAt ? 1 : 0
+// Tag→label semantics live in lineup-labels.js (shared with the app's
+// triggers and the exporter, and free of the sharp dependency); re-exported
+// here so feature+label consumers (the trainer) have one import.
+export { labelForTimestamp, effectiveCrosswalkAt } from './lineup-labels.js'
+
+// Small review-page thumbnail. Lives here (not in the trainer) because sharp
+// resolves against functions/node_modules — repo-root scripts can't import
+// it directly.
+export async function thumbnailJpeg(buf, { width = 320, quality = 60 } = {}) {
+  return sharp(buf).resize({ width }).jpeg({ quality }).toBuffer()
 }

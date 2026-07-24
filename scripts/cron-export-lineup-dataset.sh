@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Cron wrapper for the lineup-classifier dataset exporter.
 #
+# What the exported dataset contains (and its known caveats):
+# docs/training-data.md
+#
 # Timelapse frames are DELETED from Storage after 14 days (cleanupOldWebcams),
 # so this must run at least every two weeks to archive labeled frames before
 # they vanish. Weekly is comfortable:
@@ -24,9 +27,17 @@ LOG_DIR="$REPO_DIR/training-data/logs"
 LOCK_DIR="$REPO_DIR/training-data/.export.lock"
 LOG_FILE="$LOG_DIR/export-$(date +%Y-%m-%d).log"
 
-# Cron strips the login PATH; include the usual node locations (homebrew
-# arm64/intel, system) plus whatever the invoking user has.
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+# Cron strips the login PATH; include the usual node locations — macOS
+# (homebrew arm64/intel), Ubuntu (apt/nodesource in /usr/bin, snap) — plus
+# whatever the invoking user has.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin:$PATH"
+
+# nvm installs node outside the system PATH; fall back to the newest
+# nvm-managed version if nothing else provided one.
+if ! command -v node >/dev/null 2>&1 && [ -d "$HOME/.nvm/versions/node" ]; then
+  NVM_NODE_BIN="$(ls -d "$HOME/.nvm/versions/node"/*/bin 2>/dev/null | sort -V | tail -1)"
+  [ -n "$NVM_NODE_BIN" ] && export PATH="$NVM_NODE_BIN:$PATH"
+fi
 
 if ! command -v node >/dev/null 2>&1; then
   echo "node not found on PATH — install node or extend PATH in this script" >&2

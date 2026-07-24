@@ -106,10 +106,11 @@ authenticated create, `userUid` must match). The `onLineupReport` trigger
 stamps `crosswalkFullAt` (epoch ms) onto the sailing's `sailingStatus` doc —
 the **latest tag wins**, so anyone can correct an earlier mark (mirroring
 capacity re-tagging). The departures page shows one chip per reporter with
-their marked time. The raw reports are never deleted: they are the training
-labels. ⚠️ Note the exporter (§5) labels frames from the **earliest**
-`crosswalkAt` of a sailing, so a correction to a *later* time doesn't yet
-supersede the original label in the training data.
+their marked time. The raw reports are the training labels; the exporter
+(§5) applies the **same** latest-wins rule via the shared
+`functions/lib/lineup-labels.js`, so corrections and deletions propagate
+into the training data on the next export (see
+[training-data.md](training-data.md)).
 
 ## 4. The classifier
 
@@ -140,32 +141,53 @@ are exactly the examples the next training run needs.
 
 ```bash
 # 1. Export/refresh the dataset (see §6 — run this on a schedule!)
-node scripts/export-lineup-dataset.mjs            # defaults: --project bowen-ferry --days 15
+npm run lineup:export             # defaults: --project bowen-ferry --days 15
 
 # 2. Train once enough labels exist (~200+ tagged sailings across weather/light)
-node scripts/train-lineup-classifier.mjs          # writes functions/models/lineup-classifier.json
+npm run lineup:train              # writes functions/models/lineup-classifier.json
+                                  # needs functions deps: cd functions && npm install
 
 # 3. Deploy — the model activates
 npm run deploy:functions
 ```
 
-The **exporter** joins `lineupReports` tags with frame timestamps (frames at
-or after the earliest `crosswalkAt` of a sailing are positive) and downloads
-frames into `training-data/` (gitignored):
+The **exporter** archives the raw `lineupReports`, joins them with frame
+timestamps using the app's own latest-wins rule
+(`functions/lib/lineup-labels.js` — frames at or after the sailing's
+effective `crosswalkAt` are positive) and downloads frames into
+`training-data/` (gitignored):
 
 ```
 training-data/frames/<storage path>    the JPEGs
 training-data/manifest.csv             path,sailingKey,ts,label,crosswalkAt
+training-data/lineup-reports.json      raw reports archive
 ```
 
-It is incremental — existing files are skipped, manifest rows are merged —
-and needs no credentials (everything it reads is public).
+It is incremental — existing files are skipped, manifest rows are merged
+(labels recomputed each run from current tags) — and needs no credentials
+(everything it reads is public). Full contents:
+[training-data.md](training-data.md).
 
 The **trainer** is plain-JS gradient descent (seconds on a laptop, no
 Python). It splits train/test **by sailing** — frames within one sailing are
 near-duplicates, so a frame-level split would leak and inflate metrics — and
 refuses to write a model with test precision or recall below 0.8 (override
 with `--force`). The written model carries its metrics and training date.
+
+Every training run also writes a per-example review page (link printed at
+the end of the run, even when the metric floor blocks the model): one card
+per labeled frame — the photo with the classifier's ROI outlined, the human
+answer, and the model's probability against the threshold — grouped by
+sailing, with composable filters (correct/misclassified, not-yet/past-
+crosswalk, train/test). This is the main tool for reviewing what the model
+gets wrong and for spotting mislabeled frames worth re-tagging. Two copies:
+
+- **`training-data/report.html`** — local, full-size photos.
+- **`public/classifier-results/index.html`** — ships with the webapp at
+  `/classifier-results` (not linked from the app UI). Uses small committed
+  thumbnails under `public/classifier-results/thumbs/`, since the original
+  frames vanish from Storage after 14 days. Commit and deploy the webapp to
+  publish it.
 
 ## 6. Operations: the export cron
 

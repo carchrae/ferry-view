@@ -39,6 +39,7 @@ import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-
 import { recomputeHistoricalStats } from './lib/history-aggregate.js'
 import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
 import { functionsActive } from './lib/control.js'
+import { effectiveCrosswalkAt } from './lib/lineup-labels.js'
 import { nowInVancouver, timeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -481,20 +482,15 @@ export const onLineupReportDelete = onDocumentDeleted(
         .collection('lineupReports')
         .where('sailingKey', '==', r.sailingKey)
         .get()
-      let latest = null
-      snap.forEach((doc) => {
-        const d = doc.data()
-        if (!d.userUid || typeof d.crosswalkAt !== 'number') return
-        if (!latest || (d.recordedAt || 0) > (latest.recordedAt || 0)) latest = d
-      })
+      const crosswalkAt = effectiveCrosswalkAt(snap.docs.map((doc) => doc.data()))
 
-      if (latest) {
+      if (crosswalkAt != null) {
         await db
           .collection('sailingStatus')
           .doc(r.sailingKey)
-          .set({ crosswalkFullAt: latest.crosswalkAt }, { merge: true })
+          .set({ crosswalkFullAt: crosswalkAt }, { merge: true })
         if (direction === 'To HSB') {
-          await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: latest.crosswalkAt })
+          await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: crosswalkAt })
         }
       } else {
         await db

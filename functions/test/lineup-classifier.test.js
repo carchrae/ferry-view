@@ -5,6 +5,7 @@ import {
   labelForTimestamp,
   FEATURE_LENGTH,
 } from '../lib/lineup-features.js'
+import { effectiveCrosswalkAt } from '../lib/lineup-labels.js'
 import { classifyLineup, scoreFeatures } from '../lib/lineup-classifier.js'
 
 async function solidJpeg(shade, width = 1280, height = 720) {
@@ -47,6 +48,39 @@ describe('labelForTimestamp', () => {
     expect(labelForTimestamp(999, 1000)).toBe(0)
     expect(labelForTimestamp(null, 1000)).toBe(null)
     expect(labelForTimestamp(1000, undefined)).toBe(null)
+  })
+})
+
+describe('effectiveCrosswalkAt', () => {
+  it('picks the latest-recorded valid mark (the app rule)', () => {
+    expect(
+      effectiveCrosswalkAt([
+        { userUid: 'a', crosswalkAt: 1000, recordedAt: 10 },
+        { userUid: 'b', crosswalkAt: 2000, recordedAt: 30 },
+        { userUid: 'c', crosswalkAt: 1500, recordedAt: 20 },
+      ]),
+    ).toBe(2000)
+  })
+
+  it('ignores invalid reports and returns null when none remain', () => {
+    expect(
+      effectiveCrosswalkAt([
+        { userUid: 'a', crosswalkAt: 1000, recordedAt: 99 },
+        { crosswalkAt: 2000, recordedAt: 100 }, // no userUid
+        { userUid: 'b', crosswalkAt: 'soon', recordedAt: 101 }, // non-numeric
+      ]),
+    ).toBe(1000)
+    expect(effectiveCrosswalkAt([])).toBe(null)
+    expect(effectiveCrosswalkAt(undefined)).toBe(null)
+  })
+
+  it('treats a missing recordedAt as oldest', () => {
+    expect(
+      effectiveCrosswalkAt([
+        { userUid: 'a', crosswalkAt: 1000 },
+        { userUid: 'b', crosswalkAt: 2000, recordedAt: 1 },
+      ]),
+    ).toBe(2000)
   })
 })
 
