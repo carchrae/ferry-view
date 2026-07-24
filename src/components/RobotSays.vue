@@ -237,9 +237,9 @@
           instead: agreement means within 5 minutes.
         </p>
         <div class="row justify-between items-center q-mt-md">
-          <a href="/classifier-results/" target="_blank" rel="noopener" class="text-primary">
+          <router-link to="classifier-results" target="_blank" rel="noopener" class="text-primary">
             How it works — classifier results
-          </a>
+          </router-link>
           <q-btn v-close-popup flat dense no-caps label="Close" />
         </div>
       </q-card>
