@@ -3,17 +3,16 @@
     v-if="capacityChips.length || crosswalkChips.length"
     class="row items-center q-gutter-xs q-mt-sm"
   >
-    <span class="text-caption text-grey-7 q-mr-xs">Reports:</span>
-    <q-btn
-      flat
-      round
-      dense
-      size="xs"
-      icon="info_outline"
-      color="grey-7"
+    <span
+      class="text-caption text-grey-7 q-mr-xs reports-label"
+      role="button"
+      tabindex="0"
       aria-label="How scoring works"
       @click="showScoring = true"
-    />
+      @keyup.enter="showScoring = true"
+    >
+      Reports: <q-icon name="info_outline" size="13px" />
+    </span>
     <q-chip
       v-if="disagreement"
       dense
@@ -156,5 +155,10 @@ const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 .report-chip {
   margin-top: 2px;
   margin-bottom: 2px;
+}
+
+.reports-label {
+  cursor: pointer;
+  white-space: nowrap;
 }
 </style>

@@ -121,6 +121,7 @@
             <RobotSays
               :auto-at="upcomingLineup.crosswalkFullAtAuto ?? null"
               :human-at="upcomingLineup.crosswalkFullAt ?? null"
+              :frames="upcomingLineup.timelapse"
               @agree="onAgreeUpcoming"
             />
           </div>
@@ -170,19 +171,46 @@
           :autoplay="false"
           @rate="onRate(sailing, $event)"
           @crosswalk="onCrosswalk(sailing, $event)"
-        />
-        <ReportChips
-          :reports="sailing.reports"
-          :crosswalk-reports="sailing.crosswalkReports"
-          @delete-report="onDeleteReport(sailing, $event)"
-          @delete-crosswalk="onDeleteCrosswalk(sailing, $event)"
-        />
-        <RobotSays
-          :auto-at="sailing.crosswalkFullAtAuto ?? null"
-          :crosswalk-reports="sailing.crosswalkReports"
-          :human-at="sailing.crosswalkFullAt ?? null"
-          @agree="onAgreeCrosswalk(sailing)"
-        />
+        >
+          <!-- Mobile: reports/robot right under the tagging buttons, before
+               the terminal image; desktop keeps the section below the row. -->
+          <template #after-arrival>
+            <div class="lt-md">
+              <ReportChips
+                :reports="sailing.reports"
+                :crosswalk-reports="sailing.crosswalkReports"
+                @delete-report="onDeleteReport(sailing, $event)"
+                @delete-crosswalk="onDeleteCrosswalk(sailing, $event)"
+              />
+              <RobotSays
+                :auto-at="sailing.crosswalkFullAtAuto ?? null"
+                :crosswalk-reports="sailing.crosswalkReports"
+                :human-at="sailing.crosswalkFullAt ?? null"
+                :frames="sailing.arrival?.timelapse || []"
+                :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
+                :capacity-reports="sailing.reports || []"
+                @agree="onAgreeCrosswalk(sailing)"
+              />
+            </div>
+          </template>
+        </SailingTagCards>
+        <div class="gt-sm">
+          <ReportChips
+            :reports="sailing.reports"
+            :crosswalk-reports="sailing.crosswalkReports"
+            @delete-report="onDeleteReport(sailing, $event)"
+            @delete-crosswalk="onDeleteCrosswalk(sailing, $event)"
+          />
+          <RobotSays
+            :auto-at="sailing.crosswalkFullAtAuto ?? null"
+            :crosswalk-reports="sailing.crosswalkReports"
+            :human-at="sailing.crosswalkFullAt ?? null"
+            :frames="sailing.arrival?.timelapse || []"
+            :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
+            :capacity-reports="sailing.reports || []"
+            @agree="onAgreeCrosswalk(sailing)"
+          />
+        </div>
       </q-card-section>
     </q-card>
 
@@ -219,6 +247,7 @@ import RobotSays from 'src/components/RobotSays.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadLineupReportsForSailings } from 'src/composables/useLineupReport'
 import { predictCrosswalk, browserClassifierReady } from 'src/composables/useLineupClassifier'
+import { predictNotFull, terminalClassifierReady } from 'src/composables/useTerminalClassifier'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
@@ -459,13 +488,20 @@ watch(
 const inFlight = new Set()
 let predictionChain = Promise.resolve()
 function queueBrowserPredictions(sailings) {
-  if (!browserClassifierReady) return
+  if (!browserClassifierReady && !terminalClassifierReady) return
   const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
   const cutoffIso = dayjs().tz(TZ).subtract(14, 'day').format('YYYY-MM-DD')
   for (const sailing of sailings) {
-    if (sailing.crosswalkFullAtAuto != null) continue
-    if ((sailing.lineupTimelapsePaths?.length ?? 0) < 2) continue
     if (sailing.dateIso < cutoffIso) continue // frames aged out of Storage
+    const wantCrosswalk =
+      browserClassifierReady &&
+      sailing.crosswalkFullAtAuto == null &&
+      (sailing.lineupTimelapsePaths?.length ?? 0) >= 2
+    const wantTerminal =
+      terminalClassifierReady &&
+      sailing.ferryNotFullAuto == null &&
+      (sailing.departureTimelapsePaths?.length ?? 0) >= 2
+    if (!wantCrosswalk && !wantTerminal) continue
     if (inFlight.has(sailing.sailingKey)) continue
     inFlight.add(sailing.sailingKey)
     // A finished sailing gains no more frames, so its "no detection" is
@@ -474,16 +510,29 @@ function queueBrowserPredictions(sailings) {
     const final = sailing.actualDepartureTime != null || sailing.dateIso < todayIso
     predictionChain = predictionChain.then(async () => {
       try {
-        const pred = await predictCrosswalk(sailing.sailingKey, sailing.lineupTimelapsePaths, {
-          final,
-        })
-        if (pred) {
-          sailing.crosswalkFullAtAuto = pred.ts
-          sailing.crosswalkAutoProb = pred.prob
-          sailing.crosswalkAutoSource = 'browser'
+        if (wantCrosswalk) {
+          const pred = await predictCrosswalk(sailing.sailingKey, sailing.lineupTimelapsePaths, {
+            final,
+          })
+          if (pred) {
+            sailing.crosswalkFullAtAuto = pred.ts
+            sailing.crosswalkAutoProb = pred.prob
+            sailing.crosswalkAutoSource = 'browser'
+          }
+        }
+        if (wantTerminal) {
+          const verdict = await predictNotFull(
+            sailing.sailingKey,
+            sailing.departureTimelapsePaths,
+            { final },
+          )
+          if (verdict) {
+            sailing.ferryNotFullAuto = true
+            sailing.terminalEmptyFrameTs = verdict.emptyTs
+          }
         }
       } catch (err) {
-        console.error('Browser lineup prediction failed:', err)
+        console.error('Browser prediction failed:', err)
       } finally {
         inFlight.delete(sailing.sailingKey)
       }

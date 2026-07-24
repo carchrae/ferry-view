@@ -112,6 +112,11 @@
           </div>
         </q-card-actions>
       </q-card>
+      <!-- Mobile-only spot for the reports/robot section: on phones the
+           departure (terminal) card stacks below, pushing the page-level
+           section far from the tagging buttons — the parent fills this slot
+           with a copy shown only below md. -->
+      <slot name="after-arrival" />
     </div>
     <div v-if="departure || placeholders" class="col-12 col-md-6">
       <q-card v-if="!departure" flat bordered>
