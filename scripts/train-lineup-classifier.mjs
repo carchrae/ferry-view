@@ -274,11 +274,11 @@ function buildReport(srcFor) {
       const mark = list.find((r) => Number.isFinite(r.crosswalkAt))?.crosswalkAt
       const bad = list.filter((r) => r.yhat !== r.y).length
       return `
-      <section>
-        <h2>${esc(key)} <small>mark at ${mark ? esc(fmtTime(mark)) : '—'} ·
-          ${list.length} frames${bad ? ` · <em>${bad} misclassified</em>` : ''}</small></h2>
+      <details class="sailing">
+        <summary>${esc(key)} <small>mark at ${mark ? esc(fmtTime(mark)) : '—'} ·
+          ${list.length} frames${bad ? ` · <em>${bad} misclassified</em>` : ''}</small></summary>
         <div class="cards">${list.map(card).join('')}</div>
-      </section>`
+      </details>`
     })
     .join('')
 
@@ -330,6 +330,11 @@ function buildReport(srcFor) {
   .pred .nopic { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center;
     justify-content: center; background: #8882; border-radius: 6px; font-size: 0.8rem; }
   .pred-info { font-size: 0.9rem; }
+  details.sailing { margin: 0.6rem 0; }
+  details.sailing > summary, details.predlist > summary { cursor: pointer;
+    font-size: 1.1rem; font-weight: bold; padding: 0.3rem 0; }
+  details.sailing > summary small, details.predlist > summary small {
+    font-weight: normal; opacity: 0.7; font-size: 0.8em; }
   .roipick { margin: 0.5rem 0 1rem; max-width: 60rem; }
   .roipick summary { cursor: pointer; font-weight: bold; }
   #roi-stage { position: relative; display: inline-block; max-width: 100%;
@@ -393,6 +398,8 @@ function buildReport(srcFor) {
       ? ` · mean |Δ| vs human tag: ${meanAbsMin} min over ${compared.length} tagged sailings`
       : ''
   }.</p>
+  <details class="predlist">
+  <summary>${detected.length} detected sailings — predicted times with before/after photos</summary>
   ${detected
     .map((s) => {
       const d = s.humanTs != null ? Math.round((s.detectedTs - s.humanTs) / 60000) : null
@@ -418,6 +425,7 @@ function buildReport(srcFor) {
   </div>`
     })
     .join('')}
+  </details>
   ${
     predictions.length > detected.length
       ? `<details><summary>${predictions.length - detected.length} sailings with no detection</summary>
@@ -650,7 +658,7 @@ ${sections}
       document
         .querySelectorAll('nav button[data-group="' + b.dataset.group + '"]')
         .forEach((x) => x.classList.toggle('active', x === b))
-      document.querySelectorAll('section').forEach((sec) => {
+      document.querySelectorAll('details.sailing').forEach((sec) => {
         const any = [...sec.querySelectorAll('.card')].some((c) => getComputedStyle(c).display !== 'none')
         sec.style.display = any ? '' : 'none'
       })
