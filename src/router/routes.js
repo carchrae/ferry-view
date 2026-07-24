@@ -15,6 +15,7 @@ const routes = [
       { path: 'alerts', component: () => import('pages/AlertsPage.vue') },
       { path: 'settings', component: () => import('pages/SettingsPage.vue') },
       { path: 'map', component: () => import('pages/MapPage.vue') },
+      { path: 'classifier-results', component: () => import('pages/ClassifierResultsPage.vue') },
     ]
   },
 

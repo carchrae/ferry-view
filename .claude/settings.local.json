@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node scripts/train-lineup-classifier.mjs --out /tmp/claude-1000/-home-tom-projects-ferry-view/a0675b4a-4405-47d2-addc-947db9f587eb/scratchpad/model-test.json --force)"
+      "Bash(node scripts/train-lineup-classifier.mjs --out /tmp/claude-1000/-home-tom-projects-ferry-view/a0675b4a-4405-47d2-addc-947db9f587eb/scratchpad/model-test.json --force)",
+      "Bash(git stash *)",
+      "Bash(npm run *)"
     ]
   }
 }
