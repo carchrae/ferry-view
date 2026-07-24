@@ -22,7 +22,7 @@
     "lineup:train": "node scripts/train-lineup-classifier.mjs",
     "lineup:docs": "less docs/lineup-classifier.md docs/training-data.md",
     "dev": "quasar dev -m spa",
-    "build": "quasar build -m pwa",
+    "build": "quasar build -m pwa && node scripts/generate-netlify-redirects.mjs",
     "postinstall": "quasar prepare",
     "staging:start": "bash scripts/staging-refresh.sh",
     "staging:refresh": "bash scripts/staging-refresh.sh",

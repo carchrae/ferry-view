@@ -11,21 +11,10 @@
   status = 200
   force = true
 
+# NOTE: do not add [[context.<name>.redirects]] blocks here — Netlify
+# silently ignores context-scoped redirects (only build settings/environment
+# are context-aware). The per-context /webcam/* proxy is instead generated
+# into dist/pwa/_redirects at build time by
+# scripts/generate-netlify-redirects.mjs, keyed off PRODUCTION below.
 [context.production]
   environment = { PRODUCTION = "true" }
-  [[context.production.redirects]]
-    from = "/webcam/*"
-    to = "https://storage.googleapis.com/bowen-ferry.firebasestorage.app/webcams/:splat"
-    status = 200
-
-[context.branch-deploy]
-  [[context.branch-deploy.redirects]]
-    from = "/webcam/*"
-    to = "https://storage.googleapis.com/bowen-ferry-staging.firebasestorage.app/webcams/:splat"
-    status = 200
-
-[context.deploy-preview]
-  [[context.deploy-preview.redirects]]
-    from = "/webcam/*"
-    to = "https://storage.googleapis.com/bowen-ferry-staging.firebasestorage.app/webcams/:splat"
-    status = 200
