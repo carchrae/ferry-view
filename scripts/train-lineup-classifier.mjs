@@ -263,6 +263,8 @@ function buildReport(srcFor) {
   nav .group { display: inline-block; margin-right: 1.2rem; }
   nav .group > span { opacity: 0.6; font-size: 0.8rem; margin-right: 0.3rem; }
   button.explain { float: right; font-size: 0.75em; padding: 0.1rem 0.5rem; cursor: pointer; }
+  .method { max-width: 46rem; }
+  .method .expert { font-size: 0.85rem; opacity: 0.85; }
   details.how { margin: 0.5rem 0 1rem; max-width: 46rem; }
   details.how summary { cursor: pointer; font-weight: bold; }
   .panels { display: flex; flex-wrap: wrap; gap: 1.2rem; margin: 0.8rem 0; }
@@ -282,6 +284,27 @@ function buildReport(srcFor) {
 <p>${rows.length} labeled frames · ${errors} misclassified · threshold ${THRESHOLD} ·
   trained ${esc(new Date().toISOString())}<br>
   <span class="roi-hint">dashed box = region of interest the classifier sees</span></p>
+<section class="method">
+  <p><strong>In plain terms:</strong> a webcam photographs the ferry lineup every few
+  minutes, and riders mark the moment cars back up past the crosswalk. From those
+  examples the computer learns, for one fixed strip of road, which spots being light
+  or dark usually means the lineup has reached the crosswalk. For each new photo it
+  adds up those learned clues into a confidence score between 0 and 1 — at
+  ${THRESHOLD} or higher it says “past crosswalk”. It is a deliberately simple
+  learner: no deep network, just a weighted sum of pixels, small enough to run in
+  milliseconds and to inspect by eye (see below).</p>
+  <p class="expert"><strong>For experts:</strong> binary logistic regression on raw
+  pixel intensities. Preprocessing: fixed fractional ROI crop →
+  ${FEATURE_WIDTH}×${FEATURE_HEIGHT} grayscale, normalized to [0,1] — the same module
+  (<code>functions/lib/lineup-features.js</code>) runs at training and inference, so
+  there is no train/serve skew. Labels: per-sailing rider marks reduced latest-wins
+  (<code>lineup-labels.js</code>, shared with the app); frames captured at/after the
+  mark are positive. Optimizer: full-batch gradient descent, ${EPOCHS} epochs,
+  lr ${LR}, L2 ${L2}. Split: ~80/20 <em>by sailing</em> (md5 bucket of the sailing
+  key) since frames within a sailing are near-duplicates and a frame-level split
+  would leak. Decision threshold ${THRESHOLD}; the model ships as JSON weights and
+  runs in ~5 ms/frame on CPU inside the existing Cloud Function poll.</p>
+</section>
 <table>
   <tr><th></th><th>accuracy</th><th>precision</th><th>recall</th></tr>
   ${m(`train (${train.length})`, trainM)}
