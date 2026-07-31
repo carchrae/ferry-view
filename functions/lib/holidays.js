@@ -4,6 +4,10 @@ import { dayjs, TZ } from './time.js'
 // on these days is atypical (usually much busier), so they should be excluded
 // from historical "typical" baselines and flagged separately on the home page.
 //
+// A holiday's impacted window bridges any weekend adjoining it, plus one
+// weekday of spillover on each side: a Monday holiday impacts Fri-Tue, a
+// Friday holiday Thu-Mon, a midweek holiday just the day before and after.
+//
 // Everything here is calendar-date math in the Vancouver timezone; dates are
 // returned as ISO "YYYY-MM-DD" strings.
 
@@ -83,20 +87,36 @@ export function holidayName(dateIso) {
   return getBcHolidays(year).get(dateIso) || null
 }
 
-// Dates whose ferry traffic is skewed by a nearby holiday: the holiday itself
-// plus a window of days before/after (long-weekend spillover). Returns a Set of
-// ISO dates that fall within [startIso, endIso].
-export function getImpactedDates(startIso, endIso, daysBefore = 1, daysAfter = 1) {
+// Impacted window for one holiday: the holiday itself, any adjoining weekend
+// days, plus one weekday of spillover on each side.
+function holidayWindow(holidayIso) {
+  let start = dayjs.tz(holidayIso, TZ)
+  let end = start
+  let d = start.subtract(1, 'day')
+  while (d.day() === 0 || d.day() === 6) { start = d; d = d.subtract(1, 'day') }
+  start = d
+  d = end.add(1, 'day')
+  while (d.day() === 0 || d.day() === 6) { end = d; d = d.add(1, 'day') }
+  end = d
+  return { startIso: start.format('YYYY-MM-DD'), endIso: end.format('YYYY-MM-DD') }
+}
+
+// Dates whose ferry traffic is skewed by a nearby holiday: each holiday's
+// weekend-bridging window (see holidayWindow). Returns a Set of ISO dates that
+// fall within [startIso, endIso].
+export function getImpactedDates(startIso, endIso) {
   const set = new Set()
   if (!startIso || !endIso) return set
   const startYear = Number(startIso.slice(0, 4))
   const endYear = Number(endIso.slice(0, 4))
-  for (let y = startYear; y <= endYear; y++) {
+  // endYear + 1: a New Year's Day window can reach back into late December.
+  for (let y = startYear; y <= endYear + 1; y++) {
     for (const iso of getBcHolidays(y).keys()) {
-      const h = dayjs.tz(iso, TZ)
-      for (let offset = -daysBefore; offset <= daysAfter; offset++) {
-        const d = h.add(offset, 'day').format('YYYY-MM-DD')
-        if (d >= startIso && d <= endIso) set.add(d)
+      const w = holidayWindow(iso)
+      for (let d = dayjs.tz(w.startIso, TZ); ; d = d.add(1, 'day')) {
+        const cur = d.format('YYYY-MM-DD')
+        if (cur > w.endIso) break
+        if (cur >= startIso && cur <= endIso) set.add(cur)
       }
     }
   }
@@ -106,16 +126,22 @@ export function getImpactedDates(startIso, endIso, daysBefore = 1, daysAfter = 1
 // Whether a date is a holiday or sits in a holiday's spillover window, plus the
 // name of the driving holiday. Used for the home-page "expect heavier traffic"
 // caveat.
-export function getHolidayContext(dateIso, daysBefore = 1, daysAfter = 1) {
+export function getHolidayContext(dateIso) {
   if (!dateIso) return { impacted: false, name: null, onHoliday: false }
   const direct = holidayName(dateIso)
   if (direct) return { impacted: true, name: direct, onHoliday: true }
   const d = dayjs.tz(dateIso, TZ)
-  for (let offset = -daysBefore; offset <= daysAfter; offset++) {
-    if (offset === 0) continue
-    const other = d.add(offset, 'day').format('YYYY-MM-DD')
-    const name = holidayName(other)
-    if (name) return { impacted: true, name, onHoliday: false }
+  // 3 is the longest reach of any window (Monday holiday -> preceding Friday).
+  for (let abs = 1; abs <= 3; abs++) {
+    for (const sign of [-1, 1]) {
+      const other = d.add(sign * abs, 'day').format('YYYY-MM-DD')
+      const name = holidayName(other)
+      if (!name) continue
+      const w = holidayWindow(other)
+      if (dateIso >= w.startIso && dateIso <= w.endIso) {
+        return { impacted: true, name, onHoliday: false }
+      }
+    }
   }
   return { impacted: false, name: null, onHoliday: false }
 }
