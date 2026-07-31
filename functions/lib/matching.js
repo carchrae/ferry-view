@@ -121,7 +121,7 @@ export function buildPast(scheduleItems, recentActivity, eventLocation, now, lab
   return [...matched, ...skipped]
 }
 
-export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing = false, fallback = false) {
+export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, sailingFromHere = false, fallback = false) {
   const candidates = scheduleItems
     .map((s) => ({ s, t: timeToDate(s.time) }))
     .filter(({ t }) => {
@@ -133,11 +133,15 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
 
   // Latest sailing whose scheduled time has already passed. An overdue sailing
   // is only credibly "still to come / running late" if it's this leading edge
-  // AND the vessel isn't already sailing. Earlier overdue sailings — or any
-  // overdue sailing while the vessel is underway — have departed; the BC Ferries
+  // AND the vessel isn't already sailing on a trip that started HERE
+  // (sailingFromHere). Earlier overdue sailings — or the leading edge while
+  // the vessel is underway from this terminal — have departed; the BC Ferries
   // arrival/departure log (recentActivity) just hasn't caught up, since it lags
   // the live AIS feed. Without this, a stale log makes every un-logged departure
-  // pile up as a bogus "204m late" upcoming sailing.
+  // pile up as a bogus "204m late" upcoming sailing. The from-HERE qualifier
+  // matters when the boat runs very late: underway TOWARD this terminal, its
+  // overdue sailing here cannot have departed yet — dropping it made the very
+  // late 19:15 vanish from upcoming entirely (2026-07-30).
   const overdue = candidates.filter(({ t }) => t <= now)
   const latestOverdue = overdue.length
     ? Math.max(...overdue.map(({ t }) => t.valueOf()))
@@ -149,7 +153,7 @@ export function buildUpcoming(scheduleItems, now, oneMinuteFromNow, label, consu
       // In fallback mode every sailing whose scheduled time has passed is treated as
       // departed (shown in past with a '?'), so none linger in upcoming.
       if (fallback) return false
-      if (isSailing) return false
+      if (sailingFromHere) return false
       return t.valueOf() === latestOverdue
     })
     .map(({ s, t }) => {

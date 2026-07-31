@@ -88,6 +88,42 @@ describe('dangerous cargo / repositioning sailings', () => {
   })
 })
 
+describe('overdue sailings while the vessel is underway', () => {
+  // 2026-07-30: ferry departed HSB 19:13 (38m late), sailing toward Bowen at
+  // 19:19 — the overdue 19:15 Bowen sailing hasn't departed and must stay in
+  // upcoming as running late. The old flat isSailing flag dropped it.
+  const schedule = ['18:00', '19:15', '20:25'].map((time) => ({ time }))
+  const consumed = new Set([at('18:00').valueOf()])
+
+  it('keeps the latest overdue sailing when the trip started at the other terminal', () => {
+    const upcoming = buildUpcoming(
+      schedule,
+      at('19:19'),
+      at('19:20'),
+      'Bowen',
+      consumed,
+      at('18:00'),
+      false, // sailingFromHere: boat last departed the OTHER terminal
+      false,
+    )
+    expect(upcoming.map((e) => e.shortTime)).toEqual(['19:15', '20:25'])
+  })
+
+  it('drops overdue sailings when the vessel is underway from this terminal', () => {
+    const upcoming = buildUpcoming(
+      schedule,
+      at('19:19'),
+      at('19:20'),
+      'Bowen',
+      consumed,
+      at('18:00'),
+      true, // sailingFromHere: the overdue 19:15 IS the current unlogged trip
+      false,
+    )
+    expect(upcoming.map((e) => e.shortTime)).toEqual(['20:25'])
+  })
+})
+
 describe('calculateLateness', () => {
   const bowen = ['10:00', '11:15', '12:35'].map((time) => ({ time }))
   const hsb = ['10:50', '12:05'].map((time) => ({ time }))

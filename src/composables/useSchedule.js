@@ -23,14 +23,25 @@ export function useSchedule(ferryData, nowDate, oneMinuteFromNowDate) {
     const consumedTimes = new Set(consumedArr)
     const lastConsumedTime = consumedArr.length > 0 ? dayjs(Math.max(...consumedArr)) : null
 
-    // When the vessel is underway, an overdue scheduled departure has already
-    // left even if the arrival/departure log hasn't logged it yet (that log lags
-    // the live AIS feed). Pass this so buildUpcoming can drop those departures
-    // instead of showing them as increasingly-late phantom upcoming sailings.
+    // When the vessel is underway on a trip that started at THIS terminal, an
+    // overdue scheduled departure here has already left even if the
+    // arrival/departure log hasn't logged it yet (that log lags the live AIS
+    // feed) — buildUpcoming drops it instead of showing an increasingly-late
+    // phantom upcoming sailing. Where the trip started comes from the newest
+    // Departed event across both terminals: if the boat last departed the
+    // OTHER side it's sailing toward here, and an overdue sailing here is
+    // genuinely running late — it must stay visible (a very late 19:15
+    // vanished from upcoming entirely, 2026-07-30).
     const speed = parseFloat(ferryData.value.speed)
     const isSailing = !isNaN(speed) && speed > 0.5
+    const lastDeparture = (ferryData.value.recentActivity || [])
+      .filter((e) => e.action === 'Departed')
+      .map((e) => ({ location: e.location, t: timeToDate(e.time) }))
+      .filter((e) => e.t)
+      .reduce((a, b) => (!a || b.t > a.t ? b : a), null)
+    const sailingFromHere = isSailing && lastDeparture?.location === eventLocation
 
-    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, isSailing, fallback)
+    const upcoming = buildUpcoming(schedule, now, oneMinuteFromNow, label, consumedTimes, lastConsumedTime, sailingFromHere, fallback)
     return { past, upcoming, consumedTimes }
   }
 
