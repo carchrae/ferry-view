@@ -57,4 +57,72 @@ describe('augmentRecentActivity — crosswalkFullAt enrichment', () => {
     expect(data.hsbSchedule[0].crosswalkFullAt).toBeUndefined()
     expect(data.bowenSchedule[1].crosswalkFullAt).toBeUndefined()
   })
+
+  it('carries crosswalkSource alongside the mark (defaulting to user)', async () => {
+    const db = makeDb([
+      {
+        dateIso: DATE,
+        sailingTime: '10:00',
+        direction: 'To HSB',
+        crosswalkFullAt: 1752420000000,
+        crosswalkSource: 'robot',
+      },
+      { dateIso: DATE, sailingTime: '11:15', direction: 'To HSB', crosswalkFullAt: 1752421000000 },
+    ])
+    const data = makeData()
+    await augmentRecentActivity(db, data)
+    expect(data.bowenSchedule[0].crosswalkSource).toBe('robot')
+    expect(data.bowenSchedule[1].crosswalkSource).toBe('user')
+  })
+})
+
+describe('augmentRecentActivity — robot capacity enrichment', () => {
+  it("copies a robot 'Not Full' onto the schedule entry when it has no capacity", async () => {
+    const db = makeDb([
+      {
+        dateIso: DATE,
+        sailingTime: '10:00',
+        direction: 'To HSB',
+        lastCapacity: 'Not Full',
+        capacitySource: 'robot',
+      },
+    ])
+    const data = makeData()
+    await augmentRecentActivity(db, data)
+    expect(data.bowenSchedule[0].lastCapacity).toBe('Not Full')
+    expect(data.bowenSchedule[0].capacitySource).toBe('robot')
+  })
+
+  it('never displaces a capacity already on the entry', async () => {
+    const db = makeDb([
+      {
+        dateIso: DATE,
+        sailingTime: '10:00',
+        direction: 'To HSB',
+        lastCapacity: 'Not Full',
+        capacitySource: 'robot',
+      },
+    ])
+    const data = makeData()
+    data.bowenSchedule[0].lastCapacity = 'Full'
+    data.bowenSchedule[0].capacitySource = 'user'
+    await augmentRecentActivity(db, data)
+    expect(data.bowenSchedule[0].lastCapacity).toBe('Full')
+    expect(data.bowenSchedule[0].capacitySource).toBe('user')
+  })
+
+  it('ignores user/automated-sourced docs (those flow via other augments)', async () => {
+    const db = makeDb([
+      {
+        dateIso: DATE,
+        sailingTime: '10:00',
+        direction: 'To HSB',
+        lastCapacity: 'Full',
+        capacitySource: 'user',
+      },
+    ])
+    const data = makeData()
+    await augmentRecentActivity(db, data)
+    expect(data.bowenSchedule[0].lastCapacity).toBeUndefined()
+  })
 })

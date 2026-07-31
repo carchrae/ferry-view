@@ -92,15 +92,20 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `actualDepartureTime` | string? | `"10:35"` — when the ferry actually departed |
 | `filledAt` | number? | Epoch ms when full, or `"user_reported"` (user tag with no known fill time) |
 | `lastCapacity` | string? | `"Full"`, `"Not Full"` (user-reported: had room, amount unknown), or percent available like `"100%"` |
-| `capacitySource` | string? | `"automated"` (scraped) or `"user"` — written whenever `lastCapacity` is written. Automated is authoritative; user tags only fill gaps (see `updateSailingStatus`). Legacy docs with `lastCapacity` but no `capacitySource` are treated as automated. |
+| `capacitySource` | string? | `"automated"` (scraped), `"user"`, or `"robot"` (terminal classifier's confirmed "Not Full" verdict) — written whenever `lastCapacity` is written. Precedence: automated > user > robot (see `updateSailingStatus`) — automated is authoritative, humans always overwrite robot values. Legacy docs with `lastCapacity` but no `capacitySource` are treated as automated. |
 | `webcamSnapshotPath` | string? | Firebase Storage path to departure webcam photo |
 | `communitySnapshotPath` | string? | Firebase Storage path to the arrival/lineup photo (community camera), keyed to the departure this lineup predicts |
 | `communityArrivalTime` | string? | `"15:00"` — actual arrival time of the ferry in the lineup photo |
 | `lineupTimelapsePaths` | string[]? | Storage paths of the lineup timelapse frames (community camera, one per 5 min while the lineup builds — see [docs/webcams.md](docs/webcams.md)) |
 | `departureTimelapsePaths` | string[]? | Storage paths of the loading timelapse frames (terminal camera, one per minute from arrival/T−10 until departure) |
-| `crosswalkFullAt` | number? | Epoch ms when a rider marked the lineup full to the crosswalk (latest tag wins, via `onLineupReport`) |
-| `crosswalkFullAtAuto` | number? | Epoch ms of the first timelapse frame the lineup classifier scored positive (kept separate from the human tag; unused until a trained model ships) |
+| `crosswalkFullAt` | number? | Epoch ms the lineup was full to the crosswalk. Rider marks (latest tag wins, via `onLineupReport`) always overwrite; when no rider has marked, the lineup classifier's confirmed verdict is recorded here as a robot report (`crosswalkSource: "robot"`) |
+| `crosswalkSource` | string? | `"user"` or `"robot"` — who produced `crosswalkFullAt`. Absent on legacy docs = user |
+| `crosswalkFullAtAuto` | number? | Epoch ms of the first timelapse frame the lineup classifier scored positive. Permanent: kept separate from the human tag and never deleted, so human-vs-robot agreement stays measurable even after a rider overwrites the report |
 | `crosswalkAutoProb` | number? | Classifier probability behind `crosswalkFullAtAuto` |
+| `crosswalkAutoModel` | number? | Version of the lineup classifier model that produced `crosswalkFullAtAuto` (see `classifierModels`) |
+| `ferryNotFullAuto` | boolean? | Terminal classifier confirmed the waiting area emptied pre-departure (two consecutive empty frames; one-way). Permanent, like the crosswalk auto fields. First confirmation is also recorded as a robot capacity report (`lastCapacity: "Not Full"`, `capacitySource: "robot"`) unless a user/automated value exists |
+| `terminalEmptyFrameTs` / `terminalEmptyProb` | number? | Confirming empty frame's epoch ms / probability |
+| `terminalAutoModel` | number? | Version of the terminal-cars classifier model behind `ferryNotFullAuto` |
 
 ---
 
@@ -127,7 +132,10 @@ Records of capacity changes (both API-reported and user-submitted).
 Rider-submitted "car lineup reached the crosswalk" marks (see
 [docs/lineup-classifier.md](docs/lineup-classifier.md)). Never deleted — they
 are the classifier's training labels. The `onLineupReport` trigger stamps the
-first tag onto the sailing's `crosswalkFullAt`.
+latest tag onto the sailing's `crosswalkFullAt` (`crosswalkSource: "user"`).
+When a rider deletes their last mark, the sailing falls back to the robot's
+`crosswalkFullAtAuto` (as `crosswalkSource: "robot"`) if the classifier had a
+confirmed verdict.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -173,9 +181,31 @@ composables expand them.
 
 | Doc | Built by | Contents |
 |-----|----------|----------|
-| `historicalStats` | `refreshHistoryAggregate` nightly 03:10 (manual seed: `rebuildHistoryAggregate`) | `{ start, end, weeks, updatedAt, sailings[] }` — last 8 weeks of `sailingStatus`, ending yesterday. Record keys: `d`ateIso, `t`ime, `dir`ection, `dep`arture, `cap`acity, `src`, `fa` (filledAt), `cw` (crosswalkFullAt) |
+| `historicalStats` | `refreshHistoryAggregate` nightly 03:10 (manual seed: `rebuildHistoryAggregate`) | `{ start, end, weeks, updatedAt, sailings[] }` — last 8 weeks of `sailingStatus`, ending yesterday. Record keys: `d`ateIso, `t`ime, `dir`ection, `dep`arture, `cap`acity, `src`, `fa` (filledAt), `cw` (crosswalkFullAt), `cws` (crosswalkSource, only when `"robot"`) |
 | `leaderboard` | `recomputeLeaderboard` on capacity/ride triggers + nightly 03:00 (manual: `rebuildLeaderboard`) | `{ reporters[], riders[], updatedAt }` — 30-day ranked boards (max 100 entries each) |
-| `bowenSailings` | Incremental upserts from every webcam capture / user report, reconciled by `refreshBowenSailingsAggregate` nightly 03:20 (manual seed: `rebuildBowenSailings`) | `{ start, end, updatedAt, sailings[] }` — last 13 days of To HSB sailings that have media. Record keys: `d`, `t`, `cap`, `src`, `wp`/`cp` (photo paths), `ca` (arrival time), `cw`, and `lt`/`dt` — timelapse frame **epoch suffixes only** (full Storage paths are deterministic and reconstructed client-side) |
+| `bowenSailings` | Incremental upserts from every webcam capture / user report, reconciled by `refreshBowenSailingsAggregate` nightly 03:20 (manual seed: `rebuildBowenSailings`) | `{ start, end, updatedAt, sailings[] }` — last 13 days of To HSB sailings that have media. Record keys: `d`, `t`, `cap`, `src`, `wp`/`cp` (photo paths), `ca` (arrival time), `cw`, `cws` (crosswalkSource, only when `"robot"`), and `lt`/`dt` — timelapse frame **epoch suffixes only** (full Storage paths are deterministic and reconstructed client-side) |
+
+---
+
+## `classifierModels/{name}-v{version}`
+
+Immutable registry of every classifier model version that has shipped — e.g.
+`lineup-v1`, `terminal-cars-v2`. Upserted by the Cloud Functions on cold start
+(`ensureClassifierModelDocs`, see `functions/lib/classifier-models.js`) from
+the bundled model JSONs, so the registry always describes the models actually
+deployed. Robot verdicts on `sailingStatus` reference these via
+`crosswalkAutoModel` / `terminalAutoModel`, keeping every prediction
+attributable to the exact model + training set that produced it.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | `"lineup"` or `"terminal-cars"` |
+| `version` | number | Monotonic, bumped by the training script on each successful run |
+| `trainedAt` | string | ISO timestamp of the training run |
+| `type` / `threshold` / `regions` / `weights` / `bias` | | The full model, as shipped in `functions/models/*.json` |
+| `metrics` | map | `{ train, test, trainFrames, testFrames }` — accuracy/precision/recall on the by-sailing split |
+| `dataset` | map? | Training-set snapshot: `{ from, to }` date range, `frames`, `labeledFrames`, `sailings`. Absent on v1 (predates the field) |
+| `syncedAt` | number | Epoch ms the doc was written |
 
 ---
 

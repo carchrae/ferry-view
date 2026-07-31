@@ -14,6 +14,8 @@ export const BOWEN_SAILINGS_DAYS = 42
 //   d = dateIso, t = sailingTime, cap = lastCapacity, src = capacitySource,
 //   wp = webcamSnapshotPath, cp = communitySnapshotPath,
 //   ca = communityArrivalTime, cw = crosswalkFullAt (epoch ms),
+//   cws = crosswalkSource, only when 'robot' (absent = human mark) — drives
+//   the square robot chip on the client,
 //   cwa / cwp = crosswalkFullAtAuto (epoch ms) / crosswalkAutoProb — the
 //   classifier's prediction, feeding the "Robot says…" agree-tag,
 //   nf = ferryNotFullAuto (terminal cam saw an empty frame pre-departure),
@@ -50,6 +52,7 @@ export function sailingToRecord(s) {
   if (s.communityArrivalTime != null) rec.ca = s.communityArrivalTime
   if (s.actualDepartureTime != null) rec.dep = s.actualDepartureTime
   if (s.crosswalkFullAt != null) rec.cw = flattenMs(s.crosswalkFullAt)
+  if (s.crosswalkSource === 'robot') rec.cws = 'robot'
   if (s.crosswalkFullAtAuto != null) rec.cwa = flattenMs(s.crosswalkFullAtAuto)
   if (s.crosswalkAutoProb != null) rec.cwp = s.crosswalkAutoProb
   if (s.ferryNotFullAuto) rec.nf = true

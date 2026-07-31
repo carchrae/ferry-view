@@ -142,8 +142,7 @@ export function aggregateLeaderboard(reports, crosswalkReports = []) {
 // { authorUid, authorName, authorPhoto, createdAt, type }, where type is
 // 'offer' or 'request' (anything else defaults to the request credit). Returns
 // the same entry shape as aggregateLeaderboard so both boards render
-// identically. Riders with only a single post are excluded — the board
-// rewards repeat participation.
+// identically.
 export function aggregateRideLeaderboard(rides) {
   const totals = new Map() // uid -> entry (see newEntry)
   for (const r of rides || []) {
@@ -155,7 +154,7 @@ export function aggregateRideLeaderboard(rides) {
     totals.set(r.authorUid, entry)
   }
 
-  return finalizeBoard(totals).filter((e) => e.reportCount >= 2)
+  return finalizeBoard(totals)
 }
 
 // --- Shared leaderboard-entry helpers (used by both boards) ---
@@ -192,7 +191,7 @@ function applyIdentity(entry, at, name, photo, anonymous) {
   }
 }
 
-// Ranked, credits desc, then report count desc, then most-recent activity desc.
+// Ranked, credits desc, ties broken by most-recent activity, then report count.
 function finalizeBoard(totals) {
   return [...totals.values()]
     .map((e) => ({
@@ -206,7 +205,7 @@ function finalizeBoard(totals) {
     }))
     .sort(
       (a, b) =>
-        b.credits - a.credits || b.reportCount - a.reportCount || b.lastAt - a.lastAt,
+        b.credits - a.credits || b.lastAt - a.lastAt || b.reportCount - a.reportCount,
     )
 }
 

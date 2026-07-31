@@ -1,6 +1,7 @@
 {
   "enabled": true,
   "type": "logistic",
+  "version": 1,
   "regions": [
     {
       "name": "left lane",

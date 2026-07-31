@@ -25,11 +25,16 @@ export async function applyUserCapacityReport(db, record) {
         : 'user_reported'
       : null
 
-  await updateSailingStatus(record.sailingKey, time, direction, dateIso, db, {
+  const { capacityApplied } = await updateSailingStatus(record.sailingKey, time, direction, dateIso, db, {
     lastCapacity: record.capacity,
     filledAt,
     capacitySource: 'user',
   })
+
+  // A report blocked by higher-precedence (automated) capacity must not leak
+  // into the aggregate either — the two would disagree on source, and source
+  // now drives the chip shape.
+  if (!capacityApplied) return false
 
   if (direction === 'To HSB') {
     await upsertBowenSailing(db, {

@@ -382,21 +382,43 @@ if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < ME
   process.exit(1)
 }
 
+// Each shipped model gets a monotonically increasing version plus a snapshot
+// of the training set it saw (date range, image counts). The functions sync
+// versioned models into Firestore (classifierModels/{name}-v{version}, see
+// functions/lib/classifier-models.js) and stamp the version on every robot
+// verdict, so predictions stay attributable to their exact model.
+let prevVersion = 0
+try {
+  prevVersion = JSON.parse(readFileSync(OUT, 'utf8')).version || 0
+} catch {
+  // First versioned model.
+}
+const dates = samples.map((s) => s.sailingKey.slice(0, 10)).sort()
+const dataset = {
+  from: dates[0] ?? null,
+  to: dates[dates.length - 1] ?? null,
+  frames: samples.length,
+  labeledFrames: labeled.length,
+  sailings: new Set(samples.map((s) => s.sailingKey)).size,
+}
+
 writeFileSync(
   OUT,
   JSON.stringify(
     {
       enabled: true,
       type: 'logistic',
+      version: prevVersion + 1,
       regions: REGIONS,
       weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),
       bias: Math.round(b * 1e6) / 1e6,
       threshold: THRESHOLD,
       metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
+      dataset,
       trainedAt: new Date().toISOString(),
     },
     null,
     2,
   ) + '\n',
 )
-console.log(`Model written to ${OUT} — deploy functions to activate.`)
+console.log(`Model v${prevVersion + 1} written to ${OUT} — deploy functions to activate.`)

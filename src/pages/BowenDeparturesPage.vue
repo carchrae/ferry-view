@@ -99,7 +99,13 @@
           Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
         </div>
         <q-space />
-        <q-badge v-if="upcomingLineup.crosswalkFullAt" rounded color="deep-orange" dense>
+        <q-badge
+          v-if="upcomingLineup.crosswalkFullAt"
+          rounded
+          color="deep-orange"
+          :class="{ 'robot-badge': upcomingLineup.crosswalkSource === 'robot' }"
+          dense
+        >
           crosswalk {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
           <q-tooltip>
             Lineup reached the crosswalk at {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
@@ -120,8 +126,9 @@
             />
             <RobotSays
               :auto-at="upcomingLineup.crosswalkFullAtAuto ?? null"
-              :human-at="upcomingLineup.crosswalkFullAt ?? null"
+              :human-at="humanCrosswalkAt(upcomingLineup)"
               :frames="upcomingLineup.timelapse"
+              :auto-open="robotTarget?.key === upcomingLineup.sailingKey ? robotTarget.kind : null"
               @agree="onAgreeUpcoming"
               @mark="onUpcomingRobotMark"
             />
@@ -186,11 +193,16 @@
               <RobotSays
                 :auto-at="sailing.crosswalkFullAtAuto ?? null"
                 :crosswalk-reports="sailing.crosswalkReports"
-                :human-at="sailing.crosswalkFullAt ?? null"
+                :human-at="humanCrosswalkAt(sailing)"
                 :frames="sailing.arrival?.timelapse || []"
                 :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
                 :capacity-reports="sailing.reports || []"
                 :terminal-frames="sailing.departure?.timelapse || []"
+                :auto-open="
+                  $q.screen.lt.md && robotTarget?.key === sailing.sailingKey
+                    ? robotTarget.kind
+                    : null
+                "
                 @agree="onAgreeCrosswalk(sailing)"
                 @mark="onRobotMark(sailing, $event)"
                 @capacity="onRobotCapacity(sailing, $event)"
@@ -208,11 +220,16 @@
           <RobotSays
             :auto-at="sailing.crosswalkFullAtAuto ?? null"
             :crosswalk-reports="sailing.crosswalkReports"
-            :human-at="sailing.crosswalkFullAt ?? null"
+            :human-at="humanCrosswalkAt(sailing)"
             :frames="sailing.arrival?.timelapse || []"
             :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
             :capacity-reports="sailing.reports || []"
             :terminal-frames="sailing.departure?.timelapse || []"
+            :auto-open="
+              !$q.screen.lt.md && robotTarget?.key === sailing.sailingKey
+                ? robotTarget.kind
+                : null
+            "
             @agree="onAgreeCrosswalk(sailing)"
             @mark="onRobotMark(sailing, $event)"
             @capacity="onRobotCapacity(sailing, $event)"
@@ -571,6 +588,14 @@ async function loadSailings(force = false) {
   }
 }
 
+// crosswalkFullAt can now be the robot's own recorded report (crosswalkSource
+// 'robot') — RobotSays must not treat that as a human mark or it would render
+// an "agrees" verdict against itself; only human-sourced marks count, so the
+// "agree?" invitation stays up until a rider actually confirms.
+function humanCrosswalkAt(x) {
+  return x?.crosswalkSource === 'robot' ? null : (x?.crosswalkFullAt ?? null)
+}
+
 // Crosswalk mark from the upcoming (boarding) lineup timelapse — the rider
 // paused on the frame where cars reach the crosswalk. Mirrors onCrosswalk,
 // but targets the upcomingLineup sailing (which isn't in allSailings yet).
@@ -583,7 +608,10 @@ function onUpcomingCrosswalk({ ts, timeLabel }, extra = {}) {
         showSignInDialog.value = true
         return
       }
-      if (upcomingLineup.value) upcomingLineup.value.crosswalkFullAt = ts
+      if (upcomingLineup.value) {
+        upcomingLineup.value.crosswalkFullAt = ts
+        upcomingLineup.value.crosswalkSource = 'user'
+      }
       // Score against any marks already held for this sailing (it isn't in
       // allSailings yet, but earlier marks may be in the keyed map) and keep
       // ours there so the sailing picks it up when it appears.
@@ -645,7 +673,12 @@ function onCrosswalk(sailing, { sailingKey, ts, timeLabel }, extra = {}) {
         showSignInDialog.value = true
         return
       }
-      if (sailing.arrival) sailing.arrival.crosswalkFullAt = ts
+      sailing.crosswalkFullAt = ts
+      sailing.crosswalkSource = 'user'
+      if (sailing.arrival) {
+        sailing.arrival.crosswalkFullAt = ts
+        sailing.arrival.crosswalkSource = 'user'
+      }
       // Optimistically reflect the mark in the chips (replacing this user's
       // previous one) so it shows before the next reload.
       const mine = {
@@ -780,12 +813,17 @@ function onDeleteReport(sailing, report) {
         reportsByKey.value.set(report.sailingKey, remaining)
         attachReports(sailing, remaining)
         const latest = latestOf(remaining)
-        sailing.lastCapacity = latest?.capacity ?? null
-        sailing.capacitySource = latest ? 'user' : null
+        // Mirror the server's delete fallback: latest remaining report wins,
+        // else the robot's confirmed "Not Full" verdict, else it clears.
+        const fallbackCapacity =
+          latest?.capacity ?? (sailing.ferryNotFullAuto ? 'Not Full' : null)
+        const fallbackSource = latest ? 'user' : fallbackCapacity ? 'robot' : null
+        sailing.lastCapacity = fallbackCapacity
+        sailing.capacitySource = fallbackSource
         for (const card of [sailing.arrival, sailing.departure]) {
           if (card && card.capacitySource === 'user') {
-            card.currentCapacity = latest?.capacity ?? null
-            card.capacitySource = latest ? 'user' : null
+            card.currentCapacity = fallbackCapacity
+            card.capacitySource = fallbackSource
           }
         }
         $q.notify({ type: 'positive', message: 'Report deleted' })
@@ -814,8 +852,16 @@ function onDeleteCrosswalk(sailing, report) {
         crosswalkByKey.value.set(report.sailingKey, remaining)
         attachCrosswalkReports(sailing, remaining)
         const latest = latestOf(remaining)
-        sailing.crosswalkFullAt = latest?.crosswalkAt ?? null
-        if (sailing.arrival) sailing.arrival.crosswalkFullAt = latest?.crosswalkAt ?? null
+        // Mirror the server's delete fallback: latest remaining human mark,
+        // else the robot's confirmed time, else nothing.
+        const fallbackAt = latest?.crosswalkAt ?? sailing.crosswalkFullAtAuto ?? null
+        const fallbackSource = latest ? 'user' : fallbackAt != null ? 'robot' : null
+        sailing.crosswalkFullAt = fallbackAt
+        sailing.crosswalkSource = fallbackSource
+        if (sailing.arrival) {
+          sailing.arrival.crosswalkFullAt = fallbackAt
+          sailing.arrival.crosswalkSource = fallbackSource
+        }
         $q.notify({ type: 'positive', message: 'Crosswalk mark deleted' })
       })
       .catch((err) => {
@@ -897,9 +943,36 @@ watch([filterTime, filterDay, untaggedOnly, disagreementOnly], ([time, day, unta
   })
 })
 
+// Arriving from a robot badge elsewhere (e.g. the home page schedule):
+// ?robot=crosswalk|fullness&rtime=HH:mm targets today's sailing at that time
+// and auto-opens the robot's verify dialog on its RobotSays row. Held as
+// { key, kind } and consumed from the URL once resolved.
+const robotTarget = ref(null)
+function applyRobotFromQuery() {
+  const kind = String(route.query.robot || '')
+  if (kind !== 'crosswalk' && kind !== 'fullness') return
+  const t = normalizeTime(String(route.query.rtime || ''))
+  const match = allSailings.value.find(
+    (s) => s.dateIso === todayIso && normalizeTime(s.sailingTime) === t,
+  )
+  if (match) {
+    robotTarget.value = { key: match.sailingKey, kind }
+  } else if (
+    kind === 'crosswalk' &&
+    upcomingLineup.value &&
+    normalizeTime(upcomingLineup.value.sailingTime) === t
+  ) {
+    // The sailing is still boarding — its robot prediction lives on the
+    // upcoming-lineup card rather than a sailing card.
+    robotTarget.value = { key: upcomingLineup.value.sailingKey, kind }
+  }
+  router.replace({ query: { ...route.query, robot: undefined, rtime: undefined } })
+}
+
 onMounted(async () => {
   await loadSailings()
   applyFiltersFromQuery()
+  applyRobotFromQuery()
   queryReady = true
 
   // Live updates: the aggregate doc is rewritten whenever a sailing gains a

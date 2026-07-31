@@ -111,7 +111,7 @@
                       v-for="(event, i) in recentPastBowen.slice(-3)"
                       :key="'pb' + i"
                       class="row items-center no-wrap q-mt-xs cursor-pointer"
-                      @click="openHistory(event.scheduledTime, event.label)"
+                      @click="openHistory(event.scheduledTime, event.label, event)"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                         {{ formatTime12h(event.scheduledTime) }}
@@ -133,6 +133,7 @@
                         v-if="event.lastCapacity"
                         :color="getDeckColor(event.lastCapacity)"
                         class="badge-gap"
+                        :class="{ 'robot-badge': event.capacitySource === 'robot' }"
                         dense
                         >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
                       >
@@ -141,6 +142,7 @@
                         v-if="crosswalkBadge(event)"
                         color="deep-orange"
                         class="badge-gap"
+                        :class="{ 'robot-badge': event.crosswalkSource === 'robot' }"
                         dense
                         >{{ crosswalkBadge(event) }}</q-badge
                       >
@@ -166,7 +168,7 @@
                       v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
                       class="row items-center no-wrap q-mt-xs cursor-pointer"
-                      @click="openHistory(event.scheduledTime, event.label)"
+                      @click="openHistory(event.scheduledTime, event.label, event)"
                     >
                       <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                         {{ formatTime12h(event.scheduledTime) }}
@@ -226,11 +228,11 @@
                       :key="'ub' + i"
                       class="q-mt-xs"
                     >
-                      <div class="row items-center no-wrap">
-                        <div
-                          class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                          @click="openHistory(s.shortTime, s.label)"
-                        >
+                      <div
+                        class="row items-center no-wrap cursor-pointer"
+                        @click="openHistory(s.shortTime, s.label, s)"
+                      >
+                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                           {{ formatTime12h(s.shortTime) }}
                         </div>
                         <div v-fit-scale class="row items-center no-wrap col badge-fit">
@@ -255,6 +257,7 @@
                           v-if="crosswalkBadge(s)"
                           color="deep-orange"
                           class="badge-gap"
+                          :class="{ 'robot-badge': s.crosswalkSource === 'robot' }"
                           dense
                           >{{ crosswalkBadge(s) }}</q-badge
                         >
@@ -288,11 +291,11 @@
                       :key="'uh' + i"
                       class="q-mt-xs"
                     >
-                      <div class="row items-center no-wrap">
-                        <div
-                          class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                          @click="openHistory(s.shortTime, s.label)"
-                        >
+                      <div
+                        class="row items-center no-wrap cursor-pointer"
+                        @click="openHistory(s.shortTime, s.label, s)"
+                      >
+                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                           {{ formatTime12h(s.shortTime) }}
                         </div>
                         <div v-fit-scale class="row items-center no-wrap col badge-fit">
@@ -339,6 +342,10 @@
                 </div>
                 <div v-if="anyCrosswalkBadge" class="text-center text-caption text-grey-6 q-mt-sm">
                   C = full to the crosswalk
+                </div>
+                <div v-if="anyRobotBadge" class="text-center text-caption text-grey-6 q-mt-sm">
+                  <q-icon name="smart_toy" size="12px" /> blue border = reported by the robot —
+                  tap the sailing time to check its work
                 </div>
                 <div class="text-center text-caption text-grey-5 q-mt-sm">
                   Predictions are just a guess — there's no certainty with the ferry.
@@ -647,7 +654,7 @@
                 v-for="(event, i) in allPastBowen"
                 :key="'pb' + i"
                 class="row items-center no-wrap q-mt-xs cursor-pointer"
-                @click="openHistory(event.scheduledTime, event.label)"
+                @click="openHistory(event.scheduledTime, event.label, event)"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                   {{ formatTime12h(event.scheduledTime) }}
@@ -669,6 +676,7 @@
                   v-if="event.lastCapacity"
                   :color="getDeckColor(event.lastCapacity)"
                   class="badge-gap"
+                  :class="{ 'robot-badge': event.capacitySource === 'robot' }"
                   dense
                   >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
                 >
@@ -677,6 +685,7 @@
                   v-if="crosswalkBadge(event)"
                   color="deep-orange"
                   class="badge-gap"
+                  :class="{ 'robot-badge': event.crosswalkSource === 'robot' }"
                   dense
                   >{{ crosswalkBadge(event) }}</q-badge
                 >
@@ -698,7 +707,7 @@
                 v-for="(event, i) in allPastHSB"
                 :key="'ph' + i"
                 class="row items-center no-wrap q-mt-xs cursor-pointer"
-                @click="openHistory(event.scheduledTime, event.label)"
+                @click="openHistory(event.scheduledTime, event.label, event)"
               >
                 <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                   {{ formatTime12h(event.scheduledTime) }}
@@ -740,11 +749,11 @@
           <div class="row items-start q-col-gutter-sm">
             <div class="col">
               <div v-for="(s, i) in allUpcomingBowen" :key="'ub' + i" class="q-mt-xs">
-                <div class="row items-center no-wrap">
-                  <div
-                    class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                    @click="openHistory(s.shortTime, s.label)"
-                  >
+                <div
+                  class="row items-center no-wrap cursor-pointer"
+                  @click="openHistory(s.shortTime, s.label, s)"
+                >
+                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                     {{ formatTime12h(s.shortTime) }}
                   </div>
                   <div v-fit-scale class="row items-center no-wrap col badge-fit">
@@ -764,6 +773,7 @@
                     v-if="crosswalkBadge(s)"
                     color="deep-orange"
                     class="badge-gap"
+                    :class="{ 'robot-badge': s.crosswalkSource === 'robot' }"
                     dense
                     >{{ crosswalkBadge(s) }}</q-badge
                   >
@@ -793,11 +803,11 @@
             </div>
             <div class="col">
               <div v-for="(s, i) in allUpcomingHSB" :key="'uh' + i" class="q-mt-xs">
-                <div class="row items-center no-wrap">
-                  <div
-                    class="text-body2 text-weight-bold text-no-wrap clip-time cursor-pointer"
-                    @click="openHistory(s.shortTime, s.label)"
-                  >
+                <div
+                  class="row items-center no-wrap cursor-pointer"
+                  @click="openHistory(s.shortTime, s.label, s)"
+                >
+                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
                     {{ formatTime12h(s.shortTime) }}
                   </div>
                   <div v-fit-scale class="row items-center no-wrap col badge-fit">
@@ -837,6 +847,10 @@
           </div>
           <div v-if="anyCrosswalkBadge" class="text-center text-caption text-grey-6 q-mt-sm">
             C = full to the crosswalk
+          </div>
+          <div v-if="anyRobotBadge" class="text-center text-caption text-grey-6 q-mt-sm">
+            <q-icon name="smart_toy" size="12px" /> square badge = reported by the robot — tap
+            the sailing time to check its work
           </div>
         </q-card-section>
         <q-separator />
@@ -904,23 +918,68 @@
               @click="showTypicalDialog = false"
             />
           </div>
+          <!-- The robot reported on this sailing (the square badge in the
+               schedule) — offer its frame-check dialogs so a rider can agree
+               or correct it without leaving the page. -->
+          <div
+            v-if="selectedTypical?.robotCrosswalk || selectedTypical?.robotCapacity"
+            class="text-center q-mt-xs"
+          >
+            <div class="text-caption text-grey-6">
+              <q-icon name="smart_toy" size="12px" color="indigo" />
+              The robot reported on this sailing — check its work:
+            </div>
+            <q-btn
+              v-if="selectedTypical?.robotCrosswalk"
+              flat
+              dense
+              no-caps
+              color="indigo"
+              icon="directions_walk"
+              label="Verify crosswalk time"
+              @click="openRobotFromTypical('crosswalk')"
+            />
+            <q-btn
+              v-if="selectedTypical?.robotCapacity"
+              flat
+              dense
+              no-caps
+              color="indigo"
+              icon="directions_boat"
+              label="Verify not full"
+              @click="openRobotFromTypical('fullness')"
+            />
+          </div>
           <div class="text-caption text-grey-5 q-mt-sm q-px-xs">
             Predictions are a guess — there's no certainty with the ferry.
           </div>
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Robot badge tapped: verify the robot's frames and agree/disagree in
+         place (same dialog as the departures page's "Robot:" row). -->
+    <RobotVerifyDialog
+      v-model="robotVerify.open"
+      :kind="robotVerify.kind"
+      :robot-at="robotVerify.robotAt"
+      :frames="robotVerify.frames"
+      @agree="onRobotVerifyAgree"
+      @mark="onRobotVerifyMark"
+      @capacity="onRobotVerifyCapacity"
+    />
+    <SignInDialog v-model="showSignInDialog" />
   </q-page>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
-import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
+import { formatTime12h, normalizeTime, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 import { isStaging } from 'src/boot/firebase'
 import RideCard from 'src/components/RideCard.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
@@ -935,7 +994,11 @@ import {
 } from 'src/composables/useHistoricalStats'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
-import { loadBowenSailings } from 'src/composables/useBowenSailings'
+import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
+import { useCapacityRating } from 'src/composables/useCapacityRating'
+import { useLineupReport } from 'src/composables/useLineupReport'
+import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
+import SignInDialog from 'src/components/SignInDialog.vue'
 
 const $q = useQuasar()
 const { ferryData, error } = useFirestoreFerryListener()
@@ -1128,7 +1191,7 @@ function sailingHints(s) {
 // recent history for that day-of-week + time.
 const showTypicalDialog = ref(false)
 const selectedTypical = ref(null)
-function openHistory(time, label) {
+function openHistory(time, label, entry = null) {
   if (!time) return
   const panel = labelToPanel(label)
   const info = getTypical(historyByDayOfWeek.value, panel, todayDow.value, time)
@@ -1138,11 +1201,142 @@ function openHistory(time, label) {
     time,
     label,
     title: `${todayDow.value} ${formatTime12h(time)} ${dir}`,
+    // Robot-sourced values on the clicked sailing (Bowen only) — the dialog
+    // offers verify buttons for these (see openRobotFromTypical).
+    robotCrosswalk: entry?.crosswalkSource === 'robot',
+    robotCapacity: entry?.capacitySource === 'robot',
   }
   showTypicalDialog.value = true
 }
 function openTypical(s) {
-  openHistory(s.shortTime, s.label)
+  openHistory(s.shortTime, s.label, s)
+}
+
+// From the typical dialog's robot section into the frame-check dialog.
+function openRobotFromTypical(kind) {
+  showTypicalDialog.value = false
+  openRobotVerify(kind, selectedTypical.value?.time)
+}
+
+// A robot-sourced badge opens the robot's verify dialog (agree/disagree with
+// frames) right here; human badges keep the usual row behavior (the history
+// dialog). The frames come from the bowen-sailings aggregate via
+// loadBowenSailings, which serves its module cache when the data was already
+// fetched this session (home-page snapshot dialog, a departures-page visit) —
+// so opening the dialog usually costs zero reads, and at most one doc read.
+const { needsSignIn, saveRating } = useCapacityRating()
+const { saveCrosswalkMark } = useLineupReport()
+const showSignInDialog = ref(false)
+watch(needsSignIn, (v) => {
+  if (v) {
+    showSignInDialog.value = true
+    needsSignIn.value = false
+  }
+})
+
+const robotVerify = ref({
+  open: false,
+  kind: 'crosswalk',
+  robotAt: null,
+  frames: [],
+  sailingKey: null,
+  autoProb: null,
+})
+
+async function openRobotVerify(kind, time) {
+  try {
+    const t = normalizeTime(time)
+    const todayIso = nowInVancouver().format('YYYY-MM-DD')
+    let s = (await loadBowenSailings()).find(
+      (x) => x.dateIso === todayIso && normalizeTime(x.sailingTime) === t,
+    )
+    // The sailing may still be boarding (lineup frames, no photos yet) — it
+    // has no card in loadBowenSailings but the same cached fetch backs
+    // loadUpcomingLineup.
+    if (!s && kind === 'crosswalk') {
+      const up = await loadUpcomingLineup()
+      if (up && normalizeTime(up.sailingTime) === t) s = { ...up, arrival: { timelapse: up.timelapse } }
+    }
+    if (!s) {
+      $q.notify({ type: 'warning', message: "Couldn't find that sailing's photos" })
+      return
+    }
+    // The robot's detection ts: the classifier stamp when present, else the
+    // recorded value itself (the badge only routes here when its source is
+    // 'robot', so crosswalkFullAt IS the robot's time). Fullness may be
+    // timeless (the aggregate's bare nf flag) — the dialog handles null.
+    const robotAt =
+      kind === 'crosswalk'
+        ? (s.crosswalkFullAtAuto ?? s.crosswalkFullAt ?? null)
+        : (s.terminalEmptyFrameTs ?? null)
+    if (kind === 'crosswalk' && robotAt == null) {
+      $q.notify({ type: 'warning', message: "The robot's crosswalk time is no longer available" })
+      return
+    }
+    robotVerify.value = {
+      open: true,
+      kind,
+      robotAt,
+      frames: (kind === 'crosswalk' ? s.arrival?.timelapse : s.departure?.timelapse) || [],
+      sailingKey: s.sailingKey,
+      autoProb: s.crosswalkAutoProb ?? null,
+    }
+  } catch (err) {
+    console.error('Failed to open robot verification:', err)
+    $q.notify({ type: 'negative', message: 'Failed to load the robot’s frames' })
+  }
+}
+
+// Dialog outcomes — same save paths and training-data flags as the departures
+// page (autoSource 'server': the home page only shows server-stamped robot
+// badges). No optimistic badge flip; the 1-minute ferryData listener brings
+// the enriched value around on its own.
+function saveHomeCrosswalk(ts, extra) {
+  const { sailingKey } = robotVerify.value
+  saveCrosswalkMark(sailingKey, ts, extra)
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
+      }
+      $q.notify({
+        type: 'positive',
+        message: `Full to crosswalk recorded at ${dayjs(ts).tz(TZ).format('h:mm a')} — thanks!`,
+      })
+    })
+    .catch((err) => {
+      console.error('Failed to save crosswalk mark:', err)
+      $q.notify({ type: 'negative', message: 'Failed to record crosswalk time' })
+    })
+}
+
+function onRobotVerifyAgree() {
+  const { robotAt, autoProb } = robotVerify.value
+  saveHomeCrosswalk(robotAt, {
+    agreedWithAuto: true,
+    autoSource: 'server',
+    ...(autoProb != null ? { autoProb } : {}),
+  })
+}
+
+function onRobotVerifyMark(ts) {
+  saveHomeCrosswalk(ts, {
+    disagreedWithAuto: true,
+    autoAt: robotVerify.value.robotAt,
+    autoSource: 'server',
+  })
+}
+
+function onRobotVerifyCapacity(capacity) {
+  saveRating(robotVerify.value.sailingKey, capacity, null)
+    .then((saved) => {
+      if (!saved) return // needsSignIn watcher opens the sign-in dialog
+      $q.notify({ type: 'positive', message: 'Thanks — capacity recorded!' })
+    })
+    .catch((err) => {
+      console.error('Failed to save capacity rating:', err)
+      $q.notify({ type: 'negative', message: 'Failed to save rating' })
+    })
 }
 
 const upcomingSailings = computed(() => schedule.upcomingSailings(6))
@@ -1366,6 +1560,15 @@ const vFitScale = {
 const anyCrosswalkBadge = computed(() =>
   [...recentPastBowen.value, ...allUpcomingBowen.value, ...allPastBowen.value].some(
     (e) => e?.crosswalkFullAt,
+  ),
+)
+
+// Same gate for the robot legend: any visible Bowen sailing whose displayed
+// capacity or crosswalk value came from the webcam classifier. Robot badges
+// are square (humans stay rounded) — shape carries the source, color the value.
+const anyRobotBadge = computed(() =>
+  [...recentPastBowen.value, ...allUpcomingBowen.value, ...allPastBowen.value].some(
+    (e) => e?.capacitySource === 'robot' || e?.crosswalkSource === 'robot',
   ),
 )
 

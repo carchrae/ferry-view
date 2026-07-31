@@ -4,9 +4,10 @@ import { getStorage } from 'firebase-admin/storage'
 import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
 import { isRecent, nowInVancouver, timeToDate, dayjs } from './time.js'
-import { classifyLineup } from './lineup-classifier.js'
-import { classifyTerminal } from './terminal-classifier.js'
+import { classifyLineup, lineupModelVersion } from './lineup-classifier.js'
+import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
+import { updateSailingStatus } from './helpers.js'
 import {
   lastBowenDeparture,
   bowenArrivalForCurrentCycle,
@@ -231,14 +232,18 @@ export async function captureLineupTimelapse(db, data) {
   const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
 
   // Automated crosswalk detection (no-op until a trained model is committed —
-  // see lib/lineup-classifier.js). Kept separate from the human-tagged
-  // crosswalkFullAt so agreement can be measured before the auto value is
-  // trusted anywhere. Streaming form of firstSustainedPositiveTs()
-  // (lineup-labels.js): a positive frame only becomes crosswalkFullAtAuto
-  // once the NEXT frame is also positive — a lone positive is noise, so it
-  // parks as crosswalkAutoPending and a negative frame clears it. The
-  // stamped time is the FIRST frame of the confirmed pair.
+  // see lib/lineup-classifier.js). The auto fields are permanent: a later
+  // human mark overwrites the report fields but never removes these, so
+  // human-vs-robot agreement stays measurable per model version. Streaming
+  // form of firstSustainedPositiveTs() (lineup-labels.js): a positive frame
+  // only becomes crosswalkFullAtAuto once the NEXT frame is also positive —
+  // a lone positive is noise, so it parks as crosswalkAutoPending and a
+  // negative frame clears it. The stamped time is the FIRST frame of the
+  // confirmed pair. A confirmed verdict is also recorded as a robot REPORT
+  // (crosswalkFullAt + crosswalkSource:'robot') when no human mark exists —
+  // humans always overwrite it (onLineupReport stamps unconditionally).
   const autoFields = {}
+  let robotReported = false
   const verdict = await classifyLineup(best)
   if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
@@ -249,6 +254,13 @@ export async function captureLineupTimelapse(db, data) {
           autoFields.crosswalkFullAtAuto = cur.crosswalkAutoPending.ts
           autoFields.crosswalkAutoProb = cur.crosswalkAutoPending.prob
           autoFields.crosswalkAutoPending = FieldValue.delete()
+          const modelVersion = lineupModelVersion()
+          if (modelVersion != null) autoFields.crosswalkAutoModel = modelVersion
+          if (cur.crosswalkFullAt == null) {
+            autoFields.crosswalkFullAt = cur.crosswalkAutoPending.ts
+            autoFields.crosswalkSource = 'robot'
+            robotReported = true
+          }
         } else {
           autoFields.crosswalkAutoPending = {
             ts: timestamp,
@@ -277,14 +289,17 @@ export async function captureLineupTimelapse(db, data) {
     sailingTime: decision.sailingTime,
     addLineupTs: timestamp,
     // Confirmed auto-detection → surface it to the client aggregate so the
-    // departures page can show the "Robot says…" agree-tag.
+    // departures page can show the "Robot says…" agree-tag, plus the robot
+    // report (cw/cws) when it filled the gap.
     ...(autoFields.crosswalkFullAtAuto
       ? { cwa: autoFields.crosswalkFullAtAuto, cwp: autoFields.crosswalkAutoProb }
       : {}),
+    ...(robotReported ? { cw: autoFields.crosswalkFullAt, cws: 'robot' } : {}),
   })
 
   logAttribution('Lineup timelapse', decision, now)
   logger.log(`Saved lineup timelapse frame: ${blobPath} (${best.length}B)`)
+  return { robotReported }
 }
 
 export async function captureDepartureTimelapse(db, data) {
@@ -318,17 +333,23 @@ export async function captureDepartureTimelapse(db, data) {
   // also empty — a lone empty is noise, so it parks as terminalEmptyPending
   // and a cars-present frame clears it. A confirmed pair stamps
   // ferryNotFullAuto, which is one-way: later car-filled frames (late
-  // arrivals) never clear it.
+  // arrivals) never clear it. The auto fields are permanent — human reports
+  // never remove them (they overwrite only lastCapacity/capacitySource).
+  const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
   const terminalFields = {}
+  let firstConfirm = false
   const verdict = await classifyTerminal(best)
   if (verdict) {
-    const snap = await db.collection('sailingStatus').doc(`${data.dateIso}_${decision.sailingTime}_To HSB`).get()
+    const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
     const cur = snap.exists ? snap.data() : {}
     if (!verdict.carsPresent) {
       if (cur.terminalEmptyPending) {
         terminalFields.terminalEmptyFrameTs = timestamp
         terminalFields.ferryNotFullAuto = true
         terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
+        const modelVersion = terminalModelVersion()
+        if (modelVersion != null) terminalFields.terminalAutoModel = modelVersion
+        firstConfirm = !cur.ferryNotFullAuto
       } else {
         terminalFields.terminalEmptyPending = { ts: timestamp }
       }
@@ -337,7 +358,6 @@ export async function captureDepartureTimelapse(db, data) {
     }
   }
 
-  const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
   await db.collection('sailingStatus').doc(snapshotKey).set(
     {
       sailingKey: snapshotKey,
@@ -349,15 +369,34 @@ export async function captureDepartureTimelapse(db, data) {
     },
     { merge: true },
   )
+
+  // First confirmed "left not full" → record it as a robot capacity report.
+  // updateSailingStatus re-reads the doc and enforces automated > user >
+  // robot, so a rider tag that landed during this capture is never clobbered.
+  let robotReported = false
+  if (firstConfirm) {
+    const { capacityApplied } = await updateSailingStatus(
+      snapshotKey,
+      decision.sailingTime,
+      'To HSB',
+      data.dateIso,
+      db,
+      { lastCapacity: 'Not Full', capacitySource: 'robot' },
+    )
+    robotReported = capacityApplied
+  }
+
   await upsertBowenSailing(db, {
     dateIso: data.dateIso,
     sailingTime: decision.sailingTime,
     addDepartureTs: timestamp,
     ...(terminalFields.ferryNotFullAuto ? { nf: true } : {}),
+    ...(robotReported ? { cap: 'Not Full', src: 'robot' } : {}),
   })
 
   logAttribution('Departure timelapse', decision, now)
   logger.log(`Saved departure timelapse frame: ${blobPath} (${best.length}B)`)
+  return { robotReported }
 }
 
 export async function cleanupOldWebcams() {

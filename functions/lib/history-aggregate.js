@@ -15,7 +15,8 @@ export const HISTORY_WEEKS = 8
 // expands them back to sailingStatus field names (see useHistoricalStats.js):
 //   d = dateIso, t = sailingTime, dir = direction, dep = actualDepartureTime,
 //   cap = lastCapacity, src = capacitySource, fa = filledAt,
-//   cw = crosswalkFullAt (Bowen-side "full to crosswalk" time, epoch ms)
+//   cw = crosswalkFullAt (Bowen-side "full to crosswalk" time, epoch ms),
+//   cws = crosswalkSource, only when 'robot' (absent = human mark)
 export async function recomputeHistoricalStats(db) {
   const now = nowInVancouver()
   const start = now.subtract(HISTORY_WEEKS, 'week').format('YYYY-MM-DD')
@@ -47,6 +48,7 @@ export async function recomputeHistoricalStats(db) {
           ? s.crosswalkFullAt.toMillis()
           : s.crosswalkFullAt
     }
+    if (s.crosswalkSource === 'robot') rec.cws = 'robot'
     sailings.push(rec)
   })
 

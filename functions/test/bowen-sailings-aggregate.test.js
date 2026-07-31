@@ -106,6 +106,18 @@ describe('sailingToRecord', () => {
     expect(sailingToRecord({ dateIso: yesterday, sailingTime: '10:00', lastCapacity: 'Full' })).toBeNull()
     expect(sailingToRecord({ sailingTime: '10:00', webcamSnapshotPath: 'x.jpg' })).toBeNull()
   })
+
+  it("emits cws only for robot-sourced crosswalk marks", () => {
+    const base = {
+      dateIso: yesterday,
+      sailingTime: '10:00',
+      webcamSnapshotPath: 'x.jpg',
+      crosswalkFullAt: 1752310000000,
+    }
+    expect(sailingToRecord({ ...base, crosswalkSource: 'robot' }).cws).toBe('robot')
+    expect(sailingToRecord({ ...base, crosswalkSource: 'user' }).cws).toBeUndefined()
+    expect(sailingToRecord(base).cws).toBeUndefined()
+  })
 })
 
 describe('recomputeBowenSailings', () => {

@@ -39,6 +39,7 @@ import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-
 import { recomputeHistoricalStats } from './lib/history-aggregate.js'
 import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
 import { functionsActive } from './lib/control.js'
+import { ensureClassifierModelDocs } from './lib/classifier-models.js'
 import { effectiveCrosswalkAt } from './lib/lineup-labels.js'
 import { nowInVancouver, timeToDate } from './lib/time.js'
 
@@ -274,19 +275,38 @@ export const pollFerryStatus = onSchedule(
     }
     const { data, hsbPast, bowenPast, dataChanged } = result
 
+    // Keep the classifier model registry in sync (memoized per cold start —
+    // effectively free). Fire-and-forget: the poll must not wait on it.
+    ensureClassifierModelDocs(db)
+
     // Cadence-driven (lineup: every 5th poll; departure: every poll in the
     // 10-min pre-departure window), so they run whether or not this poll
     // changed anything — unlike captureWebcams, which is event-driven and
     // gated behind dataChanged.
+    let robotReported = false
     try {
-      await captureLineupTimelapse(db, data)
+      const r = await captureLineupTimelapse(db, data)
+      robotReported ||= Boolean(r?.robotReported)
     } catch (e) {
       logger.error('Lineup timelapse capture failed:', e)
     }
     try {
-      await captureDepartureTimelapse(db, data)
+      const r = await captureDepartureTimelapse(db, data)
+      robotReported ||= Boolean(r?.robotReported)
     } catch (e) {
       logger.error('Departure timelapse capture failed:', e)
+    }
+
+    // The captures run AFTER refreshFerryData, so a robot report confirmed
+    // this poll would otherwise not reach ferryStatus/current until the next
+    // changed poll (enrichment is gated on dataChanged). Force one refresh —
+    // fires at most twice per sailing (once per classifier).
+    if (robotReported) {
+      try {
+        await refreshFerryData(db, { forceUpdate: true })
+      } catch (e) {
+        logger.error('Status refresh after robot report failed:', e)
+      }
     }
 
     if (!dataChanged) {
@@ -372,11 +392,14 @@ export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (
       direction,
       dateIso,
       crosswalkFullAt: r.crosswalkAt,
+      // Human marks always overwrite a robot-recorded crosswalk time; the
+      // robot's own crosswalkFullAtAuto stays untouched for comparison.
+      crosswalkSource: 'user',
     },
     { merge: true },
   )
   if (direction === 'To HSB') {
-    await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: r.crosswalkAt })
+    await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: r.crosswalkAt, clearKeys: ['cws'] })
   }
   // Surface the mark on the live schedule right away (augmentRecentActivity
   // copies crosswalkFullAt onto the bowenSchedule entry) instead of waiting
@@ -426,9 +449,30 @@ export const onCapacityReportDelete = onDocumentDeleted(
 
       if (latest) {
         isToday = await applyUserCapacityReport(db, latest)
+      } else if ((await db.collection('sailingStatus').doc(r.sailingKey).get()).data()?.ferryNotFullAuto) {
+        // No user reports left, but the terminal classifier had confirmed the
+        // ferry left not full — fall back to the robot report (the auto
+        // verdict is never deleted, only the stamped value changes hands).
+        await db.collection('sailingStatus').doc(r.sailingKey).set(
+          {
+            lastCapacity: 'Not Full',
+            capacitySource: 'robot',
+            filledAt: FieldValue.delete(),
+          },
+          { merge: true },
+        )
+        if (direction === 'To HSB') {
+          await upsertBowenSailing(db, {
+            dateIso,
+            sailingTime: time,
+            cap: 'Not Full',
+            src: 'robot',
+          })
+        }
+        isToday = dateIso === nowInVancouver().format('YYYY-MM-DD')
       } else {
         // Automated capacity never covers To HSB sailings, so a user-sourced
-        // value with no reports left behind it simply goes away.
+        // value with no reports (and no robot verdict) behind it goes away.
         await db.collection('sailingStatus').doc(r.sailingKey).set(
           {
             lastCapacity: FieldValue.delete(),
@@ -488,17 +532,40 @@ export const onLineupReportDelete = onDocumentDeleted(
         await db
           .collection('sailingStatus')
           .doc(r.sailingKey)
-          .set({ crosswalkFullAt: crosswalkAt }, { merge: true })
+          .set({ crosswalkFullAt: crosswalkAt, crosswalkSource: 'user' }, { merge: true })
         if (direction === 'To HSB') {
-          await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: crosswalkAt })
+          await upsertBowenSailing(db, {
+            dateIso,
+            sailingTime: time,
+            cw: crosswalkAt,
+            clearKeys: ['cws'],
+          })
         }
       } else {
-        await db
-          .collection('sailingStatus')
-          .doc(r.sailingKey)
-          .set({ crosswalkFullAt: FieldValue.delete() }, { merge: true })
-        if (direction === 'To HSB') {
-          await upsertBowenSailing(db, { dateIso, sailingTime: time, clearKeys: ['cw'] })
+        // No human marks left — fall back to the classifier's confirmed
+        // crosswalk time if it has one (the auto verdict is never deleted),
+        // else clear the mark entirely.
+        const cur = (await db.collection('sailingStatus').doc(r.sailingKey).get()).data()
+        const autoAt = cur?.crosswalkFullAtAuto
+        if (autoAt != null) {
+          await db
+            .collection('sailingStatus')
+            .doc(r.sailingKey)
+            .set({ crosswalkFullAt: autoAt, crosswalkSource: 'robot' }, { merge: true })
+          if (direction === 'To HSB') {
+            await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: autoAt, cws: 'robot' })
+          }
+        } else {
+          await db
+            .collection('sailingStatus')
+            .doc(r.sailingKey)
+            .set(
+              { crosswalkFullAt: FieldValue.delete(), crosswalkSource: FieldValue.delete() },
+              { merge: true },
+            )
+          if (direction === 'To HSB') {
+            await upsertBowenSailing(db, { dateIso, sailingTime: time, clearKeys: ['cw', 'cws'] })
+          }
         }
       }
     } catch (e) {

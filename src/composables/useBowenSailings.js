@@ -85,6 +85,7 @@ function buildCards(s, todayIso) {
         ? {
             ...shared,
             crosswalkFullAt: s.crosswalkFullAt || null,
+            crosswalkSource: s.crosswalkSource || null,
             arrivalTs,
             timelapse: arrivalTimelapse,
             imageUrl: s.communitySnapshotPath ? imageUrl(s.communitySnapshotPath) : null,
@@ -140,6 +141,7 @@ function expandAggregateRecord(r) {
       (ts) => `webcams/bowen/${r.d}/timelapse/${r.t}_To HSB_${ts}.jpg`,
     ),
     crosswalkFullAt: r.cw || null,
+    crosswalkSource: r.cws || null,
     crosswalkFullAtAuto: r.cwa || null,
     crosswalkAutoProb: r.cwp ?? null,
     ferryNotFullAuto: r.nf || null,
@@ -193,6 +195,7 @@ async function fetchDirectBounded() {
       lineupTimelapsePaths: d.lineupTimelapsePaths || [],
       departureTimelapsePaths: d.departureTimelapsePaths || [],
       crosswalkFullAt: d.crosswalkFullAt || null,
+      crosswalkSource: d.crosswalkSource || null,
       crosswalkFullAtAuto: d.crosswalkFullAtAuto || null,
       crosswalkAutoProb: d.crosswalkAutoProb ?? null,
       ferryNotFullAuto: d.ferryNotFullAuto || null,
@@ -313,6 +316,7 @@ function deriveUpcomingLineup(raw) {
     sailingTime: s.sailingTime,
     dateIso: s.dateIso,
     crosswalkFullAt: s.crosswalkFullAt,
+    crosswalkSource: s.crosswalkSource ?? null,
     crosswalkFullAtAuto: s.crosswalkFullAtAuto ?? null,
     crosswalkAutoProb: s.crosswalkAutoProb ?? null,
     // Raw storage paths, for the browser-side classifier.

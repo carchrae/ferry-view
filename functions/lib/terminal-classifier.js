@@ -26,6 +26,12 @@ export function terminalModelUsable(m = model) {
   return Boolean(m?.enabled) && Array.isArray(m.weights) && m.weights.length === TERMINAL_FEATURE_LENGTH
 }
 
+// Version stamped by the training script; null on legacy unversioned models.
+// Recorded on every confirmed verdict so results can be compared per model.
+export function terminalModelVersion(m = model) {
+  return m?.version ?? null
+}
+
 export function scoreTerminalFeatures(features, m = model) {
   let z = m.bias || 0
   for (let i = 0; i < m.weights.length; i++) z += m.weights[i] * features[i]

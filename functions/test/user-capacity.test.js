@@ -252,6 +252,88 @@ describe('updateSailingStatus capacity precedence', () => {
     expect(db.docs[DOC].lastCapacity).toBe('50%')
     expect(db.docs[DOC].actualDepartureTime).toBe('10:40')
   })
+
+  // Robot (webcam classifier) verdicts rank below everything: they fill empty
+  // sailings, humans and automated always overwrite them, and they can never
+  // displace a human or automated value.
+  it('robot fills an empty sailing and reports capacityApplied', async () => {
+    const db = makeDb()
+    const { capacityApplied } = await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      lastCapacity: 'Not Full',
+      capacitySource: 'robot',
+    })
+    expect(capacityApplied).toBe(true)
+    expect(db.docs[DOC]).toMatchObject({ lastCapacity: 'Not Full', capacitySource: 'robot' })
+  })
+
+  it('robot is blocked by a user value', async () => {
+    const db = makeDb({
+      [DOC]: { sailingKey: KEY, lastCapacity: 'Full', capacitySource: 'user' },
+    })
+    const { capacityApplied } = await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      lastCapacity: 'Not Full',
+      capacitySource: 'robot',
+    })
+    expect(capacityApplied).toBe(false)
+    expect(db.docs[DOC].lastCapacity).toBe('Full')
+    expect(db.docs[DOC].capacitySource).toBe('user')
+  })
+
+  it('robot is blocked by automated and legacy no-source values', async () => {
+    for (const existing of [
+      { sailingKey: KEY, lastCapacity: '50%', capacitySource: 'automated' },
+      { sailingKey: KEY, lastCapacity: '50%' },
+    ]) {
+      const db = makeDb({ [DOC]: existing })
+      const { capacityApplied } = await updateSailingStatus(
+        KEY,
+        '10:35',
+        'To HSB',
+        '2026-07-01',
+        db,
+        { lastCapacity: 'Not Full', capacitySource: 'robot' },
+      )
+      expect(capacityApplied).toBe(false)
+      expect(db.docs[DOC].lastCapacity).toBe('50%')
+    }
+  })
+
+  it('a user tag overwrites a robot value', async () => {
+    const db = makeDb({
+      [DOC]: { sailingKey: KEY, lastCapacity: 'Not Full', capacitySource: 'robot' },
+    })
+    const { capacityApplied } = await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      lastCapacity: 'Full',
+      filledAt: 'user_reported',
+      capacitySource: 'user',
+    })
+    expect(capacityApplied).toBe(true)
+    expect(db.docs[DOC]).toMatchObject({ lastCapacity: 'Full', capacitySource: 'user' })
+  })
+
+  it('automated overwrites a robot value', async () => {
+    const db = makeDb({
+      [DOC]: { sailingKey: KEY, lastCapacity: 'Not Full', capacitySource: 'robot' },
+    })
+    const { capacityApplied } = await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      lastCapacity: '30%',
+      capacitySource: 'automated',
+    })
+    expect(capacityApplied).toBe(true)
+    expect(db.docs[DOC]).toMatchObject({ lastCapacity: '30%', capacitySource: 'automated' })
+  })
+
+  it('robot may re-stamp its own value (equal rank re-applies)', async () => {
+    const db = makeDb({
+      [DOC]: { sailingKey: KEY, lastCapacity: 'Not Full', capacitySource: 'robot' },
+    })
+    const { capacityApplied } = await updateSailingStatus(KEY, '10:35', 'To HSB', '2026-07-01', db, {
+      lastCapacity: 'Not Full',
+      capacitySource: 'robot',
+    })
+    expect(capacityApplied).toBe(true)
+    expect(db.docs[DOC].capacitySource).toBe('robot')
+  })
 })
 
 // A sailing's recorded departure time is WRITE-ONCE, keyed by its scheduled sailingKey:

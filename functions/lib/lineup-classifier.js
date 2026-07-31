@@ -25,6 +25,12 @@ export function modelUsable(m = model) {
   return Boolean(m?.enabled) && Array.isArray(m.weights) && m.weights.length === FEATURE_LENGTH
 }
 
+// Version stamped by the training script; null on legacy unversioned models.
+// Recorded on every confirmed verdict so results can be compared per model.
+export function lineupModelVersion(m = model) {
+  return m?.version ?? null
+}
+
 // Sigmoid of the linear score. Exported for the trainer/tests.
 export function scoreFeatures(features, m = model) {
   let z = m.bias || 0

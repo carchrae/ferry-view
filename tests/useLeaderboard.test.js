@@ -257,16 +257,17 @@ describe('aggregateRideLeaderboard', () => {
       { authorUid: 'A', authorName: 'Ann Alpha', createdAt: 3, type: 'request' },
       { authorUid: 'B', authorName: 'Bob Beta', createdAt: 4, type: 'offer' },
       { authorUid: 'B', authorName: 'Bob Beta', createdAt: 5, type: 'offer' },
-      { authorUid: 'C', authorName: 'Cy Gamma', createdAt: 6, type: 'offer' }, // single ride — excluded
+      { authorUid: 'C', authorName: 'Cy Gamma', createdAt: 6, type: 'offer' },
     ]
     const board = aggregateRideLeaderboard(rides)
-    assert.equal(board.length, 2)
+    assert.equal(board.length, 3)
     assert.equal(board[0].userUid, 'A') // 10 + 10 + 5 = 25
     assert.equal(board[0].credits, 25.0)
     assert.equal(board[0].reportCount, 3)
     assert.equal(board[1].userUid, 'B') // 10 + 10 = 20
     assert.equal(board[1].credits, 20.0)
-    assert.ok(!board.some((e) => e.userUid === 'C'))
+    assert.equal(board[2].userUid, 'C') // 10
+    assert.equal(board[2].credits, 10.0)
   })
 
   it('treats a missing/unknown type as a request (5 credits)', () => {
@@ -277,14 +278,15 @@ describe('aggregateRideLeaderboard', () => {
     assert.equal(board[0].credits, 10.0)
   })
 
-  it('excludes riders with only one ride', () => {
+  it('includes riders with only one ride', () => {
     const board = aggregateRideLeaderboard([
       { authorUid: 'A', authorName: 'A', createdAt: 1 },
       { authorUid: 'A', authorName: 'A', createdAt: 2 },
       { authorUid: 'B', authorName: 'B', createdAt: 3 },
     ])
-    assert.equal(board.length, 1)
-    assert.equal(board[0].userUid, 'A')
+    assert.equal(board.length, 2)
+    assert.equal(board[0].userUid, 'A') // 10 credits beats B's 5
+    assert.equal(board[1].userUid, 'B')
   })
 
   it('keeps the most recent name and photo, ignores authorless rides', () => {
@@ -305,6 +307,17 @@ describe('aggregateRideLeaderboard', () => {
       { authorUid: 'A', authorName: 'A', createdAt: 5 },
       { authorUid: 'B', authorName: 'B', createdAt: 9 },
       { authorUid: 'B', authorName: 'B', createdAt: 9 },
+    ])
+    assert.equal(board[0].userUid, 'B')
+    assert.equal(board[1].userUid, 'A')
+  })
+
+  it('on a credits tie, recency wins even against more posts', () => {
+    const board = aggregateRideLeaderboard([
+      // A: two requests (5 + 5 = 10), older. B: one offer (10), newer.
+      { authorUid: 'A', authorName: 'A', createdAt: 1, type: 'request' },
+      { authorUid: 'A', authorName: 'A', createdAt: 2, type: 'request' },
+      { authorUid: 'B', authorName: 'B', createdAt: 9, type: 'offer' },
     ])
     assert.equal(board[0].userUid, 'B')
     assert.equal(board[1].userUid, 'A')

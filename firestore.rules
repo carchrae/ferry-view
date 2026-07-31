@@ -65,6 +65,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Classifier model registry (server-write only; models are public anyway
+    // — they ship in the webapp bundle)
+    match /classifierModels/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Default: deny all other access
     match /{document=**} {
       allow read, write: if false;

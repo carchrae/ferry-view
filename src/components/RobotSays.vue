@@ -26,17 +26,21 @@
         :label="`Past crosswalk ${timeLabel(autoAt)} — agree?`"
         @click="openVerify"
       />
-      <!-- Crosswalk: human already marked → verdict chip (non-interactive). -->
+      <!-- Crosswalk: human already marked → verdict chip; tap to reopen the
+           frame-check dialog and weigh in yourself. -->
       <q-chip
         v-else-if="autoAt != null"
         dense
         square
         outline
+        clickable
         :color="verdictAgrees ? 'indigo' : 'deep-orange'"
         icon="directions_walk"
         class="verdict-chip"
+        @click="openVerify"
       >
         {{ verdictText }}
+        <q-tooltip>See the frames the robot judged — agree or disagree</q-tooltip>
       </q-chip>
       <!-- Fullness: no capacity report yet → verify-then-confirm button;
            otherwise a verdict chip in the same section. -->
@@ -56,168 +60,38 @@
         dense
         square
         outline
+        clickable
         :color="latestCapacity?.capacity === 'Full' ? 'deep-orange' : 'indigo'"
         icon="directions_boat"
         class="verdict-chip"
+        @click="openFullnessVerify"
       >
         {{ fullnessText }}
+        <q-tooltip>See the frames the robot judged — agree or disagree</q-tooltip>
       </q-chip>
       </div>
     </div>
 
     <!-- Verify before agreeing: step through the frames the robot actually
-         judged, starting at its detection frame. -->
-    <q-dialog v-model="showVerify">
-      <q-card class="q-pa-md verify-card">
-        <div class="text-subtitle2 q-mb-xs">
-          <q-icon name="smart_toy" color="indigo" class="q-mr-xs" />Verify before agreeing
-        </div>
-        <p class="text-caption q-mb-sm">
-          These are the frames the robot judged. It thinks the lineup first shows
-          past the crosswalk at <strong>{{ timeLabel(autoAt) }}</strong> — make
-          sure to actually verify, the robot has poor eyesight.
-        </p>
-        <template v-if="verifyFrame">
-          <img :src="verifyFrame.imageUrl" class="verify-img" alt="" />
-          <div class="row items-center justify-between q-mt-xs">
-            <q-btn flat dense round icon="chevron_left" :disable="verifyIndex <= 0" @click="verifyIndex--" />
-            <div class="text-caption">
-              {{ verifyFrame.timeLabel }}
-              <q-badge v-if="verifyFrame.ts === autoAt" color="indigo" class="q-ml-xs" dense>
-                robot's frame
-              </q-badge>
-            </div>
-            <q-btn
-              flat
-              dense
-              round
-              icon="chevron_right"
-              :disable="verifyIndex >= frames.length - 1"
-              @click="verifyIndex++"
-            />
-          </div>
-          <q-btn
-            v-if="verifyFrame.ts !== autoAt && robotFrameIndex >= 0"
-            flat
-            dense
-            no-caps
-            size="sm"
-            color="indigo"
-            icon="my_location"
-            :label="`Jump to the robot's frame (${timeLabel(autoAt)})`"
-            class="q-mt-xs"
-            @click="verifyIndex = robotFrameIndex"
-          />
-        </template>
-        <p v-else class="text-caption text-italic">
-          The frames are no longer available to view — trust your memory, not the robot's.
-        </p>
-        <div class="row justify-end dialog-actions q-mt-md">
-          <q-btn v-close-popup flat dense no-caps label="Not sure" />
-          <!-- One contextual action: on the robot's frame you can only agree;
-               on any other frame the same button becomes the correction. -->
-          <q-btn
-            v-if="!verifyFrame || verifyFrame.ts === autoAt"
-            v-close-popup
-            dense
-            no-caps
-            unelevated
-            color="indigo"
-            :label="`Agree — ${timeLabel(autoAt)}`"
-            @click="emit('agree')"
-          />
-          <q-btn
-            v-else
-            v-close-popup
-            dense
-            no-caps
-            unelevated
-            color="deep-orange"
-            :label="`${disagreeWord(autoAt)} It was ${verifyFrame.timeLabel}`"
-            @click="emit('mark', verifyFrame.ts)"
-          />
-        </div>
-      </q-card>
-    </q-dialog>
+         judged, starting at its detection frame (see RobotVerifyDialog). -->
+    <RobotVerifyDialog
+      v-model="showVerify"
+      kind="crosswalk"
+      :robot-at="autoAt"
+      :frames="frames"
+      @agree="emit('agree')"
+      @mark="emit('mark', $event)"
+    />
 
     <!-- Fullness verification: step through the terminal frames the robot
          judged; either answer records a capacity report. -->
-    <q-dialog v-model="showFullnessVerify">
-      <q-card class="q-pa-md verify-card">
-        <div class="text-subtitle2 q-mb-xs">
-          <q-icon name="smart_toy" color="indigo" class="q-mr-xs" />Verify before agreeing
-        </div>
-        <p class="text-caption q-mb-sm">
-          These are the terminal frames the robot judged. It thinks everyone
-          waiting got on<template v-if="typeof notFullAt === 'number'">
-            — terminal empty at <strong>{{ timeLabel(notFullAt) }}</strong></template>.
-          Make sure to actually verify, the robot has poor eyesight.
-        </p>
-        <template v-if="fullnessFrame">
-          <img :src="fullnessFrame.imageUrl" class="verify-img" alt="" />
-          <div class="row items-center justify-between q-mt-xs">
-            <q-btn
-              flat
-              dense
-              round
-              icon="chevron_left"
-              :disable="fullnessIndex <= 0"
-              @click="fullnessIndex--"
-            />
-            <div class="text-caption">
-              {{ fullnessFrame.timeLabel }}
-              <q-badge v-if="fullnessFrame.ts === notFullAt" color="indigo" class="q-ml-xs" dense>
-                robot's frame
-              </q-badge>
-            </div>
-            <q-btn
-              flat
-              dense
-              round
-              icon="chevron_right"
-              :disable="fullnessIndex >= terminalFrames.length - 1"
-              @click="fullnessIndex++"
-            />
-          </div>
-          <q-btn
-            v-if="fullnessFrame.ts !== notFullAt && fullnessRobotIndex >= 0"
-            flat
-            dense
-            no-caps
-            size="sm"
-            color="indigo"
-            icon="my_location"
-            :label="`Jump to the robot's frame (${timeLabel(notFullAt)})`"
-            class="q-mt-xs"
-            @click="fullnessIndex = fullnessRobotIndex"
-          />
-        </template>
-        <p v-else class="text-caption text-italic">
-          The frames are no longer available to view — trust your memory, not the robot's.
-        </p>
-        <div class="row justify-end dialog-actions q-mt-md">
-          <q-btn v-close-popup flat dense no-caps label="Not sure" />
-          <q-btn
-            v-close-popup
-            dense
-            no-caps
-            unelevated
-            color="deep-orange"
-            :label="`${disagreeWord(typeof notFullAt === 'number' ? notFullAt : 0)} It was Full`"
-            @click="emit('capacity', 'Full')"
-          />
-          <q-btn
-            v-close-popup
-            dense
-            no-caps
-            unelevated
-            color="indigo"
-            label="Agree — Not Full"
-            @click="emit('capacity', 'Not Full')"
-          />
-        </div>
-      </q-card>
-    </q-dialog>
+    <RobotVerifyDialog
+      v-model="showFullnessVerify"
+      kind="fullness"
+      :robot-at="typeof notFullAt === 'number' ? notFullAt : null"
+      :frames="terminalFrames"
+      @capacity="emit('capacity', $event)"
+    />
 
     <q-dialog v-model="showInfo">
       <q-card class="q-pa-md" style="max-width: 22rem">
@@ -248,10 +122,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { formatReporterName } from 'src/composables/useLeaderboard'
 import { CROSSWALK_BUCKET_MS, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 import { dayjs, TZ } from '../../functions/lib/time.js'
+import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 
 // The robots' take on one sailing, as its own "Robot says:" block:
 //  - crosswalk: suggest-with-verification (button → frame-check dialog →
@@ -273,6 +148,10 @@ const props = defineProps({
   capacityReports: { type: Array, default: () => [] }, // { userName, capacity, recordedAt }
   // Terminal (departure) timelapse frames — shown in the fullness dialog.
   terminalFrames: { type: Array, default: () => [] },
+  // 'crosswalk' | 'fullness': open that verify dialog as soon as the matching
+  // prediction exists — set by the departures page when arriving from a robot
+  // badge elsewhere in the app (e.g. the home page schedule).
+  autoOpen: { type: String, default: null },
 })
 // agree: robot's crosswalk time confirmed · mark: rider disagreed and marks
 // the viewed frame's ts instead · capacity: 'Not Full' | 'Full' from the
@@ -280,35 +159,31 @@ const props = defineProps({
 const emit = defineEmits(['agree', 'mark', 'capacity'])
 
 const showInfo = ref(false)
+// The dialogs reset themselves to the robot's frame on each open.
 const showVerify = ref(false)
-const verifyIndex = ref(0)
 const showFullnessVerify = ref(false)
-const fullnessIndex = ref(0)
 const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 
-// Rotating openers for the disagree buttons — picked deterministically per
-// prediction so the label doesn't reshuffle while stepping frames.
-const DISAGREE_WORDS = ['Disagree!', 'I object!', 'No way —', 'Nope.', 'Objection!', 'Hard no —']
-const disagreeWord = (seed) => DISAGREE_WORDS[Math.abs(seed || 0) % DISAGREE_WORDS.length]
-
-const robotFrameIndex = computed(() => props.frames.findIndex((f) => f.ts === props.autoAt))
-const verifyFrame = computed(() => props.frames[verifyIndex.value] || null)
-
 function openVerify() {
-  verifyIndex.value = robotFrameIndex.value >= 0 ? robotFrameIndex.value : props.frames.length - 1
   showVerify.value = true
 }
 
-const fullnessRobotIndex = computed(() =>
-  props.terminalFrames.findIndex((f) => f.ts === props.notFullAt),
-)
-const fullnessFrame = computed(() => props.terminalFrames[fullnessIndex.value] || null)
-
 function openFullnessVerify() {
-  fullnessIndex.value =
-    fullnessRobotIndex.value >= 0 ? fullnessRobotIndex.value : props.terminalFrames.length - 1
   showFullnessVerify.value = true
 }
+
+// Honor autoOpen once the corresponding prediction is present. immediate so a
+// target already known at mount opens right away; the watch also catches a
+// target that arrives after the sailing data settles.
+watch(
+  () => props.autoOpen,
+  (kind) => {
+    if (kind === 'crosswalk' && props.autoAt != null) openVerify()
+    else if (kind === 'fullness' && props.notFullAt != null && props.notFullAt !== false)
+      openFullnessVerify()
+  },
+  { immediate: true },
+)
 
 const emptyWhen = computed(() =>
   typeof props.notFullAt === 'number' ? ` (empty ${timeLabel(props.notFullAt)})` : '',
@@ -406,18 +281,5 @@ const fullnessText = computed(() => {
 .robot-text {
   overflow-wrap: anywhere;
   max-width: 100%;
-}
-.verify-card {
-  width: 26rem;
-  max-width: 92vw;
-}
-
-.dialog-actions {
-  gap: 10px;
-}
-.verify-img {
-  width: 100%;
-  border-radius: 6px;
-  display: block;
 }
 </style>

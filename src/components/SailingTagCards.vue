@@ -37,14 +37,23 @@
         <q-card-actions class="q-py-sm q-px-sm column items-stretch">
           <div class="text-subtitle2 q-mb-xs row items-center">
             <span>Arrival{{ arrival.timeLabel ? ` — ${arrival.timeLabel}` : '' }}</span>
-            <q-badge v-if="arrival.crosswalkFullAt" rounded color="deep-orange" class="q-ml-sm" dense>
+            <q-badge
+              v-if="arrival.crosswalkFullAt"
+              rounded
+              color="deep-orange"
+              class="q-ml-sm"
+              :class="{ 'robot-badge': arrival.crosswalkSource === 'robot' }"
+              dense
+            >
               crosswalk {{ crosswalkLabel(arrival.crosswalkFullAt) }}
               <q-tooltip>Lineup reached the crosswalk at {{ crosswalkLabel(arrival.crosswalkFullAt) }}</q-tooltip>
             </q-badge>
             <q-badge
               v-if="arrival.currentCapacity"
+              rounded
               :color="getDeckColor(arrival.currentCapacity)"
               class="q-ml-sm"
+              :class="{ 'robot-badge': arrival.capacitySource === 'robot' }"
             >
               {{ capacityFullLabel(arrival.currentCapacity) }}
             </q-badge>
@@ -55,6 +64,14 @@
               class="q-ml-xs text-grey-7"
             >
               <q-tooltip>Reported by a rider</q-tooltip>
+            </q-icon>
+            <q-icon
+              v-if="arrival.currentCapacity && arrival.capacitySource === 'robot'"
+              name="smart_toy"
+              size="14px"
+              class="q-ml-xs text-indigo"
+            >
+              <q-tooltip>Recorded by the robot — tag to overwrite</q-tooltip>
             </q-icon>
           </div>
           <!-- Terse one-line-per-button wording on phones so no description wraps. -->
@@ -164,8 +181,10 @@
             <q-badge v-if="departure.live" color="info" class="q-ml-sm">Live</q-badge>
             <q-badge
               v-if="departure.currentCapacity"
+              rounded
               :color="getDeckColor(departure.currentCapacity)"
               class="q-ml-sm"
+              :class="{ 'robot-badge': departure.capacitySource === 'robot' }"
             >
               {{ capacityFullLabel(departure.currentCapacity) }}
             </q-badge>
@@ -176,6 +195,14 @@
               class="q-ml-xs text-grey-7"
             >
               <q-tooltip>Reported by a rider</q-tooltip>
+            </q-icon>
+            <q-icon
+              v-if="departure.currentCapacity && departure.capacitySource === 'robot'"
+              name="smart_toy"
+              size="14px"
+              class="q-ml-xs text-indigo"
+            >
+              <q-tooltip>Recorded by the robot — tag to overwrite</q-tooltip>
             </q-icon>
           </div>
           <div v-if="departure.live" class="text-caption text-grey-7 q-mb-sm">
@@ -257,9 +284,10 @@ function openZoom(url) {
 }
 
 // Automated (scraped) capacity is authoritative — the server ignores user tags
-// for those sailings, so don't offer the buttons. User tags may be re-tagged.
+// for those sailings, so don't offer the buttons. User tags may be re-tagged,
+// and robot-recorded values are always overwritable by a human.
 function isLocked(card) {
-  return Boolean(card.currentCapacity) && card.capacitySource !== 'user'
+  return Boolean(card.currentCapacity) && !['user', 'robot'].includes(card.capacitySource)
 }
 
 function rate(card, capacity) {
