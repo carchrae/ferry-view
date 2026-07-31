@@ -22,12 +22,14 @@
       <template v-if="frame">
         <!-- Tap the frame for the fullscreen pinch/zoom viewer — the small
              dialog image is hard to judge cars by. -->
-        <img
-          :src="frame.imageUrl"
-          class="verify-img cursor-pointer"
-          alt=""
-          @click="openZoom(frame.imageUrl)"
-        />
+        <div class="verify-img-wrap">
+          <img
+            :src="frame.imageUrl"
+            class="verify-img cursor-pointer"
+            alt=""
+            @click="openZoom(frame.imageUrl)"
+          />
+        </div>
         <div class="row items-center justify-between q-mt-xs">
           <q-btn flat dense round icon="chevron_left" :disable="index <= 0" @click="index--" />
           <div class="text-caption">
@@ -177,12 +179,18 @@ const disagreeWord = computed(
   gap: 10px;
 }
 
-/* Full-bleed frame: cancel the card's q-pa-md (16px) side padding so the
-   photo runs edge to edge — every pixel helps when judging cars. */
+/* Full-bleed frame: the wrapper cancels the card's q-pa-md (16px) side
+   padding so a wide photo runs edge to edge — every pixel helps when judging
+   cars. A photo narrower than the dialog isn't upscaled (blur hides cars);
+   it just sits centered. */
+.verify-img-wrap {
+  margin: 0 -16px;
+}
+
 .verify-img {
   display: block;
-  width: calc(100% + 32px);
-  margin: 0 -16px;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 /* Phones: the card takes the whole viewport width (the dialog wrapper's own
