@@ -6,23 +6,44 @@
 //
 // Kept free of native deps (no sharp) so the exporter can run it anywhere.
 
-// A report counts only when it has an author and a numeric mark — the same
+// A report counts only when it has an author and either a numeric mark or the
+// notYet refute flag ("the lineup has NOT passed the crosswalk") — the same
 // validity check the triggers and client loaders apply.
 export function isValidLineupReport(r) {
-  return Boolean(r && r.userUid && typeof r.crosswalkAt === 'number')
+  return Boolean(r && r.userUid && (typeof r.crosswalkAt === 'number' || r.notYet === true))
 }
 
-// The app's "latest wins" rule: of a sailing's valid reports, the one most
-// recently recorded defines the sailing's crosswalk time (later riders
-// correct earlier marks; deleting yours falls back to the latest remaining).
-// Returns the crosswalkAt epoch-ms, or null when no valid report exists.
-export function effectiveCrosswalkAt(reports) {
+// The app's "latest wins" rule: of a sailing's valid reports (positive marks
+// AND notYet refutes), the one most recently recorded defines the sailing's
+// crosswalk state. Returns { at, notYet, recordedAt } or null when no valid
+// report exists — at is null when the latest word is a refute.
+export function effectiveCrosswalk(reports) {
   let latest = null
   for (const r of reports || []) {
     if (!isValidLineupReport(r)) continue
     if (!latest || (r.recordedAt || 0) > (latest.recordedAt || 0)) latest = r
   }
-  return latest ? latest.crosswalkAt : null
+  if (!latest) return null
+  return latest.notYet === true
+    ? { at: null, notYet: true, recordedAt: latest.recordedAt || 0 }
+    : { at: latest.crosswalkAt, notYet: false, recordedAt: latest.recordedAt || 0 }
+}
+
+// Numeric shortcut kept for the training exporter: the effective crosswalk
+// time, or null when there is none — including when the latest word is a
+// refute (a refuted sailing's frames stay unlabeled, never mislabeled).
+export function effectiveCrosswalkAt(reports) {
+  const eff = effectiveCrosswalk(reports)
+  return eff && !eff.notYet ? eff.at : null
+}
+
+// Whether the robot may record its confirmed detection as the sailing's
+// crosswalk report: only when no report exists AND no human "not yet" refute
+// is fresher than the detection frame (the lineup can genuinely pass after an
+// accurate refute, so a newer detection still counts).
+export function robotMayFillCrosswalk(cur, detectionTs) {
+  if (cur?.crosswalkFullAt != null) return false
+  return cur?.crosswalkNotYetAt == null || detectionTs > cur.crosswalkNotYetAt
 }
 
 // Label a timelapse frame from the effective crosswalk time: frames captured

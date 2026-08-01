@@ -18,6 +18,7 @@
           taggable
           :autoplay="autoplay"
           @crosswalk="emit('crosswalk', { sailingKey: arrival.sailingKey, ...$event })"
+          @refute="emit('refute', { sailingKey: arrival.sailingKey })"
         />
         <q-img
           v-else
@@ -269,7 +270,7 @@ defineProps({
   autoplay: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['rate', 'crosswalk'])
+const emit = defineEmits(['rate', 'crosswalk', 'refute'])
 
 const $q = useQuasar()
 // Phone-width screens get the terse captions so each fits on one line.

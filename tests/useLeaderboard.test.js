@@ -174,6 +174,50 @@ describe('scoreCrosswalk', () => {
     assert.equal(disputed, false)
     assert.equal(resolved, true)
   })
+
+  // A notYet refute ("hasn't passed the crosswalk") is its own camp.
+  function refute(userUid, recordedAt) {
+    return { userUid, crosswalkAt: null, notYet: true, recordedAt }
+  }
+
+  it('a refute against a mark is a 1-1 tie: disputed, unresolved, all visible', () => {
+    const { credits, disputed, resolved, winners } = scoreCrosswalk([
+      mark('A', 100, 1),
+      refute('B', 2),
+    ])
+    assert.equal(disputed, true)
+    assert.equal(resolved, false)
+    assert.equal(winners.length, 2)
+    assert.equal(credits.get('A'), 0.1)
+    assert.equal(credits.get('B'), 0.1)
+  })
+
+  it('a refute plurality wins: refuter 1.0, confirmer 0.5, marker 0.1', () => {
+    const { credits, disputed, resolved, winners } = scoreCrosswalk([
+      mark('A', 100, 1),
+      refute('B', 2),
+      refute('C', 3),
+    ])
+    assert.equal(disputed, true)
+    assert.equal(resolved, true)
+    assert.deepEqual(
+      winners.map((r) => r.userUid),
+      ['B', 'C'],
+    )
+    assert.equal(credits.get('B'), 1.0)
+    assert.equal(credits.get('C'), 0.5)
+    assert.equal(credits.get('A'), 0.1)
+  })
+
+  it("a refute never collides with any time bucket (even bucket 0)", () => {
+    // crosswalkAt 0 would bucket to 0 — the refute's string key must still
+    // count as a different camp.
+    const { disputed } = scoreCrosswalk([
+      { userUid: 'A', crosswalkAt: 0, recordedAt: 1 },
+      refute('B', 2),
+    ])
+    assert.equal(disputed, true)
+  })
 })
 
 describe('aggregateLeaderboard', () => {

@@ -81,6 +81,7 @@
       :frames="frames"
       @agree="emit('agree')"
       @mark="emit('mark', $event)"
+      @refute="emit('refute')"
     />
 
     <!-- Fullness verification: step through the terminal frames the robot
@@ -154,9 +155,10 @@ const props = defineProps({
   autoOpen: { type: String, default: null },
 })
 // agree: robot's crosswalk time confirmed · mark: rider disagreed and marks
-// the viewed frame's ts instead · capacity: 'Not Full' | 'Full' from the
+// the viewed frame's ts instead · refute: rider says the lineup has NOT
+// passed the crosswalk at all · capacity: 'Not Full' | 'Full' from the
 // fullness dialog.
-const emit = defineEmits(['agree', 'mark', 'capacity'])
+const emit = defineEmits(['agree', 'mark', 'capacity', 'refute'])
 
 const showInfo = ref(false)
 // The dialogs reset themselves to the robot's frame on each open.
@@ -201,9 +203,13 @@ const humanRef = computed(() => {
       (a, b) => ((b.recordedAt || 0) < (a.recordedAt || 0) ? b : a),
       winners[0],
     )
-    return { at: first.crosswalkAt, name: formatReporterName(first.userName) }
+    return {
+      at: first.notYet ? null : first.crosswalkAt,
+      notYet: first.notYet === true,
+      name: formatReporterName(first.userName),
+    }
   }
-  if (props.humanAt != null) return { at: props.humanAt, name: null }
+  if (props.humanAt != null) return { at: props.humanAt, notYet: false, name: null }
   return null
 })
 
@@ -221,16 +227,27 @@ const DISAGREE_QUIPS = [
   (t) => `Saw ${t} — one of us needs new glasses.`,
   (t) => `Squints at the pixels and says ${t}.`,
 ]
+// The winning human word is a refute: the lineup has NOT passed at all.
+const REFUTED_QUIPS = [
+  (who) => `${who} says not past yet — recalibrating my pixels.`,
+  (who) => `${who} overrules: hasn't passed. Noted, sheepishly.`,
+  (who) => `Withdrawn — ${who} says the lineup isn't there yet.`,
+]
 
 const verdictAgrees = computed(
   () =>
     humanRef.value != null &&
+    !humanRef.value.notYet &&
     props.autoAt != null &&
     Math.abs(props.autoAt - humanRef.value.at) <= CROSSWALK_BUCKET_MS,
 )
 
 const verdictText = computed(() => {
   if (!humanRef.value || props.autoAt == null) return ''
+  if (humanRef.value.notYet) {
+    const pick = REFUTED_QUIPS[Math.abs(props.autoAt) % REFUTED_QUIPS.length]
+    return pick(humanRef.value.name || 'The humans')
+  }
   const quips = verdictAgrees.value ? AGREE_QUIPS : DISAGREE_QUIPS
   const pick = quips[Math.abs(humanRef.value.at || 0) % quips.length]
   return verdictAgrees.value

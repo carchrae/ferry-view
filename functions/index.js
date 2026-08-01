@@ -35,12 +35,13 @@ import {
 import { augmentFromAisPosition, classificationDebug } from './lib/ais-position.js'
 import { arrivalLineupTarget } from './lib/webcam-decision.js'
 import { applyUserCapacityReport } from './lib/user-capacity.js'
+import { applyLineupReport, rederiveCrosswalkAfterDelete } from './lib/user-lineup.js'
 import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-aggregate.js'
 import { recomputeHistoricalStats } from './lib/history-aggregate.js'
 import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
 import { functionsActive } from './lib/control.js'
 import { ensureClassifierModelDocs } from './lib/classifier-models.js'
-import { effectiveCrosswalkAt } from './lib/lineup-labels.js'
+import { isValidLineupReport } from './lib/lineup-labels.js'
 import { nowInVancouver, timeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
@@ -377,34 +378,12 @@ export const onCapacityReport = onDocumentCreated('capacityHistory/{docId}', asy
 export const onLineupReport = onDocumentCreated('lineupReports/{docId}', async (event) => {
   if (!(await functionsActive())) return
   const r = event.data?.data()
-  if (!r?.userUid || typeof r.crosswalkAt !== 'number') return
-  const m = /^(\d{4}-\d{2}-\d{2})_(.+)_(To\s.+)$/.exec(r.sailingKey || '')
-  if (!m) {
-    logger.warn('Ignoring lineup report with malformed sailingKey:', r.sailingKey)
-    return
-  }
-  const [, dateIso, time, direction] = m
-  const ref = db.collection('sailingStatus').doc(r.sailingKey)
-  await ref.set(
-    {
-      sailingKey: r.sailingKey,
-      sailingTime: time,
-      direction,
-      dateIso,
-      crosswalkFullAt: r.crosswalkAt,
-      // Human marks always overwrite a robot-recorded crosswalk time; the
-      // robot's own crosswalkFullAtAuto stays untouched for comparison.
-      crosswalkSource: 'user',
-    },
-    { merge: true },
-  )
-  if (direction === 'To HSB') {
-    await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: r.crosswalkAt, clearKeys: ['cws'] })
-  }
+  if (!isValidLineupReport(r)) return
+  const isToday = await applyLineupReport(db, r)
   // Surface the mark on the live schedule right away (augmentRecentActivity
   // copies crosswalkFullAt onto the bowenSchedule entry) instead of waiting
   // for the next changed poll — mirrors onCapacityReport.
-  if (dateIso === nowInVancouver().format('YYYY-MM-DD')) {
+  if (isToday) {
     try {
       await refreshFerryData(db, { forceUpdate: true })
     } catch (e) {
@@ -517,62 +496,15 @@ export const onLineupReportDelete = onDocumentDeleted(
     if (!(await functionsActive())) return
     const r = event.data?.data()
     if (!r?.userUid || !r.sailingKey) return
-    const m = /^(\d{4}-\d{2}-\d{2})_(.+)_(To\s.+)$/.exec(r.sailingKey)
-    if (!m) return
-    const [, dateIso, time, direction] = m
 
+    let isToday = false
     try {
-      const snap = await db
-        .collection('lineupReports')
-        .where('sailingKey', '==', r.sailingKey)
-        .get()
-      const crosswalkAt = effectiveCrosswalkAt(snap.docs.map((doc) => doc.data()))
-
-      if (crosswalkAt != null) {
-        await db
-          .collection('sailingStatus')
-          .doc(r.sailingKey)
-          .set({ crosswalkFullAt: crosswalkAt, crosswalkSource: 'user' }, { merge: true })
-        if (direction === 'To HSB') {
-          await upsertBowenSailing(db, {
-            dateIso,
-            sailingTime: time,
-            cw: crosswalkAt,
-            clearKeys: ['cws'],
-          })
-        }
-      } else {
-        // No human marks left — fall back to the classifier's confirmed
-        // crosswalk time if it has one (the auto verdict is never deleted),
-        // else clear the mark entirely.
-        const cur = (await db.collection('sailingStatus').doc(r.sailingKey).get()).data()
-        const autoAt = cur?.crosswalkFullAtAuto
-        if (autoAt != null) {
-          await db
-            .collection('sailingStatus')
-            .doc(r.sailingKey)
-            .set({ crosswalkFullAt: autoAt, crosswalkSource: 'robot' }, { merge: true })
-          if (direction === 'To HSB') {
-            await upsertBowenSailing(db, { dateIso, sailingTime: time, cw: autoAt, cws: 'robot' })
-          }
-        } else {
-          await db
-            .collection('sailingStatus')
-            .doc(r.sailingKey)
-            .set(
-              { crosswalkFullAt: FieldValue.delete(), crosswalkSource: FieldValue.delete() },
-              { merge: true },
-            )
-          if (direction === 'To HSB') {
-            await upsertBowenSailing(db, { dateIso, sailingTime: time, clearKeys: ['cw', 'cws'] })
-          }
-        }
-      }
+      isToday = await rederiveCrosswalkAfterDelete(db, r.sailingKey)
     } catch (e) {
       logger.error('Reapplying crosswalk after mark delete failed:', e)
     }
 
-    if (dateIso === nowInVancouver().format('YYYY-MM-DD')) {
+    if (isToday) {
       try {
         await refreshFerryData(db, { forceUpdate: true })
       } catch (e) {

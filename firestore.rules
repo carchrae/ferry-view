@@ -37,11 +37,14 @@ service cloud.firestore {
     }
 
     // Lineup reports: riders marking when the car lineup reached the
-    // crosswalk. Same shape as capacityHistory: create + own-delete only.
+    // crosswalk, or refuting that it has (crosswalkAt null + notYet true).
+    // Same shape as capacityHistory: create + own-delete only.
     match /lineupReports/{docId} {
       allow read: if true;
       allow create: if request.auth != null
         && request.resource.data.keys().hasAll(['sailingKey', 'crosswalkAt', 'userUid'])
+        && (request.resource.data.crosswalkAt is number
+            || (request.resource.data.notYet == true && request.resource.data.crosswalkAt == null))
         && request.resource.data.userUid == request.auth.uid;
       allow delete: if request.auth != null
         && request.auth.uid == resource.data.userUid;

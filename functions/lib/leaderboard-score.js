@@ -87,7 +87,8 @@ export function scoreSailing(reports) {
 // capacity. Marks are timestamps, so exact equality is meaningless: each
 // user's latest mark is bucketed into a CROSSWALK_BUCKET_MS window and buckets
 // are compared like capacity values — different buckets disagree, a strict
-// plurality resolves.
+// plurality resolves. A notYet refute ("hasn't passed the crosswalk") is its
+// own camp: the string key can never collide with a numeric time bucket.
 // Returns { credits, disputed, resolved, winners } — winners are the marks in
 // the winning bucket, or every mark while undisputed/tied (so nothing
 // disappears from the UI).
@@ -95,7 +96,7 @@ export const CROSSWALK_BUCKET_MS = 5 * 60 * 1000
 export function scoreCrosswalk(reports, bucketMs = CROSSWALK_BUCKET_MS) {
   const list = latestPerUser(reports || [])
   const { credits, disputed, resolved, winners } = creditsByPlurality(list, (r) =>
-    Math.round((r.crosswalkAt || 0) / bucketMs),
+    r.notYet === true ? 'notYet' : Math.round((r.crosswalkAt || 0) / bucketMs),
   )
   return { credits, disputed, resolved, winners: disputed && resolved ? winners : list }
 }

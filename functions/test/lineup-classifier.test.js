@@ -5,7 +5,13 @@ import {
   labelForTimestamp,
   FEATURE_LENGTH,
 } from '../lib/lineup-features.js'
-import { effectiveCrosswalkAt, firstSustainedPositiveTs } from '../lib/lineup-labels.js'
+import {
+  isValidLineupReport,
+  effectiveCrosswalk,
+  effectiveCrosswalkAt,
+  firstSustainedPositiveTs,
+  robotMayFillCrosswalk,
+} from '../lib/lineup-labels.js'
 import { classifyLineup, scoreFeatures } from '../lib/lineup-classifier.js'
 
 async function solidJpeg(shade, width = 1280, height = 720) {
@@ -81,6 +87,61 @@ describe('effectiveCrosswalkAt', () => {
         { userUid: 'b', crosswalkAt: 2000, recordedAt: 1 },
       ]),
     ).toBe(2000)
+  })
+
+  it('returns null when the latest word is a notYet refute (frames stay unlabeled)', () => {
+    expect(
+      effectiveCrosswalkAt([
+        { userUid: 'a', crosswalkAt: 1000, recordedAt: 10 },
+        { userUid: 'b', crosswalkAt: null, notYet: true, recordedAt: 20 },
+      ]),
+    ).toBe(null)
+  })
+})
+
+describe('isValidLineupReport', () => {
+  it('accepts numeric marks and notYet refutes, requires an author', () => {
+    expect(isValidLineupReport({ userUid: 'a', crosswalkAt: 1000 })).toBe(true)
+    expect(isValidLineupReport({ userUid: 'a', crosswalkAt: null, notYet: true })).toBe(true)
+    expect(isValidLineupReport({ crosswalkAt: null, notYet: true })).toBe(false)
+    expect(isValidLineupReport({ userUid: 'a', crosswalkAt: null })).toBe(false)
+    expect(isValidLineupReport({ userUid: 'a', crosswalkAt: 'soon' })).toBe(false)
+    expect(isValidLineupReport(undefined)).toBe(false)
+  })
+})
+
+describe('effectiveCrosswalk', () => {
+  it('latest-wins across mixed positives and refutes', () => {
+    const reports = [
+      { userUid: 'a', crosswalkAt: 1000, recordedAt: 10 },
+      { userUid: 'b', crosswalkAt: null, notYet: true, recordedAt: 20 },
+    ]
+    expect(effectiveCrosswalk(reports)).toEqual({ at: null, notYet: true, recordedAt: 20 })
+    // A newer positive supersedes the refute.
+    reports.push({ userUid: 'c', crosswalkAt: 3000, recordedAt: 30 })
+    expect(effectiveCrosswalk(reports)).toEqual({ at: 3000, notYet: false, recordedAt: 30 })
+  })
+
+  it('returns null with no valid reports', () => {
+    expect(effectiveCrosswalk([])).toBe(null)
+    expect(effectiveCrosswalk([{ crosswalkAt: 1 }])).toBe(null)
+  })
+})
+
+describe('robotMayFillCrosswalk', () => {
+  it('never fills over an existing claim', () => {
+    expect(robotMayFillCrosswalk({ crosswalkFullAt: 1000 }, 2000)).toBe(false)
+  })
+
+  it('fills freely when no refute guard is armed', () => {
+    expect(robotMayFillCrosswalk({}, 2000)).toBe(true)
+    expect(robotMayFillCrosswalk(undefined, 2000)).toBe(true)
+  })
+
+  it('is blocked by a refute at/after the detection, allowed by an older one', () => {
+    expect(robotMayFillCrosswalk({ crosswalkNotYetAt: 3000 }, 2000)).toBe(false)
+    expect(robotMayFillCrosswalk({ crosswalkNotYetAt: 2000 }, 2000)).toBe(false)
+    expect(robotMayFillCrosswalk({ crosswalkNotYetAt: 1000 }, 2000)).toBe(true)
   })
 })
 

@@ -54,15 +54,16 @@
       :key="'cw' + r.userUid + r.recordedAt"
       dense
       square
-      color="deep-orange"
+      :color="r.notYet ? 'blue-grey-7' : 'deep-orange'"
       text-color="white"
-      icon="directions_walk"
+      :icon="r.notYet ? 'block' : 'directions_walk'"
       :removable="r.userUid === meUid"
       class="report-chip"
       :class="{ 'winner-chip': crosswalkResolvedWin }"
       @remove="emit('delete-crosswalk', r)"
     >
-      {{ formatReporterName(r.userName) }} · crosswalk @ {{ timeLabel(r.crosswalkAt) }} ·
+      {{ formatReporterName(r.userName) }} ·
+      {{ r.notYet ? 'not past yet' : 'crosswalk @ ' + timeLabel(r.crosswalkAt) }} ·
       +{{ cwCreditFor(r.userUid) }}
       <q-tooltip>
         <template v-if="crosswalkResolvedWin">
@@ -99,7 +100,7 @@ import { dayjs, TZ } from '../../functions/lib/time.js'
 // strict plurality, only the winning chips are shown, highlighted.
 const props = defineProps({
   reports: { type: Array, default: () => [] }, // { userUid, userName, capacity, recordedAt }
-  crosswalkReports: { type: Array, default: () => [] }, // { userUid, userName, crosswalkAt, recordedAt }
+  crosswalkReports: { type: Array, default: () => [] }, // { userUid, userName, crosswalkAt, notYet?, recordedAt }
 })
 
 // The viewer's own chips get an X (q-chip removable) that asks the parent to

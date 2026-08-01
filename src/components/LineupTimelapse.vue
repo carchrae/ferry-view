@@ -60,6 +60,13 @@
             flat
             no-caps
             color="deep-orange"
+            label="It hasn't passed yet"
+            @click="emitRefute"
+          />
+          <q-btn
+            flat
+            no-caps
+            color="deep-orange"
             :label="`Change to ${current.timeLabel}`"
             @click="emitCrosswalk"
           />
@@ -100,7 +107,10 @@ const props = defineProps({
   defaultTs: { type: Number, default: null },
 })
 
-const emit = defineEmits(['crosswalk'])
+// crosswalk: record the current frame's ts as the mark · refute: the lineup
+// has NOT passed the crosswalk at all (only offered when a mark exists —
+// with no claim there is nothing to refute).
+const emit = defineEmits(['crosswalk', 'refute'])
 
 // Open on the frame nearest defaultTs, else the newest (last-captured) frame.
 function initialIndex() {
@@ -208,6 +218,11 @@ function confirmCrosswalk() {
 function emitCrosswalk() {
   confirmOpen.value = false
   emit('crosswalk', { ts: current.value.ts, timeLabel: current.value.timeLabel })
+}
+
+function emitRefute() {
+  confirmOpen.value = false
+  emit('refute')
 }
 
 onMounted(() => {

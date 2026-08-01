@@ -171,7 +171,11 @@ export function useLeaderboard() {
 
     return [
       ...collect(reports, scoreSailing, (r) => ({ capacity: r.capacity })),
-      ...collect(crosswalkReports, scoreCrosswalk, (r) => ({ crosswalkAt: r.crosswalkAt })),
+      ...collect(crosswalkReports, scoreCrosswalk, (r) => ({
+        crosswalkAt: r.crosswalkAt,
+        crosswalkReport: true,
+        notYet: r.notYet === true,
+      })),
     ].sort((a, b) => (b.recordedAt || 0) - (a.recordedAt || 0))
   }
 

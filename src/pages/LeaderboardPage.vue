@@ -94,7 +94,7 @@
           <q-spinner color="primary" size="28px" />
         </q-card-section>
         <q-list v-else separator>
-          <q-item v-for="r in userReports" :key="r.sailingKey + (r.crosswalkAt ? '-cw' : '')">
+          <q-item v-for="r in userReports" :key="r.sailingKey + (r.crosswalkReport ? '-cw' : '')">
             <q-item-section>
               <q-item-label>{{ sailingLabel(r.sailingKey) }}</q-item-label>
               <q-item-label caption>{{ reportedAtLabel(r.recordedAt) }}</q-item-label>
@@ -103,6 +103,7 @@
               <q-badge v-if="r.capacity" :color="getDeckColor(r.capacity)">
                 {{ capacityFullLabel(r.capacity) }}
               </q-badge>
+              <q-badge v-else-if="r.notYet" color="blue-grey-7"> not past crosswalk </q-badge>
               <q-badge v-else color="deep-orange">
                 crosswalk @ {{ crosswalkLabel(r.crosswalkAt) }}
               </q-badge>

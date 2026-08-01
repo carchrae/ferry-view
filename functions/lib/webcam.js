@@ -8,6 +8,7 @@ import { classifyLineup, lineupModelVersion } from './lineup-classifier.js'
 import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import { updateSailingStatus } from './helpers.js'
+import { robotMayFillCrosswalk } from './lineup-labels.js'
 import {
   lastBowenDeparture,
   bowenArrivalForCurrentCycle,
@@ -240,8 +241,9 @@ export async function captureLineupTimelapse(db, data) {
   // a lone positive is noise, so it parks as crosswalkAutoPending and a
   // negative frame clears it. The stamped time is the FIRST frame of the
   // confirmed pair. A confirmed verdict is also recorded as a robot REPORT
-  // (crosswalkFullAt + crosswalkSource:'robot') when no human mark exists —
-  // humans always overwrite it (onLineupReport stamps unconditionally).
+  // (crosswalkFullAt + crosswalkSource:'robot') when no human mark exists and
+  // no fresher human "not yet" refute blocks it (robotMayFillCrosswalk) —
+  // humans always overwrite or refute it (see user-lineup.js).
   const autoFields = {}
   let robotReported = false
   const verdict = await classifyLineup(best)
@@ -256,7 +258,7 @@ export async function captureLineupTimelapse(db, data) {
           autoFields.crosswalkAutoPending = FieldValue.delete()
           const modelVersion = lineupModelVersion()
           if (modelVersion != null) autoFields.crosswalkAutoModel = modelVersion
-          if (cur.crosswalkFullAt == null) {
+          if (robotMayFillCrosswalk(cur, cur.crosswalkAutoPending.ts)) {
             autoFields.crosswalkFullAt = cur.crosswalkAutoPending.ts
             autoFields.crosswalkSource = 'robot'
             robotReported = true

@@ -67,9 +67,20 @@
         <q-btn v-close-popup flat dense no-caps label="Not sure" />
         <!-- Crosswalk has one contextual action: on the robot's frame you can
              only agree; on any other frame the same button becomes the
-             correction. Fullness always offers both answers — either records
-             a capacity report. -->
+             correction. "Hasn't passed yet" refutes the claim outright — the
+             lineup never reached the crosswalk (stable label on purpose: it's
+             a statement, not a disagreement opener). Fullness always offers
+             both answers — either records a capacity report. -->
         <template v-if="kind === 'crosswalk'">
+          <q-btn
+            v-close-popup
+            flat
+            dense
+            no-caps
+            color="deep-orange"
+            label="Hasn't passed yet"
+            @click="emit('refute')"
+          />
           <q-btn
             v-if="!frame || frame.ts === robotAt"
             v-close-popup
@@ -125,7 +136,8 @@ import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 // The robot's frame-stepping verification dialog, extracted from RobotSays so
 // any page (home page badges, departures page) can open it. Two kinds:
 //  - crosswalk: step the arrival (lineup) frames; agree with the robot's
-//    detection frame or mark the viewed frame's time instead → 'agree'/'mark'
+//    detection frame, mark the viewed frame's time instead, or refute the
+//    claim outright (lineup hasn't passed) → 'agree'/'mark'/'refute'
 //  - fullness: step the terminal (departure) frames; either answer records a
 //    capacity report → 'capacity' with 'Full' | 'Not Full'
 // robotAt is the robot's detection frame ts; null for a timeless fullness
@@ -136,7 +148,7 @@ const props = defineProps({
   robotAt: { type: Number, default: null },
   frames: { type: Array, default: () => [] }, // [{ imageUrl, timeLabel, ts }]
 })
-const emit = defineEmits(['update:modelValue', 'agree', 'mark', 'capacity'])
+const emit = defineEmits(['update:modelValue', 'agree', 'mark', 'capacity', 'refute'])
 
 const index = ref(0)
 const robotIndex = computed(() => props.frames.findIndex((f) => f.ts === props.robotAt))

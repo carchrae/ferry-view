@@ -4,6 +4,7 @@ import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { resolveAvatarUrl } from 'src/composables/useAvatar'
 import { isAnonymous } from 'src/composables/useAnonymity'
+import { isValidLineupReport } from '../../functions/lib/lineup-labels.js'
 
 // Persists "car lineup reached the crosswalk" marks to lineupReports. The
 // server-side onLineupReport trigger stamps crosswalkFullAt onto the sailing's
@@ -44,6 +45,37 @@ export function useLineupReport() {
     return true
   }
 
+  // Records a REFUTE: as of now, the lineup has NOT passed the crosswalk —
+  // used to knock down a robot prediction or another rider's mark the
+  // reporter can see is wrong. Flows through the same latest-wins/plurality
+  // machinery as positive marks; the server clears the sailing's crosswalk
+  // claim when the refute is the effective word. Same sign-in contract as
+  // saveCrosswalkMark. `extra` carries the training flags when refuting a
+  // robot claim ({ refutedAuto: true, autoAt, autoSource, autoProb }).
+  async function saveCrosswalkNotYet(sailingKey, extra = {}) {
+    if (!user.value) {
+      needsSignIn.value = true
+      return false
+    }
+    if (!sailingKey) {
+      console.error('saveCrosswalkNotYet needs a sailingKey')
+      return false
+    }
+    const anonymous = isAnonymous(user.value.uid)
+    await addDoc(collection(db, 'lineupReports'), {
+      sailingKey,
+      crosswalkAt: null,
+      notYet: true,
+      recordedAt: Date.now(),
+      userUid: user.value.uid,
+      userName: anonymous ? null : user.value.displayName || user.value.email || null,
+      userPhoto: anonymous ? null : await resolveAvatarUrl(user.value),
+      anonymous,
+      ...extra,
+    })
+    return true
+  }
+
   // Deletes ALL of the signed-in user's crosswalk marks for a sailing (each
   // re-mark is its own doc). The server's onLineupReportDelete trigger falls
   // back to the latest remaining mark or clears the sailing's crosswalk time.
@@ -60,13 +92,14 @@ export function useLineupReport() {
     return true
   }
 
-  return { user, needsSignIn, saveCrosswalkMark, deleteCrosswalkMark }
+  return { user, needsSignIn, saveCrosswalkMark, saveCrosswalkNotYet, deleteCrosswalkMark }
 }
 
 function mapLineupDoc(d) {
   return {
     sailingKey: d.sailingKey,
     crosswalkAt: d.crosswalkAt,
+    notYet: d.notYet === true,
     recordedAt: d.recordedAt || 0,
     userUid: d.userUid,
     userName: d.userName || null,
@@ -85,7 +118,7 @@ export async function loadRecentLineupReports(days = 14) {
   const reports = []
   snap.forEach((docSnap) => {
     const d = docSnap.data()
-    if (!d.userUid || typeof d.crosswalkAt !== 'number') return
+    if (!isValidLineupReport(d)) return
     reports.push(mapLineupDoc(d))
   })
   return reports
@@ -107,7 +140,7 @@ export async function loadLineupReportsForSailings(sailingKeys) {
   for (const snap of snaps) {
     snap.forEach((docSnap) => {
       const d = docSnap.data()
-      if (!d.userUid || typeof d.crosswalkAt !== 'number') return
+      if (!isValidLineupReport(d)) return
       reports.push(mapLineupDoc(d))
     })
   }

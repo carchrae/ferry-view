@@ -123,14 +123,17 @@
               :crosswalk-full-at="upcomingLineup.crosswalkFullAt || null"
               taggable
               @crosswalk="onUpcomingCrosswalk"
+              @refute="onUpcomingTimelapseRefute"
             />
             <RobotSays
               :auto-at="upcomingLineup.crosswalkFullAtAuto ?? null"
+              :crosswalk-reports="crosswalkByKey.get(upcomingLineup.sailingKey) || []"
               :human-at="humanCrosswalkAt(upcomingLineup)"
               :frames="upcomingLineup.timelapse"
               :auto-open="robotTarget?.key === upcomingLineup.sailingKey ? robotTarget.kind : null"
               @agree="onAgreeUpcoming"
               @mark="onUpcomingRobotMark"
+              @refute="onUpcomingRobotRefute"
             />
           </div>
         </div>
@@ -179,6 +182,7 @@
           :autoplay="false"
           @rate="onRate(sailing, $event)"
           @crosswalk="onCrosswalk(sailing, $event)"
+          @refute="onCrosswalkRefute(sailing)"
         >
           <!-- Mobile: reports/robot right under the tagging buttons, before
                the terminal image; desktop keeps the section below the row. -->
@@ -205,6 +209,7 @@
                 "
                 @agree="onAgreeCrosswalk(sailing)"
                 @mark="onRobotMark(sailing, $event)"
+                @refute="onRobotRefute(sailing)"
                 @capacity="onRobotCapacity(sailing, $event)"
               />
             </div>
@@ -232,6 +237,7 @@
             "
             @agree="onAgreeCrosswalk(sailing)"
             @mark="onRobotMark(sailing, $event)"
+            @refute="onRobotRefute(sailing)"
             @capacity="onRobotCapacity(sailing, $event)"
           />
         </div>
@@ -274,6 +280,7 @@ import { predictCrosswalk, browserClassifierReady } from 'src/composables/useLin
 import { predictNotFull, terminalClassifierReady } from 'src/composables/useTerminalClassifier'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
+import { effectiveCrosswalk } from '../../functions/lib/lineup-labels.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import {
   loadBowenSailings,
@@ -290,7 +297,7 @@ const $q = useQuasar()
 const route = useRoute()
 const router = useRouter()
 const { user, needsSignIn, saveRating, deleteRating } = useCapacityRating()
-const { saveCrosswalkMark, deleteCrosswalkMark } = useLineupReport()
+const { saveCrosswalkMark, saveCrosswalkNotYet, deleteCrosswalkMark } = useLineupReport()
 const { loadReportsForSailings } = useLeaderboard()
 
 const loading = ref(false)
@@ -701,6 +708,133 @@ function onCrosswalk(sailing, { sailingKey, ts, timeLabel }, extra = {}) {
     })
 }
 
+// Refute: the observer can see the lineup has NOT passed the crosswalk,
+// contradicting whoever (robot or rider) claimed it has. Saves a notYet
+// report — the server clears the sailing's crosswalk claim when the refute
+// is the effective word, and the plurality machinery handles disagreements.
+function saveNotYetFor(sailing, extra = {}) {
+  const sailingKey = sailing.sailingKey
+  if (!sailingKey) return
+  saveCrosswalkNotYet(sailingKey, extra)
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
+      }
+      sailing.crosswalkFullAt = null
+      sailing.crosswalkSource = null
+      if (sailing.arrival) {
+        sailing.arrival.crosswalkFullAt = null
+        sailing.arrival.crosswalkSource = null
+      }
+      const mine = {
+        sailingKey,
+        crosswalkAt: null,
+        notYet: true,
+        recordedAt: Date.now(),
+        userUid: user.value?.uid,
+        userName: user.value?.displayName || user.value?.email || null,
+      }
+      const others = (sailing.crosswalkReports || []).filter((r) => r.userUid !== mine.userUid)
+      attachCrosswalkReports(sailing, [...others, mine])
+      upsertReportInMap(crosswalkByKey.value, sailingKey, mine)
+      celebrate(estimateCrosswalkCredits(others, mine))
+      $q.notify({
+        type: 'positive',
+        message: 'Recorded: lineup has not reached the crosswalk yet — thanks!',
+      })
+    })
+    .catch((err) => {
+      console.error('Failed to save crosswalk refute:', err)
+      $q.notify({ type: 'negative', message: 'Failed to record the refute' })
+    })
+}
+
+// Refute from a sailing card's timelapse ("It hasn't passed yet" in the
+// change-mark dialog) — tag the training flags only when the standing claim
+// is the robot's.
+function onCrosswalkRefute(sailing) {
+  saveNotYetFor(
+    sailing,
+    sailing.crosswalkSource === 'robot'
+      ? {
+          refutedAuto: true,
+          autoAt: sailing.crosswalkFullAtAuto ?? null,
+          autoSource: sailing.crosswalkAutoSource || 'server',
+        }
+      : {},
+  )
+}
+
+// Refute from the robot-verify dialog on a sailing card — always a robot
+// contradiction, so always carries the training flags.
+function onRobotRefute(sailing) {
+  saveNotYetFor(sailing, {
+    refutedAuto: true,
+    autoAt: sailing.crosswalkFullAtAuto ?? null,
+    autoSource: sailing.crosswalkAutoSource || 'server',
+    ...(sailing.crosswalkAutoProb != null ? { autoProb: sailing.crosswalkAutoProb } : {}),
+  })
+}
+
+// Same two refutes for the boarding (upcoming) sailing, which isn't in
+// allSailings yet — mirrors onUpcomingCrosswalk's optimistic bookkeeping.
+function onUpcomingRefute(extra = {}) {
+  const up = upcomingLineup.value
+  if (!up?.sailingKey) return
+  const sailingKey = up.sailingKey
+  saveCrosswalkNotYet(sailingKey, extra)
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
+      }
+      if (upcomingLineup.value) {
+        upcomingLineup.value.crosswalkFullAt = null
+        upcomingLineup.value.crosswalkSource = null
+      }
+      const mine = {
+        sailingKey,
+        crosswalkAt: null,
+        notYet: true,
+        recordedAt: Date.now(),
+        userUid: user.value?.uid,
+        userName: user.value?.displayName || user.value?.email || null,
+      }
+      const others = (crosswalkByKey.value.get(sailingKey) || []).filter(
+        (r) => r.userUid !== mine.userUid,
+      )
+      upsertReportInMap(crosswalkByKey.value, sailingKey, mine)
+      celebrate(estimateCrosswalkCredits(others, mine))
+      $q.notify({
+        type: 'positive',
+        message: 'Recorded: lineup has not reached the crosswalk yet — thanks!',
+      })
+    })
+    .catch((err) => {
+      console.error('Failed to save crosswalk refute:', err)
+      $q.notify({ type: 'negative', message: 'Failed to record the refute' })
+    })
+}
+
+function onUpcomingRobotRefute() {
+  const up = upcomingLineup.value
+  if (!up) return
+  onUpcomingRefute({
+    refutedAuto: true,
+    autoAt: up.crosswalkFullAtAuto ?? null,
+    autoSource: up.crosswalkAutoSource || 'browser',
+    ...(up.crosswalkAutoProb != null ? { autoProb: up.crosswalkAutoProb } : {}),
+  })
+}
+
+// Refute from the upcoming timelapse's change-mark dialog: robot flags only
+// when the standing claim is the robot's.
+function onUpcomingTimelapseRefute() {
+  if (upcomingLineup.value?.crosswalkSource === 'robot') onUpcomingRobotRefute()
+  else onUpcomingRefute()
+}
+
 // Agreeing with the robot on the boarding sailing — same save path as a
 // manual upcoming mark, flagged as an agreement.
 function onAgreeUpcoming() {
@@ -840,7 +974,9 @@ function onDeleteReport(sailing, report) {
 function onDeleteCrosswalk(sailing, report) {
   $q.dialog({
     title: 'Delete your crosswalk mark?',
-    message: `Remove your ${crosswalkAtLabel(report.crosswalkAt)} crosswalk mark from this sailing?`,
+    message: report.notYet
+      ? 'Remove your "not past the crosswalk yet" report from this sailing?'
+      : `Remove your ${crosswalkAtLabel(report.crosswalkAt)} crosswalk mark from this sailing?`,
     cancel: { label: 'Keep it', flat: true, noCaps: true },
     ok: { label: 'Delete', color: 'negative', noCaps: true },
   }).onOk(() => {
@@ -851,11 +987,17 @@ function onDeleteCrosswalk(sailing, report) {
         )
         crosswalkByKey.value.set(report.sailingKey, remaining)
         attachCrosswalkReports(sailing, remaining)
-        const latest = latestOf(remaining)
-        // Mirror the server's delete fallback: latest remaining human mark,
-        // else the robot's confirmed time, else nothing.
-        const fallbackAt = latest?.crosswalkAt ?? sailing.crosswalkFullAtAuto ?? null
-        const fallbackSource = latest ? 'user' : fallbackAt != null ? 'robot' : null
+        // Mirror the server's delete fallback: latest remaining human word
+        // wins (a remaining refute keeps the claim cleared — no robot
+        // fallback), else the robot's confirmed time, else nothing.
+        const eff = effectiveCrosswalk(remaining)
+        const fallbackAt = eff
+          ? eff.notYet
+            ? null
+            : eff.at
+          : (sailing.crosswalkFullAtAuto ?? null)
+        const fallbackSource =
+          eff && !eff.notYet ? 'user' : !eff && fallbackAt != null ? 'robot' : null
         sailing.crosswalkFullAt = fallbackAt
         sailing.crosswalkSource = fallbackSource
         if (sailing.arrival) {

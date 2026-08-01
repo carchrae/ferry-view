@@ -966,6 +966,7 @@
       :frames="robotVerify.frames"
       @agree="onRobotVerifyAgree"
       @mark="onRobotVerifyMark"
+      @refute="onRobotVerifyRefute"
       @capacity="onRobotVerifyCapacity"
     />
     <SignInDialog v-model="showSignInDialog" />
@@ -1225,7 +1226,7 @@ function openRobotFromTypical(kind) {
 // fetched this session (home-page snapshot dialog, a departures-page visit) —
 // so opening the dialog usually costs zero reads, and at most one doc read.
 const { needsSignIn, saveRating } = useCapacityRating()
-const { saveCrosswalkMark } = useLineupReport()
+const { saveCrosswalkMark, saveCrosswalkNotYet } = useLineupReport()
 const showSignInDialog = ref(false)
 watch(needsSignIn, (v) => {
   if (v) {
@@ -1325,6 +1326,33 @@ function onRobotVerifyMark(ts) {
     autoAt: robotVerify.value.robotAt,
     autoSource: 'server',
   })
+}
+
+// Refute — the lineup has NOT passed the crosswalk at all. The server clears
+// the sailing's crosswalk claim (the trigger's forced refresh removes the
+// "C" badge on the next poll).
+function onRobotVerifyRefute() {
+  const { sailingKey, robotAt, autoProb } = robotVerify.value
+  saveCrosswalkNotYet(sailingKey, {
+    refutedAuto: true,
+    autoAt: robotAt,
+    autoSource: 'server',
+    ...(autoProb != null ? { autoProb } : {}),
+  })
+    .then((saved) => {
+      if (!saved) {
+        showSignInDialog.value = true
+        return
+      }
+      $q.notify({
+        type: 'positive',
+        message: 'Recorded: lineup has not reached the crosswalk yet — thanks!',
+      })
+    })
+    .catch((err) => {
+      console.error('Failed to save crosswalk refute:', err)
+      $q.notify({ type: 'negative', message: 'Failed to record the refute' })
+    })
 }
 
 function onRobotVerifyCapacity(capacity) {

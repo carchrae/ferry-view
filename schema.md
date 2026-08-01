@@ -100,6 +100,7 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `departureTimelapsePaths` | string[]? | Storage paths of the loading timelapse frames (terminal camera, one per minute from arrival/T−10 until departure) |
 | `crosswalkFullAt` | number? | Epoch ms the lineup was full to the crosswalk. Rider marks (latest tag wins, via `onLineupReport`) always overwrite; when no rider has marked, the lineup classifier's confirmed verdict is recorded here as a robot report (`crosswalkSource: "robot"`) |
 | `crosswalkSource` | string? | `"user"` or `"robot"` — who produced `crosswalkFullAt`. Absent on legacy docs = user |
+| `crosswalkNotYetAt` | number? | Epoch ms of the currently-effective "not yet passed" refute (`recordedAt` of the notYet report). Present only while a refute is the sailing's latest human word: `crosswalkFullAt` is cleared and the classifier may only re-record its verdict when its detection frame is NEWER than this ts (`robotMayFillCrosswalk`). Cleared when a positive mark supersedes the refute |
 | `crosswalkFullAtAuto` | number? | Epoch ms of the first timelapse frame the lineup classifier scored positive. Permanent: kept separate from the human tag and never deleted, so human-vs-robot agreement stays measurable even after a rider overwrites the report |
 | `crosswalkAutoProb` | number? | Classifier probability behind `crosswalkFullAtAuto` |
 | `crosswalkAutoModel` | number? | Version of the lineup classifier model that produced `crosswalkFullAtAuto` (see `classifierModels`) |
@@ -129,18 +130,25 @@ Records of capacity changes (both API-reported and user-submitted).
 
 ## `lineupReports/{autoId}`
 
-Rider-submitted "car lineup reached the crosswalk" marks (see
-[docs/lineup-classifier.md](docs/lineup-classifier.md)). Never deleted — they
+Rider-submitted "car lineup reached the crosswalk" marks, plus notYet
+REFUTES ("the lineup has NOT passed the crosswalk") — see
+[docs/lineup-classifier.md](docs/lineup-classifier.md). Never deleted — they
 are the classifier's training labels. The `onLineupReport` trigger stamps the
-latest tag onto the sailing's `crosswalkFullAt` (`crosswalkSource: "user"`).
-When a rider deletes their last mark, the sailing falls back to the robot's
-`crosswalkFullAtAuto` (as `crosswalkSource: "robot"`) if the classifier had a
-confirmed verdict.
+latest tag onto the sailing's `crosswalkFullAt` (`crosswalkSource: "user"`);
+a notYet refute instead clears the sailing's claim (whoever made it) and arms
+`crosswalkNotYetAt`, which blocks the robot from re-recording an older
+detection. When a rider deletes a report, the latest remaining report wins (a
+remaining refute keeps the claim cleared — no robot fallback); with none
+left, the sailing falls back to the robot's `crosswalkFullAtAuto` (as
+`crosswalkSource: "robot"`) if the classifier had a confirmed verdict.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `sailingKey` | string | `"2026-05-20_10:35_To HSB"` |
-| `crosswalkAt` | number | Epoch ms of the timelapse frame the rider tagged (the frame's capture time, not the tap time) |
+| `crosswalkAt` | number? | Epoch ms of the timelapse frame the rider tagged (the frame's capture time, not the tap time). `null` on notYet refutes |
+| `notYet` | boolean? | `true` = refute: the lineup had NOT passed the crosswalk as of `recordedAt` |
+| `refutedAuto` | boolean? | The refute contradicted a robot claim (negative training label). Sibling of `agreedWithAuto`/`disagreedWithAuto` on positive marks |
+| `autoAt` / `autoSource` / `autoProb` | | Robot context on agree/disagree/refute reports: the robot's detection ts, `"server"` or `"browser"` classifier, and its probability |
 | `recordedAt` | number | Epoch ms the tag was submitted |
 | `userUid` | string | Firebase UID |
 | `userName` / `userPhoto` / `anonymous` | | As in `capacityHistory` |

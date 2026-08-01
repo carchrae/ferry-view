@@ -1,6 +1,7 @@
 import { logger } from 'firebase-functions/logger'
 import { Timestamp } from 'firebase-admin/firestore'
 import { aggregateLeaderboard, aggregateRideLeaderboard } from './leaderboard-score.js'
+import { isValidLineupReport } from './lineup-labels.js'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const WINDOW_DAYS = 30
@@ -39,10 +40,11 @@ export async function recomputeLeaderboard(db) {
   const crosswalkReports = []
   cwSnap.forEach((doc) => {
     const d = doc.data()
-    if (!d.userUid || typeof d.crosswalkAt !== 'number') return
+    if (!isValidLineupReport(d)) return
     crosswalkReports.push({
       sailingKey: d.sailingKey,
       crosswalkAt: d.crosswalkAt,
+      notYet: d.notYet === true,
       recordedAt: d.recordedAt || 0,
       userUid: d.userUid,
       userName: d.userName || null,
