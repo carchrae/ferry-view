@@ -28,6 +28,7 @@
     "postinstall": "quasar prepare",
     "staging:start": "bash scripts/staging-refresh.sh",
     "staging:refresh": "bash scripts/staging-refresh.sh",
+    "staging:refresh:full": "bash scripts/staging-refresh.sh --full",
     "staging:run-until": "node functions/staging-run-until.js",
     "firebase-config": "bash scripts/get-firebase-config.sh",
     "update-vapid-keys:staging": "bash scripts/rotate-vapid-keys.sh staging",
