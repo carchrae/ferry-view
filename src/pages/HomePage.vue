@@ -99,63 +99,42 @@
             on-time
           </template>
         </div>
+        <div
+          v-if="holidayContext.impacted"
+          class="text-center text-caption text-deep-orange q-mb-xs"
+        >
+          <q-icon name="celebration" size="xs" />
+          {{ holidayContext.onHoliday ? holidayContext.name : `${holidayContext.name} weekend` }}
+          — expect heavier traffic than typical
+        </div>
 
         <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col-12">
             <q-card flat bordered>
               <q-card-section class="q-pa-sm">
+                <div
+                  v-if="anyCrosswalkBadge || anyRobotBadge"
+                  class="text-center text-caption text-grey-6 q-mb-sm"
+                >
+                  <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
+                  <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
+                  <template v-if="anyRobotBadge">
+                    <q-icon name="smart_toy" size="12px" />
+                    {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot — tap time
+                    to verify
+                  </template>
+                </div>
                 <div class="row items-start q-col-gutter-sm q-mb-md">
                   <div class="col">
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
-                    <div
+                    <SailingRow
                       v-for="(event, i) in recentPastBowen.slice(-3)"
                       :key="'pb' + i"
-                      class="row items-center no-wrap q-mt-xs cursor-pointer"
-                      @click="openHistory(event.scheduledTime, event.label, event)"
-                    >
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ formatTime12h(event.scheduledTime) }}
-                      </div>
-                      <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                        >?</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-else-if="event.diffText"
-                        :color="event.diffColor"
-                        class="badge-gap"
-                        dense
-                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-if="event.lastCapacity"
-                        :color="getDeckColor(event.lastCapacity)"
-                        class="badge-gap"
-                        :class="{ 'robot-badge': event.capacitySource === 'robot' }"
-                        dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-if="crosswalkBadge(event)"
-                        color="deep-orange"
-                        class="badge-gap"
-                        :class="{ 'robot-badge': event.crosswalkSource === 'robot' }"
-                        dense
-                        >{{ crosswalkBadge(event) }}</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-if="sailingTypeBadge(event)"
-                        :color="sailingTypeBadge(event).color"
-                        class="badge-gap"
-                        dense
-                        >{{ sailingTypeBadge(event).text }}</q-badge
-                      >
-                      </div>
-                    </div>
+                      :sailing="event"
+                      kind="past"
+                      :design="sailingDesign"
+                      @open="openHistory(event.scheduledTime, event.label, event)"
+                    />
                     <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
@@ -164,188 +143,51 @@
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">
                       Horseshoe Bay
                     </div>
-                    <div
+                    <SailingRow
                       v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
-                      class="row items-center no-wrap q-mt-xs cursor-pointer"
-                      @click="openHistory(event.scheduledTime, event.label, event)"
-                    >
-                      <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                        {{ formatTime12h(event.scheduledTime) }}
-                      </div>
-                      <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                      <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                        >?</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-else-if="event.diffText"
-                        :color="event.diffColor"
-                        class="badge-gap"
-                        dense
-                        >{{ shortText(event.diffText, $q.screen.xs) }}</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-if="event.lastCapacity"
-                        :color="getDeckColor(event.lastCapacity)"
-                        class="badge-gap"
-                        dense
-                        >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
-                      >
-                      <q-badge
-                        rounded
-                        v-if="sailingTypeBadge(event)"
-                        :color="sailingTypeBadge(event).color"
-                        class="badge-gap"
-                        dense
-                        >{{ sailingTypeBadge(event).text }}</q-badge
-                      >
-                      </div>
-                    </div>
+                      :sailing="event"
+                      kind="past"
+                      :design="sailingDesign"
+                      @open="openHistory(event.scheduledTime, event.label, event)"
+                    />
                     <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
                 </div>
                 <div class="text-center text-grey-8 q-my-sm">upcoming</div>
-                <div
-                  v-if="holidayContext.impacted"
-                  class="text-center text-caption text-deep-orange q-mb-sm"
-                >
-                  <q-icon name="celebration" size="xs" />
-                  {{
-                    holidayContext.onHoliday
-                      ? holidayContext.name
-                      : `${holidayContext.name} weekend`
-                  }}
-                  — expect heavier traffic than typical
-                </div>
                 <div class="row items-start q-col-gutter-sm">
                   <div class="col">
-                    <div
+                    <SailingRow
                       v-for="(s, i) in allUpcomingBowen.slice(0, 3)"
                       :key="'ub' + i"
-                      class="q-mt-xs"
-                    >
-                      <div
-                        class="row items-center no-wrap cursor-pointer"
-                        @click="openHistory(s.shortTime, s.label, s)"
-                      >
-                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                          {{ formatTime12h(s.shortTime) }}
-                        </div>
-                        <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                        <q-badge
-                          rounded
-                          v-if="s.lateText"
-                          :color="s.lateColor"
-                          class="badge-gap"
-                          dense
-                          >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
-                        >
-                        <q-badge
-                          rounded
-                          v-if="s.deckSpace"
-                          :color="getDeckColor(s.deckSpace)"
-                          dense
-                          class="badge-gap"
-                          >{{ formatDeckBadge(s) }}</q-badge
-                        >
-                        <q-badge
-                          rounded
-                          v-if="crosswalkBadge(s)"
-                          color="deep-orange"
-                          class="badge-gap"
-                          :class="{ 'robot-badge': s.crosswalkSource === 'robot' }"
-                          dense
-                          >{{ crosswalkBadge(s) }}</q-badge
-                        >
-                        <q-badge
-                          rounded
-                          v-if="sailingTypeBadge(s)"
-                          :color="sailingTypeBadge(s).color"
-                          class="badge-gap"
-                          dense
-                          >{{ sailingTypeBadge(s).text }}</q-badge
-                        >
-                        </div>
-                      </div>
-                      <div
-                        v-if="sailingHints(s)"
-                        class="typical-hint text-caption cursor-pointer"
-                        :class="'text-' + sailingHints(s).color"
-                        @click="openTypical(s)"
-                      >
-                        {{ sailingHints(s).text }}
-                        <q-icon name="info_outline" size="12px" />
-                      </div>
-                    </div>
+                      :sailing="s"
+                      kind="upcoming"
+                      :design="sailingDesign"
+                      :hint="sailingHints(s)"
+                      @open="openHistory(s.shortTime, s.label, s)"
+                      @typical="openTypical(s)"
+                    />
                     <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
                   <div class="col">
-                    <div
+                    <SailingRow
                       v-for="(s, i) in allUpcomingHSB.slice(0, 3)"
                       :key="'uh' + i"
-                      class="q-mt-xs"
-                    >
-                      <div
-                        class="row items-center no-wrap cursor-pointer"
-                        @click="openHistory(s.shortTime, s.label, s)"
-                      >
-                        <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                          {{ formatTime12h(s.shortTime) }}
-                        </div>
-                        <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                        <q-badge
-                          rounded
-                          v-if="s.lateText"
-                          :color="s.lateColor"
-                          class="badge-gap"
-                          dense
-                          >{{ shortText(s.lateText, $q.screen.xs) }}</q-badge
-                        >
-                        <q-badge
-                          rounded
-                          v-if="s.deckSpace"
-                          :color="getDeckColor(s.deckSpace)"
-                          dense
-                          class="badge-gap"
-                          >{{ formatDeckBadge(s) }}</q-badge
-                        >
-                        <q-badge
-                          rounded
-                          v-if="sailingTypeBadge(s)"
-                          :color="sailingTypeBadge(s).color"
-                          class="badge-gap"
-                          dense
-                          >{{ sailingTypeBadge(s).text }}</q-badge
-                        >
-                        </div>
-                      </div>
-                      <div
-                        v-if="sailingHints(s)"
-                        class="typical-hint text-caption cursor-pointer"
-                        :class="'text-' + sailingHints(s).color"
-                        @click="openTypical(s)"
-                      >
-                        {{ sailingHints(s).text }}
-                        <q-icon name="info_outline" size="12px" />
-                      </div>
-                    </div>
+                      :sailing="s"
+                      kind="upcoming"
+                      :design="sailingDesign"
+                      :hint="sailingHints(s)"
+                      @open="openHistory(s.shortTime, s.label, s)"
+                      @typical="openTypical(s)"
+                    />
                     <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
                       None
                     </div>
                   </div>
-                </div>
-                <div v-if="anyCrosswalkBadge" class="text-center text-caption text-grey-6 q-mt-sm">
-                  C = full to the crosswalk
-                </div>
-                <div v-if="anyRobotBadge" class="text-center text-caption text-grey-6 q-mt-sm">
-                  <q-icon name="smart_toy" size="12px" /> blue border = reported by the robot —
-                  tap the sailing time to check its work
                 </div>
                 <div class="text-center text-caption text-grey-5 q-mt-sm">
                   Predictions are just a guess — there's no certainty with the ferry.
@@ -357,6 +199,18 @@
                   <q-icon name="warning" size="xs" color="negative" class="q-mr-xs" />
                   bowenferry.ca departure feed is down — using AIS or BCF website (if those all
                   fail, departures show as <q-badge rounded color="grey" dense>?</q-badge>).
+                </div>
+                <div class="row items-center justify-center q-mt-sm design-picker">
+                  <span class="text-caption text-grey-6 q-mr-sm">style</span>
+                  <q-option-group
+                    v-model="sailingDesign"
+                    :options="sailingDesignOptions"
+                    type="radio"
+                    color="primary"
+                    inline
+                    dense
+                    size="sm"
+                  />
                 </div>
               </q-card-section>
             </q-card>
@@ -647,210 +501,74 @@
               on-time
             </template>
           </div>
+          <div
+            v-if="anyCrosswalkBadge || anyRobotBadge"
+            class="text-center text-caption text-grey-6 q-mb-sm"
+          >
+            <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
+            <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
+            <template v-if="anyRobotBadge">
+              <q-icon name="smart_toy" size="12px" />
+              {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot — tap time to
+              verify
+            </template>
+          </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">
             <div class="col">
               <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
-              <div
+              <SailingRow
                 v-for="(event, i) in allPastBowen"
                 :key="'pb' + i"
-                class="row items-center no-wrap q-mt-xs cursor-pointer"
-                @click="openHistory(event.scheduledTime, event.label, event)"
-              >
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ formatTime12h(event.scheduledTime) }}
-                </div>
-                <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                  >?
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-else-if="event.diffText"
-                  :color="event.diffColor"
-                  class="badge-gap"
-                  dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-if="event.lastCapacity"
-                  :color="getDeckColor(event.lastCapacity)"
-                  class="badge-gap"
-                  :class="{ 'robot-badge': event.capacitySource === 'robot' }"
-                  dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
-                >
-                <q-badge
-                  rounded
-                  v-if="crosswalkBadge(event)"
-                  color="deep-orange"
-                  class="badge-gap"
-                  :class="{ 'robot-badge': event.crosswalkSource === 'robot' }"
-                  dense
-                  >{{ crosswalkBadge(event) }}</q-badge
-                >
-                <q-badge
-                  rounded
-                  v-if="sailingTypeBadge(event)"
-                  :color="sailingTypeBadge(event).color"
-                  class="badge-gap"
-                  dense
-                  >{{ sailingTypeBadge(event).text }}</q-badge
-                >
-                </div>
-              </div>
+                :sailing="event"
+                kind="past"
+                :design="sailingDesign"
+                @open="openHistory(event.scheduledTime, event.label, event)"
+              />
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
             <div class="col">
               <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Horseshoe Bay</div>
-              <div
+              <SailingRow
                 v-for="(event, i) in allPastHSB"
                 :key="'ph' + i"
-                class="row items-center no-wrap q-mt-xs cursor-pointer"
-                @click="openHistory(event.scheduledTime, event.label, event)"
-              >
-                <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                  {{ formatTime12h(event.scheduledTime) }}
-                </div>
-                <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                <q-badge rounded v-if="event.skipped" color="grey" class="badge-gap" dense
-                  >?
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-else-if="event.diffText"
-                  :color="event.diffColor"
-                  class="badge-gap"
-                  dense
-                  >{{ shortText(event.diffText, $q.screen.xs) }}
-                </q-badge>
-                <q-badge
-                  rounded
-                  v-if="event.lastCapacity"
-                  :color="getDeckColor(event.lastCapacity)"
-                  class="badge-gap"
-                  dense
-                  >{{ formatDeckBadge(event, $q.screen.xs) }}</q-badge
-                >
-                <q-badge
-                  rounded
-                  v-if="sailingTypeBadge(event)"
-                  :color="sailingTypeBadge(event).color"
-                  class="badge-gap"
-                  dense
-                  >{{ sailingTypeBadge(event).text }}</q-badge
-                >
-                </div>
-              </div>
+                :sailing="event"
+                kind="past"
+                :design="sailingDesign"
+                @open="openHistory(event.scheduledTime, event.label, event)"
+              />
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
           </div>
           <div class="text-center text-grey-8 q-my-sm">upcoming</div>
           <div class="row items-start q-col-gutter-sm">
             <div class="col">
-              <div v-for="(s, i) in allUpcomingBowen" :key="'ub' + i" class="q-mt-xs">
-                <div
-                  class="row items-center no-wrap cursor-pointer"
-                  @click="openHistory(s.shortTime, s.label, s)"
-                >
-                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                    {{ formatTime12h(s.shortTime) }}
-                  </div>
-                  <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                  <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
-                    {{ shortText(s.lateText, $q.screen.xs) }}
-                  </q-badge>
-                  <q-badge
-                    rounded
-                    v-if="s.deckSpace"
-                    :color="getDeckColor(s.deckSpace)"
-                    dense
-                    class="badge-gap"
-                    >{{ formatDeckBadge(s) }}</q-badge
-                  >
-                  <q-badge
-                    rounded
-                    v-if="crosswalkBadge(s)"
-                    color="deep-orange"
-                    class="badge-gap"
-                    :class="{ 'robot-badge': s.crosswalkSource === 'robot' }"
-                    dense
-                    >{{ crosswalkBadge(s) }}</q-badge
-                  >
-                  <q-badge
-                    rounded
-                    v-if="sailingTypeBadge(s)"
-                    :color="sailingTypeBadge(s).color"
-                    class="badge-gap"
-                    dense
-                    >{{ sailingTypeBadge(s).text }}</q-badge
-                  >
-                  </div>
-                </div>
-                <div
-                  v-if="sailingHints(s)"
-                  class="typical-hint text-caption cursor-pointer"
-                  :class="'text-' + sailingHints(s).color"
-                  @click="openTypical(s)"
-                >
-                  {{ sailingHints(s).text }}
-                  <q-icon name="info_outline" size="12px" />
-                </div>
-              </div>
+              <SailingRow
+                v-for="(s, i) in allUpcomingBowen"
+                :key="'ub' + i"
+                :sailing="s"
+                kind="upcoming"
+                :design="sailingDesign"
+                :hint="sailingHints(s)"
+                @open="openHistory(s.shortTime, s.label, s)"
+                @typical="openTypical(s)"
+              />
               <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
                 None
               </div>
             </div>
             <div class="col">
-              <div v-for="(s, i) in allUpcomingHSB" :key="'uh' + i" class="q-mt-xs">
-                <div
-                  class="row items-center no-wrap cursor-pointer"
-                  @click="openHistory(s.shortTime, s.label, s)"
-                >
-                  <div class="text-body2 text-weight-bold text-no-wrap clip-time">
-                    {{ formatTime12h(s.shortTime) }}
-                  </div>
-                  <div v-fit-scale class="row items-center no-wrap col badge-fit">
-                  <q-badge rounded v-if="s.lateText" :color="s.lateColor" class="badge-gap" dense>
-                    {{ shortText(s.lateText, $q.screen.xs) }}
-                  </q-badge>
-                  <q-badge
-                    rounded
-                    v-if="s.deckSpace"
-                    :color="getDeckColor(s.deckSpace)"
-                    dense
-                    class="badge-gap"
-                    >{{ formatDeckBadge(s) }}</q-badge
-                  >
-                  <q-badge
-                    rounded
-                    v-if="sailingTypeBadge(s)"
-                    :color="sailingTypeBadge(s).color"
-                    class="badge-gap"
-                    dense
-                    >{{ sailingTypeBadge(s).text }}</q-badge
-                  >
-                  </div>
-                </div>
-                <div
-                  v-if="sailingHints(s)"
-                  class="typical-hint text-caption cursor-pointer"
-                  :class="'text-' + sailingHints(s).color"
-                  @click="openTypical(s)"
-                >
-                  {{ sailingHints(s).text }}
-                  <q-icon name="info_outline" size="12px" />
-                </div>
-              </div>
+              <SailingRow
+                v-for="(s, i) in allUpcomingHSB"
+                :key="'uh' + i"
+                :sailing="s"
+                kind="upcoming"
+                :design="sailingDesign"
+                :hint="sailingHints(s)"
+                @open="openHistory(s.shortTime, s.label, s)"
+                @typical="openTypical(s)"
+              />
               <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
-          </div>
-          <div v-if="anyCrosswalkBadge" class="text-center text-caption text-grey-6 q-mt-sm">
-            C = full to the crosswalk
-          </div>
-          <div v-if="anyRobotBadge" class="text-center text-caption text-grey-6 q-mt-sm">
-            <q-icon name="smart_toy" size="12px" /> square badge = reported by the robot — tap
-            the sailing time to check its work
           </div>
         </q-card-section>
         <q-separator />
@@ -981,11 +699,11 @@ import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
 import { formatTime12h, normalizeTime, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
-import { isStaging } from 'src/boot/firebase'
+import { isStaging, logAnalyticsEvent } from 'src/boot/firebase'
 import RideCard from 'src/components/RideCard.vue'
+import SailingRow from 'src/components/SailingRow.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
-import { getDeckColor } from 'src/composables/useCapacityDisplay'
 import anonymousIcon from 'src/assets/cat.svg'
 import {
   useHistoricalStats,
@@ -1011,6 +729,39 @@ const oneMinuteFromNowDate = () => nowInVancouver().add(1, 'minute')
 const nowMs = () => Date.now()
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
+
+// Switchable design treatments for the home sailing rows (see SailingRow.vue);
+// the radio row under the schedule picks one and the choice sticks per device.
+const SAILING_DESIGN_KEY = 'sailingRowDesign'
+const sailingDesignOptions = [
+  { label: 'Classic', value: 'classic' },
+  { label: 'Cards', value: 'cards' },
+  { label: 'Meter', value: 'meter' },
+  { label: 'Board', value: 'board' },
+]
+const storedDesign = localStorage.getItem(SAILING_DESIGN_KEY)
+const sailingDesign = ref(
+  sailingDesignOptions.some((o) => o.value === storedDesign) ? storedDesign : 'classic',
+)
+// Two GA events size up each style's popularity: sailing_style_change counts
+// picks, sailing_style_view counts visits that stuck with a style. The CHOSEN
+// flag (set the first time the user ever touches the picker) splits view
+// events into source=user vs source=default, so "classic" views distinguish
+// deliberate returns to classic from users who never tried another style.
+// Break events down by the `style` and `source` params (register both as
+// custom dimensions in GA4).
+const SAILING_DESIGN_CHOSEN_KEY = 'sailingRowDesignChosen'
+watch(sailingDesign, (v, prev) => {
+  localStorage.setItem(SAILING_DESIGN_KEY, v)
+  localStorage.setItem(SAILING_DESIGN_CHOSEN_KEY, '1')
+  logAnalyticsEvent('sailing_style_change', { style: v, previous: prev })
+})
+onMounted(() =>
+  logAnalyticsEvent('sailing_style_view', {
+    style: sailingDesign.value,
+    source: localStorage.getItem(SAILING_DESIGN_CHOSEN_KEY) ? 'user' : 'default',
+  }),
+)
 
 // Current leaderboard champions, celebrated in a row under the sailing buttons:
 // the top capacity reporter and the top ride sharer ("hero"). Read live from the
@@ -1503,86 +1254,6 @@ function prevCam() {
   fullscreenIndex.value = (fullscreenIndex.value - 1 + allCamUrls.length) % allCamUrls.length
 }
 
-function formatDeckBadge(event, short) {
-  let text = ''
-  if (event.lastCapacity) {
-    if (event.lastCapacity === 'Full') {
-      text = 'Full'
-    } else if (event.lastCapacity === 'Not Full') {
-      text = 'Not full'
-    } else {
-      const pct = parseInt(event.lastCapacity)
-      if (!isNaN(pct)) {
-        const v = `${100 - pct}%`
-        text = short ? v : `${v} full`
-      }
-    }
-  } else if (event.full) {
-    text = event.full
-  }
-  return event.filledAt && text === 'Full' ? text + formatFilledTime(event.filledAt) : text
-}
-
-function sailingTypeBadge(entry) {
-  if (entry.dangerousCargo) return { text: 'Cargo', color: 'orange-9' }
-  if (entry.repositioning) return { text: 'Reposition', color: 'orange-9' }
-  return null
-}
-
-function shortText(text, isMobile) {
-  if (!isMobile || !text) return text
-  if (text === '✓') return text
-  if (text.endsWith('m late')) return `+${text.replace('m late', 'm')}`
-  if (text.endsWith('m early')) return `-${text.replace('m early', 'm')}`
-  return text
-}
-
-function formatFilledTime(val) {
-  if (!val) return ''
-  if (val === 'user_reported') return ''
-  return ` ${dayjs(val).tz(TZ).format('h:mm')}`
-}
-
-// Bowen-side counterpart of the HSB "Full@6:27" badge: the rider-marked time
-// the car lineup reached the crosswalk. Abbreviated "C" (explained by a note
-// under each schedule) because the sailing rows are too narrow for the full
-// word. Only Bowen sailings ever carry crosswalkFullAt (HSB has no lineup
-// camera), just as only HSB sailings get automated "full at" times.
-function crosswalkBadge(event) {
-  return event?.crosswalkFullAt ? `C${formatFilledTime(event.crosswalkFullAt)}` : null
-}
-
-// v-fit-scale: when the chips in a sailing row are wider than the space left
-// of the time, scale the chip container down just enough to fit; at any other
-// width the chips render untouched. transform:scale only changes painting,
-// not layout, so measuring scrollWidth (natural chip width) vs clientWidth
-// (space available, shrinkable via .badge-fit's min-width:0) stays valid
-// after scaling and never feeds back into itself.
-function fitScale(el) {
-  const scale = el.clientWidth / el.scrollWidth
-  if (scale < 1) {
-    el.style.transform = `scale(${scale})`
-    el.style.transformOrigin = 'left center'
-  } else {
-    el.style.transform = ''
-  }
-}
-
-const vFitScale = {
-  mounted(el) {
-    fitScale(el)
-    el._fitScaleObserver = new ResizeObserver(() => fitScale(el))
-    el._fitScaleObserver.observe(el)
-  },
-  updated(el) {
-    fitScale(el)
-  },
-  unmounted(el) {
-    el._fitScaleObserver?.disconnect()
-  },
-}
-
-
 // True when any Bowen sailing shown (past or upcoming) carries a crosswalk
 // tag, so the "C = …" legend only appears when there's a C badge to explain.
 const anyCrosswalkBadge = computed(() =>
@@ -1775,28 +1446,21 @@ $star-clip: polygon(
   cursor: default;
 }
 
-.clip-time {
-  overflow: visible;
-  text-overflow: clip;
-  width: 3.6rem;
-}
-
 .badge-gap {
   margin-left: 2px;
-}
-
-/* Chip area of a sailing row: takes the width left of the time and, when the
-   chips inside are wider than that, v-fit-scale shrinks them to fit (see the
-   directive in <script>). min-width lets flexbox actually narrow it below the
-   chips' natural width instead of overflowing the column. */
-.badge-fit {
-  min-width: 0;
 }
 
 .typical-hint {
   line-height: 1.1;
   padding-left: 2px;
   margin-top: 1px;
+}
+
+/* Row-style switcher under the schedule: keep the radio labels caption-sized
+   so the control reads as a footnote, not a form. */
+.design-picker :deep(.q-radio__label) {
+  font-size: 12px;
+  color: $grey-7;
 }
 
 .staging-tools {

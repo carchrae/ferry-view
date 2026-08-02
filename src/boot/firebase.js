@@ -6,7 +6,7 @@ import {
   persistentMultipleTabManager,
 } from 'firebase/firestore'
 import { getMessaging } from 'firebase/messaging'
-import { getAnalytics, isSupported } from 'firebase/analytics'
+import { getAnalytics, isSupported, logEvent } from 'firebase/analytics'
 
 const stagingConfig = {
   apiKey: 'AIzaSyCEofI4Nj30jo3fbWjjWKd6Pzrehj768vs',
@@ -53,10 +53,23 @@ export const db = initializeFirestore(app, {
 export const messaging = getMessaging(app)
 
 export let analytics = null
+let analyticsReady = Promise.resolve(null)
 if (isProduction) {
-  isSupported().then((supported) => {
-    if (supported) {
-      analytics = getAnalytics(app)
-    }
+  analyticsReady = isSupported()
+    .then((supported) => {
+      if (supported) {
+        analytics = getAnalytics(app)
+      }
+      return analytics
+    })
+    .catch(() => null)
+}
+
+// Fire-and-forget GA event; no-op on staging or when analytics is unsupported
+// (e.g. iOS standalone PWAs without cookies). Waits out the async isSupported
+// probe so events logged during app startup aren't dropped.
+export function logAnalyticsEvent(name, params) {
+  analyticsReady.then((a) => {
+    if (a) logEvent(a, name, params)
   })
 }
