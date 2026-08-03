@@ -100,7 +100,7 @@
         <div
           v-if="capacity && capacity.pctFull != null"
           class="sr-fill"
-          :class="'bg-' + capacity.color"
+          :class="capacity.ambiguous ? 'sr-fill-ambiguous' : 'bg-' + capacity.color"
           :style="{ width: capacity.pctFull + '%' }"
         ></div>
       </div>
@@ -203,7 +203,8 @@ const late = computed(() => {
 
 // Fullness state. Stored capacity strings are percent *available*; text and
 // pctFull are the rider-facing "% full" view. "Not Full" means room of an
-// unknown amount, so the meter shows only a nub for it.
+// unknown amount, so the meter renders it as an ambiguous 0–50% fade
+// (`ambiguous`) rather than a bar implying a precise level.
 const capacity = computed(() => {
   const s = props.sailing
   const raw = isPast.value ? s.lastCapacity : s.deckSpace
@@ -216,9 +217,12 @@ const capacity = computed(() => {
       ? dayjs(s.filledAt).tz(TZ).format('h:mm')
       : null
   let pctFull = null
+  let ambiguous = false
   if (isFull) pctFull = 100
-  else if (text === 'Not full') pctFull = 12
-  else {
+  else if (text === 'Not full') {
+    pctFull = 50
+    ambiguous = true
+  } else {
     const m = /(\d+)/.exec(text)
     if (m) pctFull = parseInt(m[1])
   }
@@ -228,6 +232,7 @@ const capacity = computed(() => {
     isFull,
     filledTime,
     pctFull,
+    ambiguous,
     robot: s.capacitySource === 'robot',
   }
 })
@@ -392,6 +397,12 @@ HintLine.emits = ['click']
 .sr-fill {
   height: 100%;
   border-radius: 3px;
+}
+
+/* "Not full" = room of unknown amount: fade out across the 0–50% span rather
+   than drawing a hard edge at a level nobody measured. */
+.sr-fill-ambiguous {
+  background: linear-gradient(to right, $positive, rgba($positive, 0));
 }
 
 .typical-hint {
