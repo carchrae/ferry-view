@@ -96,13 +96,17 @@
           <RobotIcon v-if="capacity.robot" />
         </div>
       </div>
+      <!-- A crosswalk reading outranks the vague "Not full" (ambiguous) fade —
+           the lineup reaching the crosswalk pins the ferry at ≥75% full. Exact
+           readings (Full / a percentage) still win over the crosswalk bar. -->
       <div class="sr-track">
         <div
-          v-if="capacity && capacity.pctFull != null"
+          v-if="capacity && capacity.pctFull != null && !(capacity.ambiguous && crosswalk)"
           class="sr-fill"
           :class="capacity.ambiguous ? 'sr-fill-ambiguous' : 'bg-' + capacity.color"
           :style="{ width: capacity.pctFull + '%' }"
         ></div>
+        <div v-else-if="crosswalk" class="sr-fill sr-fill-crosswalk" style="width: 90%"></div>
       </div>
       <div v-if="crosswalk || typeBadge" class="text-caption sr-status">
         <template v-if="crosswalk">
@@ -403,6 +407,13 @@ HintLine.emits = ['click']
    than drawing a hard edge at a level nobody measured. */
 .sr-fill-ambiguous {
   background: linear-gradient(to right, $positive, rgba($positive, 0));
+}
+
+/* A crosswalk reading with no explicit capacity reading implies the ferry is
+   at least ~75% full: solid to 75%, fading out across 75–90% of the track
+   (the element is 90% wide, so the fade starts at 75/90 of it). */
+.sr-fill-crosswalk {
+  background: linear-gradient(to right, $deep-orange 83.33%, rgba($deep-orange, 0));
 }
 
 .typical-hint {
