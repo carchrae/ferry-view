@@ -4,7 +4,7 @@ import { getStorage } from 'firebase-admin/storage'
 import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
 import { isRecent, nowInVancouver, timeToDate, dayjs } from './time.js'
-import { classifyLineup, lineupModelVersion } from './lineup-classifier.js'
+import { classifyLineup, lineupModelVersion, modelUsable } from './lineup-classifier.js'
 import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import { updateSailingStatus } from './helpers.js'
@@ -39,6 +39,11 @@ const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jp
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
 const SAMPLE_COUNT = 3
 const SAMPLE_DELAY_MS = 1000
+// A crosswalkAutoPending may only be confirmed by the NEXT timelapse frame
+// (one 5-min cadence step, plus jitter). Older pendings can't promote:
+// intervening frames may have been negative without a trace (classify-first
+// probes discard non-sticky negatives without a write; webcam fetches fail).
+const PENDING_CONFIRM_MAX_MS = 7 * 60 * 1000
 
 // Logs which sailing a capture was attributed to and how late that sailing
 // is against its scheduled time — the trace needed to reconstruct why a
@@ -209,7 +214,12 @@ export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arri
 export async function captureLineupTimelapse(db, data) {
   const now = nowInVancouver()
   const decision = timelapseDecision(data, now)
-  if (!decision.capture) return
+  if (!decision.capture && !decision.classifyFirst) return
+  // Classify-first probe (wait gate after the previous departure, or the
+  // whole cycle of a post-9pm sailing): the frame is only worth saving if
+  // the classifier says the lineup is (or was — sticky) full, so without a
+  // usable model there is nothing to do — skip even the fetch.
+  if (decision.classifyFirst && !modelUsable()) return
 
   const samples = await captureSamples(COMMUNITY_WEBCAM_URL)
   if (samples.length === 0) {
@@ -219,6 +229,34 @@ export async function captureLineupTimelapse(db, data) {
 
   const best = await compressSnapshot(pickBestFrame(samples))
   const timestamp = Date.now()
+
+  // Classified before the upload (same compressed buffer as always, so
+  // training stays consistent): a classify-first probe writes nothing unless
+  // the lineup is already full — or was already detected full (sticky).
+  const verdict = await classifyLineup(best)
+
+  const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
+  // At most ONE sailingStatus read per invocation: shared by the sticky
+  // check below and the pending/auto logic further down.
+  let cur = null
+  if (verdict || decision.classifyFirst) {
+    const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
+    cur = snap.exists ? snap.data() : {}
+  }
+
+  if (decision.classifyFirst && !verdict?.fullToCrosswalk) {
+    // Sticky detection: once the classifier has CONFIRMED the crosswalk full
+    // for this sailing (crosswalkFullAtAuto — permanent, survives a human
+    // refute; rider tags land post-sailing so they can't be a live trigger),
+    // every 5-min frame keeps saving until the arrival stop, negatives
+    // included. A non-sticky negative probe is discarded: 1 read, no writes.
+    if (!cur.crosswalkFullAtAuto) return
+  } else if (decision.classifyFirst) {
+    logger.log(
+      `Lineup probe positive (p=${verdict.probability.toFixed(2)}) — capturing frame for ${decision.sailingTime}`,
+    )
+  }
+
   // Under webcams/ so cleanupOldWebcams ages frames out; the _{epoch}.jpg
   // suffix keeps the client's captureTimeLabel() parsing working.
   const blobPath = `webcams/community/${data.dateIso}/timelapse/${decision.sailingTime}_To HSB_${timestamp}.jpg`
@@ -230,8 +268,6 @@ export async function captureLineupTimelapse(db, data) {
   })
   await file.makePublic()
 
-  const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
-
   // Automated crosswalk detection (no-op until a trained model is committed —
   // see lib/lineup-classifier.js). The auto fields are permanent: a later
   // human mark overwrites the report fields but never removes these, so
@@ -240,19 +276,24 @@ export async function captureLineupTimelapse(db, data) {
   // only becomes crosswalkFullAtAuto once the NEXT frame is also positive —
   // a lone positive is noise, so it parks as crosswalkAutoPending and a
   // negative frame clears it. The stamped time is the FIRST frame of the
-  // confirmed pair. A confirmed verdict is also recorded as a robot REPORT
+  // confirmed pair — and the pair must be CONSECUTIVE: a pending older than
+  // one cadence step (plus jitter) can't confirm, because the frames between
+  // may have been negative without us seeing it (a classify-first probe
+  // discards non-sticky negative frames without a write, and webcam fetches
+  // can fail); a stale pending is replaced by the current frame instead.
+  // A confirmed verdict is also recorded as a robot REPORT
   // (crosswalkFullAt + crosswalkSource:'robot') when no human mark exists and
   // no fresher human "not yet" refute blocks it (robotMayFillCrosswalk) —
   // humans always overwrite or refute it (see user-lineup.js).
   const autoFields = {}
   let robotReported = false
-  const verdict = await classifyLineup(best)
   if (verdict) {
-    const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
-    const cur = snap.exists ? snap.data() : {}
     if (!cur.crosswalkFullAtAuto) {
       if (verdict.fullToCrosswalk) {
-        if (cur.crosswalkAutoPending) {
+        if (
+          cur.crosswalkAutoPending &&
+          timestamp - cur.crosswalkAutoPending.ts <= PENDING_CONFIRM_MAX_MS
+        ) {
           autoFields.crosswalkFullAtAuto = cur.crosswalkAutoPending.ts
           autoFields.crosswalkAutoProb = cur.crosswalkAutoPending.prob
           autoFields.crosswalkAutoPending = FieldValue.delete()

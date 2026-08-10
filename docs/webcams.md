@@ -54,7 +54,19 @@ departure to a schedule entry. Skipped when the sailing already has a
   (before that the lot is mostly empty; sailings that fill up do so early, so
   the window opens well before the lineup peaks). Falls back to the last past
   *scheduled* time when the activity log has no departure; no departure or
-  past sailing yet today → no capture (kills overnight frames);
+  past sailing yet today → no capture (kills overnight frames).
+  **Classify-first probe:** during that 15-minute wait (on the same 5-minute
+  cadence, all other conditions holding, model enabled) the frame is still
+  fetched and run through the crosswalk classifier *without saving*; a
+  positive "full to crosswalk" verdict starts the save pipeline early, so
+  overload days keep their earliest frames. Detection is **sticky**: once
+  `crosswalkFullAtAuto` is set for the target sailing (confirmed two-frame
+  detection — permanent, so a human "not yet" refute doesn't stop the
+  frames; rider tags land post-sailing and are not a live trigger), every
+  probe frame saves regardless of its own verdict, until the arrival stop.
+  A negative non-sticky probe costs one `sailingStatus` read (the sticky
+  check) and zero writes/Storage; with the model disabled the probe does
+  nothing and the old behavior is exact;
 - the ferry has **not yet arrived back at Bowen** for this cycle — once it's
   at the dock the lineup is draining onto the boat and the terminal camera
   (path 4) takes over. Arrival is detected by `bowenArrivalForCurrentCycle`:
@@ -62,14 +74,20 @@ departure to a schedule entry. Skipped when the sailing already has a
   present, so a late-boarding ferry still counts as arrived); without AIS the
   newest `Arrived`/`Bowen` log event counts if it's at/after the last
   departure;
-- there is a later not-yet-departed Bowen sailing today, scheduled **before
-  9 pm** (the 21:30 / 22:30 / 23:30 boats get no timelapse);
+- there is a later not-yet-departed Bowen sailing today. Sailings scheduled
+  **at/after 9 pm** never capture unconditionally — their whole cycle runs
+  classify-first instead (the 21:30 / 22:30 / 23:30 boats get frames only
+  when the crosswalk classifier detects a full lineup, sticky as above, so a
+  late busy evening boat still gets a record from first detection until
+  arrival);
 - frames attribute to the earliest sailing that hasn't departed yet — however
   late it's running, right up until its **schedule window** closes (see
   "Attribution windowing" below).
 
-So the lineup timelapse covers **from 15 min after the previous departure
-until the ferry arrives back** — typically ~7–11 frames per cycle.
+So the lineup timelapse covers **from 15 min after the previous departure —
+or earlier, from the first classifier-positive probe — until the ferry
+arrives back** — typically ~7–11 frames per cycle; post-9pm sailings cover
+**from first detection until arrival**, or nothing on a quiet night.
 
 ### 4. Departure (loading) timelapse — terminal cam, one frame / minute
 
@@ -177,7 +195,8 @@ Firestore pointers written alongside each capture:
 
 ## Expected daily volume
 
-~16 Bowen departures/day; lineup timelapse skips the three post-9 pm boats.
+~16 Bowen departures/day; the three post-9 pm boats save lineup frames only
+after the crosswalk classifier flags a full lineup (usually never).
 
 | Path | Count/day | Size/day |
 |---|---|---|
@@ -189,7 +208,13 @@ Firestore pointers written alongside each capture:
 ≈ 280–410 files, ~8–15 MB/day → steady state ~330–630 MB under the 42-day
 window, inside the free Storage tier. Each timelapse frame also costs one
 `sailingStatus` write + one `aggregates/bowenSailings` write, so the arrival
-gating above is also the write-cost control.
+gating above is also the write-cost control. Classify-first probes don't
+change this: a negative non-sticky probe costs one `sailingStatus` read
+(the sticky check, ~30–80 reads/day total — negligible next to the poll's
+enrichment reads) and no writes or Storage, while a saved probe frame costs
+exactly what a normal frame does — at most ~2–3 extra frames per wait gate
+on days when the lineup fills early, plus full post-9pm cycles on busy late
+nights.
 
 ## Retention
 

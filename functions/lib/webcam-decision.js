@@ -70,11 +70,18 @@ export function arrivalSignalAvailable(data) {
 // frame:
 //   - only from 15 min after the previous Bowen departure (before that the
 //     lot is mostly empty — and sailings that fill up do so early, so the
-//     window opens well before the lineup peaks),
+//     window opens well before the lineup peaks). During that wait the
+//     decision is classify-first ({capture:false, classifyFirst:true}): the
+//     caller fetches + classifies the frame and saves it only on a positive
+//     "full to crosswalk" verdict — or unconditionally once a confirmed
+//     detection exists for the sailing (sticky, see captureLineupTimelapse) —
+//     so overload days get their early frames while quiet days stay free,
 //   - until 10 minutes AFTER the ferry arrives back at Bowen — the tail
 //     frames show whether late-arriving cars made the boat (loading itself
 //     is the terminal camera's job — see departureTimelapseDecision),
-//   - never for departures scheduled at/after 9 pm,
+//   - departures scheduled at/after 9 pm never capture unconditionally;
+//     their WHOLE cycle is classify-first instead, so a late busy evening
+//     boat still gets frames from first detection until arrival,
 //   - attributed to the next upcoming Bowen departure.
 const LINEUP_WAIT_AFTER_DEP_MIN = 15
 const LINEUP_STOP_AFTER_ARRIVAL_MIN = 10
@@ -102,18 +109,28 @@ export function timelapseDecision(data, now) {
     return t && now.isBefore(scheduleWindowEnd(schedule, i))
   })
   if (!nextDep) return { capture: false }
-  if (parseInt(nextDep.time.split(':')[0], 10) >= 21) return { capture: false }
-
-  if (now.diff(lastDep, 'minute') < LINEUP_WAIT_AFTER_DEP_MIN) return { capture: false }
 
   // Ferry has been back at the dock for a while: the lineup finished
   // draining onto the boat and the terminal camera has taken over. The first
   // 10 minutes after arrival still capture — AIS can flag "docked" a few
   // minutes before the recorded arrival time, which used to cut the last
-  // lineup frames short, and the drain itself is worth seeing.
+  // lineup frames short, and the drain itself is worth seeing. Checked before
+  // the classify-first branches so a stale "docked" signal right after
+  // departure can't turn into probes.
   const arrivedAt = bowenArrivalForCurrentCycle(data, now)
   if (arrivedAt && now.diff(arrivedAt, 'minute') >= LINEUP_STOP_AFTER_ARRIVAL_MIN) {
     return { capture: false }
+  }
+
+  // Post-9pm departures never capture unconditionally, but a late busy ferry
+  // is exactly when frames matter — the whole cycle is classify-first (the
+  // wait gate is irrelevant when every frame is classifier-gated anyway).
+  if (parseInt(nextDep.time.split(':')[0], 10) >= 21) {
+    return { capture: false, classifyFirst: true, sailingTime: nextDep.time }
+  }
+
+  if (now.diff(lastDep, 'minute') < LINEUP_WAIT_AFTER_DEP_MIN) {
+    return { capture: false, classifyFirst: true, sailingTime: nextDep.time }
   }
 
   return { capture: true, sailingTime: nextDep.time }

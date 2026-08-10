@@ -24,8 +24,10 @@ says yes only when **all** of these hold:
 - the ferry has **not yet arrived back at Bowen** — once it's docked the
   lineup is loading, so frames stop at arrival and the terminal camera
   (§1b) takes over,
-- there **is** a later not-yet-departed Bowen sailing today, and it departs
-  **before 9 pm** (the 21:30 / 22:30 / 23:30 boats get no timelapse).
+- there **is** a later not-yet-departed Bowen sailing today. Boats departing
+  **at/after 9 pm** (21:30 / 22:30 / 23:30) get no unconditional timelapse —
+  their whole cycle runs classify-first (§4), so frames appear only after
+  the classifier detects a full lineup.
 
 Each frame is captured from the community cam, compressed (~40–80 KB,
 half-resolution JPEG), stored at
@@ -126,8 +128,8 @@ camera, a fixed crop, a binary question. That needs only:
   (recall 0.86 → 0.93 in the ROI experiments). A region change invalidates
   trained weights — retrain after touching it.
 - **Model** (`functions/models/lineup-classifier.json`): logistic-regression
-  weights as JSON, a few KB. Ships **disabled** (`enabled: false`) until a
-  trained model is committed.
+  weights as JSON, a few KB. Inference is a no-op while `enabled: false`;
+  the committed model (v1, trained 2026-07-24) ships **enabled**.
 - **Runtime** (`functions/lib/lineup-classifier.js`): loaded once per
   function instance (the 1-minute poll keeps it warm). ~4–5 ms per frame on
   CPU, ~100 frames/day → effectively free.
@@ -138,11 +140,27 @@ at the first positive frame that the *next* frame confirms (a lone positive
 is noise — the rule is `firstSustainedPositiveTs()` in `lineup-labels.js`;
 the streaming version parks the candidate as `crosswalkAutoPending` and
 stamps `crosswalkFullAtAuto` + `crosswalkAutoProb` with the FIRST frame's
-time once confirmed, clearing the candidate on a negative frame). This is
+time once confirmed, clearing the candidate on a negative frame). "Next"
+means strictly consecutive: a pending older than one cadence step
+(`PENDING_CONFIRM_MAX_MS`, 7 min) can't confirm — intervening frames may
+have been negative without a trace — and is replaced by the current frame
+as a fresh candidate. This is
 kept **separate** from the
 human `crosswalkFullAt` so agreement can be measured before the automatic
 value is surfaced anywhere. Human tags labeling frames the model got wrong
 are exactly the examples the next training run needs.
+
+Inference also runs as a **capture gatekeeper**: during the 15-minute wait
+after the previous departure — and for the *entire cycle* of post-9pm
+sailings — `timelapseDecision` returns `classifyFirst: true` and the frame
+is fetched + classified without saving; a positive "full to crosswalk"
+verdict starts the save pipeline early (see docs/webcams.md, path 3).
+Detection is **sticky**: once `crosswalkFullAtAuto` is set for the sailing,
+every 5-minute frame saves until the arrival stop, negative verdicts
+included — and since the auto field is permanent, a human "not yet" refute
+doesn't stop the frames (they're cheap and useful for training). A disabled
+model skips the probe entirely — no fetch, no capture, identical to the
+pre-classifier behavior.
 
 ## 5. Training workflow
 
@@ -263,7 +281,8 @@ cars were left behind at Horseshoe Bay.
 
 1. Deploy (`npm run deploy:all` — rules for `lineupReports` ship with it).
 2. Confirm frames appear under `webcams/community/<date>/timelapse/` on
-   5-minute marks ≥ 15 min after a departure, and none for post-9 pm boats.
+   5-minute marks ≥ 15 min after a departure; post-9 pm boats only get
+   frames after a positive crosswalk detection.
 3. Set up the export cron (§6).
 4. Collect tags for a few weeks; eyeball `training-data/manifest.csv` label
    counts.

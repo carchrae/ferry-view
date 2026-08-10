@@ -74,12 +74,78 @@ describe('timelapseDecision', () => {
     expect(timelapseDecision(data(), at('12:55')).capture).toBe(true) // 19 min
   })
 
-  it('skips departures scheduled at/after 9 pm', () => {
+  it('probes (classify-first) during the wait gate instead of skipping outright', () => {
+    // 14 min after the 12:36 departure: no unconditional capture yet, but the
+    // caller should fetch + classify and save only on a positive verdict.
+    expect(timelapseDecision(data(), at('12:50'))).toEqual({
+      capture: false,
+      classifyFirst: true,
+      sailingTime: '13:55',
+    })
+  })
+
+  it('switches from probe to unconditional capture at exactly 15 minutes', () => {
+    const d = data({ recentActivity: [departed('12:35')] })
+    expect(timelapseDecision(d, at('12:45'))).toEqual({
+      capture: false,
+      classifyFirst: true,
+      sailingTime: '13:55',
+    }) // 10 min
+    expect(timelapseDecision(d, at('12:50'))).toEqual({ capture: true, sailingTime: '13:55' }) // 15 min
+  })
+
+  it('does not probe off-cadence or before anything departed', () => {
+    // Off-cadence minute inside the wait gate.
+    expect(timelapseDecision(data(), at('12:49'))).toEqual({ capture: false })
+    // Nothing departed yet today.
+    const morning = data({ recentActivity: [], bowenSchedule: sched(['15:15', '20:25']) })
+    expect(timelapseDecision(morning, at('14:00'))).toEqual({ capture: false })
+  })
+
+  it('does not probe while a stale AIS "docked" signal lingers after departure', () => {
+    // AIS still says Bowen (docked since 12:25) but the ferry departed at
+    // 12:36 — the arrival stop (checked before the wait gate) wins, so the
+    // gap doesn't turn into probes on a stale signal.
+    const d = data({ aisLocation: 'Bowen', aisLocationSince: at('12:25').valueOf() })
+    expect(timelapseDecision(d, at('12:45'))).toEqual({ capture: false })
+  })
+
+  it('probes (classify-first) for post-9pm departures instead of capturing', () => {
     const d = data({
       bowenSchedule: sched(MIDDAY, '20:25'),
       recentActivity: [departed('20:26')],
     })
-    expect(timelapseDecision(d, at('21:00')).capture).toBe(false)
+    const probe = { capture: false, classifyFirst: true, sailingTime: '21:30' }
+    // Inside the wait gate…
+    expect(timelapseDecision(d, at('20:30'))).toEqual(probe)
+    // …and well past it: a post-9pm cycle never flips to unconditional capture.
+    expect(timelapseDecision(d, at('21:00'))).toEqual(probe)
+    expect(timelapseDecision(d, at('21:15'))).toEqual(probe)
+  })
+
+  it('stops post-9pm probing once the ferry has been back for 10 minutes', () => {
+    const d = data({
+      bowenSchedule: sched(MIDDAY, '20:25'),
+      recentActivity: [{ action: 'Arrived', location: 'Bowen', time: '21:20' }, departed('20:26')],
+    })
+    // 5 min after arrival: still probing (drain frames).
+    expect(timelapseDecision(d, at('21:25'))).toEqual({
+      capture: false,
+      classifyFirst: true,
+      sailingTime: '21:30',
+    })
+    // 15 min after arrival: cycle over.
+    expect(timelapseDecision(d, at('21:35'))).toEqual({ capture: false })
+  })
+
+  it('does not probe post-9pm on a stale AIS "docked" signal', () => {
+    const d = data({
+      bowenSchedule: sched(MIDDAY, '20:25'),
+      recentActivity: [departed('20:26')],
+      aisLocation: 'Bowen',
+      aisLocationSince: at('20:20').valueOf(),
+    })
+    expect(timelapseDecision(d, at('20:35'))).toEqual({ capture: false })
   })
 
   it('still captures for the 20:25 sailing (before the cutoff)', () => {
