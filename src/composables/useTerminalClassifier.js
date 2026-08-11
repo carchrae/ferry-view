@@ -78,13 +78,31 @@ async function classifyFrame(path) {
   const bitmap = await createImageBitmap(await res.blob())
   try {
     const p = score(extractFeatures(bitmap))
-    return { ts: frameTs(path), carsPresent: p >= THRESHOLD }
+    return { ts: frameTs(path), p, carsPresent: p >= THRESHOLD }
   } finally {
     bitmap.close?.()
   }
 }
 
-const CACHE_KEY = 'terminalAutoVerdicts.v1'
+// Classify EVERY frame of a sailing (no early stop) — evidence for the
+// "show details" dialog: per-frame probability in capture order, plus the
+// proxied image URL. Frames come from the browser HTTP cache when the
+// verdict pass already fetched them.
+export async function classifyAllTerminalFrames(departureTimelapsePaths) {
+  if (!terminalClassifierReady) return null
+  const paths = [...(departureTimelapsePaths || [])]
+    .filter((p) => frameTs(p) != null)
+    .sort((a, b) => frameTs(a) - frameTs(b))
+  if (!paths.length) return null
+  const frames = []
+  for (const path of paths) {
+    frames.push({ ...(await classifyFrame(path)), url: proxyUrl(path) })
+  }
+  return frames
+}
+
+// v2: adds `prob` (the confirming frame's empty-confidence) to cache entries.
+const CACHE_KEY = 'terminalAutoVerdicts.v2'
 let cache = null
 function loadCache() {
   if (cache) return cache
@@ -105,19 +123,35 @@ function saveCache() {
   }
 }
 
-// Classify a sailing's terminal frames and return { emptyTs } when a
+// Cached verdict lookup (no network, no side effects) — lets the departures
+// page re-apply an already-computed certainty after the live aggregate
+// subscription rebuilds its sailing objects.
+export function cachedNotFull(sailingKey) {
+  const hit = loadCache().sailings[sailingKey]
+  return hit && hit.emptyTs != null ? { emptyTs: hit.emptyTs, prob: hit.prob ?? null } : null
+}
+
+// Classify a sailing's terminal frames and return { emptyTs, prob } when a
 // confirmed empty pair says the ferry left not full, or null (inconclusive —
-// never "full"). Unlike the crosswalk detector this cannot early-stop on
-// the first hit (the LAST confirmed pair matters less than any pair, so the
-// first confirmed pair is already decisive) — it stops as soon as one pair
-// confirms. `final` marks a departed sailing whose null verdict may cache.
-export async function predictNotFull(sailingKey, departureTimelapsePaths, { final = true } = {}) {
+// never "full"). `prob` is the confirming frame's empty-confidence (1 − p),
+// same number the server stamps as terminalEmptyProb. Unlike the crosswalk
+// detector this cannot early-stop on the first hit (the LAST confirmed pair
+// matters less than any pair, so the first confirmed pair is already
+// decisive) — it stops as soon as one pair confirms. `final` marks a
+// departed sailing whose null verdict may cache. `force` re-classifies past
+// a cached no-detection — used by the explicit "ask robot" button, where a
+// stale null (cached before the sailing finished, or by an older model pass)
+// shouldn't make the click a silent no-op.
+export async function predictNotFull(
+  sailingKey,
+  departureTimelapsePaths,
+  { final = true, force = false } = {},
+) {
   if (!terminalClassifierReady) return null
   const c = loadCache()
   const hit = c.sailings[sailingKey]
-  if (hit && (hit.emptyTs != null || hit.final)) {
-    return hit.emptyTs != null ? { emptyTs: hit.emptyTs } : null
-  }
+  if (hit && hit.emptyTs != null) return { emptyTs: hit.emptyTs, prob: hit.prob ?? null }
+  if (hit?.final && !force) return null
 
   const paths = [...(departureTimelapsePaths || [])]
     .filter((p) => frameTs(p) != null)
@@ -130,9 +164,11 @@ export async function predictNotFull(sailingKey, departureTimelapsePaths, { fina
       frames.push(await classifyFrame(path))
       const emptyTs = terminalEmptyFrameTs(frames)
       if (emptyTs != null) {
-        c.sailings[sailingKey] = { emptyTs, final: true }
+        const confirming = frames.find((f) => f.ts === emptyTs)
+        const prob = confirming ? Math.round((1 - confirming.p) * 1000) / 1000 : null
+        c.sailings[sailingKey] = { emptyTs, prob, final: true }
         saveCache()
-        return { emptyTs }
+        return { emptyTs, prob }
       }
     }
   } catch {

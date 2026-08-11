@@ -127,6 +127,7 @@
             />
             <RobotSays
               :auto-at="upcomingLineup.crosswalkFullAtAuto ?? null"
+              :auto-prob="upcomingLineup.crosswalkAutoProb ?? null"
               :crosswalk-reports="crosswalkByKey.get(upcomingLineup.sailingKey) || []"
               :human-at="humanCrosswalkAt(upcomingLineup)"
               :frames="upcomingLineup.timelapse"
@@ -196,10 +197,13 @@
               />
               <RobotSays
                 :auto-at="sailing.crosswalkFullAtAuto ?? null"
+                :auto-prob="sailing.crosswalkAutoProb ?? null"
                 :crosswalk-reports="sailing.crosswalkReports"
                 :human-at="humanCrosswalkAt(sailing)"
                 :frames="sailing.arrival?.timelapse || []"
                 :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
+                :not-full-prob="sailing.terminalEmptyProb ?? null"
+                :can-compute-not-full-prob="(sailing.departureTimelapsePaths?.length ?? 0) >= 2"
                 :capacity-reports="sailing.reports || []"
                 :terminal-frames="sailing.departure?.timelapse || []"
                 :auto-open="
@@ -211,6 +215,8 @@
                 @mark="onRobotMark(sailing, $event)"
                 @refute="onRobotRefute(sailing)"
                 @capacity="onRobotCapacity(sailing, $event)"
+                @compute-certainty="onComputeCertainty(sailing, $event)"
+                @show-details="onShowVerdictDetails(sailing)"
               />
             </div>
           </template>
@@ -224,10 +230,13 @@
           />
           <RobotSays
             :auto-at="sailing.crosswalkFullAtAuto ?? null"
+            :auto-prob="sailing.crosswalkAutoProb ?? null"
             :crosswalk-reports="sailing.crosswalkReports"
             :human-at="humanCrosswalkAt(sailing)"
             :frames="sailing.arrival?.timelapse || []"
             :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
+            :not-full-prob="sailing.terminalEmptyProb ?? null"
+            :can-compute-not-full-prob="(sailing.departureTimelapsePaths?.length ?? 0) >= 2"
             :capacity-reports="sailing.reports || []"
             :terminal-frames="sailing.departure?.timelapse || []"
             :auto-open="
@@ -239,6 +248,8 @@
             @mark="onRobotMark(sailing, $event)"
             @refute="onRobotRefute(sailing)"
             @capacity="onRobotCapacity(sailing, $event)"
+            @compute-certainty="onComputeCertainty(sailing, $event)"
+            @show-details="onShowVerdictDetails(sailing)"
           />
         </div>
       </q-card-section>
@@ -259,6 +270,16 @@
     </div>
 
     <SignInDialog v-model="showSignInDialog" />
+
+    <!-- Per-frame evidence behind a robot "not full" verdict (show-details). -->
+    <RobotVerdictDetails
+      v-model="verdictDetails.show"
+      :sailing-label="verdictDetails.sailingLabel"
+      :frames="verdictDetails.frames"
+      :empty-ts="verdictDetails.emptyTs"
+      :crosswalk-at="verdictDetails.crosswalkAt"
+      :crosswalk-prob="verdictDetails.crosswalkProb"
+    />
   </q-page>
 </template>
 
@@ -277,7 +298,13 @@ import RobotSays from 'src/components/RobotSays.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadLineupReportsForSailings } from 'src/composables/useLineupReport'
 import { predictCrosswalk, browserClassifierReady } from 'src/composables/useLineupClassifier'
-import { predictNotFull, terminalClassifierReady } from 'src/composables/useTerminalClassifier'
+import {
+  predictNotFull,
+  terminalClassifierReady,
+  classifyAllTerminalFrames,
+  cachedNotFull,
+} from 'src/composables/useTerminalClassifier'
+import RobotVerdictDetails from 'src/components/RobotVerdictDetails.vue'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 import { effectiveCrosswalk } from '../../functions/lib/lineup-labels.js'
@@ -523,6 +550,13 @@ function queueBrowserPredictions(sailings) {
   const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
   const cutoffIso = dayjs().tz(TZ).subtract(42, 'day').format('YYYY-MM-DD')
   for (const sailing of sailings) {
+    // Certainty computed on an earlier pass (or a click) survives aggregate
+    // snapshot rebuilds via the composable's localStorage cache — re-apply
+    // it here, no network involved.
+    if (sailing.ferryNotFullAuto != null && sailing.terminalEmptyProb == null) {
+      const cached = cachedNotFull(sailing.sailingKey)
+      if (cached?.prob != null) sailing.terminalEmptyProb = cached.prob
+    }
     if (sailing.dateIso < cutoffIso) continue // frames aged out of Storage
     const wantCrosswalk =
       browserClassifierReady &&
@@ -560,6 +594,7 @@ function queueBrowserPredictions(sailings) {
           if (verdict) {
             sailing.ferryNotFullAuto = true
             sailing.terminalEmptyFrameTs = verdict.emptyTs
+            sailing.terminalEmptyProb = verdict.prob
           }
         }
       } catch (err) {
@@ -568,6 +603,73 @@ function queueBrowserPredictions(sailings) {
         inFlight.delete(sailing.sailingKey)
       }
     })
+  }
+}
+
+// On-demand certainty (RobotSays percent button): classify ONLY this
+// sailing's terminal frames — the composable caches the result per device,
+// and the queue's re-apply above keeps it on the card across aggregate
+// snapshots. `done(ok)` flips the button out of its loading state; a null
+// verdict (frames unreachable, or the browser model finds no empty pair on
+// a server-stamped sailing) hides the button rather than showing a number
+// that contradicts the verdict.
+async function onComputeCertainty(sailing, done) {
+  try {
+    const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
+    const final = sailing.actualDepartureTime != null || sailing.dateIso < todayIso
+    const verdict = await predictNotFull(sailing.sailingKey, sailing.departureTimelapsePaths, {
+      final,
+      force: true,
+    })
+    if (verdict?.prob != null) {
+      sailing.terminalEmptyProb = verdict.prob
+      done(true)
+    } else {
+      // Frames unreachable, or this browser's model finds no empty pair on a
+      // server-stamped sailing — say so instead of silently hiding.
+      $q.notify({
+        type: 'warning',
+        message: "The robot couldn't re-check that sailing's frames just now.",
+      })
+      done(false)
+    }
+  } catch {
+    $q.notify({
+      type: 'warning',
+      message: "The robot couldn't re-check that sailing's frames just now.",
+    })
+    done(false)
+  }
+}
+
+// "Show details": the per-frame evidence dialog. Frames re-classify from the
+// browser HTTP cache (the certainty pass already fetched them).
+const verdictDetails = ref({
+  show: false,
+  sailingLabel: '',
+  frames: null,
+  emptyTs: null,
+  crosswalkAt: null,
+  crosswalkProb: null,
+})
+async function onShowVerdictDetails(sailing) {
+  verdictDetails.value = {
+    show: true,
+    sailingLabel: `${formatTime12h(sailing.sailingTime)} — ${sailing.dayLabel}`,
+    frames: null,
+    emptyTs: typeof sailing.terminalEmptyFrameTs === 'number' ? sailing.terminalEmptyFrameTs : null,
+    crosswalkAt: sailing.crosswalkFullAtAuto ?? null,
+    crosswalkProb: sailing.crosswalkAutoProb ?? null,
+  }
+  try {
+    const frames = await classifyAllTerminalFrames(sailing.departureTimelapsePaths)
+    // Prefer the browser verdict's ts — it matches the frames on screen when
+    // the browser and server models disagree on the exact confirming frame.
+    const cached = cachedNotFull(sailing.sailingKey)
+    verdictDetails.value.frames = frames || []
+    if (cached?.emptyTs != null) verdictDetails.value.emptyTs = cached.emptyTs
+  } catch {
+    verdictDetails.value.frames = []
   }
 }
 

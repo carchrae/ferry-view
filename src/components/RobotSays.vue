@@ -23,7 +23,7 @@
         color="indigo"
         size="sm"
         icon="directions_walk"
-        :label="`Past crosswalk ${timeLabel(autoAt)} — agree?`"
+        :label="`Past crosswalk ${timeLabel(autoAt)}${autoProb != null ? ` (${certaintyLabel(autoProb)})` : ''} — agree?`"
         @click="openVerify"
       />
       <!-- Crosswalk: human already marked → verdict chip; tap to reopen the
@@ -39,8 +39,12 @@
         class="verdict-chip"
         @click="openVerify"
       >
-        {{ verdictText }}
-        <q-tooltip>See the frames the robot judged — agree or disagree</q-tooltip>
+        {{ verdictText }}{{ autoProb != null ? ` · ${certaintyLabel(autoProb)}` : '' }}
+        <q-tooltip>
+          {{ autoProb != null
+            ? `The robot is ${Math.round(autoProb * 100)}% sure the lineup was past the crosswalk in its detection frame. `
+            : '' }}See the frames the robot judged — agree or disagree
+        </q-tooltip>
       </q-chip>
       <!-- Fullness: no capacity report yet → verify-then-confirm button;
            otherwise a verdict chip in the same section. -->
@@ -52,7 +56,7 @@
         color="indigo"
         size="sm"
         icon="directions_boat"
-        :label="`Not full${emptyWhen} — confirm?`"
+        :label="`Not full${emptyWhen}${notFullProb != null ? ` — ${certaintyLabel(notFullProb)}` : ''} — confirm?`"
         @click="openFullnessVerify"
       />
       <q-chip
@@ -66,9 +70,41 @@
         class="verdict-chip"
         @click="openFullnessVerify"
       >
-        {{ fullnessText }}
-        <q-tooltip>See the frames the robot judged — agree or disagree</q-tooltip>
+        {{ fullnessText }}{{ notFullProb != null ? ` · ${certaintyLabel(notFullProb)}` : '' }}
+        <q-tooltip>
+          {{ notFullProb != null
+            ? `The robot is ${Math.round(notFullProb * 100)}% sure the terminal was empty in the confirming frame. `
+            : '' }}See the frames the robot judged — agree or disagree
+        </q-tooltip>
       </q-chip>
+      <!-- Certainty: computed on demand (loads this sailing's frames only),
+           then the same slot becomes a details button. -->
+      <q-btn
+        v-if="showComputeBtn"
+        dense
+        no-caps
+        outline
+        size="sm"
+        color="indigo"
+        label="question robot"
+        :loading="computingProb"
+        @click="requestCertainty"
+      >
+        <q-tooltip>How sure is the robot? Checks this sailing's frames</q-tooltip>
+      </q-btn>
+      <q-btn
+        v-else-if="showDetailsBtn"
+        dense
+        no-caps
+        outline
+        size="sm"
+        color="indigo"
+        icon="insights"
+        label="show details"
+        @click="emit('show-details')"
+      >
+        <q-tooltip>Every frame the robot judged, with its score</q-tooltip>
+      </q-btn>
       </div>
     </div>
 
@@ -110,6 +146,11 @@
           your own crosswalk report (verify first — the robot has poor eyesight!).
           When a rider has already marked a sailing, the robot compares notes
           instead: agreement means within 5 minutes.
+        </p>
+        <p class="text-body2">
+          The certainty score ("pretty sure · 84%") is how confident the classifier
+          was about its deciding frame. The percent button checks a sailing's frames
+          on the spot; "details" then shows every frame with its score.
         </p>
         <div class="row justify-between items-center q-mt-md">
           <router-link to="classifier-results" target="_blank" rel="noopener" class="text-primary">
@@ -153,12 +194,49 @@ const props = defineProps({
   // prediction exists — set by the departures page when arriving from a robot
   // badge elsewhere in the app (e.g. the home page schedule).
   autoOpen: { type: String, default: null },
+  // Classifier certainty (0..1). Crosswalk prob ships in the aggregate (cwp)
+  // so it renders immediately; the terminal prob is computed on demand in the
+  // browser (percent button → parent runs the mirror → prop updates).
+  autoProb: { type: Number, default: null },
+  notFullProb: { type: Number, default: null },
+  // Whether the parent can compute the terminal certainty (frames available).
+  canComputeNotFullProb: { type: Boolean, default: false },
 })
 // agree: robot's crosswalk time confirmed · mark: rider disagreed and marks
 // the viewed frame's ts instead · refute: rider says the lineup has NOT
 // passed the crosswalk at all · capacity: 'Not Full' | 'Full' from the
-// fullness dialog.
-const emit = defineEmits(['agree', 'mark', 'capacity', 'refute'])
+// fullness dialog · compute-certainty(done): parent classifies this
+// sailing's terminal frames and calls done(ok) · show-details: open the
+// per-frame evidence dialog.
+const emit = defineEmits(['agree', 'mark', 'capacity', 'refute', 'compute-certainty', 'show-details'])
+
+// Certainty wording: qualitative words + integer percent, e.g.
+// "very sure · 92%".
+const certaintyWords = (p) =>
+  p >= 0.95 ? 'very sure' : p >= 0.8 ? 'pretty sure' : p >= 0.65 ? 'fairly sure' : 'not so sure'
+const certaintyLabel = (p) => `${certaintyWords(p)} · ${Math.round(p * 100)}%`
+
+const computingProb = ref(false)
+const certaintyFailed = ref(false)
+const fullnessVisible = computed(() => props.notFullAt != null && props.notFullAt !== false)
+const showComputeBtn = computed(
+  () =>
+    fullnessVisible.value &&
+    props.notFullProb == null &&
+    props.canComputeNotFullProb &&
+    !certaintyFailed.value,
+)
+const showDetailsBtn = computed(
+  () => fullnessVisible.value && props.notFullProb != null && props.canComputeNotFullProb,
+)
+function requestCertainty() {
+  if (computingProb.value) return
+  computingProb.value = true
+  emit('compute-certainty', (ok) => {
+    computingProb.value = false
+    if (!ok) certaintyFailed.value = true // frames unreachable — hide quietly
+  })
+}
 
 const showInfo = ref(false)
 // The dialogs reset themselves to the robot's frame on each open.

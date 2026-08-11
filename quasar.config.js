@@ -110,15 +110,16 @@ export default defineConfig((ctx) => {
           changeOrigin: true,
           pathRewrite: { '^/api': '/Production' },
         },
-        // Same-origin webcam frames (mirrors the Netlify /webcam/* rewrite;
-        // dev uses the staging bucket, like branch deploys). Needed by the
-        // browser-side lineup classifier — the bucket sends no CORS headers,
-        // so cross-origin canvas pixel reads would be blocked.
+        // Same-origin webcam frames (mirrors the Netlify /webcam/* rewrite).
+        // Always the PRODUCTION bucket: staging keeps no copy of the photos,
+        // and the browser-side classifiers need real frames. Needed same-
+        // origin because the bucket sends no CORS headers, so cross-origin
+        // canvas pixel reads would be blocked.
         {
           context: ['/webcam'],
           target: 'https://storage.googleapis.com',
           changeOrigin: true,
-          pathRewrite: { '^/webcam': '/bowen-ferry-staging.firebasestorage.app/webcams' },
+          pathRewrite: { '^/webcam': '/bowen-ferry.firebasestorage.app/webcams' },
         },
       ],
     },
