@@ -5,28 +5,34 @@ import sharp from 'sharp'
 // classifier (lineup-features.js): its own region, grid, and model file.
 //
 // The terminal camera looks down the loading road; cars queue along the
-// center-left lane, receding up-left with perspective. Two regions, tuned by
-// eye against 2026-07 frames with overlays:
-//  - near lane: the queue front — the last part to empty before departure.
-//    Right edge stops at the road's center line so oncoming (unloading)
-//    traffic and the static blue sign stay out.
-//  - far queue: the uphill tail. Starts high enough (top 42%) to clear the
-//    ebike shop's golf cart, which parks in the LOWER left third of the
-//    frame and must never read as a waiting car.
-// The bottom timestamp banner (y > 0.87) is excluded from both.
+// center-left lane, receding up-left with perspective. Regions redrawn
+// 2026-08-10 via the report page's ROI picker (previous set was narrower and
+// missed part of the queue):
+//  - near lane: the queue front and most of the lower road — the last part
+//    to empty before departure. As drawn it reached y=0.996; the bottom is
+//    trimmed to y=0.87 to exclude the timestamp banner, which 5-fold CV
+//    showed costs ~1.4pt accuracy when included.
+//  - far queue: the uphill tail, a vertical band on the upper left. Still
+//    clears the ebike shop's golf cart (parks lower-left) — it must never
+//    read as a waiting car.
 // A region change invalidates trained weights; retrain.
 export const TERMINAL_REGIONS = [
   {
     name: 'near lane',
-    roi: { left: 0.34, top: 0.42, width: 0.27, height: 0.45 },
-    width: 24,
-    height: 24,
+    roi: { left: 0.373, top: 0.45, width: 0.558, height: 0.42 },
+    width: 32,
+    height: 18,
   },
   {
     name: 'far queue',
-    roi: { left: 0.18, top: 0.05, width: 0.42, height: 0.37 },
-    width: 32,
-    height: 12,
+    // A wider box (left 0.287, w 0.35, top 0.10, h 0.352) was tried
+    // 2026-08-11 to catch cars at the very top of the frame (e.g.
+    // 2026-08-06 11:15): it did NOT change those frames' scores but cost
+    // ~5pt frame precision and ~10 sailings of verdict coverage — reverted.
+    // The crosswalk veto already suppresses the flag on that sailing.
+    roi: { left: 0.277, top: 0.06, width: 0.228, height: 0.373 },
+    width: 20,
+    height: 18,
   },
 ]
 

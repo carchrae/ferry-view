@@ -8,7 +8,7 @@ import { classifyLineup, lineupModelVersion, modelUsable } from './lineup-classi
 import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import { updateSailingStatus } from './helpers.js'
-import { robotMayFillCrosswalk } from './lineup-labels.js'
+import { robotMayFillCrosswalk, MIN_ALL_EMPTY_FRAMES } from './lineup-labels.js'
 import {
   lastBowenDeparture,
   bowenArrivalForCurrentCycle,
@@ -385,19 +385,41 @@ export async function captureDepartureTimelapse(db, data) {
   if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
     const cur = snap.exists ? snap.data() : {}
-    if (!verdict.carsPresent) {
-      if (cur.terminalEmptyPending) {
+    // Crosswalk veto: once the lineup was seen past the crosswalk (robot or
+    // human mark) the ferry is loading ≥75% full, and a briefly-empty
+    // terminal near departure is the queue being processed, not spare room.
+    // Measured on 389 user-tagged sailings this cuts wrong not-full flags
+    // from 3.3% to 0.9% while keeping 64% of the true ones.
+    const crosswalkVeto = cur.crosswalkFullAtAuto != null || cur.crosswalkFullAt != null
+    // NOTE on dark frames (lib/daylight.js): below civil twilight the model
+    // misreads headlights (~2× the daytime error) — the one known-wrong
+    // verdict on record is a night sailing. Dark frames still count (an
+    // exclusion was tried 2026-08-11 and rolled back: it also silenced ~50
+    // CORRECT night verdicts); the report page marks them so night verdicts
+    // are easy to eyeball, and a dedicated night model is the winter plan.
+    if (verdict.carsPresent) {
+      // Cars-first guard (mirrors terminalEmptyFrameTs): an empty pair only
+      // counts after loading was actually observed…
+      if (!cur.terminalCarsSeen) terminalFields.terminalCarsSeen = true
+      if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+    } else {
+      // …EXCEPT a long all-empty window (MIN_ALL_EMPTY_FRAMES observed empty
+      // frames, cars never seen) — a genuinely quiet sailing.
+      const emptySeen = (cur.terminalEmptySeen || 0) + 1
+      terminalFields.terminalEmptySeen = emptySeen
+      const confirmable = cur.terminalCarsSeen || emptySeen >= MIN_ALL_EMPTY_FRAMES
+      if (crosswalkVeto) {
+        if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+      } else if (cur.terminalEmptyPending && confirmable) {
         terminalFields.terminalEmptyFrameTs = timestamp
         terminalFields.ferryNotFullAuto = true
         terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
         const modelVersion = terminalModelVersion()
         if (modelVersion != null) terminalFields.terminalAutoModel = modelVersion
         firstConfirm = !cur.ferryNotFullAuto
-      } else {
+      } else if (!cur.terminalEmptyPending) {
         terminalFields.terminalEmptyPending = { ts: timestamp }
       }
-    } else if (cur.terminalEmptyPending) {
-      terminalFields.terminalEmptyPending = FieldValue.delete()
     }
   }
 

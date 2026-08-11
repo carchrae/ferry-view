@@ -32,6 +32,7 @@ import {
 } from '../functions/lib/terminal-features.js'
 import { thumbnailJpeg } from '../functions/lib/lineup-features.js'
 import { terminalEmptyFrameTs } from '../functions/lib/lineup-labels.js'
+import { isDarkAt } from '../functions/lib/daylight.js'
 import {
   buildExamplesPage,
   buildSummaryPage,
@@ -269,15 +270,80 @@ const verdicts = [...bySailing.keys()]
     const frames = bySailing.get(key).sort((a, b) => a.ts - b.ts)
     const seq = frames.map((s) => {
       const p = predict(s.features)
-      return { ...s, p, carsPresent: p >= THRESHOLD }
+      // dark (below civil twilight, daylight.js) is DISPLAY-ONLY: night
+      // frames still count in verdicts, but they're marked in the report —
+      // the model's night error is ~2× daytime, so a verdict built on dark
+      // frames deserves a skeptical eye (and a night model, come winter).
+      return { ...s, p, dark: isDarkAt(s.ts), carsPresent: p >= THRESHOLD }
     })
     const emptyTs = terminalEmptyFrameTs(seq)
     const idx = seq.findIndex((f) => f.ts === emptyTs)
-    // Context photo: the last cars-present frame before the confirming pair.
+    // Context photos: the last cars-present frame, then BOTH frames of the
+    // confirming pair (emptyTs is the second/confirming frame's ts).
     const before = idx >= 0 ? [...seq.slice(0, idx)].reverse().find((f) => f.carsPresent) : null
-    return { key, frames: seq, emptyTs, hit: idx >= 0 ? seq[idx] : null, before }
+    return {
+      key,
+      frames: seq,
+      emptyTs,
+      hit: idx >= 0 ? seq[idx] : null,
+      first: idx >= 1 ? seq[idx - 1] : null,
+      before,
+    }
   })
 const flagged = verdicts.filter((v) => v.emptyTs != null)
+
+// Context for each verdict: the crosswalk classifier's call on the same
+// sailing (training-data/predictions.json, written by lineup:train) and the
+// latest human capacity tag (training-data/capacity-tags.json, export step
+// 1b; latest recordedAt wins, mirroring lineup-report semantics). `capacity`
+// is percent AVAILABLE — "Full" means 0% available, so a human "Full"
+// contradicts a robot not-full verdict; anything else confirms it.
+const cwBySailing = new Map()
+try {
+  for (const p of JSON.parse(readFileSync(join(DATA, 'predictions.json'), 'utf8')))
+    cwBySailing.set(p.sailingKey, p)
+} catch {
+  // No crosswalk predictions exported yet — verdict lines show "no data".
+}
+const tagBySailing = new Map()
+try {
+  for (const t of JSON.parse(readFileSync(join(DATA, 'capacity-tags.json'), 'utf8'))) {
+    const prev = tagBySailing.get(t.sailingKey)
+    if (!prev || (t.recordedAt || 0) > (prev.recordedAt || 0)) tagBySailing.set(t.sailingKey, t)
+  }
+} catch {
+  // No capacity tags exported yet — every verdict counts as untagged.
+}
+// Known-bad tags (training-data/tag-corrections.json, hand-curated): the tag
+// is disregarded — the sailing scores as untagged, and the row says why.
+let tagCorrections = {}
+try {
+  tagCorrections = JSON.parse(readFileSync(join(DATA, 'tag-corrections.json'), 'utf8'))
+} catch {
+  // No corrections file — nothing to disregard.
+}
+for (const key of Object.keys(tagCorrections)) tagBySailing.delete(key)
+for (const v of verdicts) {
+  v.cw = cwBySailing.get(v.key) ?? null
+  v.tag = tagBySailing.get(v.key) ?? null
+  // Not-full verdict vs tag: only a human "Full" contradicts it.
+  v.match = !v.tag ? 'untagged' : v.tag.capacity === 'Full' ? 'mismatch' : 'match'
+  // Full verdict vs tag — STRICT: "full" means 0% available, so only a
+  // human "Full" agrees; any percent-available tag (10%, 25%, Not Full)
+  // means the ferry left with room and counts as contradicting. The
+  // crosswalk signal itself only claims ≥75% full, so a "10%" row is the
+  // signal working as designed but the strict claim being too strong —
+  // the row shows the actual tag so the two cases are distinguishable.
+  v.matchFull = !v.tag ? 'untagged' : v.tag.capacity === 'Full' ? 'match' : 'mismatch'
+  v.darkFrames = v.frames.filter((f) => f.dark).length
+}
+// Sailings the crosswalk classifier called full (only those with terminal
+// frames appear on this page; the crosswalk page lists them all).
+const flaggedFull = verdicts.filter((v) => v.cw?.crosswalkDetectedTs != null)
+// Crosswalk veto (mirrors the runtime rule in webcam.js): a not-full flag on
+// a sailing whose lineup was seen past the crosswalk is suppressed — the
+// briefly-empty terminal is the queue being processed, not spare room.
+for (const v of flagged) v.vetoed = v.cw?.crosswalkDetectedTs != null
 
 const cardRows = labeledSamples.map((s) => {
   const p = predict(s.features)
@@ -290,40 +356,215 @@ const cardRows = labeledSamples.map((s) => {
   }
 })
 
-function verdictsSectionHtml(srcFor) {
+// One block per terminal frame, capture order: green = cars, red = empty,
+// stronger color = more confident (p for cars, 1−p for empty); the confirmed
+// empty pair is outlined. Exact time + p in the tooltip.
+function scoreStripHtml(v) {
+  const hitIdx = v.frames.findIndex((f) => f.ts === v.emptyTs)
+  return `<div class="fstrip">${v.frames
+    .map((f, i) => {
+      const conf = hitIdx >= 0 && (i === hitIdx || i === hitIdx - 1)
+      const op = Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
+      return `<span class="${f.carsPresent ? 'cars' : 'empty'}${conf ? ' conf' : ''}${f.dark ? ' dk' : ''}" style="opacity:${op}" title="${escHtml(fmtTime(f.ts))} · p ${f.p.toFixed(2)}${f.dark ? ' · dark' : ''}"></span>`
+    })
+    .join('')}</div>`
+}
+
+const capLabel = (c) => (c === 'Full' || c === 'Not Full' ? c : `${c} available`)
+function verdictContextHtml(v, matchField) {
+  const cw = !v.cw
+    ? 'no lineup frames archived'
+    : v.cw.crosswalkDetectedTs != null
+      ? `past crosswalk ${escHtml(fmtTime(v.cw.crosswalkDetectedTs))} (p ${(v.cw.crosswalkDetectedProb ?? 0).toFixed(2)})`
+      : `never past crosswalk (${v.cw.frames} frames)`
+  const tag = tagCorrections[v.key]
+    ? `<em>disregarded — ${escHtml(tagCorrections[v.key])}</em>`
+    : !v.tag
+      ? '<em>none</em>'
+      : v[matchField] === 'mismatch'
+        ? `<strong class="bad-tag">${escHtml(capLabel(v.tag.capacity))} ✗ contradicts</strong>`
+        : `${escHtml(capLabel(v.tag.capacity))} ✓`
+  return `crosswalk: ${cw}<br>human tag: ${tag}`
+}
+
+const filterNavHtml = (list, matchField) => {
+  const c = { match: 0, mismatch: 0, untagged: 0 }
+  for (const v of list) c[v[matchField]]++
+  return `<nav class="vfilter">verdict vs human tag:
+    <button data-v="" class="active">all (${list.length})</button>
+    <button data-v="match">agree (${c.match})</button>
+    <button data-v="mismatch">contradict (${c.mismatch})</button>
+    <button data-v="untagged">no tag (${c.untagged})</button>
+  </nav>`
+}
+
+// Contradiction rate by day of week, for both verdict kinds — is the robot
+// worse on busy days? Only tagged sailings can be scored.
+function weekdayTableHtml() {
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const rows = DOW.map((name, d) => {
+    const cell = (list, matchField) => {
+      const tagged = list.filter(
+        (v) => new Date(v.key.slice(0, 10) + 'T00:00Z').getUTCDay() === d && v[matchField] !== 'untagged',
+      )
+      const bad = tagged.filter((v) => v[matchField] === 'mismatch').length
+      return tagged.length
+        ? `${bad}/${tagged.length}${bad ? ` (${Math.round((bad / tagged.length) * 100)}%)` : ''}`
+        : '—'
+    }
+    return `<tr><td>${name}</td><td>${cell(flagged, 'match')}</td><td>${cell(flaggedFull, 'matchFull')}</td></tr>`
+  }).join('')
   return `
-<section class="predictions">
-  <h2>Ferry not-full verdicts</h2>
-  <p>Every archived frame of every sailing is classified in capture order; the
-  ferry counts as having left <strong>not full</strong> when the terminal reads
-  empty in <strong>two consecutive frames</strong> before departure (a lone empty
-  frame misreads ~25% of the time). The signal is one-way: late-arriving cars in
-  the final frames never cancel an earlier confirmed-empty pair.
-  Flagged ${flagged.length} of ${verdicts.length} sailings.</p>
-  <details class="predlist">
-  <summary>${flagged.length} sailings flagged not full — context and confirming photos</summary>
-  ${flagged
-    .map(
-      (v) => `
-  <div class="pred">
+  <details><summary>contradictions by day of week</summary>
+  <table class="dowtable">
+    <tr><th></th><th>not-full flags<br><small>wrong / tagged</small></th><th>full flags<br><small>wrong / tagged</small></th></tr>
+    ${rows}
+  </table>
+  <p><small>Counts only sailings with a human capacity tag. "wrong" = the tag
+  contradicts the robot verdict (see each list's rules above).</small></p>
+  </details>`
+}
+
+function verdictsSectionHtml(srcFor) {
+  const nfCounts = { match: 0, mismatch: 0, untagged: 0 }
+  for (const v of flagged) nfCounts[v.match]++
+  const fullCounts = { match: 0, mismatch: 0, untagged: 0 }
+  for (const v of flaggedFull) fullCounts[v.matchFull]++
+
+  const photo = (f, caption, hit) =>
+    `<figure${hit ? ' class="hit"' : ''}><img loading="lazy" src="${escHtml(srcFor(f))}" alt="">
+      <figcaption>${caption} · ${escHtml(fmtTime(f.ts))} · p ${f.p.toFixed(2)}</figcaption></figure>`
+
+  const notFullRow = (v) => `
+  <div class="pred v${v.match}">
     <figure>${
       v.before
         ? `<img loading="lazy" src="${escHtml(srcFor(v.before))}" alt="">
       <figcaption>last cars seen · ${escHtml(fmtTime(v.before.ts))} · p ${v.before.p.toFixed(2)}</figcaption>`
         : `<div class="nopic">no earlier cars frame</div><figcaption>empty from the start</figcaption>`
     }</figure>
-    <figure class="hit"><img loading="lazy" src="${escHtml(srcFor(v.hit))}" alt="">
-      <figcaption>confirmed empty · ${escHtml(fmtTime(v.hit.ts))} · p ${v.hit.p.toFixed(2)}</figcaption></figure>
+    ${v.first ? photo(v.first, 'first empty', false) : ''}
+    ${photo(v.hit, 'confirmed empty', true)}
     <div class="pred-info">
       <strong>${escHtml(v.key)}</strong><br>
-      not full — terminal empty at <strong>${escHtml(fmtTime(v.emptyTs))}</strong><br>
-      ${v.frames.length} frames
+      not full — terminal empty at <strong>${escHtml(fmtTime(v.emptyTs))}</strong> · ${v.frames.length} frames${
+        v.darkFrames ? ` (${v.darkFrames} dark)` : ''
+      }${
+        v.vetoed
+          ? '<br><strong class="veto-tag">suppressed by crosswalk veto — lineup was past the crosswalk</strong>'
+          : ''
+      }${
+        v.hit?.dark || v.first?.dark
+          ? '<br><strong class="veto-tag">⚠ night verdict — the confirming pair is after civil twilight (model error ~2× at night)</strong>'
+          : ''
+      }<br>
+      ${scoreStripHtml(v)}
+      ${verdictContextHtml(v, 'match')}
     </div>
-  </div>`,
-    )
-    .join('')}
+  </div>`
+
+  // Full verdicts come from the crosswalk cam; the terminal photos here show
+  // the terminal state at departure (a still-loaded lane corroborates "full").
+  const fullRow = (v) => {
+    const secondLast = v.frames.length > 1 ? v.frames[v.frames.length - 2] : null
+    const last = v.frames[v.frames.length - 1]
+    return `
+  <div class="pred v${v.matchFull}">
+    ${secondLast ? photo(secondLast, 'second-last frame', false) : ''}
+    ${photo(last, 'last before departure', true)}
+    <div class="pred-info">
+      <strong>${escHtml(v.key)}</strong><br>
+      full — lineup past crosswalk at <strong>${escHtml(fmtTime(v.cw.crosswalkDetectedTs))}</strong>
+      · ${v.frames.length} terminal frames${v.darkFrames ? ` (${v.darkFrames} dark)` : ''}${
+        v.emptyTs != null
+          ? '<br><strong class="bad-tag">⚠ also flagged not full by the terminal rule</strong>'
+          : ''
+      }<br>
+      ${scoreStripHtml(v)}
+      ${verdictContextHtml(v, 'matchFull')}
+    </div>
+  </div>`
+  }
+
+  return `
+<style>
+  .fstrip { display: flex; gap: 2px; flex-wrap: wrap; margin: 0.3rem 0; max-width: 480px; }
+  .fstrip span { width: 9px; height: 22px; border-radius: 2px; }
+  .fstrip span.cars { background: #2a7; }
+  .fstrip span.empty { background: #d33; }
+  .fstrip span.dk { box-shadow: inset 0 -6px 0 #113; }
+  .fstrip span.conf { outline: 2px solid #fc0; outline-offset: 1px; }
+  .pred-info .bad-tag { color: #d33; }
+  .pred-info .veto-tag { color: #b80; }
+  nav.vfilter { margin: 0.4rem 0; }
+  nav.vfilter button { padding: 0.2rem 0.6rem; cursor: pointer; margin-right: 0.3rem; }
+  nav.vfilter button.active { font-weight: bold; }
+  details.predlist[data-vmatch="match"] .pred:not(.vmatch) { display: none; }
+  details.predlist[data-vmatch="mismatch"] .pred:not(.vmismatch) { display: none; }
+  details.predlist[data-vmatch="untagged"] .pred:not(.vuntagged) { display: none; }
+  .dowtable { border-collapse: collapse; margin: 0.5rem 0; }
+  .dowtable th, .dowtable td { border: 1px solid #8884; padding: 0.25rem 0.7rem; text-align: center; }
+</style>
+<section class="predictions" id="verdicts">
+  <h2>Ferry not-full verdicts</h2>
+  <p>Every archived frame of every sailing is classified in capture order; the
+  ferry counts as having left <strong>not full</strong> when the terminal reads
+  empty in <strong>two consecutive frames</strong> before departure (a lone empty
+  frame misreads ~25% of the time) — both frames of the confirming pair are shown.
+  The pair must come <strong>after a cars-present frame</strong>, unless the whole
+  window is a long quiet one (10+ observed-empty frames, cars never seen).
+  <strong>Dark frames</strong> (sun below civil twilight) still count, but they are
+  marked — navy band on the strip block, "dark" in the tooltip — because the
+  model's error at night is ~2× daytime; night verdicts carry a ⚠ note.
+  The signal is one-way: late-arriving cars in the final frames never cancel an
+  earlier confirmed-empty pair.
+  Flagged ${flagged.length} of ${verdicts.length} sailings —
+  ${nfCounts.match} agree with a human capacity tag, <strong>${nfCounts.mismatch}
+  contradict one (human said Full)</strong>, ${nfCounts.untagged} have no tag.
+  The <strong>crosswalk veto</strong> (a lineup seen past the crosswalk suppresses
+  the flag) removes ${flagged.filter((v) => v.vetoed).length} of these, including
+  ${flagged.filter((v) => v.vetoed && v.match === 'mismatch').length} of the
+  ${nfCounts.mismatch} contradictions — after the veto:
+  <strong>${flagged.filter((v) => !v.vetoed && v.match === 'mismatch').length} wrong of
+  ${flagged.filter((v) => !v.vetoed).length} flags</strong>.</p>
+  <details class="predlist">
+  <summary>${flagged.length} sailings flagged not full — context and confirming photos</summary>
+  ${filterNavHtml(flagged, 'match')}
+  ${flagged.map(notFullRow).join('')}
   </details>
-</section>`
+
+  <h2>Ferry full verdicts</h2>
+  <p>The crosswalk classifier (see <a href="crosswalk.html">crosswalk page</a>)
+  deems the ferry <strong>at least 75% full</strong> when the lineup passes the
+  crosswalk — note it never claims <em>completely</em> full.
+  ${flaggedFull.length} of the ${verdicts.length} sailings with terminal frames
+  were flagged. Scored <strong>strictly</strong> (full = 0% available, so any
+  percent-available tag means the ferry left with room):
+  ${fullCounts.match} agree (human said Full),
+  <strong>${fullCounts.mismatch} contradict — the ferry left with room</strong>
+  (each row shows how much), ${fullCounts.untagged} have no tag.
+  Photos show the terminal at departure.</p>
+  <details class="predlist">
+  <summary>${flaggedFull.length} sailings flagged full — context photos and terminal scores</summary>
+  ${filterNavHtml(flaggedFull, 'matchFull')}
+  ${flaggedFull.map(fullRow).join('')}
+  </details>
+
+  ${weekdayTableHtml()}
+</section>
+<script>
+  document.querySelectorAll('#verdicts nav.vfilter').forEach((nav) => {
+    const details = nav.closest('details')
+    nav.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        nav.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b))
+        if (b.dataset.v) details.dataset.vmatch = b.dataset.v
+        else delete details.dataset.vmatch
+        details.open = true
+      }
+    })
+  })
+</script>`
 }
 
 function terminalPage(srcFor) {
@@ -392,7 +633,12 @@ const referenced = new Map()
 for (const r of cardRows) referenced.set(r.path, r)
 for (const v of flagged) {
   if (v.before) referenced.set(v.before.path, v.before)
+  if (v.first) referenced.set(v.first.path, v.first)
   referenced.set(v.hit.path, v.hit)
+}
+for (const v of flaggedFull) {
+  if (v.frames.length > 1) referenced.set(v.frames[v.frames.length - 2].path, v.frames[v.frames.length - 2])
+  referenced.set(v.frames[v.frames.length - 1].path, v.frames[v.frames.length - 1])
 }
 for (const r of referenced.values()) {
   const dest = join(THUMBS, thumbName(r.path))

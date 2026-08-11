@@ -117,6 +117,21 @@ for (const r of reports) {
   if (!reportsBySailing.has(r.sailingKey)) reportsBySailing.set(r.sailingKey, [])
   reportsBySailing.get(r.sailingKey).push(r)
 }
+
+// --- 1b. Human capacity tags -------------------------------------------------
+// Rider-reported fullness (capacityHistory, user records only — automated
+// records never cover To HSB). Snapshot, not an archive: the report pages use
+// these to show robot-verdict vs human-tag agreement; no labels derive from
+// them. `capacity` is percent AVAILABLE ("Full" = 0% available).
+const CAPACITY_TAGS = join(ROOT, 'capacity-tags.json')
+const capacityDocs = await runQuery({ from: [{ collectionId: 'capacityHistory' }], limit: 20000 })
+const capacityTags = capacityDocs
+  .map((doc) => ({ id: doc.name.split('/').pop(), ...fields(doc) }))
+  .filter((c) => c.userUid && c.sailingKey && c.capacity)
+  .map(({ id, sailingKey, capacity, recordedAt }) => ({ id, sailingKey, capacity, recordedAt }))
+  .sort((a, b) => (a.recordedAt || 0) - (b.recordedAt || 0))
+writeFileSync(CAPACITY_TAGS, JSON.stringify(capacityTags, null, 1) + '\n')
+console.log(`capacityHistory: ${capacityTags.length} user tags on ${new Set(capacityTags.map((c) => c.sailingKey)).size} sailings`)
 const crosswalkBySailing = new Map()
 for (const [key, list] of reportsBySailing) {
   const at = effectiveCrosswalkAt(list)
@@ -211,8 +226,13 @@ for (const row of [...rows.values(), ...terminalRows.values()]) {
     gone++ // aged out of Storage; label row kept for the record
     continue
   }
+  const buf = Buffer.from(await res.arrayBuffer())
+  if (!buf.length) {
+    gone++ // zero-byte object (failed capture upload) — nothing to train on
+    continue
+  }
   mkdirSync(dirname(dest), { recursive: true })
-  writeFileSync(dest, Buffer.from(await res.arrayBuffer()))
+  writeFileSync(dest, buf)
   downloaded++
 }
 

@@ -245,25 +245,48 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   → `ferryNotFullAuto`. Cars in the *final* frame prove nothing — they may
   have arrived past the cutoff — so a car-filled ending never negates an
   earlier empty frame (`terminalEmptyFrameTs()` in `lineup-labels.js`).
+- **Crosswalk veto** (2026-08-10): if the sailing already has a crosswalk
+  mark (`crosswalkFullAtAuto` or `crosswalkFullAt` — the ferry is loading
+  ≥75% full), the empty pair is NOT stamped: a briefly-empty terminal near
+  departure is the queue being processed, not spare room. Measured on 389
+  user-tagged sailings this cut wrong not-full flags from 3.3% to 0.9% of
+  flags while keeping 64% of the true ones (most of the losses were Sunday
+  evenings, where the error rate was worst). Same rule in the report page.
+- **Cars first, quiet-window exception** (2026-08-11): the pair must come
+  after a cars-present frame — an empty-from-the-start window may just have
+  missed the loading — unless the window is long (`MIN_ALL_EMPTY_FRAMES` =
+  10 observed-empty frames, cars never seen): those are genuinely quiet
+  sailings (riders tag them Not Full / 25%, never Full). Streaming state:
+  `terminalCarsSeen`, `terminalEmptySeen` on the sailingStatus doc.
+- **Dark frames are marked, not excluded** (2026-08-11, `lib/daylight.js`):
+  below civil twilight the model misreads headlights (~2× daytime error).
+  The pixels can't detect night — auto-exposure keeps mean luminance above
+  0.35 around the clock — so darkness is solar elevation by the clock.
+  Night frames still count in verdicts (a full exclusion was tried and
+  rolled back: it silenced ~50 correct night verdicts to remove one wrong
+  one); instead the report page marks dark frames (navy band on the score
+  strips) and stamps night verdicts with a ⚠ note. The one known-wrong
+  flag on record (2026-08-03 21:30) is a night sailing. In winter most
+  evening sailings will be dark — a dedicated night model trained on the
+  labeled dark archive is the planned fix.
 - Independently, if the **crosswalk classifier** never detected the lineup
   past the crosswalk, the ferry was definitely not full — the trainer saves
   this per sailing as `notFullByCrosswalk` in
   `training-data/predictions.json`.
 
 Pipeline (mirrors the crosswalk one, separate everywhere):
-`functions/lib/terminal-features.js` (two regions — "near lane" 24×24 and
-"far queue" 32×12, drawn to exclude the ebike shop's golf-cart parking spot
-in the lower-left third; features are per-frame mean-centered because the
-terminal cam spans day-to-night lighting) →
-`functions/models/terminal-cars-classifier.json` (trained 2026-07-24 on 399
-model-labeled frames: test acc 0.843, cars-precision 1.0, cars-recall 0.71;
+`functions/lib/terminal-features.js` (two regions — "near lane" 32×18 and
+"far queue" 20×18, redrawn 2026-08-10 via the report page's ROI picker,
+still clearing the ebike shop's golf-cart parking spot; features are
+per-frame mean-centered because the terminal cam spans day-to-night
+lighting) → `functions/models/terminal-cars-classifier.json` (v3, trained
+2026-08-10 on 488 labeled frames: 5-fold CV precision 0.94 / recall 0.91;
 a lone empty frame misreads ~25% of the time, hence the two-consecutive
 confirmation) → `functions/lib/terminal-classifier.js` (runtime, hooked into
 `captureDepartureTimelapse`; a confirmed empty pair stamps
 `terminalEmptyFrameTs` / `ferryNotFullAuto`, aggregate key `nf`; a lone
-empty parks as `terminalEmptyPending`). Validated over 170 archived
-sailings: 104 flagged not-full, zero contradictions with rider capacity
-tags. Training:
+empty parks as `terminalEmptyPending`, and the crosswalk veto above
+suppresses both). Training:
 
 ```bash
 npm run lineup:export      # also downloads terminal frames + terminal-manifest.csv

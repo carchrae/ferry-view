@@ -43,10 +43,16 @@ training-data/report/                 classifier-results pages (index/crosswalk/
 
 - **Departure (Bowen terminal) timelapse** frames — not taggable, no labels.
 - **Single arrival/departure photos** — not part of the timelapse.
-- **Capacity tags** (`capacityHistory`) and the model's own predictions
-  (`crosswalkFullAtAuto` / `crosswalkAutoProb`). Reporter identity fields do
-  ship inside `lineup-reports.json` (it's the raw archive of a
-  world-readable collection) but are not used for labeling.
+- The model's own predictions (`crosswalkFullAtAuto` / `crosswalkAutoProb`).
+  Reporter identity fields do ship inside `lineup-reports.json` (it's the raw
+  archive of a world-readable collection) but are not used for labeling.
+  Human capacity tags DO ship since 2026-08-10 (`capacity-tags.json`, user
+  records only, `{id, sailingKey, capacity, recordedAt}` — `capacity` is
+  percent **available**); the terminal report page uses them to show
+  robot-verdict vs human-tag agreement. No labels derive from them.
+  Known-bad tags are listed in the hand-curated `tag-corrections.json`
+  (`{sailingKey: reason}`, NOT written by the exporter) — scoring treats
+  those sailings as untagged.
 
 ## Shared logic — keep it that way
 

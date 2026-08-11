@@ -95,14 +95,21 @@ const SHARED_CSS = `
     touch-action: none; user-select: none; cursor: crosshair; }
   #roi-stage img { max-width: 100%; display: block; }
   .roi-box { position: absolute; pointer-events: none; border: 2px solid; }
-  #roi-left, #roi-drag.left { border-color: #26c; background: #26c3; }
-  #roi-right, #roi-drag.right { border-color: #e70; background: #e703; }
+  #roi-left, #roi-drag.left { border-color: #fc0; background: #fc03; }
+  #roi-right, #roi-drag.right { border-color: #0af; background: #0af3; }
   .roi-region.active { outline: 2px solid Highlight; }
+  .roi-region .swatch { display: inline-block; width: 0.85em; height: 0.85em;
+    border: 2px dashed; vertical-align: -0.1em; margin-right: 0.35em; }
+  #roi-stage .roi-ov span { position: absolute; top: 0; left: 0; font-size: 0.7rem;
+    color: #000; font-weight: bold; padding: 0 0.3em; }
   #roi-out { background: #8882; padding: 0.5rem 0.7rem; border-radius: 6px;
     max-width: 46rem; white-space: pre-wrap; }
 `
 
-const REGION_COLORS = ['#fc0', '#e70']
+// One color per region index, used for BOTH the dashed current-region
+// overlays and the picker's drawn boxes: A = yellow, B = azure. Keep them
+// far apart in hue — yellow vs orange proved indistinguishable on photos.
+const REGION_COLORS = ['#fc0', '#0af']
 
 const regionOverlayCss = (regions) =>
   regions
@@ -201,18 +208,30 @@ const pickerHtml = (src, regions) => `
 <details class="roipick">
   <summary>ROI picker — draw tighter crop regions</summary>
   <p>Pick a region, then <strong>drag on the photo</strong> to draw its box
-  (redraw to replace). The dashed boxes are the regions currently in use.
-  Copy the JSON and hand it to the classifier maintainer (fractions of the
-  frame).</p>
+  (redraw to replace). The dashed boxes are the regions currently in use —
+  each is labeled and color-matched to its button below. Your drawn box uses
+  the same color, solid. Copy the JSON and hand it to the classifier
+  maintainer (fractions of the frame).</p>
   <p>
-    <button type="button" class="roi-region active" data-region="left">draw region A</button>
-    <button type="button" class="roi-region" data-region="right">draw region B</button>
+    <button type="button" class="roi-region active" data-region="left"><span
+      class="swatch" style="border-color:${REGION_COLORS[0]}"></span>draw region A${
+        regions[0]?.name ? ` — ${esc(regions[0].name)}` : ''
+      }</button>
+    <button type="button" class="roi-region" data-region="right"><span
+      class="swatch" style="border-color:${REGION_COLORS[1]}"></span>draw region B${
+        regions[1]?.name ? ` — ${esc(regions[1].name)}` : ''
+      }</button>
     <button type="button" id="roi-copy">copy JSON</button>
     <span id="roi-copied" hidden>copied ✓</span>
   </p>
   <div id="roi-stage">
     <img src="${esc(src)}" alt="" draggable="false">
-    ${regions.map((r, i) => `<div class="roi-ov roi-ov-${i}"></div>`).join('')}
+    ${regions
+      .map(
+        (r, i) => `<div class="roi-ov roi-ov-${i}"><span
+          style="background:${REGION_COLORS[i] || '#fc0'}">${'AB'[i] || i + 1} · ${esc(r.name)}</span></div>`,
+      )
+      .join('')}
     <div class="roi-box" id="roi-left" hidden></div>
     <div class="roi-box" id="roi-right" hidden></div>
     <div class="roi-box" id="roi-drag" hidden></div>

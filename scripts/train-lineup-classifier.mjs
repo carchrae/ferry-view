@@ -10,7 +10,7 @@
 // Usage:
 //   node scripts/train-lineup-classifier.mjs [--data training-data]
 //     [--out functions/models/lineup-classifier.json]
-//     [--epochs 300] [--lr 0.5] [--l2 1e-4] [--threshold 0.7] [--force]
+//     [--epochs 1000] [--lr 0.1] [--l2 1e-4] [--threshold 0.7] [--force]
 //
 // The train/test split is BY SAILING (not by frame): frames within one
 // sailing are near-duplicates, so a frame-level split would leak and inflate
@@ -50,8 +50,11 @@ function flag(name, dflt) {
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DATA = flag('data', join(repoRoot, 'training-data'))
 const OUT = flag('out', join(repoRoot, 'functions/models/lineup-classifier.json'))
-const EPOCHS = Number(flag('epochs', '300'))
-const LR = Number(flag('lr', '0.5'))
+// lr 0.5 was tuned on the ~640-frame 2026-07 dataset; on the ~1500-frame set
+// full-batch GD diverges at that rate (loss oscillates, ends all-positive).
+// 0.1 for 1000 epochs converges and clears the metric floor.
+const EPOCHS = Number(flag('epochs', '1000'))
+const LR = Number(flag('lr', '0.1'))
 const L2 = Number(flag('l2', '1e-4'))
 const THRESHOLD = Number(flag('threshold', '0.7'))
 const FORCE = args.includes('--force')
@@ -71,13 +74,18 @@ for (const line of lines) {
   const [path, sailingKey, ts, label, crosswalkAt] = line.split(',')
   const file = join(DATA, 'frames', path)
   if (!existsSync(file)) continue
+  const bytes = readFileSync(file)
+  if (!bytes.length) {
+    console.warn(`Skipping empty frame file: ${path}`)
+    continue
+  }
   samples.push({
     path,
     sailingKey,
     ts: Number(ts),
     crosswalkAt: crosswalkAt ? Number(crosswalkAt) : null,
     y: label === '0' ? 0 : label === '1' ? 1 : null,
-    features: await extractFeatures(readFileSync(file)),
+    features: await extractFeatures(bytes),
   })
 }
 const labeled = samples.filter((s) => s.y != null)

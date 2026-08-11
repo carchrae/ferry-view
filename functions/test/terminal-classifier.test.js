@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import sharp from 'sharp'
 import { extractTerminalFeatures, TERMINAL_FEATURE_LENGTH } from '../lib/terminal-features.js'
 import { classifyTerminal, scoreTerminalFeatures } from '../lib/terminal-classifier.js'
-import { terminalEmptyFrameTs } from '../lib/lineup-labels.js'
+import { terminalEmptyFrameTs, MIN_ALL_EMPTY_FRAMES } from '../lib/lineup-labels.js'
 
 async function solidJpeg(shade, width = 320, height = 240) {
   return sharp({
@@ -83,7 +83,7 @@ describe('terminalEmptyFrameTs', () => {
 
   it('returns the last ts of a confirmed (two consecutive) empty pair', () => {
     expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, false), f(4, true)])).toBe(3)
-    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, false)])).toBe(3)
+    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, false), f(4, false)])).toBe(4)
   })
 
   it('a lone empty frame is noise, not a confirmation', () => {
@@ -92,7 +92,32 @@ describe('terminalEmptyFrameTs', () => {
   })
 
   it('cars in the final frames never negate an earlier confirmed pair', () => {
-    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, true), f(4, true)])).toBe(2)
+    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, false), f(4, true), f(5, true)])).toBe(3)
+  })
+
+  it('requires a cars-present frame BEFORE the pair — empty-from-the-start proves nothing', () => {
+    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, false)])).toBe(null)
+    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, true), f(4, true)])).toBe(null)
+    // cars appearing AFTER an early empty pair do not retroactively confirm it
+    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, true), f(4, false), f(5, false)])).toBe(5)
+  })
+
+  it('a LONG all-empty window (>= MIN_ALL_EMPTY_FRAMES observed) is a quiet sailing and confirms', () => {
+    const empties = (n) => Array.from({ length: n }, (_, i) => f(i + 1, false))
+    expect(terminalEmptyFrameTs(empties(MIN_ALL_EMPTY_FRAMES))).toBe(MIN_ALL_EMPTY_FRAMES)
+    expect(terminalEmptyFrameTs(empties(MIN_ALL_EMPTY_FRAMES - 1))).toBe(null)
+    // any cars frame anywhere disables the all-empty path (cars-first applies)
+    expect(terminalEmptyFrameTs([...empties(MIN_ALL_EMPTY_FRAMES), f(99, true)])).toBe(null)
+  })
+
+  it('carsPresent null (dark frame) is unknown: breaks pairs, never counts', () => {
+    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, null), f(4, false)])).toBe(null)
+    expect(terminalEmptyFrameTs([f(1, true), f(2, null), f(3, false), f(4, false)])).toBe(4)
+    // dark frames don't count toward the all-empty minimum
+    const mixed = Array.from({ length: MIN_ALL_EMPTY_FRAMES }, (_, i) =>
+      f(i + 1, i % 2 ? null : false),
+    )
+    expect(terminalEmptyFrameTs(mixed)).toBe(null)
   })
 
   it('returns null when never confirmed (inconclusive, not "full")', () => {

@@ -76,18 +76,37 @@ export function firstSustainedPositiveTs(frames) {
 //  - ONE-WAY: cars in the FINAL frames prove nothing (they may have arrived
 //    past the cutoff), so a car-filled ending never negates an earlier
 //    confirmed-empty pair.
+//  - CARS FIRST, softened: a pair normally only counts after at least one
+//    cars-present frame — a window that was empty from its very first frame
+//    may have simply missed the loading (late capture start). EXCEPT when
+//    the window is long: MIN_ALL_EMPTY_FRAMES observed-empty frames with no
+//    cars ever is a genuinely quiet sailing (measured: all-empty windows of
+//    10+ frames are tagged Not Full / 25% by riders, never Full; the two
+//    shorter ones on record were degenerate).
+//  - carsPresent === null means UNKNOWN (e.g. a dark frame): it breaks a
+//    pair, never sets cars-seen, and doesn't count as observed.
 // Returns the ts of the last frame of the last confirmed-empty pair, or
 // null when never confirmed (inconclusive — NOT "full").
+export const MIN_ALL_EMPTY_FRAMES = 10
 export function terminalEmptyFrameTs(frames) {
-  let last = null
-  for (let i = 0; i + 1 < (frames?.length || 0); i++) {
+  const list = frames || []
+  const anyCars = list.some((f) => f?.carsPresent === true)
+  const observedEmpty = list.filter((f) => f?.carsPresent === false).length
+  let lastPair = null
+  let lastPairAfterCars = null
+  let carsSeen = false
+  for (let i = 0; i + 1 < list.length; i++) {
+    if (list[i]?.carsPresent === true) carsSeen = true
     if (
-      frames[i]?.carsPresent === false &&
-      frames[i + 1]?.carsPresent === false &&
-      typeof frames[i + 1].ts === 'number'
+      list[i]?.carsPresent === false &&
+      list[i + 1]?.carsPresent === false &&
+      typeof list[i + 1].ts === 'number'
     ) {
-      last = frames[i + 1].ts
+      lastPair = list[i + 1].ts
+      if (carsSeen) lastPairAfterCars = list[i + 1].ts
     }
   }
-  return last
+  if (lastPairAfterCars != null) return lastPairAfterCars
+  if (!anyCars && observedEmpty >= MIN_ALL_EMPTY_FRAMES) return lastPair
+  return null
 }
