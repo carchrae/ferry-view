@@ -1,6 +1,9 @@
 <template>
   <q-layout view="lHh Lpr lFf">
-    <q-header elevated class="bg-primary">
+    <!-- Red header whenever this dev/staging build is pointed at the live
+         production database (pnpm dev:prod) — tags and reports made here are
+         real riders' data. -->
+    <q-header elevated :class="productionDataOverride ? 'bg-negative' : 'bg-primary'">
       <q-toolbar>
         <q-btn
           flat
@@ -14,6 +17,13 @@
 
         <q-toolbar-title class="cursor-pointer" @click="showAttributions = true">
           {{ isStaging ? 'Staging Bowen LIFT' : 'Bowen LIFT' }}
+          <q-badge v-if="productionDataOverride" color="white" text-color="negative" class="q-ml-sm">
+            PROD DATA
+            <q-tooltip>
+              Reading and writing the live production database (pnpm dev:prod) — anything you tag
+              here is real.
+            </q-tooltip>
+          </q-badge>
         </q-toolbar-title>
 
         <!-- Desktop nav tabs -->
@@ -213,7 +223,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useInstall } from 'src/composables/useInstall'
 import { useAuth } from 'src/composables/useAuth'
 import { isAnonymous } from 'src/composables/useAnonymity'
-import { isStaging } from '../boot/firebase.js'
+import { isStaging, productionDataOverride } from '../boot/firebase.js'
 
 const route = useRoute()
 const router = useRouter()

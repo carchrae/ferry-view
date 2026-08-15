@@ -36,7 +36,26 @@ try {
 export const isProduction = envProduction === 'true'
 export const isStaging = !isProduction
 
-const firebaseConfig = isProduction ? prodConfig : stagingConfig
+// Data source override (`pnpm dev:prod` → PRODUCTION_DATA=true): point a
+// STAGING build at the production database. Staging keeps no copy of the
+// webcam photos and its data lags, so real data is often the only way to see
+// a change working against real sailings.
+//
+// Deliberately separate from PRODUCTION: this switches the database ONLY.
+// The build stays a staging build — no analytics (see below), "Test Version"
+// product name, and the header says PROD DATA — because the point is local
+// development, not shipping. Reads and writes are the real thing: anything
+// tagged or reported while it's on lands in riders' live data.
+let envProductionData
+try {
+  envProductionData = process.env.PRODUCTION_DATA
+} catch {
+  // Same guard as PRODUCTION above — absent define at build time.
+}
+export const productionDataOverride = isStaging && envProductionData === 'true'
+export const usingProductionData = isProduction || productionDataOverride
+
+const firebaseConfig = usingProductionData ? prodConfig : stagingConfig
 
 // Public bucket hosting webcam snapshots (see functions/lib/webcam.js) —
 // images are served as https://storage.googleapis.com/{storageBucket}/{path}
@@ -54,6 +73,8 @@ export const messaging = getMessaging(app)
 
 export let analytics = null
 let analyticsReady = Promise.resolve(null)
+// Gated on the BUILD, not on usingProductionData: a dev build reading the
+// production database must never log GA events into production analytics.
 if (isProduction) {
   analyticsReady = isSupported()
     .then((supported) => {

@@ -93,6 +93,9 @@ export default defineConfig((ctx) => {
         VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
         DEV: ctx.dev,
         PRODUCTION: process.env.PRODUCTION || '',
+        // `pnpm dev:prod` — staging build, production DATABASE (see
+        // src/boot/firebase.js). Never set for a production build.
+        PRODUCTION_DATA: process.env.PRODUCTION_DATA || '',
       },
     },
 

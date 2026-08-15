@@ -24,6 +24,7 @@
     "terminal:train": "node scripts/train-terminal-classifier.mjs",
     "terminal:label": "node scripts/train-terminal-classifier.mjs --label-only",
     "dev": "quasar dev -m spa",
+    "dev:prod": "PRODUCTION_DATA=true quasar dev -m spa",
     "build": "quasar build -m pwa && node scripts/generate-netlify-redirects.mjs",
     "postinstall": "quasar prepare",
     "staging:start": "bash scripts/staging-refresh.sh",
