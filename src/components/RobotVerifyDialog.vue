@@ -15,7 +15,7 @@
       </p>
       <p v-else-if="unsure" class="text-caption q-mb-sm">
         The robot looked at these terminal frames but couldn't tell whether the
-        ferry left full. Your eyes are better — say whether cars were waiting in
+        ferry left full. Your eyes are better — say whether cars were waiting or loading in
         each photo and the robot learns from it.
       </p>
       <p v-else class="text-caption q-mb-sm">
@@ -70,7 +70,7 @@
              is unsure about, which is where a human answer is worth most. -->
         <div v-if="kind === 'fullness'" class="frame-label q-mt-sm">
           <div class="text-caption text-grey-7 row items-center">
-            <span>Cars waiting in this photo?</span>
+            <span>Cars waiting or loading in this photo?</span>
             <q-space />
             <span v-if="labelled.get(frame.path) !== undefined" class="text-positive">
               <q-icon name="check" /> {{ labelled.get(frame.path) ? 'cars' : 'no cars' }}
@@ -86,7 +86,7 @@
               outline
               color="positive"
               class="col"
-              label="Cars waiting"
+              label="Cars waiting or loading"
               :disable="savingLabel"
               @click="labelFrame(true)"
             />
