@@ -71,3 +71,13 @@ Run at least every 42 days or tagged frames are lost (Storage retention) —
 labels can always be recomputed; only the pixels expire. Cron setup:
 [lineup-classifier.md §6](lineup-classifier.md). Logs:
 `training-data/logs/export-<date>.log`.
+
+## Claude-contributed labels
+
+`terminal-labels-claude.json` records the terminal labels an LLM (not a
+rider) added, as a subset of `terminal-labels.json`. They train the shipped
+model, so they get a human pass: `npm run terminal:review-claude` builds
+`training-data/report/claude-labels-review.html` (every frame, its model
+score, keep/flip/drop), and `npm run terminal:apply-review -- <file.json>`
+folds the downloaded assessment back in — a reviewed label leaves the Claude
+file (a human now vouches for it) and stays in the training set.

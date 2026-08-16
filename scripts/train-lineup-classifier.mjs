@@ -40,6 +40,7 @@ import {
   fmtTime,
   thumbName,
   encodeFeatures,
+  thumbFallbackScript,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -327,13 +328,28 @@ function crosswalkPage(srcFor) {
       return `mark at ${mark ? esc(fmtTime(mark)) : '—'} · ${list.length} frames${bad ? ` · <em>${bad} misclassified</em>` : ''}`
     },
     pickerSrc: srcFor(detected[0]?.after || rows[0]),
+    frameAspect: '16 / 9', // community cam
     srcFor,
   })
 }
 
+// Backdrop frames for the region diagrams: a real photo with a lineup in it,
+// so every region drawing is anchored to what the camera actually sees.
+const backdropCrosswalk = rows.find((r) => r.y === 1) || rows[0]
+const backdropTerminalPath = (() => {
+  const tm = join(DATA, 'terminal-manifest.csv')
+  if (!existsSync(tm)) return null
+  const line = readFileSync(tm, 'utf8')
+    .trim()
+    .split('\n')
+    .slice(1)
+    .find((l) => /,1$/.test(l) && existsSync(join(DATA, 'frames', l.split(',')[0])))
+  return line ? line.split(',')[0] : null
+})()
+
 // Summary page covers both classifiers: fresh in-memory data for this one,
 // the shipped model file for the other (absent → placeholder note).
-function summaryPage() {
+function summaryPage(srcFor) {
   let terminal = null
   try {
     const tm = JSON.parse(readFileSync(join(repoRoot, 'functions/models/terminal-cars-classifier.json'), 'utf8'))
@@ -346,6 +362,7 @@ function summaryPage() {
         model: tm,
         regions: tm.regions,
         foff: -0.5,
+        photo: backdropTerminalPath ? srcFor({ path: backdropTerminalPath }) : null,
         statsLine: `${tRows.filter((l) => /,[01]$/.test(l)).length} labeled of ${tRows.length} archived terminal frames`,
       }
     }
@@ -357,6 +374,7 @@ function summaryPage() {
       model: freshModel,
       regions: REGIONS,
       foff: 0,
+      photo: srcFor(backdropCrosswalk),
       statsLine: `${cardRows.length} labeled of ${rows.length} archived lineup frames`,
     },
     terminal,
@@ -367,7 +385,7 @@ const LOCAL_DIR = join(DATA, 'report')
 mkdirSync(LOCAL_DIR, { recursive: true })
 const localSrc = (r) => '../frames/' + r.path.split('/').map(encodeURIComponent).join('/')
 writeFileSync(join(LOCAL_DIR, 'crosswalk.html'), crosswalkPage(localSrc))
-writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage())
+writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage(localSrc))
 console.log(`\nReport pages: file://${encodeURI(join(LOCAL_DIR, 'index.html'))}`)
 
 const PUB_DIR = join(repoRoot, 'public', 'classifier-results')
@@ -378,9 +396,24 @@ for (const s of samples) {
   if (existsSync(dest)) continue // frames are immutable
   writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', s.path))))
 }
+if (backdropTerminalPath) {
+  // The summary page's terminal diagram sits on a terminal frame, which is not
+  // one of this trainer's samples — thumbnail it too or the public copy 404s.
+  const dest = join(THUMBS, thumbName(backdropTerminalPath))
+  if (!existsSync(dest))
+    writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', backdropTerminalPath))))
+}
+// Pages reference thumbs/ relative paths, which resolve against the files
+// written just below — so a local run (dev server or file://) shows them
+// immediately. Those files are gitignored, so on a fresh checkout and on the
+// deployed site the fallback script rewrites misses to the published Cloud
+// Storage copy (npm run classifier:publish-thumbs).
+const THUMB_BASE =
+  process.env.CLASSIFIER_THUMB_BASE ||
+  'https://storage.googleapis.com/bowen-ferry.firebasestorage.app/classifier-results/thumbs/'
 const pubSrc = (r) => 'thumbs/' + thumbName(r.path)
-writeFileSync(join(PUB_DIR, 'crosswalk.html'), crosswalkPage(pubSrc))
-writeFileSync(join(PUB_DIR, 'index.html'), summaryPage())
+writeFileSync(join(PUB_DIR, 'crosswalk.html'), crosswalkPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
+writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
 console.log(`Webapp copy: ${join(PUB_DIR, 'index.html')} (commit + deploy → /classifier-results)\n`)
 
 if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {

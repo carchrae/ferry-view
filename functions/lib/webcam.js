@@ -385,22 +385,31 @@ export async function captureDepartureTimelapse(db, data) {
   if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
     const cur = snap.exists ? snap.data() : {}
-    // Crosswalk veto: once the lineup was seen past the crosswalk (robot or
-    // human mark) the ferry is loading ≥75% full, and a briefly-empty
-    // terminal near departure is the queue being processed, not spare room.
-    // Measured on 389 user-tagged sailings this cuts wrong not-full flags
-    // from 3.3% to 0.9% while keeping 64% of the true ones.
-    const crosswalkVeto = cur.crosswalkFullAtAuto != null || cur.crosswalkFullAt != null
+    // NO crosswalk veto here (tried 2026-08-10, removed 2026-08-16): a lineup
+    // reaching the crosswalk does NOT contradict an empty terminal. A long
+    // line that all gets aboard is exactly "everyone waiting got on" — the
+    // two observations are independent, and suppressing the empty pair threw
+    // away the informative busy-but-everyone-fit sailings. The crosswalk
+    // signal is a veto for FULL, not for not-full: no crossing means the
+    // ferry was definitely not full (notFullByCrosswalk), and since the only
+    // "full" claim anywhere comes from the crosswalk classifier itself, that
+    // veto is inherent rather than something to enforce here.
+    //
     // NOTE on dark frames (lib/daylight.js): below civil twilight the model
     // misreads headlights (~2× the daytime error) — the one known-wrong
     // verdict on record is a night sailing. Dark frames still count (an
     // exclusion was tried 2026-08-11 and rolled back: it also silenced ~50
     // CORRECT night verdicts); the report page marks them so night verdicts
     // are easy to eyeball, and a dedicated night model is the winter plan.
-    if (verdict.carsPresent) {
+    if (verdict.carsPresent === true) {
       // Cars-first guard (mirrors terminalEmptyFrameTs): an empty pair only
       // counts after loading was actually observed…
       if (!cur.terminalCarsSeen) terminalFields.terminalCarsSeen = true
+      if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+    } else if (verdict.carsPresent === null) {
+      // Between the two thresholds: the model isn't sure either way, so this
+      // frame confirms nothing and counts as nothing — it only breaks a
+      // pending pair, exactly like a cars frame would.
       if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
     } else {
       // …EXCEPT a long all-empty window (MIN_ALL_EMPTY_FRAMES observed empty
@@ -408,9 +417,7 @@ export async function captureDepartureTimelapse(db, data) {
       const emptySeen = (cur.terminalEmptySeen || 0) + 1
       terminalFields.terminalEmptySeen = emptySeen
       const confirmable = cur.terminalCarsSeen || emptySeen >= MIN_ALL_EMPTY_FRAMES
-      if (crosswalkVeto) {
-        if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
-      } else if (cur.terminalEmptyPending && confirmable) {
+      if (cur.terminalEmptyPending && confirmable) {
         terminalFields.terminalEmptyFrameTs = timestamp
         terminalFields.ferryNotFullAuto = true
         terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000

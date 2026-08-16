@@ -16,7 +16,12 @@ import { terminalEmptyFrameTs } from '../../functions/lib/lineup-labels.js'
 // night; see functions/lib/terminal-features.js) — the canvas extraction
 // here must match.
 
+// Two thresholds, mirroring functions/lib/terminal-classifier.js: cars at
+// p >= THRESHOLD, confidently empty at p < EMPTY_THRESHOLD, unknown between
+// (null — breaks a confirming pair, counts as neither).
 const THRESHOLD = model.threshold ?? 0.5
+const EMPTY_THRESHOLD = model.emptyThreshold ?? 0.35
+const terminalState = (p) => (p >= THRESHOLD ? true : p < EMPTY_THRESHOLD ? false : null)
 
 export const terminalClassifierReady = Boolean(
   model?.enabled && Array.isArray(model.weights) && Array.isArray(model.regions),
@@ -37,6 +42,34 @@ const frameTs = (path) => {
   const m = /_(\d{10,})\.jpg$/.exec(path || '')
   return m ? Number(m[1]) : null
 }
+
+// Masked cells (model.masks — static clutter like the signpost and the
+// walkway) are excluded from the mean and forced to 0, exactly as
+// functions/lib/terminal-features.js does. The masks ride along in the model
+// file so this mirror can never drift from the trained geometry.
+const inMask = (fx, fy) =>
+  (model.masks || []).some(
+    ({ roi }) =>
+      fx >= roi.left && fx < roi.left + roi.width && fy >= roi.top && fy < roi.top + roi.height,
+  )
+const FEATURE_MASK = (() => {
+  const keep = []
+  for (const { roi, width, height } of model.regions) {
+    for (let gy = 0; gy < height; gy++) {
+      for (let gx = 0; gx < width; gx++) {
+        keep.push(
+          inMask(
+            roi.left + ((gx + 0.5) / width) * roi.width,
+            roi.top + ((gy + 0.5) / height) * roi.height,
+          )
+            ? 0
+            : 1,
+        )
+      }
+    }
+  }
+  return keep
+})()
 
 function extractFeatures(bitmap) {
   const features = []
@@ -62,8 +95,15 @@ function extractFeatures(bitmap) {
       features.push((0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) / 255)
     }
   }
-  const mean = features.reduce((a, v) => a + v, 0) / features.length
-  return features.map((v) => v - mean)
+  let sum = 0
+  let kept = 0
+  for (let i = 0; i < features.length; i++)
+    if (FEATURE_MASK[i]) {
+      sum += features[i]
+      kept++
+    }
+  const mean = sum / (kept || 1)
+  return features.map((v, i) => (FEATURE_MASK[i] ? v - mean : 0))
 }
 
 function score(features) {
@@ -78,7 +118,7 @@ async function classifyFrame(path) {
   const bitmap = await createImageBitmap(await res.blob())
   try {
     const p = score(extractFeatures(bitmap))
-    return { ts: frameTs(path), p, carsPresent: p >= THRESHOLD }
+    return { ts: frameTs(path), p, carsPresent: terminalState(p) }
   } finally {
     bitmap.close?.()
   }

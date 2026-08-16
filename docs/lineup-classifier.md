@@ -241,17 +241,30 @@ A second, fully independent classifier answers a different question from the
 **Bowen terminal camera's** departure timelapse: *are there cars waiting in
 the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
 
+- **Two thresholds, asymmetric** (2026-08-16): cars at `p >= threshold`
+  (0.5), confidently empty only at `p < emptyThreshold` (0.35), and scores
+  between the two are **unknown** — they confirm nothing and break a pending
+  pair. A single 0.5 cut let coin-flip frames confirm an empty terminal: 140
+  of 210 verdicts rested on a frame scoring above 0.25, and 17 of 361
+  hand-labeled *cars* frames scored below 0.5. Only the empty side is
+  tightened; raising the cars threshold would weaken the cars-first guard.
+  Cost: verdicts drop from 210 to 112, all of them now agreeing with the
+  rider tags. The underlying cause is score separation — labeled cars frames
+  have median p 0.95, labeled empty frames only 0.39 — so the real fix is
+  more empty-frame labels, not a threshold.
 - An **empty terminal frame before departure** means everyone waiting got on
   → `ferryNotFullAuto`. Cars in the *final* frame prove nothing — they may
   have arrived past the cutoff — so a car-filled ending never negates an
   earlier empty frame (`terminalEmptyFrameTs()` in `lineup-labels.js`).
-- **Crosswalk veto** (2026-08-10): if the sailing already has a crosswalk
-  mark (`crosswalkFullAtAuto` or `crosswalkFullAt` — the ferry is loading
-  ≥75% full), the empty pair is NOT stamped: a briefly-empty terminal near
-  departure is the queue being processed, not spare room. Measured on 389
-  user-tagged sailings this cut wrong not-full flags from 3.3% to 0.9% of
-  flags while keeping 64% of the true ones (most of the losses were Sunday
-  evenings, where the error rate was worst). Same rule in the report page.
+- **No crosswalk veto** (tried 2026-08-10, removed 2026-08-16): suppressing
+  the empty pair when the lineup had reached the crosswalk was wrong in
+  principle — a long line that all boards *is* "everyone waiting got on", so
+  the two observations are independent. The crosswalk signal is a veto for
+  **full** (no crossing ⇒ definitely not full, `notFullByCrosswalk`), never
+  for not-full. Measured cost of removing it at the 0.35 empty threshold:
+  precision 98.7% → 96.6%, coverage 40.7% → 43.9%. It had been suppressing
+  16 verdicts to catch 4 wrong ones — a 3:1 trade against the correct ones.
+  The report still marks these busy-lineup sailings as the interesting case.
 - **Cars first, quiet-window exception** (2026-08-11): the pair must come
   after a cars-present frame — an empty-from-the-start window may just have
   missed the loading — unless the window is long (`MIN_ALL_EMPTY_FRAMES` =

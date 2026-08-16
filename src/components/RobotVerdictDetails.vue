@@ -38,7 +38,7 @@
           <span
             v-for="(f, i) in seq"
             :key="f.ts"
-            :class="[f.carsPresent ? 'cars' : 'empty', { conf: isConfirming(i), dk: f.dark }]"
+            :class="[stateClass(f), { conf: isConfirming(i), dk: f.dark }]"
             :style="{ opacity: blockOpacity(f) }"
             :title="blockTitle(f)"
             @click="selected = i"
@@ -111,9 +111,13 @@ const isConfirming = (i) => hitIdx.value >= 0 && (i === hitIdx.value || i === hi
 const nightVerdict = computed(
   () => hitIdx.value >= 0 && (seq.value[hitIdx.value]?.dark || seq.value[hitIdx.value - 1]?.dark),
 )
-const blockOpacity = (f) => Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
+// Three states: cars / confidently empty / unsure (between the model's two
+// thresholds — grey, and unable to confirm a verdict).
+const stateClass = (f) => (f.carsPresent === true ? 'cars' : f.carsPresent === false ? 'empty' : 'unsure')
+const blockOpacity = (f) =>
+  f.carsPresent === null ? '1' : Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
 const blockTitle = (f) =>
-  `${timeLabel(f.ts)} · p ${f.p.toFixed(2)}${f.dark ? ' · dark' : ''} · ${f.carsPresent ? 'cars' : 'empty'}`
+  `${timeLabel(f.ts)} · p ${f.p.toFixed(2)}${f.dark ? ' · dark' : ''} · ${stateClass(f)}`
 
 // Open on the confirming frame when there is one, else the last frame.
 const selected = ref(0)
@@ -148,6 +152,9 @@ watch(
 }
 .fstrip span.empty {
   background: #d33;
+}
+.fstrip span.unsure {
+  background: #999;
 }
 .fstrip span.conf {
   outline: 2px solid #fc0;

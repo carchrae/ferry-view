@@ -19,7 +19,8 @@
 //
 // Usage:
 //   node scripts/train-terminal-classifier.mjs [--label-only]
-//     [--epochs 300] [--lr 0.5] [--l2 1e-4] [--threshold 0.5] [--force]
+//     [--epochs 300] [--lr 0.5] [--l2 1e-4] [--threshold 0.5]
+//     [--empty-threshold 0.35] [--force]
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -29,6 +30,7 @@ import {
   extractTerminalFeatures,
   TERMINAL_FEATURE_LENGTH,
   TERMINAL_REGIONS,
+  TERMINAL_MASKS,
 } from '../functions/lib/terminal-features.js'
 import { thumbnailJpeg } from '../functions/lib/lineup-features.js'
 import { terminalEmptyFrameTs } from '../functions/lib/lineup-labels.js'
@@ -40,6 +42,7 @@ import {
   fmtTime,
   thumbName,
   encodeFeatures,
+  thumbFallbackScript,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -55,6 +58,12 @@ const EPOCHS = Number(flag('epochs', '300'))
 const LR = Number(flag('lr', '0.5'))
 const L2 = Number(flag('l2', '1e-4'))
 const THRESHOLD = Number(flag('threshold', '0.5'))
+// Asymmetric on purpose (see functions/lib/terminal-classifier.js): cars at
+// p >= THRESHOLD, confidently empty only at p < EMPTY_THRESHOLD, unknown in
+// between. Frame-level metrics and the labeled cards still use THRESHOLD —
+// that is the cars/no-cars question the labels answer; EMPTY_THRESHOLD only
+// gates what may CONFIRM a not-full verdict.
+const EMPTY_THRESHOLD = Number(flag('empty-threshold', '0.35'))
 const FORCE = args.includes('--force')
 const LABEL_ONLY = args.includes('--label-only')
 const MIN_LABELS = 60
@@ -252,6 +261,7 @@ const freshModel = {
   weights: [...w],
   bias: b,
   threshold: THRESHOLD,
+  emptyThreshold: EMPTY_THRESHOLD,
   metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
   trainedAt: new Date().toISOString(),
 }
@@ -274,7 +284,8 @@ const verdicts = [...bySailing.keys()]
       // frames still count in verdicts, but they're marked in the report —
       // the model's night error is ~2× daytime, so a verdict built on dark
       // frames deserves a skeptical eye (and a night model, come winter).
-      return { ...s, p, dark: isDarkAt(s.ts), carsPresent: p >= THRESHOLD }
+      const carsPresent = p >= THRESHOLD ? true : p < EMPTY_THRESHOLD ? false : null
+      return { ...s, p, dark: isDarkAt(s.ts), carsPresent }
     })
     const emptyTs = terminalEmptyFrameTs(seq)
     const idx = seq.findIndex((f) => f.ts === emptyTs)
@@ -340,10 +351,12 @@ for (const v of verdicts) {
 // Sailings the crosswalk classifier called full (only those with terminal
 // frames appear on this page; the crosswalk page lists them all).
 const flaggedFull = verdicts.filter((v) => v.cw?.crosswalkDetectedTs != null)
-// Crosswalk veto (mirrors the runtime rule in webcam.js): a not-full flag on
-// a sailing whose lineup was seen past the crosswalk is suppressed — the
-// briefly-empty terminal is the queue being processed, not spare room.
-for (const v of flagged) v.vetoed = v.cw?.crosswalkDetectedTs != null
+// The crosswalk reading is CONTEXT on a not-full verdict, never a veto: a
+// lineup that reached the crosswalk and then all boarded is still "everyone
+// waiting got on". (A veto was tried 2026-08-10 and removed 2026-08-16 —
+// see functions/lib/webcam.js.) It is flagged here only so a busy sailing
+// with an empty terminal is easy to spot and sanity-check.
+for (const v of flagged) v.busyLineup = v.cw?.crosswalkDetectedTs != null
 
 const cardRows = labeledSamples.map((s) => {
   const p = predict(s.features)
@@ -364,8 +377,12 @@ function scoreStripHtml(v) {
   return `<div class="fstrip">${v.frames
     .map((f, i) => {
       const conf = hitIdx >= 0 && (i === hitIdx || i === hitIdx - 1)
-      const op = Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
-      return `<span class="${f.carsPresent ? 'cars' : 'empty'}${conf ? ' conf' : ''}${f.dark ? ' dk' : ''}" style="opacity:${op}" title="${escHtml(fmtTime(f.ts))} · p ${f.p.toFixed(2)}${f.dark ? ' · dark' : ''}"></span>`
+      // Three states: cars / empty / unsure (between the thresholds — grey,
+      // and never able to confirm a verdict).
+      const cls = f.carsPresent === true ? 'cars' : f.carsPresent === false ? 'empty' : 'unsure'
+      const op =
+        f.carsPresent === null ? '1' : Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
+      return `<span class="${cls}${conf ? ' conf' : ''}${f.dark ? ' dk' : ''}" style="opacity:${op}" title="${escHtml(fmtTime(f.ts))} · p ${f.p.toFixed(2)}${f.carsPresent === null ? ' · unsure' : ''}${f.dark ? ' · dark' : ''}"></span>`
     })
     .join('')}</div>`
 }
@@ -450,8 +467,8 @@ function verdictsSectionHtml(srcFor) {
       not full — terminal empty at <strong>${escHtml(fmtTime(v.emptyTs))}</strong> · ${v.frames.length} frames${
         v.darkFrames ? ` (${v.darkFrames} dark)` : ''
       }${
-        v.vetoed
-          ? '<br><strong class="veto-tag">suppressed by crosswalk veto — lineup was past the crosswalk</strong>'
+        v.busyLineup
+          ? '<br><span class="veto-tag">busy sailing — the lineup reached the crosswalk and still cleared</span>'
           : ''
       }${
         v.hit?.dark || v.first?.dark
@@ -492,6 +509,7 @@ function verdictsSectionHtml(srcFor) {
   .fstrip span { width: 9px; height: 22px; border-radius: 2px; }
   .fstrip span.cars { background: #2a7; }
   .fstrip span.empty { background: #d33; }
+  .fstrip span.unsure { background: #999; }
   .fstrip span.dk { box-shadow: inset 0 -6px 0 #113; }
   .fstrip span.conf { outline: 2px solid #fc0; outline-offset: 1px; }
   .pred-info .bad-tag { color: #d33; }
@@ -511,6 +529,10 @@ function verdictsSectionHtml(srcFor) {
   ferry counts as having left <strong>not full</strong> when the terminal reads
   empty in <strong>two consecutive frames</strong> before departure (a lone empty
   frame misreads ~25% of the time) — both frames of the confirming pair are shown.
+  A frame only counts as empty at <strong>p &lt; ${EMPTY_THRESHOLD}</strong>, stricter
+  than the p ≥ ${THRESHOLD} used to call cars: scores between the two are
+  <strong>unsure</strong> (grey in the strips) and confirm nothing, because the model
+  is decisive about cars but mushy about empty.
   The pair must come <strong>after a cars-present frame</strong>, unless the whole
   window is a long quiet one (10+ observed-empty frames, cars never seen).
   <strong>Dark frames</strong> (sun below civil twilight) still count, but they are
@@ -521,12 +543,9 @@ function verdictsSectionHtml(srcFor) {
   Flagged ${flagged.length} of ${verdicts.length} sailings —
   ${nfCounts.match} agree with a human capacity tag, <strong>${nfCounts.mismatch}
   contradict one (human said Full)</strong>, ${nfCounts.untagged} have no tag.
-  The <strong>crosswalk veto</strong> (a lineup seen past the crosswalk suppresses
-  the flag) removes ${flagged.filter((v) => v.vetoed).length} of these, including
-  ${flagged.filter((v) => v.vetoed && v.match === 'mismatch').length} of the
-  ${nfCounts.mismatch} contradictions — after the veto:
-  <strong>${flagged.filter((v) => !v.vetoed && v.match === 'mismatch').length} wrong of
-  ${flagged.filter((v) => !v.vetoed).length} flags</strong>.</p>
+  ${flagged.filter((v) => v.busyLineup).length} of them are busy sailings whose lineup
+  reached the crosswalk and still cleared — that is not a contradiction, just the
+  interesting case.</p>
   <details class="predlist">
   <summary>${flagged.length} sailings flagged not full — context and confirming photos</summary>
   ${filterNavHtml(flagged, 'match')}
@@ -576,7 +595,7 @@ function terminalPage(srcFor) {
     foff: -0.5,
     posLabel: 'cars waiting',
     negLabel: 'no cars',
-    statsLine: `${labeledSamples.length} labeled frames (${samples.length} total) · threshold ${THRESHOLD} · trained ${escHtml(freshModel.trainedAt)}`,
+    statsLine: `${labeledSamples.length} labeled frames (${samples.length} total) · cars p≥${THRESHOLD}, empty p&lt;${EMPTY_THRESHOLD} · trained ${escHtml(freshModel.trainedAt)}`,
     topSections: verdictsSectionHtml(srcFor),
     rows: cardRows,
     groupSummary: (key, list) => {
@@ -584,11 +603,25 @@ function terminalPage(srcFor) {
       return `${list.length} labeled frames${bad ? ` · <em>${bad} misclassified</em>` : ''}`
     },
     pickerSrc: srcFor(flagged[0]?.hit || cardRows[0]),
+    frameAspect: '4 / 3', // Bowen terminal cam
     srcFor,
   })
 }
 
-function summaryPage() {
+// Backdrop frames for the region diagrams (see classifier-report stageHtml).
+const backdropTerminal = cardRows.find((r) => r.y === 1) || cardRows[0]
+const backdropCrosswalkPath = (() => {
+  const cm = join(DATA, 'manifest.csv')
+  if (!existsSync(cm)) return null
+  const line = readFileSync(cm, 'utf8')
+    .trim()
+    .split('\n')
+    .slice(1)
+    .find((l) => /,1,\d*$/.test(l) && existsSync(join(DATA, 'frames', l.split(',')[0])))
+  return line ? line.split(',')[0] : null
+})()
+
+function summaryPage(srcFor) {
   let crosswalk = null
   try {
     const cm = JSON.parse(
@@ -600,6 +633,7 @@ function summaryPage() {
         model: cm,
         regions: cm.regions,
         foff: 0,
+        photo: backdropCrosswalkPath ? srcFor({ path: backdropCrosswalkPath }) : null,
         statsLine: `${cLines.filter((l) => /,[01],\d*$/.test(l)).length} labeled of ${cLines.length} archived lineup frames`,
       }
     }
@@ -612,6 +646,7 @@ function summaryPage() {
       model: freshModel,
       regions: TERMINAL_REGIONS,
       foff: -0.5,
+      photo: srcFor(backdropTerminal),
       statsLine: `${labeledSamples.length} labeled of ${samples.length} archived terminal frames · ${flagged.length}/${verdicts.length} sailings flagged not full`,
     },
   })
@@ -621,7 +656,7 @@ const LOCAL_DIR = join(DATA, 'report')
 mkdirSync(LOCAL_DIR, { recursive: true })
 const localSrc = (r) => '../frames/' + r.path.split('/').map(encodeURIComponent).join('/')
 writeFileSync(join(LOCAL_DIR, 'terminal.html'), terminalPage(localSrc))
-writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage())
+writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage(localSrc))
 console.log(`Report pages: file://${encodeURI(join(LOCAL_DIR, 'index.html'))}`)
 
 // Public copy: thumbs only for frames the pages actually reference (labeled
@@ -645,9 +680,24 @@ for (const r of referenced.values()) {
   if (existsSync(dest)) continue
   writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', r.path))))
 }
+if (backdropCrosswalkPath) {
+  // Community-cam backdrop for the summary's crosswalk diagram — not one of
+  // this trainer's samples, so thumbnail it explicitly.
+  const dest = join(THUMBS, thumbName(backdropCrosswalkPath))
+  if (!existsSync(dest))
+    writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', backdropCrosswalkPath))))
+}
+// Pages reference thumbs/ relative paths, which resolve against the files
+// written just below — so a local run (dev server or file://) shows them
+// immediately. Those files are gitignored, so on a fresh checkout and on the
+// deployed site the fallback script rewrites misses to the published Cloud
+// Storage copy (npm run classifier:publish-thumbs).
+const THUMB_BASE =
+  process.env.CLASSIFIER_THUMB_BASE ||
+  'https://storage.googleapis.com/bowen-ferry.firebasestorage.app/classifier-results/thumbs/'
 const pubSrc = (r) => 'thumbs/' + thumbName(r.path)
-writeFileSync(join(PUB_DIR, 'terminal.html'), terminalPage(pubSrc))
-writeFileSync(join(PUB_DIR, 'index.html'), summaryPage())
+writeFileSync(join(PUB_DIR, 'terminal.html'), terminalPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
+writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
 console.log(`Webapp copy: ${join(PUB_DIR, 'terminal.html')}`)
 
 if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {
@@ -683,9 +733,11 @@ writeFileSync(
       type: 'logistic',
       version: prevVersion + 1,
       regions: TERMINAL_REGIONS,
+      masks: TERMINAL_MASKS,
       weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),
       bias: Math.round(b * 1e6) / 1e6,
       threshold: THRESHOLD,
+      emptyThreshold: EMPTY_THRESHOLD,
       metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
       dataset,
       trainedAt: new Date().toISOString(),

@@ -38,13 +38,31 @@ export function scoreTerminalFeatures(features, m = model) {
   return 1 / (1 + Math.exp(-z))
 }
 
-// JPEG buffer → { probability, carsPresent } or null (disabled / failed).
+// TWO thresholds, deliberately asymmetric (2026-08-16):
+//   p >= threshold (0.5)       → cars present
+//   p <  emptyThreshold (0.35) → confidently empty
+//   in between                 → UNKNOWN (null)
+// The model is decisive about cars (median p 0.95 on labeled cars frames) but
+// mushy about empty (median 0.39), so a single 0.5 cut let coin-flip frames
+// confirm "the terminal emptied" — 140 of 210 verdicts rested on a frame
+// scoring above 0.25. Only the EMPTY side is tightened: raising the cars
+// threshold would weaken the cars-first guard and the "still loading" reading.
+// Callers must treat null as unknown, never as empty (terminalEmptyFrameTs
+// does: it breaks a pair and counts as neither).
+export function terminalState(probability, m = model) {
+  if (probability >= (m.threshold ?? 0.5)) return true
+  if (probability < (m.emptyThreshold ?? 0.35)) return false
+  return null
+}
+
+// JPEG buffer → { probability, carsPresent: true|false|null } or null
+// (disabled / failed).
 export async function classifyTerminal(buf, m = model) {
   if (!terminalModelUsable(m)) return null
   try {
     const features = await extractTerminalFeatures(buf)
     const probability = scoreTerminalFeatures(features, m)
-    return { probability, carsPresent: probability >= (m.threshold ?? 0.5) }
+    return { probability, carsPresent: terminalState(probability, m) }
   } catch (e) {
     logger.warn('Terminal-cars classification failed:', e.message)
     return null

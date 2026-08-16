@@ -29,7 +29,8 @@ export const TERMINAL_REGIONS = [
     // 2026-08-11 to catch cars at the very top of the frame (e.g.
     // 2026-08-06 11:15): it did NOT change those frames' scores but cost
     // ~5pt frame precision and ~10 sailings of verdict coverage — reverted.
-    // The crosswalk veto already suppresses the flag on that sailing.
+    // (That sailing's bad flag is handled by the stricter empty threshold,
+    // not by the region.)
     roi: { left: 0.277, top: 0.06, width: 0.228, height: 0.373 },
     width: 20,
     height: 18,
@@ -40,6 +41,49 @@ export const TERMINAL_FEATURE_LENGTH = TERMINAL_REGIONS.reduce(
   (a, r) => a + r.width * r.height,
   0,
 )
+
+// Static clutter inside the regions that never carries queue information but
+// does change with the light (shadows, glare, wet/dry): the signpost with the
+// fare sign, and the pedestrian walkway. Cells whose centre falls in a mask
+// are forced to exactly 0 AFTER mean-centering, and are excluded from the
+// mean itself — so they can neither shift the centering nor earn a weight
+// (a feature that is always 0 gets zero gradient and decays under L2).
+//
+// The feature vector keeps its length, so the report's weight maps still line
+// up with the region grids; masked cells simply render neutral. Changing a
+// mask invalidates trained weights — retrain.
+export const TERMINAL_MASKS = [
+  // The pole leans left going down; the box spans its full travel plus the
+  // blue fare sign hanging at y 0.53–0.79.
+  { name: 'pole + fare sign', roi: { left: 0.645, top: 0.0, width: 0.17, height: 1.0 } },
+  // Pedestrian walkway on the terminal side — people and bikes, never a
+  // queued car.
+  { name: 'walkway', roi: { left: 0.0, top: 0.4, width: 0.34, height: 0.6 } },
+]
+
+const inMask = (fx, fy) =>
+  TERMINAL_MASKS.some(
+    ({ roi }) =>
+      fx >= roi.left && fx < roi.left + roi.width && fy >= roi.top && fy < roi.top + roi.height,
+  )
+
+// Per-feature keep flags, computed once from the region grids: a cell's frame
+// coordinate is its centre within the region's crop.
+export const TERMINAL_FEATURE_MASK = (() => {
+  const keep = new Uint8Array(TERMINAL_FEATURE_LENGTH)
+  let offset = 0
+  for (const { roi, width, height } of TERMINAL_REGIONS) {
+    for (let gy = 0; gy < height; gy++) {
+      for (let gx = 0; gx < width; gx++) {
+        const fx = roi.left + ((gx + 0.5) / width) * roi.width
+        const fy = roi.top + ((gy + 0.5) / height) * roi.height
+        keep[offset + gy * width + gx] = inMask(fx, fy) ? 0 : 1
+      }
+    }
+    offset += width * height
+  }
+  return keep
+})()
 
 // JPEG buffer → Float32Array of TERMINAL_FEATURE_LENGTH grayscale values,
 // PER-FRAME MEAN-CENTERED (each value minus the frame's mean brightness).
@@ -69,9 +113,16 @@ export async function extractTerminalFeatures(buf) {
     for (let i = 0; i < raw.length; i++) out[offset + i] = raw[i] / 255
     offset += raw.length
   }
+  // Mean over UNMASKED cells only, then zero the masked ones.
   let mean = 0
-  for (let i = 0; i < out.length; i++) mean += out[i]
-  mean /= out.length
-  for (let i = 0; i < out.length; i++) out[i] -= mean
+  let kept = 0
+  for (let i = 0; i < out.length; i++) {
+    if (TERMINAL_FEATURE_MASK[i]) {
+      mean += out[i]
+      kept++
+    }
+  }
+  mean /= kept || 1
+  for (let i = 0; i < out.length; i++) out[i] = TERMINAL_FEATURE_MASK[i] ? out[i] - mean : 0
   return out
 }

@@ -56,3 +56,7 @@ credentials.json
 # Lineup-classifier training data (exported by scripts/export-lineup-dataset.mjs)
 /training-data/
 /.vscode/
+
+# Classifier-results thumbnails: ~5k regenerated files (~67 MB). Published to
+# Cloud Storage instead — npm run classifier:publish-thumbs
+public/classifier-results/thumbs/

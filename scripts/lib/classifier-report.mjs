@@ -20,6 +20,28 @@ export const fmtTime = (ms) =>
     hour12: false,
   })
 
+// Thumbnails are generated into public/classifier-results/thumbs/ but never
+// committed (~5k files, ~67 MB). They are therefore present when you run
+// locally right after training, and absent on a fresh checkout / the deployed
+// site — where this fallback swaps in the copy published to Cloud Storage
+// (npm run classifier:publish-thumbs). Appended to the PUBLIC page copies.
+export const thumbFallbackScript = (base) => `
+<script>
+  addEventListener(
+    'error',
+    (e) => {
+      const el = e.target
+      if (el?.tagName !== 'IMG' || el.dataset.thumbFallback) return
+      const src = el.getAttribute('src') || ''
+      if (!src.startsWith('thumbs/')) return
+      el.dataset.thumbFallback = '1'
+      el.src = ${JSON.stringify(base)} + src.slice('thumbs/'.length)
+    },
+    true,
+  )
+</script>
+`
+
 export const thumbName = (path) => createHash('md5').update(path).digest('hex').slice(0, 16) + '.jpg'
 
 // Features → base64 bytes. `foff` is the value a zero byte decodes to
@@ -59,6 +81,7 @@ const SHARED_CSS = `
   .panels { display: flex; flex-wrap: wrap; gap: 1.2rem; margin: 0.8rem 0; }
   .panels canvas { image-rendering: pixelated; border: 1px solid #8884; background: #fff; }
   .panels p { margin: 0.3rem 0 0; font-size: 0.8rem; opacity: 0.8; max-width: 200px; }
+  .panels > div { width: 200px; }
   dialog { border: 1px solid #8886; border-radius: 8px; max-width: 58rem; }
   dialog::backdrop { background: #0008; }
   .legend { font-size: 0.8rem; opacity: 0.8; }
@@ -84,7 +107,14 @@ const SHARED_CSS = `
   body[data-split="test"] .card:not(.test) { display: none; }
   body[data-split="train"] .card:not(.train) { display: none; }
   .wstage { position: relative; width: min(640px, 100%); background: #8882;
-    border: 1px solid #8884; border-radius: 6px; margin: 0.6rem 0; }
+    border: 1px solid #8884; border-radius: 6px; margin: 0.6rem 0;
+    overflow: hidden; }
+  /* The real camera frame, faint, behind the regions — so every place we draw
+     a region shows it where it actually sits in the photo. */
+  .wstage .stage-bg { position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: fill; opacity: 0.28; pointer-events: none; }
+  .wstage.mini { width: 100%; margin: 0; }
+  .wstage.mini .wregion span { display: none; }
   .wregion { position: absolute; border: 2px dashed; }
   .wregion canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
   .wregion span { position: absolute; top: -1.2rem; left: 0; font-size: 0.7rem; opacity: 0.8;
@@ -119,6 +149,24 @@ const regionOverlayCss = (regions) =>
     width: ${r.roi.width * 100}%; height: ${r.roi.height * 100}%; }`,
     )
     .join('\n  ')
+
+// Regions drawn where they actually are in the camera frame — same geometry
+// everywhere (weight maps, explain panels, ROI picker) so "top" is always
+// top — over a faint photo of a real lineup for orientation.
+export const stageHtml = (regions, id, { photo, aspect = '4 / 3', mini = false } = {}) => `
+<div class="wstage${mini ? ' mini' : ''}" style="aspect-ratio: ${aspect}">
+  ${photo ? `<img class="stage-bg" src="${esc(photo)}" alt="">` : ''}
+  ${regions
+    .map(
+      (r, i) => `<div class="wregion" style="left:${r.roi.left * 100}%;top:${r.roi.top * 100}%;
+      width:${r.roi.width * 100}%;height:${r.roi.height * 100}%;
+      border-color:${REGION_COLORS[i] || '#fc0'}">
+    <canvas id="${id}-${i}" width="${r.width}" height="${r.height}"></canvas>
+    <span>${esc(r.name || '')}</span>
+  </div>`,
+    )
+    .join('')}
+</div>`
 
 const regionCanvases = (regions, id, scale = 4) =>
   regions
@@ -322,7 +370,7 @@ const pickerScript = `
 export function buildExamplesPage(opts) {
   const {
     title, modelName, model, regions, foff, posLabel, negLabel,
-    statsLine, topSections, rows, groupSummary, pickerSrc, srcFor,
+    statsLine, topSections, rows, groupSummary, pickerSrc, srcFor, frameAspect = '4 / 3',
   } = opts
   const pct = (x) => `${Math.round(x * 100)}%`
   const roiOverlays = regions.map((r, i) => `<div class="roi-ov roi-ov-${i}"></div>`).join('')
@@ -398,15 +446,16 @@ ${sections}
 ${pickerSrc ? pickerHtml(pickerSrc, regions) : ''}
 <dialog id="explain-dialog">
   <h3>Why the model decided this</h3>
-  <p class="legend">each panel stacks the model's regions, first on top.</p>
+  <p class="legend">each panel shows the model's regions where they actually sit
+  in the camera frame, over a faint real photo for orientation.</p>
   <div class="panels">
-    <div>${regionCanvases(regions, 'ex-in')}
+    <div>${stageHtml(regions, 'ex-in', { photo: pickerSrc, aspect: frameAspect, mini: true })}
       <p>what the model saw (crops → grayscale grids)</p></div>
-    <div>${regionCanvases(regions, 'ex-w')}
+    <div>${stageHtml(regions, 'ex-w', { photo: pickerSrc, aspect: frameAspect, mini: true })}
       <p>learned weights (same for every frame)</p></div>
-    <div>${regionCanvases(regions, 'ex-contrib')}
+    <div>${stageHtml(regions, 'ex-contrib', { photo: pickerSrc, aspect: frameAspect, mini: true })}
       <p><strong>this frame's votes</strong> (input × weight)</p></div>
-    <div>${regionCanvases(regions, 'ex-diff')}
+    <div>${stageHtml(regions, 'ex-diff', { photo: pickerSrc, aspect: frameAspect, mini: true })}
       <p><strong>votes − weights</strong> — where this frame falls short of a
       fully-bright region</p></div>
   </div>
@@ -463,18 +512,7 @@ export function buildSummaryPage({ crosswalk, terminal }) {
   ${row(`test (${m.testFrames ?? '?'})`, m.test)}
 </table>
 <p>${cfg.statsLine} · threshold ${cfg.model.threshold} · trained ${esc(cfg.model.trainedAt || '?')}</p>
-<div class="wstage" style="aspect-ratio: ${frameAspect}">
-  ${cfg.regions
-    .map(
-      (r, i) => `<div class="wregion" style="left:${r.roi.left * 100}%;top:${r.roi.top * 100}%;
-      width:${r.roi.width * 100}%;height:${r.roi.height * 100}%;
-      border-color:${REGION_COLORS[i] || '#fc0'}">
-    <canvas id="wmap-${key}-${i}" width="${r.width}" height="${r.height}"></canvas>
-    <span>${esc(r.name)}</span>
-  </div>`,
-    )
-    .join('')}
-</div>
+${stageHtml(cfg.regions, `wmap-${key}`, { photo: cfg.photo, aspect: frameAspect })}
 <p class="legend">the learned weight maps, drawn at the exact position each
 region occupies in the camera frame (matching the dashed boxes on the example
 pages) — <span style="color:#c22">red</span> pixels vote positive when bright,

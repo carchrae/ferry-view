@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import sharp from 'sharp'
 import { extractTerminalFeatures, TERMINAL_FEATURE_LENGTH } from '../lib/terminal-features.js'
-import { classifyTerminal, scoreTerminalFeatures } from '../lib/terminal-classifier.js'
+import { classifyTerminal, scoreTerminalFeatures, terminalState } from '../lib/terminal-classifier.js'
 import { terminalEmptyFrameTs, MIN_ALL_EMPTY_FRAMES } from '../lib/lineup-labels.js'
 
 async function solidJpeg(shade, width = 320, height = 240) {
@@ -26,7 +26,25 @@ describe('classifyTerminal', () => {
     expect(verdict).not.toBe(null)
     expect(verdict.probability).toBeGreaterThanOrEqual(0)
     expect(verdict.probability).toBeLessThanOrEqual(1)
-    expect(typeof verdict.carsPresent).toBe('boolean')
+    // Three-state now: true (cars) / false (confidently empty) / null (between
+    // the thresholds).
+    expect([true, false, null]).toContain(verdict.carsPresent)
+  })
+
+  it('terminalState splits cars / empty / unsure at the two thresholds', () => {
+    const m = { threshold: 0.5, emptyThreshold: 0.35 }
+    expect(terminalState(0.9, m)).toBe(true)
+    expect(terminalState(0.5, m)).toBe(true)
+    expect(terminalState(0.49, m)).toBe(null) // was "empty" under one threshold
+    expect(terminalState(0.35, m)).toBe(null)
+    expect(terminalState(0.34, m)).toBe(false)
+    expect(terminalState(0.0, m)).toBe(false)
+  })
+
+  it('terminalState defaults to 0.5 / 0.35 when a model omits them', () => {
+    expect(terminalState(0.6, {})).toBe(true)
+    expect(terminalState(0.4, {})).toBe(null)
+    expect(terminalState(0.2, {})).toBe(false)
   })
 
   it('returns null when the model is disabled', async () => {
