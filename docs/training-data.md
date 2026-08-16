@@ -10,8 +10,10 @@ What `scripts/export-lineup-dataset.mjs` (run weekly by
 ```
 training-data/frames/<storage path>   downloaded JPEGs (community + bowen terminal)
 training-data/manifest.csv            path,sailingKey,ts,label,crosswalkAt
-training-data/terminal-manifest.csv   path,sailingKey,ts,label (terminal-cars classifier)
+training-data/terminal-manifest.csv   path,sailingKey,ts,label,source (terminal-cars)
 training-data/terminal-labels.json    hand labels for terminal frames ({path: 0|1})
+training-data/frame-labels.json       raw frameLabels archive (rider per-frame labels)
+training-data/rider-label-disagreements.json  rider vs hand-label conflicts
 training-data/terminal-labeling.html  click-to-label page (npm run terminal:label)
 training-data/lineup-reports.json     raw lineupReports archive
 training-data/predictions.json        per-sailing crosswalk predictions + notFullByCrosswalk
@@ -41,7 +43,6 @@ training-data/report/                 classifier-results pages (index/crosswalk/
 
 ## What is NOT included
 
-- **Departure (Bowen terminal) timelapse** frames — not taggable, no labels.
 - **Single arrival/departure photos** — not part of the timelapse.
 - The model's own predictions (`crosswalkFullAtAuto` / `crosswalkAutoProb`).
   Reporter identity fields do ship inside `lineup-reports.json` (it's the raw
@@ -71,6 +72,38 @@ Run at least every 42 days or tagged frames are lost (Storage retention) —
 labels can always be recomputed; only the pixels expire. Cron setup:
 [lineup-classifier.md §6](lineup-classifier.md). Logs:
 `training-data/logs/export-<date>.log`.
+
+## Terminal frame labels: two sources, one file
+
+The terminal-cars classifier answers a **frame** question ("are cars waiting in
+this photo?"). A capacity tag answers a **sequence** question ("did the ferry
+leave full?") and cannot say which frame was misread, so it can score a verdict
+but can never supervise the model. Terminal frame labels therefore come from
+two places, both keyed by the frame's Storage path:
+
+1. **Hand labels** — `terminal-labels.json`, from the click-to-label page.
+2. **Rider labels** — the `frameLabels` collection, answered in the app's
+   robot frame-check dialog, resolved by `effectiveFrameLabel()` in
+   `functions/lib/lineup-labels.js` (each rider's latest word counts once,
+   then majority; a tie leaves the frame unlabeled).
+
+**Hand labels win**; rider labels only fill gaps. The manifest's `source`
+column records which won, and the trainer reports per-source counts and stamps
+them into the shipped model's `dataset.labelSources`.
+
+A rider contradicting a hand label is **not** applied but **is** recorded in
+`rider-label-disagreements.json` — that conflict is the signal that a hand
+label may be wrong, and is the input to a future review pass.
+
+Two guards worth knowing about:
+
+- The labelling page prefills from `terminal-labels.json` **directly**, never
+  from the manifest, and renders rider-labelled frames as a dashed read-only
+  state that is excluded from its copied JSON. Prefilling from the manifest
+  would launder every rider label into a hand label on the next round-trip,
+  silently destroying precedence, provenance and the disagreement signal.
+- The exporter tolerates `frameLabels` being unreadable (e.g. before its rules
+  are deployed) and continues with hand labels only.
 
 ## Claude-contributed labels
 

@@ -155,6 +155,36 @@ left, the sailing falls back to the robot's `crosswalkFullAtAuto` (as
 
 ---
 
+## `frameLabels/{autoId}`
+
+Rider answers to a **per-frame** question — "were cars waiting in this photo?"
+— for Bowen terminal timelapse frames, captured in the robot's frame-check
+dialog. These are the terminal-cars classifier's training labels.
+
+Why a separate collection from `capacityHistory`: the classifier predicts a
+property of **one frame**, while a capacity tag describes a **whole sailing**.
+A sequence-level tag can't say which frame was misread, so it can score a
+verdict but can never supervise the model. See
+[docs/lineup-classifier.md](docs/lineup-classifier.md) §7.
+
+Read by the training exporter only — no Cloud Function trigger, nothing
+derived onto `sailingStatus`. Resolution is `effectiveFrameLabel()` in
+`functions/lib/lineup-labels.js`: each rider's latest word counts once, then
+majority; a tie leaves the frame unlabeled. Local hand labels in
+`training-data/terminal-labels.json` take precedence over rider labels.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `framePath` | string | Storage path of the frame, e.g. `"webcams/bowen/2026-08-16/timelapse/11:15_To HSB_1786212623431.jpg"`. **The identity** — the same key the training label files use |
+| `sailingKey` | string | `"2026-08-16_11:15_To HSB"`. Query/grouping key only; derivable from `framePath` |
+| `carsWaiting` | boolean | `true` = cars were waiting to board in this frame |
+| `autoP` / `autoModel` | number? | What the classifier said about this frame when the rider answered: its probability and the model `version`. Records whether the human was correcting the robot, and at what confidence |
+| `recordedAt` | number | Epoch ms |
+| `userUid` | string | Firebase UID |
+| `userName` / `userPhoto` / `anonymous` / `userReport` | | As in `capacityHistory` |
+
+---
+
 ## `snapshots/latestBowenDeparture`
 
 Latest departure webcam photo from the Bowen terminal. Single document, overwritten on each capture.

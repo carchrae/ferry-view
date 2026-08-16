@@ -9,6 +9,7 @@ export const BACKUP_COLLECTIONS = [
   'sailingStatus',
   'capacityHistory',
   'lineupReports',
+  'frameLabels',
   'snapshots',
   'aggregates',
   'rides',
@@ -28,5 +29,6 @@ export const COLLECTION_WINDOW_FIELDS = {
   sailingStatus: { field: 'dateIso', type: 'dateIso' },
   capacityHistory: { field: 'recordedAt', type: 'epochMs' },
   lineupReports: { field: 'recordedAt', type: 'epochMs' },
+  frameLabels: { field: 'recordedAt', type: 'epochMs' },
   rides: { field: 'createdAt', type: 'timestamp' },
 }

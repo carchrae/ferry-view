@@ -54,8 +54,9 @@
           >. Only change it if you think that's wrong — your mark at
           <strong>{{ current.timeLabel }}</strong> will replace it.
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps label="Cancel" v-close-popup />
+        <q-card-actions>
+          <q-btn outline no-caps color="grey-7" label="Cancel" v-close-popup />
+          <q-space />
           <q-btn
             flat
             no-caps
@@ -63,6 +64,7 @@
             label="It hasn't passed yet"
             @click="emitRefute"
           />
+          <q-space />
           <q-btn
             flat
             no-caps

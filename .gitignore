@@ -57,6 +57,7 @@ credentials.json
 /training-data/
 /.vscode/
 
-# Classifier-results thumbnails: ~5k regenerated files (~67 MB). Published to
-# Cloud Storage instead — npm run classifier:publish-thumbs
-public/classifier-results/thumbs/
+# Classifier-results report: ~75 MB of regenerated artifacts (three HTML pages
+# plus ~5k thumbnails). Deployed to Cloud Storage instead, self-contained —
+# npm run deploy:classifier-results
+public/classifier-results/

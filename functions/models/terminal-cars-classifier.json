@@ -1004,9 +1004,12 @@
   "dataset": {
     "from": "2026-07-13",
     "to": "2026-08-16",
-    "frames": 8015,
+    "frames": 8039,
     "labeledFrames": 488,
-    "sailings": 534
+    "labelSources": {
+      "hand": 488
+    },
+    "sailings": 536
   },
-  "trainedAt": "2026-08-16T16:48:42.823Z"
+  "trainedAt": "2026-08-16T18:17:46.964Z"
 }

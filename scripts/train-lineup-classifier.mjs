@@ -40,7 +40,6 @@ import {
   fmtTime,
   thumbName,
   encodeFeatures,
-  thumbFallbackScript,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -165,15 +164,6 @@ const rows = samples.map((s) => {
   return { ...s, p, yhat, fb64, split: isTest(s.sailingKey) ? 'test' : 'train' }
 })
 const cardRows = rows.filter((r) => r.y != null)
-const errors = cardRows.filter((r) => r.yhat !== r.y).length
-
-// Group by sailing, most recent first; frames in capture order.
-const groups = new Map()
-for (const r of cardRows) {
-  if (!groups.has(r.sailingKey)) groups.set(r.sailingKey, [])
-  groups.get(r.sailingKey).push(r)
-}
-const groupKeys = [...groups.keys()].sort().reverse()
 
 // Sequence predictions: every frame of every sailing (labeled or not), in
 // capture order, through the shared rule (first positive confirmed by the
@@ -363,7 +353,7 @@ function summaryPage(srcFor) {
         regions: tm.regions,
         foff: -0.5,
         photo: backdropTerminalPath ? srcFor({ path: backdropTerminalPath }) : null,
-        statsLine: `${tRows.filter((l) => /,[01]$/.test(l)).length} labeled of ${tRows.length} archived terminal frames`,
+        statsLine: `${tRows.filter((l) => l.split(',')[3] === '0' || l.split(',')[3] === '1').length} labeled of ${tRows.length} archived terminal frames`,
       }
     }
   } catch {
@@ -403,17 +393,13 @@ if (backdropTerminalPath) {
   if (!existsSync(dest))
     writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', backdropTerminalPath))))
 }
-// Pages reference thumbs/ relative paths, which resolve against the files
-// written just below — so a local run (dev server or file://) shows them
-// immediately. Those files are gitignored, so on a fresh checkout and on the
-// deployed site the fallback script rewrites misses to the published Cloud
-// Storage copy (npm run classifier:publish-thumbs).
-const THUMB_BASE =
-  process.env.CLASSIFIER_THUMB_BASE ||
-  'https://storage.googleapis.com/bowen-ferry.firebasestorage.app/classifier-results/thumbs/'
+// Relative thumbs/ paths: they resolve against the local files written just
+// below when the report is opened locally, and against the same bucket prefix
+// once deployed (npm run deploy:classifier-results uploads pages + thumbs
+// together), so the published copy is self-contained.
 const pubSrc = (r) => 'thumbs/' + thumbName(r.path)
-writeFileSync(join(PUB_DIR, 'crosswalk.html'), crosswalkPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
-writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
+writeFileSync(join(PUB_DIR, 'crosswalk.html'), crosswalkPage(pubSrc))
+writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc))
 console.log(`Webapp copy: ${join(PUB_DIR, 'index.html')} (commit + deploy → /classifier-results)\n`)
 
 if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {

@@ -19,9 +19,14 @@ import { terminalEmptyFrameTs } from '../../functions/lib/lineup-labels.js'
 // Two thresholds, mirroring functions/lib/terminal-classifier.js: cars at
 // p >= THRESHOLD, confidently empty at p < EMPTY_THRESHOLD, unknown between
 // (null — breaks a confirming pair, counts as neither).
-const THRESHOLD = model.threshold ?? 0.5
-const EMPTY_THRESHOLD = model.emptyThreshold ?? 0.35
+export const THRESHOLD = model.threshold ?? 0.5
+export const EMPTY_THRESHOLD = model.emptyThreshold ?? 0.35
 const terminalState = (p) => (p >= THRESHOLD ? true : p < EMPTY_THRESHOLD ? false : null)
+
+// Which side of the two thresholds a score falls on — 'unsure' is the band
+// where the model is least useful and a rider's label is worth most.
+export const terminalBand = (p) =>
+  p >= THRESHOLD ? 'cars' : p < EMPTY_THRESHOLD ? 'empty' : 'unsure'
 
 export const terminalClassifierReady = Boolean(
   model?.enabled && Array.isArray(model.weights) && Array.isArray(model.regions),

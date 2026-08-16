@@ -52,8 +52,9 @@
           You're signed in but don't have a displayed name yet, so your reports and rides show as
           "Anonymous". Want to add one?
         </q-card-section>
-        <q-card-actions align="right">
-          <q-btn flat no-caps label="Not now" color="grey-7" v-close-popup />
+        <q-card-actions>
+          <q-btn outline no-caps label="Not now" color="grey-7" v-close-popup />
+          <q-space />
           <q-btn unelevated no-caps label="Set name" color="primary" @click="goSetName" />
         </q-card-actions>
       </q-card>

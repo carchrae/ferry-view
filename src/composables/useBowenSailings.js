@@ -34,7 +34,9 @@ function captureTs(path) {
 // 5-minute lineup frames (see captureLineupTimelapse), oldest first.
 function buildTimelapse(paths) {
   return (paths || [])
-    .map((p) => ({ imageUrl: imageUrl(p), timeLabel: captureTimeLabel(p), ts: captureTs(p) }))
+    // `path` is the Storage path — the identity used by the training label
+    // files and by frameLabels, so a rider can label the exact frame.
+    .map((p) => ({ path: p, imageUrl: imageUrl(p), timeLabel: captureTimeLabel(p), ts: captureTs(p) }))
     .sort((a, b) => a.ts - b.ts)
 }
 

@@ -241,6 +241,18 @@ A second, fully independent classifier answers a different question from the
 **Bowen terminal camera's** departure timelapse: *are there cars waiting in
 the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
 
+- **Frame-level supervision** (2026-08-16): riders answer "were cars waiting in
+  THIS photo?" per frame, in the robot's frame-check dialog, stored in
+  `frameLabels` (see [schema.md](../schema.md)). This exists because the
+  classifier predicts a property of one frame while a capacity tag describes a
+  whole sailing — a sequence label can't say which frame was misread, so it can
+  score a verdict but never train the model. The dialog scores the frames
+  locally and steps the rider to the ones the model is **unsure** about (p
+  between the two thresholds), where a human answer is worth most. The
+  sequence-level capacity buttons stay: both facts are useful, they just answer
+  different questions. Hand labels win over rider labels; conflicts are dumped
+  to `training-data/rider-label-disagreements.json` rather than dropped (see
+  [training-data.md](training-data.md)).
 - **Two thresholds, asymmetric** (2026-08-16): cars at `p >= threshold`
   (0.5), confidently empty only at `p < emptyThreshold` (0.35), and scores
   between the two are **unknown** — they confirm nothing and break a pending

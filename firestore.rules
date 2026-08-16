@@ -50,6 +50,30 @@ service cloud.firestore {
         && request.auth.uid == resource.data.userUid;
     }
 
+    // Per-frame terminal labels: "were cars waiting in THIS photo?". The
+    // terminal classifier is a frame model, so this is the only rider input
+    // that can actually supervise it — capacity tags describe a whole
+    // sailing and can't say which frame was misread. Straight into the
+    // training set, so the shape is checked tightly (hasOnly, not just
+    // hasAll) and the frame must be a Bowen terminal path. Rules can't
+    // rate-limit; the defences against a bad actor are one vote per user per
+    // frame in effectiveFrameLabel() and hand labels winning over rider ones.
+    match /frameLabels/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['framePath', 'sailingKey', 'carsWaiting', 'userUid', 'recordedAt'])
+        && request.resource.data.keys().hasOnly(['framePath', 'sailingKey', 'carsWaiting', 'userUid',
+            'recordedAt', 'userName', 'userPhoto', 'anonymous', 'userReport', 'autoP', 'autoModel'])
+        && request.resource.data.framePath is string
+        && request.resource.data.framePath.matches('^webcams/bowen/.*[.]jpg$')
+        && request.resource.data.sailingKey is string
+        && request.resource.data.carsWaiting is bool
+        && request.resource.data.recordedAt is number
+        && request.resource.data.userUid == request.auth.uid;
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.userUid;
+    }
+
     // Sailing status collection (server-write only)
     match /sailingStatus/{docId} {
       allow read: if true;

@@ -42,7 +42,6 @@ import {
   fmtTime,
   thumbName,
   encodeFeatures,
-  thumbFallbackScript,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -82,14 +81,22 @@ const rows = readFileSync(manifest, 'utf8')
   .split('\n')
   .slice(1)
   .map((line) => {
-    const [path, sailingKey, ts, label] = line.split(',')
-    return { path, sailingKey, ts: Number(ts), label }
+    const [path, sailingKey, ts, label, source] = line.split(',')
+    return { path, sailingKey, ts: Number(ts), label, source: source || '' }
   })
   .filter((r) => r.path && existsSync(join(DATA, 'frames', r.path)))
 
 // --- Labeling page (always regenerated) ---------------------------------------
 // One tile per frame on disk, grouped by sailing, newest first. Clicking
-// cycles unlabeled → cars → no cars → unlabeled; existing labels prefill.
+// cycles unlabeled → cars → no cars → unlabeled.
+//
+// CRITICAL: prefill comes from terminal-labels.json — the HAND labels — NOT
+// from the manifest's label column, which also carries rider labels from the
+// app. The page's "copy JSON" output is saved back over terminal-labels.json,
+// so prefilling from the manifest would silently launder every rider label
+// into a hand label on the next round-trip, destroying the precedence rule,
+// the provenance and the disagreement signal. Rider-labelled frames render as
+// a distinct, read-only third state that is never part of the copied JSON.
 const esc = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 const groups = new Map()
@@ -97,8 +104,15 @@ for (const r of rows) {
   if (!groups.has(r.sailingKey)) groups.set(r.sailingKey, [])
   groups.get(r.sailingKey).push(r)
 }
-const prefill = {}
-for (const r of rows) if (r.label === '0' || r.label === '1') prefill[r.path] = Number(r.label)
+const prefill = existsSync(join(DATA, 'terminal-labels.json'))
+  ? JSON.parse(readFileSync(join(DATA, 'terminal-labels.json'), 'utf8'))
+  : {}
+// Rider labels shown for context only (they fill gaps; hand labels win).
+const riderLabelled = {}
+for (const r of rows) {
+  if (r.source !== 'rider' || prefill[r.path] !== undefined) continue
+  if (r.label === '0' || r.label === '1') riderLabelled[r.path] = Number(r.label)
+}
 
 const sections = [...groups.keys()]
   .sort()
@@ -110,7 +124,9 @@ const sections = [...groups.keys()]
     <div class="tiles">${list
       .map(
         (r) => `
-      <figure class="tile" data-path="${esc(r.path)}">
+      <figure class="tile" data-path="${esc(r.path)}"${
+        riderLabelled[r.path] !== undefined ? ` data-rider="${riderLabelled[r.path]}"` : ''
+      }>
         <img loading="lazy" src="frames/${esc(r.path.split('/').map(encodeURIComponent).join('/'))}" alt="">
         <figcaption></figcaption>
       </figure>`,
@@ -139,6 +155,10 @@ writeFileSync(
   .tile figcaption { font-size: 0.75rem; text-align: center; padding: 0.15rem; }
   .tile.cars { border-color: #2a7; }
   .tile.nocars { border-color: #d33; }
+  /* Rider-labelled (from the app). Read-only here and never copied out —
+     these live in Firestore, not in terminal-labels.json. */
+  .tile.rider { border-style: dashed; opacity: 0.75; }
+  .tile.rider figcaption::after { content: ' · rider'; opacity: 0.7; }
   pre { background: #8882; padding: 0.5rem; border-radius: 6px; max-height: 12rem; overflow: auto; }
 </style>
 <h1>Terminal frames — label cars / no cars</h1>
@@ -146,6 +166,10 @@ writeFileSync(
 <strong style="color:#d33">no cars</strong> → unlabeled. When done, copy the JSON and save it
 as <code>training-data/terminal-labels.json</code>, then run
 <code>npm run lineup:export</code> and <code>npm run terminal:train</code>.</p>
+<p><small>Tiles with a <strong>dashed</strong> border were labelled by riders in the app
+(<code>frameLabels</code> in Firestore). They fill gaps only — a label you set here always
+wins — and they are <strong>not</strong> included in the copied JSON. Clicking one labels it
+by hand, which takes precedence from then on.</small></p>
 <nav>
   <button id="copy">copy JSON</button><span id="copied" hidden>copied ✓</span>
   <span id="count"></span>
@@ -158,13 +182,21 @@ ${sections}
   const count = document.getElementById('count')
   const apply = (tile) => {
     const v = labels[tile.dataset.path]
-    tile.classList.toggle('cars', v === 1)
-    tile.classList.toggle('nocars', v === 0)
-    tile.querySelector('figcaption').textContent = v === 1 ? 'cars' : v === 0 ? 'no cars' : '—'
+    const rider = tile.dataset.rider
+    // A hand label always displaces the rider's; the copied-out map never
+    // contains rider labels.
+    const shown = v !== undefined ? v : rider !== undefined ? Number(rider) : undefined
+    tile.classList.toggle('cars', shown === 1)
+    tile.classList.toggle('nocars', shown === 0)
+    tile.classList.toggle('rider', v === undefined && rider !== undefined)
+    tile.querySelector('figcaption').textContent =
+      shown === 1 ? 'cars' : shown === 0 ? 'no cars' : '—'
   }
   const render = () => {
     out.textContent = JSON.stringify(labels, null, 1)
-    count.textContent = Object.keys(labels).length + ' labeled'
+    const riders = [...document.querySelectorAll('.tile.rider')].length
+    count.textContent =
+      Object.keys(labels).length + ' labeled by hand' + (riders ? ' · ' + riders + ' by riders' : '')
   }
   document.querySelectorAll('.tile').forEach((tile) => {
     apply(tile)
@@ -207,6 +239,7 @@ for (const r of rows) {
     sailingKey: r.sailingKey,
     ts: r.ts,
     y: r.label === '0' || r.label === '1' ? Number(r.label) : null,
+    source: r.source || 'hand',
     features: await extractTerminalFeatures(readFileSync(join(DATA, 'frames', r.path))),
   })
 }
@@ -214,7 +247,28 @@ const labeledSamples = samples.filter((s) => s.y != null)
 const isTest = (key) => createHash('md5').update(key).digest()[0] % 5 === 0
 const train = labeledSamples.filter((s) => !isTest(s.sailingKey))
 const test = labeledSamples.filter((s) => isTest(s.sailingKey))
-console.log(`train: ${train.length} frames — test: ${test.length} frames`)
+// Per-source and per-split counts. Rider labels are drawn from the model's
+// UNSURE band by design, so they are the hardest frames in the set — when the
+// metric floor trips, this is what tells you whether one source or one sailing
+// caused it rather than a real regression.
+const bySource = (set) => {
+  const c = {}
+  for (const s of set) c[s.source] = (c[s.source] || 0) + 1
+  return Object.entries(c).map(([k, v]) => `${v} ${k}`).join(', ') || 'none'
+}
+console.log(
+  `train: ${train.length} frames (${bySource(train)}) — test: ${test.length} frames (${bySource(test)})`,
+)
+// A sailing is wholly train or wholly test (frames within one are near
+// duplicates), so a single busy sailing can dominate the held-out set.
+const testBySailing = new Map()
+for (const s of test) testBySailing.set(s.sailingKey, (testBySailing.get(s.sailingKey) || 0) + 1)
+const biggest = [...testBySailing.entries()].sort((a, b) => b[1] - a[1])[0]
+if (biggest && test.length && biggest[1] / test.length > 0.25) {
+  console.warn(
+    `WARNING: ${biggest[0]} is ${Math.round((biggest[1] / test.length) * 100)}% of the test split (${biggest[1]}/${test.length} frames) — test metrics mostly describe that one sailing.`,
+  )
+}
 if (!train.length || !test.length) {
   console.error('Empty train or test split — need labels across more sailings.')
   process.exit(1)
@@ -687,22 +741,21 @@ if (backdropCrosswalkPath) {
   if (!existsSync(dest))
     writeFileSync(dest, await thumbnailJpeg(readFileSync(join(DATA, 'frames', backdropCrosswalkPath))))
 }
-// Pages reference thumbs/ relative paths, which resolve against the files
-// written just below — so a local run (dev server or file://) shows them
-// immediately. Those files are gitignored, so on a fresh checkout and on the
-// deployed site the fallback script rewrites misses to the published Cloud
-// Storage copy (npm run classifier:publish-thumbs).
-const THUMB_BASE =
-  process.env.CLASSIFIER_THUMB_BASE ||
-  'https://storage.googleapis.com/bowen-ferry.firebasestorage.app/classifier-results/thumbs/'
+// Relative thumbs/ paths: they resolve against the local files written just
+// below when the report is opened locally, and against the same bucket prefix
+// once deployed (npm run deploy:classifier-results uploads pages + thumbs
+// together), so the published copy is self-contained.
 const pubSrc = (r) => 'thumbs/' + thumbName(r.path)
-writeFileSync(join(PUB_DIR, 'terminal.html'), terminalPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
-writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc) + thumbFallbackScript(THUMB_BASE))
+writeFileSync(join(PUB_DIR, 'terminal.html'), terminalPage(pubSrc))
+writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc))
 console.log(`Webapp copy: ${join(PUB_DIR, 'terminal.html')}`)
 
 if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {
   console.error(
-    `Test precision/recall below ${METRIC_FLOOR} — not writing model (use --force to override).`,
+    `Test precision/recall below ${METRIC_FLOOR} — not writing model (use --force to override).\n` +
+      `  test split: ${test.length} frames (${bySource(test)}) across ${testBySailing.size} sailings` +
+      (biggest ? `, largest ${biggest[0]} with ${biggest[1]}` : '') +
+      `\n  Check whether one source or sailing explains it before forcing.`,
   )
   process.exit(1)
 }
@@ -717,11 +770,14 @@ try {
   // First versioned model.
 }
 const dates = samples.map((s) => s.sailingKey.slice(0, 10)).sort()
+const labelSources = {}
+for (const s of labeledSamples) labelSources[s.source] = (labelSources[s.source] || 0) + 1
 const dataset = {
   from: dates[0] ?? null,
   to: dates[dates.length - 1] ?? null,
   frames: samples.length,
   labeledFrames: labeledSamples.length,
+  labelSources,
   sailings: new Set(samples.map((s) => s.sailingKey)).size,
 }
 

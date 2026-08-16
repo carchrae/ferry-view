@@ -26,18 +26,26 @@
 // Output (gitignored):
 //   training-data/frames/<storage path>   downloaded JPEGs (community + bowen)
 //   training-data/manifest.csv            path,sailingKey,ts,label,crosswalkAt
-//   training-data/terminal-manifest.csv   path,sailingKey,ts,label — Bowen
-//     terminal (departure) frames for the terminal-cars classifier; labels
-//     joined from hand-written training-data/terminal-labels.json
-//     ({ "<storage path>": 0|1 }, 1 = cars present)
+//   training-data/terminal-manifest.csv   path,sailingKey,ts,label,source —
+//     Bowen terminal (departure) frames for the terminal-cars classifier.
+//     Labels come from hand-written training-data/terminal-labels.json
+//     ({ "<storage path>": 0|1 }, 1 = cars present), with rider labels from
+//     the frameLabels collection filling the gaps (source = hand | rider)
 //   training-data/lineup-reports.json     raw lineupReports archive (by doc id)
+//   training-data/frame-labels.json       raw frameLabels archive (by doc id)
+//   training-data/capacity-tags.json      rider capacity tags (scoring only)
+//   training-data/rider-label-disagreements.json  rider vs hand conflicts
 //
 // Full description of what is (and is not) exported: docs/training-data.md
 
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { labelForTimestamp, effectiveCrosswalkAt } from '../functions/lib/lineup-labels.js'
+import {
+  labelForTimestamp,
+  effectiveCrosswalkAt,
+  effectiveFrameLabel,
+} from '../functions/lib/lineup-labels.js'
 
 const args = process.argv.slice(2)
 function flag(name, dflt) {
@@ -132,6 +140,58 @@ const capacityTags = capacityDocs
   .sort((a, b) => (a.recordedAt || 0) - (b.recordedAt || 0))
 writeFileSync(CAPACITY_TAGS, JSON.stringify(capacityTags, null, 1) + '\n')
 console.log(`capacityHistory: ${capacityTags.length} user tags on ${new Set(capacityTags.map((c) => c.sailingKey)).size} sailings`)
+// --- 1c. Rider per-frame terminal labels -------------------------------------
+// "Were cars waiting in THIS photo?" — the frame question the terminal
+// classifier actually predicts, and the only rider input that can supervise
+// it (a capacity tag describes a whole sailing and can't say which frame was
+// misread). Archived like lineupReports so a deleted label stops counting,
+// and resolved by the shared effectiveFrameLabel() — this file defines no tag
+// semantics of its own.
+const FRAME_LABELS = join(ROOT, 'frame-labels.json')
+const FRAME_LABEL_LIMIT = 20000
+// Tolerate the collection being unreadable — before the frameLabels rules are
+// deployed the read is denied, and a training export must not die for a label
+// source that is merely absent. Same for a transient failure.
+let frameLabelDocs = []
+try {
+  frameLabelDocs = await runQuery({
+    from: [{ collectionId: 'frameLabels' }],
+    orderBy: [{ field: { fieldPath: 'recordedAt' }, direction: 'DESCENDING' }],
+    limit: FRAME_LABEL_LIMIT,
+  })
+} catch (e) {
+  console.warn(`frameLabels unreadable (${String(e.message).split('\n')[0]}) — continuing with hand labels only.`)
+}
+if (frameLabelDocs.length === FRAME_LABEL_LIMIT) {
+  console.warn(`WARNING: frameLabels hit the ${FRAME_LABEL_LIMIT}-doc read limit — older labels were not read this run.`)
+}
+const frameLabels = frameLabelDocs.map((doc) => ({ id: doc.name.split('/').pop(), ...fields(doc) }))
+const frameArchive = existsSync(FRAME_LABELS)
+  ? new Map(JSON.parse(readFileSync(FRAME_LABELS, 'utf8')).map((r) => [r.id, r]))
+  : new Map()
+const liveFrameIds = new Set(frameLabels.map((r) => r.id))
+for (const old of frameArchive.values()) if (!liveFrameIds.has(old.id)) old.deleted = true
+for (const r of frameLabels) frameArchive.set(r.id, r)
+writeFileSync(
+  FRAME_LABELS,
+  JSON.stringify([...frameArchive.values()].sort((a, b) => (a.recordedAt || 0) - (b.recordedAt || 0)), null, 1) + '\n',
+)
+// Resolve from LIVE docs only — a deleted label must stop voting.
+const frameLabelsByPath = new Map()
+for (const r of frameLabels) {
+  if (!r.framePath) continue
+  if (!frameLabelsByPath.has(r.framePath)) frameLabelsByPath.set(r.framePath, [])
+  frameLabelsByPath.get(r.framePath).push(r)
+}
+const riderLabelByPath = new Map()
+for (const [path, list] of frameLabelsByPath) {
+  const label = effectiveFrameLabel(list)
+  if (label != null) riderLabelByPath.set(path, label)
+}
+console.log(
+  `frameLabels: ${frameLabels.length} live labels from ${new Set(frameLabels.map((r) => r.userUid)).size} riders on ${frameLabelsByPath.size} frames → ${riderLabelByPath.size} resolved (${frameLabelsByPath.size - riderLabelByPath.size} tied)`,
+)
+
 const crosswalkBySailing = new Map()
 for (const [key, list] of reportsBySailing) {
   const at = effectiveCrosswalkAt(list)
@@ -209,10 +269,51 @@ for (const s of sailings) {
 const terminalLabels = existsSync(TERMINAL_LABELS)
   ? JSON.parse(readFileSync(TERMINAL_LABELS, 'utf8'))
   : {}
+// Precedence: a local hand label always wins; rider labels only fill gaps.
+// A rider contradicting a hand label is NOT applied but IS recorded — that
+// disagreement is the most valuable signal here (it says a hand label may be
+// wrong) and must not be silently dropped.
+const DISAGREEMENTS = join(ROOT, 'rider-label-disagreements.json')
+const disagreements = {}
+let riderFilled = 0
+let riderAgreed = 0
+let riderNoRow = 0
 for (const row of terminalRows.values()) {
-  const label = terminalLabels[row.path]
-  row.label = label === 0 || label === 1 ? String(label) : ''
+  const hand = terminalLabels[row.path]
+  const rider = riderLabelByPath.get(row.path)
+  if (hand === 0 || hand === 1) {
+    row.label = String(hand)
+    row.source = 'hand'
+    if (rider != null) {
+      if (rider === hand) riderAgreed++
+      else {
+        disagreements[row.path] = {
+          hand,
+          rider,
+          users: (frameLabelsByPath.get(row.path) || []).map((r) => r.userUid),
+        }
+      }
+    }
+  } else if (rider != null) {
+    row.label = String(rider)
+    row.source = 'rider'
+    riderFilled++
+  } else {
+    row.label = ''
+    row.source = ''
+  }
 }
+let riderNoFrame = 0
+for (const path of riderLabelByPath.keys()) {
+  if (!terminalRows.has(path)) riderNoRow++
+  // The trainer silently drops rows whose JPEG never made it to disk (aged
+  // out of Storage before an export ran) — surface that loss here.
+  else if (!existsSync(join(FRAMES_DIR, path))) riderNoFrame++
+}
+writeFileSync(DISAGREEMENTS, JSON.stringify(disagreements, null, 1) + '\n')
+console.log(
+  `rider labels: ${riderLabelByPath.size} resolved — ${riderFilled} filled gaps, ${riderAgreed} agreed with a hand label, ${Object.keys(disagreements).length} disagreed (kept in rider-label-disagreements.json, hand label wins), ${riderNoRow} with no manifest row, ${riderNoFrame} with no frame on disk`,
+)
 
 // --- 4. Download frames we don't have yet ------------------------------------
 let downloaded = 0
@@ -254,9 +355,12 @@ const tSorted = [...terminalRows.values()].sort((a, b) => a.path.localeCompare(b
 writeFileSync(
   TERMINAL_MANIFEST,
   [
-    'path,sailingKey,ts,label',
-    ...tSorted.map((r) => [r.path, r.sailingKey, r.ts, r.label].join(',')),
+    'path,sailingKey,ts,label,source',
+    ...tSorted.map((r) => [r.path, r.sailingKey, r.ts, r.label, r.source || ''].join(',')),
   ].join('\n') + '\n',
 )
-const tLabeled = tSorted.filter((r) => r.label !== '').length
-console.log(`terminal-manifest: ${tSorted.length} frames (${tLabeled} labeled)`)
+const tHand = tSorted.filter((r) => r.source === 'hand').length
+const tRider = tSorted.filter((r) => r.source === 'rider').length
+console.log(
+  `terminal-manifest: ${tSorted.length} frames (${tHand + tRider} labeled — ${tHand} hand, ${tRider} rider)`,
+)

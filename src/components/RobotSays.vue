@@ -1,5 +1,5 @@
 <template>
-  <div v-if="autoAt != null || notFullAt != null" class="q-mt-xs">
+  <div v-if="autoAt != null || notFullAt != null || fullnessUnsure" class="q-mt-xs">
     <!-- Two columns: label left, content in a growing column so wrapped
          chips/text never flow underneath the label. -->
     <div class="row no-wrap items-center">
@@ -77,6 +77,25 @@
             : '' }}See the frames the robot judged — agree or disagree
         </q-tooltip>
       </q-chip>
+      <!-- Fullness: robot has NO verdict for this sailing → own up to it.
+           The same dialog opens so a rider can answer per-frame "cars
+           waiting?" and teach the classifier the exact frames it fumbled. -->
+      <q-btn
+        v-else-if="fullnessUnsure"
+        dense
+        no-caps
+        outline
+        color="grey-7"
+        size="sm"
+        icon="directions_boat"
+        label="not sure if it left full — take a look?"
+        @click="openFullnessVerify"
+      >
+        <q-tooltip>
+          The robot couldn't tell whether this ferry left full — step through the
+          terminal frames and teach it
+        </q-tooltip>
+      </q-btn>
       <!-- Certainty: computed on demand (loads this sailing's frames only),
            then the same slot becomes a details button. -->
       <q-btn
@@ -127,7 +146,10 @@
       kind="fullness"
       :robot-at="typeof notFullAt === 'number' ? notFullAt : null"
       :frames="terminalFrames"
+      :sailing-key="sailingKey"
+      :unsure="fullnessUnsure"
       @capacity="emit('capacity', $event)"
+      @frame-label="emit('frame-label', $event)"
     />
 
     <q-dialog v-model="showInfo">
@@ -201,6 +223,8 @@ const props = defineProps({
   notFullProb: { type: Number, default: null },
   // Whether the parent can compute the terminal certainty (frames available).
   canComputeNotFullProb: { type: Boolean, default: false },
+  // Needed to file per-frame labels from the fullness dialog.
+  sailingKey: { type: String, default: null },
 })
 // agree: robot's crosswalk time confirmed · mark: rider disagreed and marks
 // the viewed frame's ts instead · refute: rider says the lineup has NOT
@@ -208,7 +232,15 @@ const props = defineProps({
 // fullness dialog · compute-certainty(done): parent classifies this
 // sailing's terminal frames and calls done(ok) · show-details: open the
 // per-frame evidence dialog.
-const emit = defineEmits(['agree', 'mark', 'capacity', 'refute', 'compute-certainty', 'show-details'])
+const emit = defineEmits([
+  'agree',
+  'mark',
+  'capacity',
+  'refute',
+  'compute-certainty',
+  'show-details',
+  'frame-label',
+])
 
 // Certainty wording: qualitative words + integer percent, e.g.
 // "very sure · 92%".
@@ -219,6 +251,11 @@ const certaintyLabel = (p) => `${certaintyWords(p)} · ${Math.round(p * 100)}%`
 const computingProb = ref(false)
 const certaintyFailed = ref(false)
 const fullnessVisible = computed(() => props.notFullAt != null && props.notFullAt !== false)
+// No fullness verdict (null = never computed, false = ran without finding a
+// confirmed-empty pair) but the terminal frames exist: show an honest "not
+// sure" button that opens the same dialog for per-frame labelling. Only the
+// departures page passes terminalFrames, so this never shows elsewhere.
+const fullnessUnsure = computed(() => !fullnessVisible.value && props.terminalFrames.length > 0)
 const showComputeBtn = computed(
   () =>
     fullnessVisible.value &&
@@ -259,7 +296,7 @@ watch(
   () => props.autoOpen,
   (kind) => {
     if (kind === 'crosswalk' && props.autoAt != null) openVerify()
-    else if (kind === 'fullness' && props.notFullAt != null && props.notFullAt !== false)
+    else if (kind === 'fullness' && (fullnessVisible.value || fullnessUnsure.value))
       openFullnessVerify()
   },
   { immediate: true },

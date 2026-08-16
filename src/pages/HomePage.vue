@@ -682,10 +682,12 @@
       :kind="robotVerify.kind"
       :robot-at="robotVerify.robotAt"
       :frames="robotVerify.frames"
+      :sailing-key="robotVerify.sailingKey"
       @agree="onRobotVerifyAgree"
       @mark="onRobotVerifyMark"
       @refute="onRobotVerifyRefute"
       @capacity="onRobotVerifyCapacity"
+      @frame-label="onRobotVerifyFrameLabel"
     />
     <SignInDialog v-model="showSignInDialog" />
   </q-page>
@@ -716,6 +718,8 @@ import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js
 import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
+import { useFrameLabel } from 'src/composables/useFrameLabel'
+import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 
@@ -978,6 +982,7 @@ function openRobotFromTypical(kind) {
 // so opening the dialog usually costs zero reads, and at most one doc read.
 const { needsSignIn, saveRating } = useCapacityRating()
 const { saveCrosswalkMark, saveCrosswalkNotYet } = useLineupReport()
+const { saveFrameLabel } = useFrameLabel()
 const showSignInDialog = ref(false)
 watch(needsSignIn, (v) => {
   if (v) {
@@ -1104,6 +1109,21 @@ function onRobotVerifyRefute() {
       console.error('Failed to save crosswalk refute:', err)
       $q.notify({ type: 'negative', message: 'Failed to record the refute' })
     })
+}
+
+// Per-frame label from the fullness dialog — the frame-level answer the
+// terminal classifier trains on (the capacity handler below records the
+// sequence-level fact about the whole sailing; both are useful).
+async function onRobotVerifyFrameLabel({ framePath, sailingKey, carsWaiting, autoP, done }) {
+  const saved = await saveFrameLabel({
+    framePath,
+    sailingKey: sailingKey || robotVerify.value.sailingKey,
+    carsWaiting,
+    autoP,
+    autoModel: terminalModel.version ?? null,
+  })
+  if (!saved) showSignInDialog.value = true
+  done(saved)
 }
 
 function onRobotVerifyCapacity(capacity) {

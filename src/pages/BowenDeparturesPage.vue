@@ -206,6 +206,7 @@
                 :can-compute-not-full-prob="(sailing.departureTimelapsePaths?.length ?? 0) >= 2"
                 :capacity-reports="sailing.reports || []"
                 :terminal-frames="sailing.departure?.timelapse || []"
+                :sailing-key="sailing.sailingKey"
                 :auto-open="
                   $q.screen.lt.md && robotTarget?.key === sailing.sailingKey
                     ? robotTarget.kind
@@ -217,6 +218,7 @@
                 @capacity="onRobotCapacity(sailing, $event)"
                 @compute-certainty="onComputeCertainty(sailing, $event)"
                 @show-details="onShowVerdictDetails(sailing)"
+                @frame-label="onFrameLabel(sailing, $event)"
               />
             </div>
           </template>
@@ -239,6 +241,7 @@
             :can-compute-not-full-prob="(sailing.departureTimelapsePaths?.length ?? 0) >= 2"
             :capacity-reports="sailing.reports || []"
             :terminal-frames="sailing.departure?.timelapse || []"
+            :sailing-key="sailing.sailingKey"
             :auto-open="
               !$q.screen.lt.md && robotTarget?.key === sailing.sailingKey
                 ? robotTarget.kind
@@ -250,6 +253,7 @@
             @capacity="onRobotCapacity(sailing, $event)"
             @compute-certainty="onComputeCertainty(sailing, $event)"
             @show-details="onShowVerdictDetails(sailing)"
+            @frame-label="onFrameLabel(sailing, $event)"
           />
         </div>
       </q-card-section>
@@ -305,6 +309,8 @@ import {
   cachedNotFull,
 } from 'src/composables/useTerminalClassifier'
 import RobotVerdictDetails from 'src/components/RobotVerdictDetails.vue'
+import { useFrameLabel } from 'src/composables/useFrameLabel'
+import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 import { effectiveCrosswalk } from '../../functions/lib/lineup-labels.js'
@@ -325,6 +331,7 @@ const route = useRoute()
 const router = useRouter()
 const { user, needsSignIn, saveRating, deleteRating } = useCapacityRating()
 const { saveCrosswalkMark, saveCrosswalkNotYet, deleteCrosswalkMark } = useLineupReport()
+const { saveFrameLabel } = useFrameLabel()
 const { loadReportsForSailings } = useLeaderboard()
 
 const loading = ref(false)
@@ -640,6 +647,22 @@ async function onComputeCertainty(sailing, done) {
     })
     done(false)
   }
+}
+
+// A rider answering the per-frame question ("were cars waiting in THIS
+// photo?") — the only rider input that can supervise the terminal classifier,
+// since a capacity tag describes the whole sailing and can't say which frame
+// was misread. done(ok) tells the dialog whether to tick and advance.
+async function onFrameLabel(sailing, { framePath, sailingKey, carsWaiting, autoP, done }) {
+  const saved = await saveFrameLabel({
+    framePath,
+    sailingKey: sailingKey || sailing.sailingKey,
+    carsWaiting,
+    autoP,
+    autoModel: terminalModel.version ?? null,
+  })
+  if (!saved) showSignInDialog.value = true
+  done(saved)
 }
 
 // "Show details": the per-frame evidence dialog. Frames re-classify from the

@@ -1679,9 +1679,9 @@
   "dataset": {
     "from": "2026-07-13",
     "to": "2026-08-16",
-    "frames": 3984,
+    "frames": 4006,
     "labeledFrames": 2061,
-    "sailings": 401
+    "sailings": 403
   },
-  "trainedAt": "2026-08-16T16:47:55.098Z"
+  "trainedAt": "2026-08-16T18:56:51.767Z"
 }

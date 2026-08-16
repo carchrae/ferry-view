@@ -80,9 +80,11 @@
         />
       </q-card-section>
 
-      <q-card-actions align="right">
+      <q-card-actions>
         <q-btn v-if="permission === 'granted'" flat label="Unsubscribe" color="negative" @click="handleUnsubscribe" />
-        <q-btn flat label="Cancel" v-close-popup />
+        <q-space />
+        <q-btn outline color="grey-7" label="Cancel" v-close-popup />
+        <q-space />
         <q-btn
           v-if="permission !== 'granted' && permission !== 'denied'"
           flat

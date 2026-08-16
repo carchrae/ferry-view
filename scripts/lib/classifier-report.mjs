@@ -20,28 +20,6 @@ export const fmtTime = (ms) =>
     hour12: false,
   })
 
-// Thumbnails are generated into public/classifier-results/thumbs/ but never
-// committed (~5k files, ~67 MB). They are therefore present when you run
-// locally right after training, and absent on a fresh checkout / the deployed
-// site — where this fallback swaps in the copy published to Cloud Storage
-// (npm run classifier:publish-thumbs). Appended to the PUBLIC page copies.
-export const thumbFallbackScript = (base) => `
-<script>
-  addEventListener(
-    'error',
-    (e) => {
-      const el = e.target
-      if (el?.tagName !== 'IMG' || el.dataset.thumbFallback) return
-      const src = el.getAttribute('src') || ''
-      if (!src.startsWith('thumbs/')) return
-      el.dataset.thumbFallback = '1'
-      el.src = ${JSON.stringify(base)} + src.slice('thumbs/'.length)
-    },
-    true,
-  )
-</script>
-`
-
 export const thumbName = (path) => createHash('md5').update(path).digest('hex').slice(0, 16) + '.jpg'
 
 // Features → base64 bytes. `foff` is the value a zero byte decodes to

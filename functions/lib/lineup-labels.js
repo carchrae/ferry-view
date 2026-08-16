@@ -46,6 +46,37 @@ export function robotMayFillCrosswalk(cur, detectionTs) {
   return cur?.crosswalkNotYetAt == null || detectionTs > cur.crosswalkNotYetAt
 }
 
+// --- Per-frame terminal labels (frameLabels collection) ----------------------
+// Riders answer a FRAME question — "were cars waiting in this photo?" — which
+// is what the terminal-cars classifier actually predicts. Capacity tags answer
+// a SEQUENCE question ("did the ferry leave full?") and cannot say which frame
+// was misread, so they can never supervise this model.
+export function isValidFrameLabel(r) {
+  return Boolean(r && r.userUid && typeof r.carsWaiting === 'boolean' && r.framePath)
+}
+
+// One frame's label from all reports about it: each rider's latest word counts
+// once (re-labelling corrects, it doesn't stack), then the majority wins. A
+// tie means the riders genuinely disagree, so the frame stays unlabeled rather
+// than teaching the model a coin flip.
+//
+// Pass LIVE reports only — never the exporter's archive, where deleted labels
+// are kept with `deleted: true` and would otherwise vote forever.
+// Returns 1 (cars), 0 (no cars), or null.
+export function effectiveFrameLabel(reports) {
+  const latestByUser = new Map()
+  for (const r of reports || []) {
+    if (!isValidFrameLabel(r)) continue
+    const prev = latestByUser.get(r.userUid)
+    if (!prev || (r.recordedAt || 0) > (prev.recordedAt || 0)) latestByUser.set(r.userUid, r)
+  }
+  let cars = 0
+  let empty = 0
+  for (const r of latestByUser.values()) r.carsWaiting ? cars++ : empty++
+  if (cars === empty) return null
+  return cars > empty ? 1 : 0
+}
+
 // Label a timelapse frame from the effective crosswalk time: frames captured
 // at or after it show a lineup that has reached the crosswalk.
 export function labelForTimestamp(frameTs, crosswalkAt) {
