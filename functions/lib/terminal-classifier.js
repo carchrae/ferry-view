@@ -38,24 +38,24 @@ export function scoreTerminalFeatures(features, m = model) {
   return 1 / (1 + Math.exp(-z))
 }
 
-// TWO thresholds, deliberately asymmetric (2026-08-16):
-//   p >= threshold (0.5)       → cars present
-//   p <  emptyThreshold (0.35) → confidently empty
-//   in between                 → UNKNOWN (null)
-// The model is decisive about cars (median p 0.95 on labeled cars frames) but
-// mushy about empty (median 0.39), so a single 0.5 cut let coin-flip frames
-// confirm "the terminal emptied" — 140 of 210 verdicts rested on a frame
-// scoring above 0.25. Only the EMPTY side is tightened: raising the cars
-// threshold would weaken the cars-first guard and the "still loading" reading.
-// Callers must treat null as unknown, never as empty (terminalEmptyFrameTs
-// does: it breaks a pair and counts as neither).
+// Single threshold again (2026-08-16, second revision): p >= threshold (0.5)
+// → cars, else empty. The 0.35 emptyThreshold band (frames the model was
+// unsure about mapping to null) was tried first, but the sweep in
+// training-data/experiments/empty-threshold-sweep.mjs showed it was the
+// wrong mechanism: it cut not-full coverage from 74% to 43% while every
+// actually-wrong verdict came from empty windows MID-sailing with cars
+// returning after — which no per-frame threshold catches. Correctness now
+// comes from the TAIL rule in terminalEmptyFrameTs (the confirming pair must
+// follow the LAST solid cars frame). emptyThreshold stays in the model JSON
+// purely as the UI "unsure" band (terminalBand in useTerminalClassifier.js)
+// that prioritizes frames for rider labelling. Callers must still treat a
+// null carsPresent as unknown (reserved for e.g. a future night model
+// declining to answer) — terminalEmptyFrameTs does.
 export function terminalState(probability, m = model) {
-  if (probability >= (m.threshold ?? 0.5)) return true
-  if (probability < (m.emptyThreshold ?? 0.35)) return false
-  return null
+  return probability >= (m.threshold ?? 0.5)
 }
 
-// JPEG buffer → { probability, carsPresent: true|false|null } or null
+// JPEG buffer → { probability, carsPresent: true|false } or null
 // (disabled / failed).
 export async function classifyTerminal(buf, m = model) {
   if (!terminalModelUsable(m)) return null

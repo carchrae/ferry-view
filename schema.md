@@ -104,9 +104,10 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `crosswalkFullAtAuto` | number? | Epoch ms of the first timelapse frame the lineup classifier scored positive. Permanent: kept separate from the human tag and never deleted, so human-vs-robot agreement stays measurable even after a rider overwrites the report |
 | `crosswalkAutoProb` | number? | Classifier probability behind `crosswalkFullAtAuto` |
 | `crosswalkAutoModel` | number? | Version of the lineup classifier model that produced `crosswalkFullAtAuto` (see `classifierModels`) |
-| `ferryNotFullAuto` | boolean? | Terminal classifier confirmed the waiting area emptied pre-departure (two consecutive empty frames; one-way). Permanent, like the crosswalk auto fields. First confirmation is also recorded as a robot capacity report (`lastCapacity: "Not Full"`, `capacitySource: "robot"`) unless a user/automated value exists |
+| `ferryNotFullAuto` | boolean? | Terminal classifier confirmed the waiting area emptied at departure — tail rule (2026-08-16): two consecutive empty frames after the last SOLID cars frame. NOT one-way anymore: solid cars returning clear the verdict (and these three fields) — the empty window was mid-sailing. Confirmation is also recorded as a robot capacity report (`lastCapacity: "Not Full"`, `capacitySource: "robot"`) unless a user/automated value exists, and withdrawn with the verdict when the robot was the source |
 | `terminalEmptyFrameTs` / `terminalEmptyProb` | number? | Confirming empty frame's epoch ms / probability |
 | `terminalAutoModel` | number? | Version of the terminal-cars classifier model behind `ferryNotFullAuto` |
+| `terminalCarsSeen` / `terminalEmptySeen` / `terminalEmptyPending` / `terminalCarsPending` | mixed? | Streaming state for the tail rule (webcam.js): solid-cars-seen flag, cumulative observed-empty count, and the lone empty/cars frame awaiting its confirming neighbour (`{ ts }`) |
 
 ---
 

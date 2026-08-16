@@ -26,25 +26,21 @@ describe('classifyTerminal', () => {
     expect(verdict).not.toBe(null)
     expect(verdict.probability).toBeGreaterThanOrEqual(0)
     expect(verdict.probability).toBeLessThanOrEqual(1)
-    // Three-state now: true (cars) / false (confidently empty) / null (between
-    // the thresholds).
-    expect([true, false, null]).toContain(verdict.carsPresent)
+    // Two-state since the tail rule (2026-08-16): the unsure band is UI-only.
+    expect([true, false]).toContain(verdict.carsPresent)
   })
 
-  it('terminalState splits cars / empty / unsure at the two thresholds', () => {
-    const m = { threshold: 0.5, emptyThreshold: 0.35 }
+  it('terminalState is two-state at the single threshold', () => {
+    const m = { threshold: 0.5 }
     expect(terminalState(0.9, m)).toBe(true)
     expect(terminalState(0.5, m)).toBe(true)
-    expect(terminalState(0.49, m)).toBe(null) // was "empty" under one threshold
-    expect(terminalState(0.35, m)).toBe(null)
-    expect(terminalState(0.34, m)).toBe(false)
+    expect(terminalState(0.49, m)).toBe(false)
     expect(terminalState(0.0, m)).toBe(false)
   })
 
-  it('terminalState defaults to 0.5 / 0.35 when a model omits them', () => {
+  it('terminalState defaults to 0.5 when a model omits the threshold', () => {
     expect(terminalState(0.6, {})).toBe(true)
-    expect(terminalState(0.4, {})).toBe(null)
-    expect(terminalState(0.2, {})).toBe(false)
+    expect(terminalState(0.4, {})).toBe(false)
   })
 
   it('returns null when the model is disabled', async () => {
@@ -96,42 +92,62 @@ describe('classifyTerminal', () => {
   })
 })
 
-describe('terminalEmptyFrameTs', () => {
+describe('terminalEmptyFrameTs (tail rule)', () => {
   const f = (ts, carsPresent) => ({ ts, carsPresent })
+  const T = true
+  const F = false
+  const seq = (...states) => states.map((s, i) => f(i + 1, s))
 
-  it('returns the last ts of a confirmed (two consecutive) empty pair', () => {
-    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, false), f(4, true)])).toBe(3)
-    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, false), f(4, false)])).toBe(4)
+  it('confirms on the first two consecutive empties after solid cars', () => {
+    expect(terminalEmptyFrameTs(seq(T, T, F, F))).toBe(4)
+    // longer run: the ts is the run's confirming (second) frame, not its last
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, F))).toBe(4)
   })
 
   it('a lone empty frame is noise, not a confirmation', () => {
-    expect(terminalEmptyFrameTs([f(1, false), f(2, true)])).toBe(null)
-    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, true), f(4, false)])).toBe(null)
+    expect(terminalEmptyFrameTs(seq(T, T, F))).toBe(null)
+    expect(terminalEmptyFrameTs(seq(T, T, F, T, T))).toBe(null)
   })
 
-  it('cars in the final frames never negate an earlier confirmed pair', () => {
-    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, false), f(4, true), f(5, true)])).toBe(3)
+  it('SOLID cars returning after an empty window clears it — it was mid-sailing', () => {
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, T))).toBe(null)
+    // …and a new empty pair in the new tail confirms again
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, T, F, F))).toBe(8)
   })
 
-  it('requires a cars-present frame BEFORE the pair — empty-from-the-start proves nothing', () => {
-    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, false)])).toBe(null)
-    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, true), f(4, true)])).toBe(null)
-    // cars appearing AFTER an early empty pair do not retroactively confirm it
-    expect(terminalEmptyFrameTs([f(1, false), f(2, false), f(3, true), f(4, false), f(5, false)])).toBe(5)
+  it('an ISOLATED cars frame is a model blip: breaks a run, never starts a new tail', () => {
+    // blip after a confirmed window — the verdict stands
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, F, F))).toBe(4)
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, T))).toBe(4)
+    // blip between empties before confirmation — run restarts after it
+    expect(terminalEmptyFrameTs(seq(T, T, F, T, F, F))).toBe(6)
+  })
+
+  it('cars-first now means SOLID cars: a single cars frame proves nothing', () => {
+    expect(terminalEmptyFrameTs(seq(F, F, F))).toBe(null)
+    expect(terminalEmptyFrameTs(seq(T, F, F))).toBe(null)
+    // empty pair BEFORE the solid cars does not confirm
+    expect(terminalEmptyFrameTs(seq(F, F, T, T))).toBe(null)
   })
 
   it('a LONG all-empty window (>= MIN_ALL_EMPTY_FRAMES observed) is a quiet sailing and confirms', () => {
     const empties = (n) => Array.from({ length: n }, (_, i) => f(i + 1, false))
     expect(terminalEmptyFrameTs(empties(MIN_ALL_EMPTY_FRAMES))).toBe(MIN_ALL_EMPTY_FRAMES)
     expect(terminalEmptyFrameTs(empties(MIN_ALL_EMPTY_FRAMES - 1))).toBe(null)
-    // any cars frame anywhere disables the all-empty path (cars-first applies)
-    expect(terminalEmptyFrameTs([...empties(MIN_ALL_EMPTY_FRAMES), f(99, true)])).toBe(null)
+    // an isolated blip doesn't disable the quiet path (no SOLID cars seen),
+    // but its frame doesn't count as observed empty either
+    const withBlip = [...empties(5), f(6, true), ...Array.from({ length: 5 }, (_, i) => f(7 + i, false))]
+    expect(terminalEmptyFrameTs(withBlip)).toBe(11)
+    // solid cars anywhere disables the all-empty path (cars-first applies)
+    expect(terminalEmptyFrameTs([...empties(MIN_ALL_EMPTY_FRAMES), f(98, true), f(99, true)])).toBe(null)
   })
 
-  it('carsPresent null (dark frame) is unknown: breaks pairs, never counts', () => {
-    expect(terminalEmptyFrameTs([f(1, true), f(2, false), f(3, null), f(4, false)])).toBe(null)
-    expect(terminalEmptyFrameTs([f(1, true), f(2, null), f(3, false), f(4, false)])).toBe(4)
-    // dark frames don't count toward the all-empty minimum
+  it('carsPresent null (unknown) breaks runs and cars solidity, never counts', () => {
+    expect(terminalEmptyFrameTs(seq(T, T, F, null, F))).toBe(null)
+    expect(terminalEmptyFrameTs(seq(T, T, null, F, F))).toBe(5)
+    // null between two cars frames: neither is solid, so no tail ever starts
+    expect(terminalEmptyFrameTs(seq(T, null, T, F, F))).toBe(null)
+    // unknown frames don't count toward the all-empty minimum
     const mixed = Array.from({ length: MIN_ALL_EMPTY_FRAMES }, (_, i) =>
       f(i + 1, i % 2 ? null : false),
     )
@@ -139,7 +155,7 @@ describe('terminalEmptyFrameTs', () => {
   })
 
   it('returns null when never confirmed (inconclusive, not "full")', () => {
-    expect(terminalEmptyFrameTs([f(1, true), f(2, true)])).toBe(null)
+    expect(terminalEmptyFrameTs(seq(T, T))).toBe(null)
     expect(terminalEmptyFrameTs([])).toBe(null)
     expect(terminalEmptyFrameTs(undefined)).toBe(null)
   })

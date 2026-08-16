@@ -4,9 +4,11 @@ import { terminalEmptyFrameTs } from '../../functions/lib/lineup-labels.js'
 // Browser-side terminal-cars classifier — the "ferry left not full" signal.
 // Mirrors useLineupClassifier.js but for the Bowen terminal (departure)
 // timelapse and the terminal model: frames are classified in capture order
-// and the shared confirmed-pair rule (terminalEmptyFrameTs) applies — two
-// consecutive empty frames before departure mean everyone waiting got on.
-// One-way: late cars never cancel a confirmed empty pair.
+// and the shared TAIL rule (terminalEmptyFrameTs) applies — two consecutive
+// empty frames AFTER the last solid cars frame mean everyone waiting got on.
+// Because a later solid cars frame invalidates an earlier empty window
+// (it was mid-sailing, not departure), the verdict can only be evaluated
+// once ALL frames are classified — no early stop.
 //
 // Like the crosswalk classifier, this exists so verdicts appear without any
 // server deploy or backfill: any sailing whose terminal frames are still in
@@ -16,12 +18,14 @@ import { terminalEmptyFrameTs } from '../../functions/lib/lineup-labels.js'
 // night; see functions/lib/terminal-features.js) — the canvas extraction
 // here must match.
 
-// Two thresholds, mirroring functions/lib/terminal-classifier.js: cars at
-// p >= THRESHOLD, confidently empty at p < EMPTY_THRESHOLD, unknown between
-// (null — breaks a confirming pair, counts as neither).
+// Single decision threshold, mirroring functions/lib/terminal-classifier.js:
+// cars at p >= THRESHOLD, else empty. EMPTY_THRESHOLD survives only as the
+// UI band boundary below — 'unsure' frames are where a rider's label is
+// worth most, but they no longer gate the verdict (the tail rule does; see
+// lineup-labels.js).
 export const THRESHOLD = model.threshold ?? 0.5
 export const EMPTY_THRESHOLD = model.emptyThreshold ?? 0.35
-const terminalState = (p) => (p >= THRESHOLD ? true : p < EMPTY_THRESHOLD ? false : null)
+const terminalState = (p) => p >= THRESHOLD
 
 // Which side of the two thresholds a score falls on — 'unsure' is the band
 // where the model is least useful and a rider's label is worth most.
@@ -146,8 +150,9 @@ export async function classifyAllTerminalFrames(departureTimelapsePaths) {
   return frames
 }
 
-// v2: adds `prob` (the confirming frame's empty-confidence) to cache entries.
-const CACHE_KEY = 'terminalAutoVerdicts.v2'
+// v3: tail-rule verdicts (2026-08-16) — v2 entries were confirmed-pair
+// verdicts under the 0.35 empty threshold and must all be recomputed.
+const CACHE_KEY = 'terminalAutoVerdicts.v3'
 let cache = null
 function loadCache() {
   if (cache) return cache
@@ -176,15 +181,14 @@ export function cachedNotFull(sailingKey) {
   return hit && hit.emptyTs != null ? { emptyTs: hit.emptyTs, prob: hit.prob ?? null } : null
 }
 
-// Classify a sailing's terminal frames and return { emptyTs, prob } when a
-// confirmed empty pair says the ferry left not full, or null (inconclusive —
-// never "full"). `prob` is the confirming frame's empty-confidence (1 − p),
-// same number the server stamps as terminalEmptyProb. Unlike the crosswalk
-// detector this cannot early-stop on the first hit (the LAST confirmed pair
-// matters less than any pair, so the first confirmed pair is already
-// decisive) — it stops as soon as one pair confirms. `final` marks a
-// departed sailing whose null verdict may cache. `force` re-classifies past
-// a cached no-detection — used by the explicit "ask robot" button, where a
+// Classify a sailing's terminal frames and return { emptyTs, prob } when the
+// tail rule says the ferry left not full, or null (inconclusive — never
+// "full"). `prob` is the confirming frame's empty-confidence (1 − p), same
+// number the server stamps as terminalEmptyProb. NO early stop: under the
+// tail rule a later solid cars frame invalidates an earlier empty window, so
+// the verdict only exists once every frame is classified. `final` marks a
+// departed sailing whose verdict may cache. `force` re-classifies past a
+// cached no-detection — used by the explicit "ask robot" button, where a
 // stale null (cached before the sailing finished, or by an older model pass)
 // shouldn't make the click a silent no-op.
 export async function predictNotFull(
@@ -205,20 +209,18 @@ export async function predictNotFull(
 
   const frames = []
   try {
-    for (const path of paths) {
-      frames.push(await classifyFrame(path))
-      const emptyTs = terminalEmptyFrameTs(frames)
-      if (emptyTs != null) {
-        const confirming = frames.find((f) => f.ts === emptyTs)
-        const prob = confirming ? Math.round((1 - confirming.p) * 1000) / 1000 : null
-        c.sailings[sailingKey] = { emptyTs, prob, final: true }
-        saveCache()
-        return { emptyTs, prob }
-      }
-    }
+    for (const path of paths) frames.push(await classifyFrame(path))
   } catch {
     // Frames unreachable (aged out / network) — don't cache, retry later.
     return null
+  }
+  const emptyTs = terminalEmptyFrameTs(frames)
+  if (emptyTs != null) {
+    const confirming = frames.find((f) => f.ts === emptyTs)
+    const prob = confirming ? Math.round((1 - confirming.p) * 1000) / 1000 : null
+    c.sailings[sailingKey] = { emptyTs, prob, final: true }
+    saveCache()
+    return { emptyTs, prob }
   }
   if (final) {
     c.sailings[sailingKey] = { emptyTs: null, final: true }

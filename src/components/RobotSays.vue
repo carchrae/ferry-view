@@ -195,7 +195,7 @@ import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 // The robots' take on one sailing, as its own "Robot says:" block:
 //  - crosswalk: suggest-with-verification (button → frame-check dialog →
 //    agree) or a witty verdict against the first tagger's mark,
-//  - fullness: the terminal camera's one-way "left not full" signal,
+//  - fullness: the terminal camera's "left not full" signal (tail rule),
 //    compared against rider capacity reports when they exist. Display-only:
 //    "not full" doesn't map to one capacity value, so there is nothing safe
 //    to auto-save.

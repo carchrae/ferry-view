@@ -82,6 +82,7 @@
 import { ref, computed, watch } from 'vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 import { isDarkAt } from '../../functions/lib/daylight.js'
+import { terminalBand, THRESHOLD } from 'src/composables/useTerminalClassifier'
 
 // The per-frame evidence behind a terminal "not full" verdict — the same
 // details the classifier-results report page shows for a flagged sailing:
@@ -111,11 +112,13 @@ const isConfirming = (i) => hitIdx.value >= 0 && (i === hitIdx.value || i === hi
 const nightVerdict = computed(
   () => hitIdx.value >= 0 && (seq.value[hitIdx.value]?.dark || seq.value[hitIdx.value - 1]?.dark),
 )
-// Three states: cars / confidently empty / unsure (between the model's two
-// thresholds — grey, and unable to confirm a verdict).
-const stateClass = (f) => (f.carsPresent === true ? 'cars' : f.carsPresent === false ? 'empty' : 'unsure')
+// Display bands from the score, not carsPresent: the verdict rule is
+// two-state (tail rule, lineup-labels.js) but the grey 'unsure' band is
+// still the honest visual for coin-flip frames — and where a rider's label
+// is worth most.
+const stateClass = (f) => terminalBand(f.p)
 const blockOpacity = (f) =>
-  f.carsPresent === null ? '1' : Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
+  stateClass(f) === 'unsure' ? '1' : Math.max(0.25, f.p >= THRESHOLD ? f.p : 1 - f.p).toFixed(2)
 const blockTitle = (f) =>
   `${timeLabel(f.ts)} · p ${f.p.toFixed(2)}${f.dark ? ' · dark' : ''} · ${stateClass(f)}`
 

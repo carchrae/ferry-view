@@ -253,21 +253,30 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   different questions. Hand labels win over rider labels; conflicts are dumped
   to `training-data/rider-label-disagreements.json` rather than dropped (see
   [training-data.md](training-data.md)).
-- **Two thresholds, asymmetric** (2026-08-16): cars at `p >= threshold`
-  (0.5), confidently empty only at `p < emptyThreshold` (0.35), and scores
-  between the two are **unknown** — they confirm nothing and break a pending
-  pair. A single 0.5 cut let coin-flip frames confirm an empty terminal: 140
-  of 210 verdicts rested on a frame scoring above 0.25, and 17 of 361
-  hand-labeled *cars* frames scored below 0.5. Only the empty side is
-  tightened; raising the cars threshold would weaken the cars-first guard.
-  Cost: verdicts drop from 210 to 112, all of them now agreeing with the
-  rider tags. The underlying cause is score separation — labeled cars frames
-  have median p 0.95, labeled empty frames only 0.39 — so the real fix is
-  more empty-frame labels, not a threshold.
-- An **empty terminal frame before departure** means everyone waiting got on
-  → `ferryNotFullAuto`. Cars in the *final* frame prove nothing — they may
-  have arrived past the cutoff — so a car-filled ending never negates an
-  earlier empty frame (`terminalEmptyFrameTs()` in `lineup-labels.js`).
+- **Tail rule, single threshold** (2026-08-16, second revision of the day):
+  cars at `p >= threshold` (0.5), else empty, and the confirming empty pair
+  must come **after the last solid cars frame**. A stricter per-frame empty
+  threshold (0.35 with an unknown band between) was tried first and turned
+  out to be the wrong mechanism: it cut coverage of with-room sailings from
+  74% to 43% while barely moving precision, because the sweep
+  (`training-data/experiments/empty-threshold-sweep.mjs`) showed **every**
+  wrong flag had the same shape — an empty window in the *middle* of the
+  sailing with cars returning after (loading gap, camera hiccup), which no
+  per-frame confidence can catch. Requiring the empty run to sit in the tail
+  scored 62% coverage with 0 wrong among 239 tagged flags. The 0.35 band
+  survives as `emptyThreshold` in the model JSON, but **UI-only**: it draws
+  the grey "unsure" strips and steers the labelling dialog to the frames
+  where a rider's answer is worth most.
+- **Solid cars vs blips**: a cars frame only counts (for cars-first, and for
+  starting a new tail) when an adjacent frame is also cars. An isolated
+  single-frame "cars" between empties is likelier a model false positive
+  than a real queue: it breaks an empty run but never invalidates a verdict.
+- An **empty terminal at departure** means everyone waiting got on →
+  `ferryNotFullAuto`. This replaced the old one-way reading: solid cars
+  after an empty window now *clear* a stamped verdict (it was mid-sailing),
+  server-side too — `captureDepartureTimelapse` deletes the auto fields,
+  withdraws the aggregate `nf`, and retracts the robot's own capacity report
+  (never a human's). An isolated trailing cars frame still proves nothing.
 - **No crosswalk veto** (tried 2026-08-10, removed 2026-08-16): suppressing
   the empty pair when the lineup had reached the crosswalk was wrong in
   principle — a long line that all boards *is* "everyone waiting got on", so
@@ -278,11 +287,12 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   16 verdicts to catch 4 wrong ones — a 3:1 trade against the correct ones.
   The report still marks these busy-lineup sailings as the interesting case.
 - **Cars first, quiet-window exception** (2026-08-11): the pair must come
-  after a cars-present frame — an empty-from-the-start window may just have
+  after a *solid* cars frame — an empty-from-the-start window may just have
   missed the loading — unless the window is long (`MIN_ALL_EMPTY_FRAMES` =
-  10 observed-empty frames, cars never seen): those are genuinely quiet
-  sailings (riders tag them Not Full / 25%, never Full). Streaming state:
-  `terminalCarsSeen`, `terminalEmptySeen` on the sailingStatus doc.
+  10 observed-empty frames, solid cars never seen): those are genuinely
+  quiet sailings (riders tag them Not Full / 25%, never Full). Streaming
+  state: `terminalCarsSeen`, `terminalCarsPending`, `terminalEmptySeen`,
+  `terminalEmptyPending` on the sailingStatus doc.
 - **Dark frames are marked, not excluded** (2026-08-11, `lib/daylight.js`):
   below civil twilight the model misreads headlights (~2× daytime error).
   The pixels can't detect night — auto-exposure keeps mean luminance above
@@ -308,10 +318,10 @@ lighting) → `functions/models/terminal-cars-classifier.json` (v3, trained
 2026-08-10 on 488 labeled frames: 5-fold CV precision 0.94 / recall 0.91;
 a lone empty frame misreads ~25% of the time, hence the two-consecutive
 confirmation) → `functions/lib/terminal-classifier.js` (runtime, hooked into
-`captureDepartureTimelapse`; a confirmed empty pair stamps
+`captureDepartureTimelapse`; an empty pair after the last solid cars stamps
 `terminalEmptyFrameTs` / `ferryNotFullAuto`, aggregate key `nf`; a lone
-empty parks as `terminalEmptyPending`, and the crosswalk veto above
-suppresses both). Training:
+empty parks as `terminalEmptyPending`, a lone cars as `terminalCarsPending`,
+and solid cars clear a stamped verdict — see the tail rule above). Training:
 
 ```bash
 npm run lineup:export      # also downloads terminal frames + terminal-manifest.csv

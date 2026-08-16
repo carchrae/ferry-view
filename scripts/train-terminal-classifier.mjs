@@ -57,11 +57,11 @@ const EPOCHS = Number(flag('epochs', '300'))
 const LR = Number(flag('lr', '0.5'))
 const L2 = Number(flag('l2', '1e-4'))
 const THRESHOLD = Number(flag('threshold', '0.5'))
-// Asymmetric on purpose (see functions/lib/terminal-classifier.js): cars at
-// p >= THRESHOLD, confidently empty only at p < EMPTY_THRESHOLD, unknown in
-// between. Frame-level metrics and the labeled cards still use THRESHOLD —
-// that is the cars/no-cars question the labels answer; EMPTY_THRESHOLD only
-// gates what may CONFIRM a not-full verdict.
+// EMPTY_THRESHOLD is UI-only since 2026-08-16: it draws the grey "unsure"
+// band in the report strips and the labelling views (where a rider's label
+// is worth most), but the VERDICT is two-state at THRESHOLD — correctness
+// comes from the tail rule in lineup-labels.js, not from per-frame
+// confidence (see training-data/experiments/empty-threshold-sweep.mjs).
 const EMPTY_THRESHOLD = Number(flag('empty-threshold', '0.35'))
 const FORCE = args.includes('--force')
 const LABEL_ONLY = args.includes('--label-only')
@@ -320,8 +320,8 @@ const freshModel = {
   trainedAt: new Date().toISOString(),
 }
 
-// Per-sailing verdicts over EVERY archived frame, via the shared
-// confirmed-pair rule.
+// Per-sailing verdicts over EVERY archived frame, via the shared tail rule
+// (terminalEmptyFrameTs).
 const bySailing = new Map()
 for (const s of samples) {
   if (!bySailing.has(s.sailingKey)) bySailing.set(s.sailingKey, [])
@@ -338,7 +338,7 @@ const verdicts = [...bySailing.keys()]
       // frames still count in verdicts, but they're marked in the report —
       // the model's night error is ~2× daytime, so a verdict built on dark
       // frames deserves a skeptical eye (and a night model, come winter).
-      const carsPresent = p >= THRESHOLD ? true : p < EMPTY_THRESHOLD ? false : null
+      const carsPresent = p >= THRESHOLD
       return { ...s, p, dark: isDarkAt(s.ts), carsPresent }
     })
     const emptyTs = terminalEmptyFrameTs(seq)
@@ -431,12 +431,12 @@ function scoreStripHtml(v) {
   return `<div class="fstrip">${v.frames
     .map((f, i) => {
       const conf = hitIdx >= 0 && (i === hitIdx || i === hitIdx - 1)
-      // Three states: cars / empty / unsure (between the thresholds — grey,
-      // and never able to confirm a verdict).
-      const cls = f.carsPresent === true ? 'cars' : f.carsPresent === false ? 'empty' : 'unsure'
-      const op =
-        f.carsPresent === null ? '1' : Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
-      return `<span class="${cls}${conf ? ' conf' : ''}${f.dark ? ' dk' : ''}" style="opacity:${op}" title="${escHtml(fmtTime(f.ts))} · p ${f.p.toFixed(2)}${f.carsPresent === null ? ' · unsure' : ''}${f.dark ? ' · dark' : ''}"></span>`
+      // Display bands from the score, not carsPresent: the verdict is
+      // two-state (tail rule) but the grey unsure band stays the honest
+      // visual for coin-flip frames.
+      const band = f.p >= THRESHOLD ? 'cars' : f.p < EMPTY_THRESHOLD ? 'empty' : 'unsure'
+      const op = band === 'unsure' ? '1' : Math.max(0.25, f.carsPresent ? f.p : 1 - f.p).toFixed(2)
+      return `<span class="${band}${conf ? ' conf' : ''}${f.dark ? ' dk' : ''}" style="opacity:${op}" title="${escHtml(fmtTime(f.ts))} · p ${f.p.toFixed(2)}${band === 'unsure' ? ' · unsure' : ''}${f.dark ? ' · dark' : ''}"></span>`
     })
     .join('')}</div>`
 }
@@ -580,20 +580,22 @@ function verdictsSectionHtml(srcFor) {
 <section class="predictions" id="verdicts">
   <h2>Ferry not-full verdicts</h2>
   <p>Every archived frame of every sailing is classified in capture order; the
-  ferry counts as having left <strong>not full</strong> when the terminal reads
-  empty in <strong>two consecutive frames</strong> before departure (a lone empty
-  frame misreads ~25% of the time) — both frames of the confirming pair are shown.
-  A frame only counts as empty at <strong>p &lt; ${EMPTY_THRESHOLD}</strong>, stricter
-  than the p ≥ ${THRESHOLD} used to call cars: scores between the two are
-  <strong>unsure</strong> (grey in the strips) and confirm nothing, because the model
-  is decisive about cars but mushy about empty.
-  The pair must come <strong>after a cars-present frame</strong>, unless the whole
+  ferry counts as having left <strong>not full</strong> under the <strong>tail
+  rule</strong>: the terminal reads empty (p &lt; ${THRESHOLD}) in
+  <strong>two consecutive frames</strong> (a lone empty frame misreads ~25% of
+  the time) <strong>after the last solid cars frame</strong> — both frames of the
+  confirming pair are shown. Cars returning after an empty window prove it was
+  mid-sailing, not departure, so it never confirms; an <em>isolated</em>
+  single cars frame between empties is treated as a model blip (it breaks a
+  pair but doesn't start a new tail). Scores between ${EMPTY_THRESHOLD} and
+  ${THRESHOLD} are shaded <strong>unsure</strong> (grey in the strips) — that
+  band no longer gates the verdict, it marks the frames where a rider's label
+  helps the model most.
+  The pair must come <strong>after solid cars</strong>, unless the whole
   window is a long quiet one (10+ observed-empty frames, cars never seen).
   <strong>Dark frames</strong> (sun below civil twilight) still count, but they are
   marked — navy band on the strip block, "dark" in the tooltip — because the
   model's error at night is ~2× daytime; night verdicts carry a ⚠ note.
-  The signal is one-way: late-arriving cars in the final frames never cancel an
-  earlier confirmed-empty pair.
   Flagged ${flagged.length} of ${verdicts.length} sailings —
   ${nfCounts.match} agree with a human capacity tag, <strong>${nfCounts.mismatch}
   contradict one (human said Full)</strong>, ${nfCounts.untagged} have no tag.
@@ -649,7 +651,7 @@ function terminalPage(srcFor) {
     foff: -0.5,
     posLabel: 'cars waiting',
     negLabel: 'no cars',
-    statsLine: `${labeledSamples.length} labeled frames (${samples.length} total) · cars p≥${THRESHOLD}, empty p&lt;${EMPTY_THRESHOLD} · trained ${escHtml(freshModel.trainedAt)}`,
+    statsLine: `${labeledSamples.length} labeled frames (${samples.length} total) · cars p≥${THRESHOLD}, unsure band ${EMPTY_THRESHOLD}–${THRESHOLD} (UI only) · trained ${escHtml(freshModel.trainedAt)}`,
     topSections: verdictsSectionHtml(srcFor),
     rows: cardRows,
     groupSummary: (key, list) => {

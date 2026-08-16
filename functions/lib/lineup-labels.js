@@ -97,47 +97,64 @@ export function firstSustainedPositiveTs(frames) {
   return null
 }
 
-// Terminal-camera "ferry was not full" rule. `frames` is capture-ordered
-// [{ ts, carsPresent }] from the departure timelapse. An empty terminal
-// frame before departure means everyone waiting got on — the ferry left
-// with room. Two safeguards:
+// Terminal-camera "ferry was not full" TAIL rule (2026-08-16, replacing the
+// confirmed-pair rule). `frames` is capture-ordered [{ ts, carsPresent }]
+// from the departure timelapse. The 2026-08-16 sweep
+// (training-data/experiments/empty-threshold-sweep.mjs, 510 tagged sailings)
+// showed EVERY wrong not-full flag had the same shape — an empty window in
+// the MIDDLE of the sailing with cars returning after — while tightening the
+// per-frame empty threshold only cost coverage (43% at pair<0.35, 7 wrong).
+// The rule below scored 62% coverage with 0 wrong among 239 tagged flags.
+//  - TAIL: the confirming frames must come AFTER the last SOLID cars frame.
+//    An empty window that cars follow was mid-sailing, not departure — this
+//    is what actually delivers correctness, not per-frame confidence.
+//  - SOLID CARS: a cars frame only counts when an adjacent frame is also
+//    cars. An isolated single-frame "cars" blip between empties is likelier
+//    a model false positive than a real queue: it breaks an empty run but
+//    neither starts a new tail nor satisfies cars-first.
 //  - CONFIRMATION: a lone empty frame is noise (per-frame false-empty rate
 //    was ~25% in the 2026-07 evaluation) — it takes two CONSECUTIVE empty
 //    frames to count, mirroring firstSustainedPositiveTs.
-//  - ONE-WAY: cars in the FINAL frames prove nothing (they may have arrived
-//    past the cutoff), so a car-filled ending never negates an earlier
-//    confirmed-empty pair.
-//  - CARS FIRST, softened: a pair normally only counts after at least one
-//    cars-present frame — a window that was empty from its very first frame
-//    may have simply missed the loading (late capture start). EXCEPT when
-//    the window is long: MIN_ALL_EMPTY_FRAMES observed-empty frames with no
-//    cars ever is a genuinely quiet sailing (measured: all-empty windows of
-//    10+ frames are tagged Not Full / 25% by riders, never Full; the two
-//    shorter ones on record were degenerate).
-//  - carsPresent === null means UNKNOWN (e.g. a dark frame): it breaks a
-//    pair, never sets cars-seen, and doesn't count as observed.
-// Returns the ts of the last frame of the last confirmed-empty pair, or
-// null when never confirmed (inconclusive — NOT "full").
+//  - CARS FIRST, softened: the tail only confirms after solid cars was seen
+//    (a window empty from its very first frame may have missed the loading)
+//    EXCEPT when the window is long: MIN_ALL_EMPTY_FRAMES observed-empty
+//    frames with no solid cars ever is a genuinely quiet sailing (measured:
+//    all-empty windows of 10+ frames are tagged Not Full / 25% by riders,
+//    never Full).
+//  - carsPresent === null means UNKNOWN (e.g. a dark frame): it breaks an
+//    empty run, breaks cars solidity, and doesn't count as observed.
+// Returns the ts of the CONFIRMING (second) frame of the first qualifying
+// empty run in the tail — "empty from then on" — or null when never
+// confirmed (inconclusive — NOT "full"). The streaming equivalent in
+// webcam.js (pending → confirm, solid cars CLEARS a stamped verdict) must
+// match this rule.
 export const MIN_ALL_EMPTY_FRAMES = 10
 export function terminalEmptyFrameTs(frames) {
   const list = frames || []
-  const anyCars = list.some((f) => f?.carsPresent === true)
-  const observedEmpty = list.filter((f) => f?.carsPresent === false).length
-  let lastPair = null
-  let lastPairAfterCars = null
-  let carsSeen = false
-  for (let i = 0; i + 1 < list.length; i++) {
-    if (list[i]?.carsPresent === true) carsSeen = true
+  const solid = (i) =>
+    list[i]?.carsPresent === true &&
+    (list[i - 1]?.carsPresent === true || list[i + 1]?.carsPresent === true)
+  let lastSolid = -1
+  for (let i = 0; i < list.length; i++) if (solid(i)) lastSolid = i
+  const carsSeen = lastSolid >= 0
+  let observedEmpty = 0
+  for (let i = 0; i <= lastSolid; i++) if (list[i]?.carsPresent === false) observedEmpty++
+  let run = 0
+  for (let i = lastSolid + 1; i < list.length; i++) {
+    if (list[i]?.carsPresent === false) {
+      observedEmpty++
+      run++
+    } else {
+      run = 0
+      continue
+    }
     if (
-      list[i]?.carsPresent === false &&
-      list[i + 1]?.carsPresent === false &&
-      typeof list[i + 1].ts === 'number'
+      run >= 2 &&
+      (carsSeen || observedEmpty >= MIN_ALL_EMPTY_FRAMES) &&
+      typeof list[i].ts === 'number'
     ) {
-      lastPair = list[i + 1].ts
-      if (carsSeen) lastPairAfterCars = list[i + 1].ts
+      return list[i].ts
     }
   }
-  if (lastPairAfterCars != null) return lastPairAfterCars
-  if (!anyCars && observedEmpty >= MIN_ALL_EMPTY_FRAMES) return lastPair
   return null
 }

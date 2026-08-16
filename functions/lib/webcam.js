@@ -371,20 +371,31 @@ export async function captureDepartureTimelapse(db, data) {
   await file.makePublic()
 
   // Terminal-cars detection (no-op until a trained model is committed — see
-  // lib/terminal-classifier.js). Streaming form of terminalEmptyFrameTs()
-  // (lineup-labels.js): an empty frame only counts once the NEXT frame is
-  // also empty — a lone empty is noise, so it parks as terminalEmptyPending
-  // and a cars-present frame clears it. A confirmed pair stamps
-  // ferryNotFullAuto, which is one-way: later car-filled frames (late
-  // arrivals) never clear it. The auto fields are permanent — human reports
-  // never remove them (they overwrite only lastCapacity/capacitySource).
+  // lib/terminal-classifier.js). Streaming form of the TAIL rule in
+  // terminalEmptyFrameTs() (lineup-labels.js, 2026-08-16): a not-full verdict
+  // needs two CONSECUTIVE empty frames AFTER the last SOLID cars frame.
+  //  - a lone empty frame is noise → parks as terminalEmptyPending;
+  //  - a lone cars frame is likelier a model false positive than a real
+  //    queue → parks as terminalCarsPending: it breaks an empty run but
+  //    doesn't (yet) count as cars;
+  //  - two consecutive cars frames = SOLID: sets terminalCarsSeen (the
+  //    cars-first guard) and — the crux of the tail rule — CLEARS any
+  //    stamped verdict: cars returning prove the empty window was
+  //    mid-sailing, not departure. Every wrong flag in the 2026-08-16 sweep
+  //    had exactly that shape.
+  // Once stamped, later EMPTY frames never move the ts (first qualifying run
+  // of the current tail, matching the batch rule). Human reports never touch
+  // the auto fields (they overwrite only lastCapacity/capacitySource).
   const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
   const terminalFields = {}
   let firstConfirm = false
+  let verdictCleared = false
+  let curCapacitySource = null
   const verdict = await classifyTerminal(best)
   if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
     const cur = snap.exists ? snap.data() : {}
+    curCapacitySource = cur.capacitySource || null
     // NO crosswalk veto here (tried 2026-08-10, removed 2026-08-16): a lineup
     // reaching the crosswalk does NOT contradict an empty terminal. A long
     // line that all gets aboard is exactly "everyone waiting got on" — the
@@ -396,34 +407,58 @@ export async function captureDepartureTimelapse(db, data) {
     // veto is inherent rather than something to enforce here.
     //
     // NOTE on dark frames (lib/daylight.js): below civil twilight the model
-    // misreads headlights (~2× the daytime error) — the one known-wrong
-    // verdict on record is a night sailing. Dark frames still count (an
-    // exclusion was tried 2026-08-11 and rolled back: it also silenced ~50
-    // CORRECT night verdicts); the report page marks them so night verdicts
-    // are easy to eyeball, and a dedicated night model is the winter plan.
+    // misreads headlights (~2× the daytime error) — dark frames still count
+    // (an exclusion was tried 2026-08-11 and rolled back: it also silenced
+    // ~50 CORRECT night verdicts); the report page marks them so night
+    // verdicts are easy to eyeball, and a dedicated night model is the
+    // winter plan.
     if (verdict.carsPresent === true) {
-      // Cars-first guard (mirrors terminalEmptyFrameTs): an empty pair only
-      // counts after loading was actually observed…
-      if (!cur.terminalCarsSeen) terminalFields.terminalCarsSeen = true
       if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+      if (cur.terminalCarsPending) {
+        // Second consecutive cars frame — solid. Start a new tail: any
+        // stamped verdict was mid-sailing and comes back out, everywhere it
+        // was written (doc fields, aggregate nf, robot capacity report).
+        if (!cur.terminalCarsSeen) terminalFields.terminalCarsSeen = true
+        terminalFields.terminalCarsPending = FieldValue.delete()
+        if (cur.ferryNotFullAuto) {
+          verdictCleared = true
+          terminalFields.ferryNotFullAuto = FieldValue.delete()
+          terminalFields.terminalEmptyFrameTs = FieldValue.delete()
+          terminalFields.terminalEmptyProb = FieldValue.delete()
+          terminalFields.terminalAutoModel = FieldValue.delete()
+          if (cur.capacitySource === 'robot') {
+            // Only the robot's own 'Not Full' report is withdrawn — human
+            // and automated capacities outrank it and stay.
+            terminalFields.lastCapacity = FieldValue.delete()
+            terminalFields.capacitySource = FieldValue.delete()
+          }
+        }
+      } else {
+        terminalFields.terminalCarsPending = { ts: timestamp }
+      }
     } else if (verdict.carsPresent === null) {
-      // Between the two thresholds: the model isn't sure either way, so this
-      // frame confirms nothing and counts as nothing — it only breaks a
-      // pending pair, exactly like a cars frame would.
+      // Unknown (reserved for e.g. a future night model declining to
+      // answer): confirms nothing, counts as nothing — breaks both the
+      // empty run and cars solidity.
       if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+      if (cur.terminalCarsPending) terminalFields.terminalCarsPending = FieldValue.delete()
     } else {
-      // …EXCEPT a long all-empty window (MIN_ALL_EMPTY_FRAMES observed empty
-      // frames, cars never seen) — a genuinely quiet sailing.
+      // Empty frame. An isolated preceding cars frame was a blip: forget it.
+      if (cur.terminalCarsPending) terminalFields.terminalCarsPending = FieldValue.delete()
       const emptySeen = (cur.terminalEmptySeen || 0) + 1
       terminalFields.terminalEmptySeen = emptySeen
+      // Cars-first guard, softened by the long quiet window (mirrors
+      // MIN_ALL_EMPTY_FRAMES in the batch rule).
       const confirmable = cur.terminalCarsSeen || emptySeen >= MIN_ALL_EMPTY_FRAMES
-      if (cur.terminalEmptyPending && confirmable) {
+      if (cur.ferryNotFullAuto) {
+        // Already stamped in this tail — keep the original confirming ts.
+      } else if (cur.terminalEmptyPending && confirmable) {
         terminalFields.terminalEmptyFrameTs = timestamp
         terminalFields.ferryNotFullAuto = true
         terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
         const modelVersion = terminalModelVersion()
         if (modelVersion != null) terminalFields.terminalAutoModel = modelVersion
-        firstConfirm = !cur.ferryNotFullAuto
+        firstConfirm = true
       } else if (!cur.terminalEmptyPending) {
         terminalFields.terminalEmptyPending = { ts: timestamp }
       }
@@ -458,12 +493,19 @@ export async function captureDepartureTimelapse(db, data) {
     robotReported = capacityApplied
   }
 
+  // ferryNotFullAuto is `true` on a fresh stamp but a FieldValue.delete()
+  // sentinel (truthy!) on a cleared one — compare against true explicitly.
   await upsertBowenSailing(db, {
     dateIso: data.dateIso,
     sailingTime: decision.sailingTime,
     addDepartureTs: timestamp,
-    ...(terminalFields.ferryNotFullAuto ? { nf: true } : {}),
+    ...(terminalFields.ferryNotFullAuto === true ? { nf: true } : {}),
     ...(robotReported ? { cap: 'Not Full', src: 'robot' } : {}),
+    // Solid cars invalidated a stamped verdict: withdraw nf (and the robot's
+    // capacity, when the robot was the source) from the aggregate too.
+    ...(verdictCleared
+      ? { clearKeys: curCapacitySource === 'robot' ? ['nf', 'cap', 'src'] : ['nf'] }
+      : {}),
   })
 
   logAttribution('Departure timelapse', decision, now)
