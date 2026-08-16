@@ -1,5 +1,5 @@
 import model from '../../functions/models/terminal-cars-classifier.json'
-import { terminalEmptyFrameTs } from '../../functions/lib/lineup-labels.js'
+import { terminalEmptyFrameTs, terminalFullAtDeparture } from '../../functions/lib/lineup-labels.js'
 
 // Browser-side terminal-cars classifier — the "ferry left not full" signal.
 // Mirrors useLineupClassifier.js but for the Bowen terminal (departure)
@@ -150,9 +150,11 @@ export async function classifyAllTerminalFrames(departureTimelapsePaths) {
   return frames
 }
 
-// v3: tail-rule verdicts (2026-08-16) — v2 entries were confirmed-pair
-// verdicts under the 0.35 empty threshold and must all be recomputed.
-const CACHE_KEY = 'terminalAutoVerdicts.v3'
+// v4: adds the full verdict (fullAt/fullProb) beside the not-full one; v3
+// entries lack it and must be recomputed. Entries cache only the FRAME
+// facts — the crosswalk veto on full is applied at read time, so a verdict
+// can appear later when the crosswalk evidence arrives without reclassifying.
+const CACHE_KEY = 'terminalAutoVerdicts.v4'
 let cache = null
 function loadCache() {
   if (cache) return cache
@@ -173,33 +175,52 @@ function saveCache() {
   }
 }
 
+// Turn a cache entry's frame facts into the verdict the caller sees.
+// `crosswalkOk` = the lineup demonstrably reached the crosswalk (robot
+// detection or a human mark) — Tom's rule: never reaching it vetoes any
+// full claim. The two verdicts are mutually exclusive by construction
+// (four confident-cars frames at the end preclude an empty tail).
+function resolveVerdict(entry, crosswalkOk) {
+  if (!entry) return null
+  if (entry.emptyTs != null)
+    return { kind: 'notFull', emptyTs: entry.emptyTs, prob: entry.prob ?? null }
+  if (entry.fullAt != null && crosswalkOk)
+    return { kind: 'full', fullAt: entry.fullAt, prob: entry.fullProb ?? null }
+  return null
+}
+
 // Cached verdict lookup (no network, no side effects) — lets the departures
 // page re-apply an already-computed certainty after the live aggregate
 // subscription rebuilds its sailing objects.
-export function cachedNotFull(sailingKey) {
-  const hit = loadCache().sailings[sailingKey]
-  return hit && hit.emptyTs != null ? { emptyTs: hit.emptyTs, prob: hit.prob ?? null } : null
+export function cachedTerminal(sailingKey, { crosswalkOk = false } = {}) {
+  return resolveVerdict(loadCache().sailings[sailingKey], crosswalkOk)
 }
 
-// Classify a sailing's terminal frames and return { emptyTs, prob } when the
-// tail rule says the ferry left not full, or null (inconclusive — never
-// "full"). `prob` is the confirming frame's empty-confidence (1 − p), same
-// number the server stamps as terminalEmptyProb. NO early stop: under the
-// tail rule a later solid cars frame invalidates an earlier empty window, so
-// the verdict only exists once every frame is classified. `final` marks a
-// departed sailing whose verdict may cache. `force` re-classifies past a
-// cached no-detection — used by the explicit "ask robot" button, where a
-// stale null (cached before the sailing finished, or by an older model pass)
-// shouldn't make the click a silent no-op.
-export async function predictNotFull(
+// Classify a sailing's terminal frames and return the three-state verdict:
+//   { kind: 'notFull', emptyTs, prob } — tail rule: empty pair after the
+//     last solid cars frame; prob is the confirming frame's empty
+//     confidence (1 − p), the number the server stamps as terminalEmptyProb.
+//   { kind: 'full', fullAt, prob } — the last FULL_TAIL_FRAMES frames all
+//     confidently cars AND crosswalkOk (the veto, see resolveVerdict);
+//     prob is the last frame's cars confidence.
+//   null — inconclusive (never a claim either way).
+// NO early stop: later frames can invalidate either verdict, so it only
+// exists once every frame is classified. `final` marks a departed sailing
+// whose verdict may cache. `force` re-classifies past a cached
+// no-detection — used by the explicit "question robot" button, where a
+// stale null shouldn't make the click a silent no-op.
+export async function predictTerminal(
   sailingKey,
   departureTimelapsePaths,
-  { final = true, force = false } = {},
+  { final = true, force = false, crosswalkOk = false } = {},
 ) {
   if (!terminalClassifierReady) return null
   const c = loadCache()
   const hit = c.sailings[sailingKey]
-  if (hit && hit.emptyTs != null) return { emptyTs: hit.emptyTs, prob: hit.prob ?? null }
+  // A positive from a finished sailing is settled; one from a sailing still
+  // boarding can be invalidated by later frames, so force recomputes it.
+  if (hit && (hit.emptyTs != null || hit.fullAt != null) && (hit.final || !force))
+    return resolveVerdict(hit, crosswalkOk)
   if (hit?.final && !force) return null
 
   const paths = [...(departureTimelapsePaths || [])]
@@ -215,16 +236,21 @@ export async function predictNotFull(
     return null
   }
   const emptyTs = terminalEmptyFrameTs(frames)
-  if (emptyTs != null) {
-    const confirming = frames.find((f) => f.ts === emptyTs)
-    const prob = confirming ? Math.round((1 - confirming.p) * 1000) / 1000 : null
-    c.sailings[sailingKey] = { emptyTs, prob, final: true }
-    saveCache()
-    return { emptyTs, prob }
+  const fullAt = emptyTs == null ? terminalFullAtDeparture(frames) : null
+  const confirming = emptyTs != null ? frames.find((f) => f.ts === emptyTs) : null
+  const entry = {
+    emptyTs,
+    prob: confirming ? Math.round((1 - confirming.p) * 1000) / 1000 : null,
+    fullAt,
+    fullProb:
+      fullAt != null
+        ? Math.round((frames[frames.length - 1]?.p ?? 0) * 1000) / 1000
+        : null,
+    final,
   }
-  if (final) {
-    c.sailings[sailingKey] = { emptyTs: null, final: true }
+  if (emptyTs != null || fullAt != null || final) {
+    c.sailings[sailingKey] = entry
     saveCache()
   }
-  return null
+  return resolveVerdict(entry, crosswalkOk)
 }

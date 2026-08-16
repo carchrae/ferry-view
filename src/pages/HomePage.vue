@@ -683,6 +683,7 @@
       :robot-at="robotVerify.robotAt"
       :frames="robotVerify.frames"
       :sailing-key="robotVerify.sailingKey"
+      :claim="robotVerify.claim"
       @agree="onRobotVerifyAgree"
       @mark="onRobotVerifyMark"
       @refute="onRobotVerifyRefute"
@@ -998,6 +999,7 @@ const robotVerify = ref({
   frames: [],
   sailingKey: null,
   autoProb: null,
+  claim: 'notFull',
 })
 
 async function openRobotVerify(kind, time) {
@@ -1037,6 +1039,9 @@ async function openRobotVerify(kind, time) {
       frames: (kind === 'crosswalk' ? s.arrival?.timelapse : s.departure?.timelapse) || [],
       sailingKey: s.sailingKey,
       autoProb: s.crosswalkAutoProb ?? null,
+      // The badge routes here only for robot-sourced capacity, so the
+      // sailing's own full/not-full flag says which claim to defend.
+      claim: s.ferryFullAuto ? 'full' : 'notFull',
     }
   } catch (err) {
     console.error('Failed to open robot verification:', err)

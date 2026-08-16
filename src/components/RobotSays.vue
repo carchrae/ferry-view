@@ -1,5 +1,5 @@
 <template>
-  <div v-if="autoAt != null || notFullAt != null || fullnessUnsure" class="q-mt-xs">
+  <div v-if="autoAt != null || notFullAt != null || fullAt != null || fullnessUnsure" class="q-mt-xs">
     <!-- Two columns: label left, content in a growing column so wrapped
          chips/text never flow underneath the label. -->
     <div class="row no-wrap items-center">
@@ -77,6 +77,43 @@
             : '' }}See the frames the robot judged — agree or disagree
         </q-tooltip>
       </q-chip>
+      <!-- Fullness: robot thinks it left FULL (cars ran through the window's
+           end + crosswalk reached) → confirm button / verdict chip. -->
+      <q-btn
+        v-else-if="fullVisible && !latestCapacity"
+        dense
+        no-caps
+        outline
+        color="deep-orange"
+        size="sm"
+        icon="directions_boat"
+        :label="`Looks full${fullProb != null ? ` — ${certaintyLabel(fullProb)}` : ''} — agree?`"
+        @click="openFullnessVerify"
+      >
+        <q-tooltip>
+          {{ fullProb != null
+            ? `The robot is ${Math.round(fullProb * 100)}% sure cars were still waiting at departure. `
+            : '' }}See the frames the robot judged — agree or disagree
+        </q-tooltip>
+      </q-btn>
+      <q-chip
+        v-else-if="fullText"
+        dense
+        square
+        outline
+        clickable
+        :color="latestCapacity?.capacity === 'Full' ? 'indigo' : 'deep-orange'"
+        icon="directions_boat"
+        class="verdict-chip"
+        @click="openFullnessVerify"
+      >
+        {{ fullText }}{{ fullProb != null ? ` · ${certaintyLabel(fullProb)}` : '' }}
+        <q-tooltip>
+          {{ fullProb != null
+            ? `The robot is ${Math.round(fullProb * 100)}% sure cars were still waiting at departure. `
+            : '' }}See the frames the robot judged — agree or disagree
+        </q-tooltip>
+      </q-chip>
       <!-- Fullness: robot has NO verdict for this sailing → own up to it.
            The same dialog opens so a rider can answer per-frame "cars
            waiting?" and teach the classifier the exact frames it fumbled. -->
@@ -144,10 +181,12 @@
     <RobotVerifyDialog
       v-model="showFullnessVerify"
       kind="fullness"
-      :robot-at="typeof notFullAt === 'number' ? notFullAt : null"
+      :robot-at="
+        typeof notFullAt === 'number' ? notFullAt : typeof fullAt === 'number' ? fullAt : null
+      "
       :frames="terminalFrames"
       :sailing-key="sailingKey"
-      :unsure="fullnessUnsure"
+      :claim="fullVisible ? 'full' : fullnessVisible ? 'notFull' : null"
       @capacity="emit('capacity', $event)"
       @frame-label="emit('frame-label', $event)"
     />
@@ -209,6 +248,12 @@ const props = defineProps({
   // Terminal verdict: ts of the confirmed-empty frame (true = known but
   // timeless, from the server aggregate's nf flag).
   notFullAt: { type: [Number, Boolean], default: null },
+  // Terminal FULL verdict (cars through the window's end + crosswalk):
+  // ts of the last frame from the browser mirror, or true (timeless, from
+  // the server's ferryFullAuto / aggregate fl flag). Mutually exclusive
+  // with notFullAt by construction.
+  fullAt: { type: [Number, Boolean], default: null },
+  fullProb: { type: Number, default: null },
   capacityReports: { type: Array, default: () => [] }, // { userName, capacity, recordedAt }
   // Terminal (departure) timelapse frames — shown in the fullness dialog.
   terminalFrames: { type: Array, default: () => [] },
@@ -251,20 +296,29 @@ const certaintyLabel = (p) => `${certaintyWords(p)} · ${Math.round(p * 100)}%`
 const computingProb = ref(false)
 const certaintyFailed = ref(false)
 const fullnessVisible = computed(() => props.notFullAt != null && props.notFullAt !== false)
-// No fullness verdict (null = never computed, false = ran without finding a
-// confirmed-empty pair) but the terminal frames exist: show an honest "not
-// sure" button that opens the same dialog for per-frame labelling. Only the
-// departures page passes terminalFrames, so this never shows elsewhere.
-const fullnessUnsure = computed(() => !fullnessVisible.value && props.terminalFrames.length > 0)
+const fullVisible = computed(() => props.fullAt != null && props.fullAt !== false)
+// No fullness verdict either way (never computed, or the rules found neither
+// an empty tail nor a full ending) but the terminal frames exist: show an
+// honest "not sure" button that opens the same dialog for per-frame
+// labelling. Only the departures page passes terminalFrames, so this never
+// shows elsewhere.
+const fullnessUnsure = computed(
+  () => !fullnessVisible.value && !fullVisible.value && props.terminalFrames.length > 0,
+)
+// The certainty the buttons care about follows whichever verdict is showing.
+const verdictProb = computed(() => (fullVisible.value ? props.fullProb : props.notFullProb))
 const showComputeBtn = computed(
   () =>
-    fullnessVisible.value &&
-    props.notFullProb == null &&
+    (fullnessVisible.value || fullVisible.value) &&
+    verdictProb.value == null &&
     props.canComputeNotFullProb &&
     !certaintyFailed.value,
 )
 const showDetailsBtn = computed(
-  () => fullnessVisible.value && props.notFullProb != null && props.canComputeNotFullProb,
+  () =>
+    (fullnessVisible.value || fullVisible.value) &&
+    verdictProb.value != null &&
+    props.canComputeNotFullProb,
 )
 function requestCertainty() {
   if (computingProb.value) return
@@ -296,7 +350,10 @@ watch(
   () => props.autoOpen,
   (kind) => {
     if (kind === 'crosswalk' && props.autoAt != null) openVerify()
-    else if (kind === 'fullness' && (fullnessVisible.value || fullnessUnsure.value))
+    else if (
+      kind === 'fullness' &&
+      (fullnessVisible.value || fullVisible.value || fullnessUnsure.value)
+    )
       openFullnessVerify()
   },
   { immediate: true },
@@ -378,6 +435,15 @@ const fullnessText = computed(() => {
     return `Not full by these pixels${emptyWhen.value} — Full? Hmm.`
   }
   return `Not full${emptyWhen.value} — ${formatReporterName(latestCapacity.value.userName)} concurs.`
+})
+
+// Full verdict text — same shape: only when a capacity report exists.
+const fullText = computed(() => {
+  if (!fullVisible.value || !latestCapacity.value) return ''
+  if (latestCapacity.value.capacity === 'Full') {
+    return `Left full — ${formatReporterName(latestCapacity.value.userName)} concurs.`
+  }
+  return `Full by these pixels — ${latestCapacity.value.capacity} says ${formatReporterName(latestCapacity.value.userName)}. Hmm.`
 })
 </script>
 

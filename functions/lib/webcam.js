@@ -8,7 +8,12 @@ import { classifyLineup, lineupModelVersion, modelUsable } from './lineup-classi
 import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import { updateSailingStatus } from './helpers.js'
-import { robotMayFillCrosswalk, MIN_ALL_EMPTY_FRAMES } from './lineup-labels.js'
+import {
+  robotMayFillCrosswalk,
+  MIN_ALL_EMPTY_FRAMES,
+  FULL_TAIL_FRAMES,
+  FULL_CONFIDENT_P,
+} from './lineup-labels.js'
 import {
   lastBowenDeparture,
   bowenArrivalForCurrentCycle,
@@ -389,13 +394,17 @@ export async function captureDepartureTimelapse(db, data) {
   const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
   const terminalFields = {}
   let firstConfirm = false
+  let firstFullConfirm = false
   let verdictCleared = false
+  let fullCleared = false
   let curCapacitySource = null
+  let curLastCapacity = null
   const verdict = await classifyTerminal(best)
   if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
     const cur = snap.exists ? snap.data() : {}
     curCapacitySource = cur.capacitySource || null
+    curLastCapacity = cur.lastCapacity || null
     // NO crosswalk veto here (tried 2026-08-10, removed 2026-08-16): a lineup
     // reaching the crosswalk does NOT contradict an empty terminal. A long
     // line that all gets aboard is exactly "everyone waiting got on" — the
@@ -425,8 +434,10 @@ export async function captureDepartureTimelapse(db, data) {
           terminalFields.ferryNotFullAuto = FieldValue.delete()
           terminalFields.terminalEmptyFrameTs = FieldValue.delete()
           terminalFields.terminalEmptyProb = FieldValue.delete()
-          terminalFields.terminalAutoModel = FieldValue.delete()
-          if (cur.capacitySource === 'robot') {
+          // terminalAutoModel is shared with the full verdict — leave it
+          // when a full stamp still owns it.
+          if (!cur.ferryFullAuto) terminalFields.terminalAutoModel = FieldValue.delete()
+          if (cur.capacitySource === 'robot' && cur.lastCapacity === 'Not Full') {
             // Only the robot's own 'Not Full' report is withdrawn — human
             // and automated capacities outrank it and stay.
             terminalFields.lastCapacity = FieldValue.delete()
@@ -463,6 +474,46 @@ export async function captureDepartureTimelapse(db, data) {
         terminalFields.terminalEmptyPending = { ts: timestamp }
       }
     }
+
+    // FULL verdict, streaming form of terminalFullAtDeparture()
+    // (lineup-labels.js): FULL_TAIL_FRAMES consecutive confidently-cars
+    // frames (p >= FULL_CONFIDENT_P — stricter than the 0.5 cars call)
+    // running through the window's end mean cars were still waiting when
+    // the ferry left. The run counter makes "through the end" streamable:
+    // any sub-0.7 frame resets it AND clears a stamped full verdict, so the
+    // final state after the last frame equals the batch rule. Gated on the
+    // crosswalk (Tom's rule: the lineup never reaching the crosswalk vetoes
+    // any full claim) — robot detection or a human mark both count.
+    // Limitation: a crosswalk verdict landing after the window's last frame
+    // means the server never stamps; the browser mirror recomputes it.
+    if (verdict.probability >= FULL_CONFIDENT_P) {
+      const fullRun = (cur.terminalFullRun || 0) + 1
+      terminalFields.terminalFullRun = fullRun
+      const crosswalkOk = cur.crosswalkFullAtAuto != null || cur.crosswalkFullAt != null
+      if (fullRun >= FULL_TAIL_FRAMES && crosswalkOk && !cur.ferryFullAuto) {
+        terminalFields.ferryFullAuto = true
+        terminalFields.terminalFullProb = Math.round(verdict.probability * 1000) / 1000
+        const modelVersion = terminalModelVersion()
+        if (modelVersion != null) terminalFields.terminalAutoModel = modelVersion
+        firstFullConfirm = true
+      }
+    } else {
+      if (cur.terminalFullRun) terminalFields.terminalFullRun = 0
+      if (cur.ferryFullAuto) {
+        fullCleared = true
+        terminalFields.ferryFullAuto = FieldValue.delete()
+        terminalFields.terminalFullProb = FieldValue.delete()
+        // Shared field: leave it when a not-full stamp (existing, or written
+        // by THIS frame's empty branch above) still owns it.
+        if (!cur.ferryNotFullAuto && terminalFields.ferryNotFullAuto !== true)
+          terminalFields.terminalAutoModel = FieldValue.delete()
+        if (cur.capacitySource === 'robot' && cur.lastCapacity === 'Full') {
+          // Withdraw only the robot's own 'Full' report.
+          terminalFields.lastCapacity = FieldValue.delete()
+          terminalFields.capacitySource = FieldValue.delete()
+        }
+      }
+    }
   }
 
   await db.collection('sailingStatus').doc(snapshotKey).set(
@@ -477,35 +528,50 @@ export async function captureDepartureTimelapse(db, data) {
     { merge: true },
   )
 
-  // First confirmed "left not full" → record it as a robot capacity report.
+  // First confirmed verdict → record it as a robot capacity report
+  // ('Not Full' or 'Full'; the two can't confirm on the same frame).
   // updateSailingStatus re-reads the doc and enforces automated > user >
   // robot, so a rider tag that landed during this capture is never clobbered.
   let robotReported = false
-  if (firstConfirm) {
+  const reportedCapacity = firstFullConfirm ? 'Full' : firstConfirm ? 'Not Full' : null
+  if (reportedCapacity) {
     const { capacityApplied } = await updateSailingStatus(
       snapshotKey,
       decision.sailingTime,
       'To HSB',
       data.dateIso,
       db,
-      { lastCapacity: 'Not Full', capacitySource: 'robot' },
+      { lastCapacity: reportedCapacity, capacitySource: 'robot' },
     )
     robotReported = capacityApplied
   }
 
-  // ferryNotFullAuto is `true` on a fresh stamp but a FieldValue.delete()
+  // The auto flags are `true` on a fresh stamp but a FieldValue.delete()
   // sentinel (truthy!) on a cleared one — compare against true explicitly.
+  // An invalidated verdict also withdraws its aggregate key (and the robot's
+  // capacity, when the robot's report of THAT verdict was showing).
+  const clearKeys = []
+  if (verdictCleared) {
+    clearKeys.push('nf')
+    if (curCapacitySource === 'robot' && curLastCapacity === 'Not Full')
+      clearKeys.push('cap', 'src')
+  }
+  if (fullCleared) {
+    clearKeys.push('fl')
+    if (curCapacitySource === 'robot' && curLastCapacity === 'Full') clearKeys.push('cap', 'src')
+  }
+  // upsertBowenSailing applies clearKeys AFTER scalars — when this same
+  // frame files a fresh robot report (empty frame: full cleared + not-full
+  // stamped), the clear must not delete it.
+  const aggClearKeys = robotReported ? clearKeys.filter((k) => k !== 'cap' && k !== 'src') : clearKeys
   await upsertBowenSailing(db, {
     dateIso: data.dateIso,
     sailingTime: decision.sailingTime,
     addDepartureTs: timestamp,
     ...(terminalFields.ferryNotFullAuto === true ? { nf: true } : {}),
-    ...(robotReported ? { cap: 'Not Full', src: 'robot' } : {}),
-    // Solid cars invalidated a stamped verdict: withdraw nf (and the robot's
-    // capacity, when the robot was the source) from the aggregate too.
-    ...(verdictCleared
-      ? { clearKeys: curCapacitySource === 'robot' ? ['nf', 'cap', 'src'] : ['nf'] }
-      : {}),
+    ...(terminalFields.ferryFullAuto === true ? { fl: true } : {}),
+    ...(robotReported ? { cap: reportedCapacity, src: 'robot' } : {}),
+    ...(aggClearKeys.length ? { clearKeys: aggClearKeys } : {}),
   })
 
   logAttribution('Departure timelapse', decision, now)

@@ -18,7 +18,9 @@ export const BOWEN_SAILINGS_DAYS = 42
 //   the square robot chip on the client,
 //   cwa / cwp = crosswalkFullAtAuto (epoch ms) / crosswalkAutoProb — the
 //   classifier's prediction, feeding the "Robot says…" agree-tag,
-//   nf = ferryNotFullAuto (terminal cam saw an empty frame pre-departure),
+//   nf = ferryNotFullAuto (terminal cam: empty pair after the last solid
+//   cars — tail rule), fl = ferryFullAuto (terminal cam: cars still waiting
+//   through the window's end + crosswalk reached),
 //   dep = actualDepartureTime (drives the "on time"/"late" title on the
 //   departures page), lt / dt = lineup / departure timelapse frame epochs.
 // Timelapse Storage paths are deterministic —
@@ -56,6 +58,7 @@ export function sailingToRecord(s) {
   if (s.crosswalkFullAtAuto != null) rec.cwa = flattenMs(s.crosswalkFullAtAuto)
   if (s.crosswalkAutoProb != null) rec.cwp = s.crosswalkAutoProb
   if (s.ferryNotFullAuto) rec.nf = true
+  if (s.ferryFullAuto) rec.fl = true
   if (lt.length) rec.lt = lt.sort((a, b) => a - b)
   if (dt.length) rec.dt = dt.sort((a, b) => a - b)
   return rec

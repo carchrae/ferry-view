@@ -277,6 +277,25 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   server-side too — `captureDepartureTimelapse` deletes the auto fields,
   withdraws the aggregate `nf`, and retracts the robot's own capacity report
   (never a human's). An isolated trailing cars frame still proves nothing.
+- **FULL verdict** (2026-08-16, later the same day): the terminal can also
+  assert the opposite — the last `FULL_TAIL_FRAMES` (4) frames all reading
+  confidently cars (`p >= FULL_CONFIDENT_P`, 0.7 — stricter than the 0.5
+  cars call) mean cars were still waiting when the ferry left, **gated on
+  the lineup having reached the crosswalk** (robot detection or human mark —
+  the standing veto: never crossing means never full). Terminal-end cars
+  alone is weak (54–67% precision: the last frames are during loading, so it
+  also matches merely-busy sailings); with the crosswalk gate it measured
+  **95.7% precision at 87% coverage** of Full-tagged sailings, and the
+  misses are riders' "10%" tags — nearly full, never "Not Full". Replaces
+  the crosswalk-alone full flagging (65.8% strict precision, 63
+  contradictions). Streaming: `terminalFullRun` counter, stamps
+  `ferryFullAuto`/`terminalFullProb` + a robot 'Full' capacity report +
+  aggregate `fl`; any sub-0.7 frame resets the run and clears a stamped
+  verdict (same withdrawal cascade as not-full). Mutually exclusive with
+  the tail rule by construction: four confident-cars frames at the end are
+  solid cars, so the tail can never hold an empty pair. Three states total:
+  **not full** / **full** / **unsure** (neither — the webapp's grey "not
+  sure" button, which collects per-frame labels).
 - **No crosswalk veto** (tried 2026-08-10, removed 2026-08-16): suppressing
   the empty pair when the lineup had reached the crosswalk was wrong in
   principle — a long line that all boards *is* "everyone waiting got on", so

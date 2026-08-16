@@ -13,7 +13,12 @@
         past the crosswalk at <strong>{{ timeLabel(robotAt) }}</strong> — make
         sure to actually verify, the robot has poor eyesight.
       </p>
-      <p v-else-if="unsure" class="text-caption q-mb-sm">
+      <p v-else-if="claim === 'full'" class="text-caption q-mb-sm">
+        These are the terminal frames the robot judged. It thinks the ferry left
+        <strong>full</strong> — cars were still waiting right up to departure.
+        Make sure to actually verify, the robot has poor eyesight.
+      </p>
+      <p v-else-if="claim == null" class="text-caption q-mb-sm">
         The robot looked at these terminal frames but couldn't tell whether the
         ferry left full. Your eyes are better — say whether cars were waiting or loading in
         each photo and the robot learns from it.
@@ -158,6 +163,9 @@
             @click="emit('mark', frame.ts)"
           />
         </template>
+        <!-- Both capacity answers, always: deep-orange disagrees with the
+             robot's claim, indigo agrees (neutral labels when there is no
+             claim). Either records a capacity report. -->
         <template v-else>
           <q-btn
             v-close-popup
@@ -165,8 +173,8 @@
             no-caps
             unelevated
             color="deep-orange"
-            :label="unsure ? 'It was Full' : `${disagreeWord} It was Full`"
-            @click="emit('capacity', 'Full')"
+            :label="disagreeBtn.label"
+            @click="emit('capacity', disagreeBtn.capacity)"
           />
           <q-space />
           <q-btn
@@ -175,8 +183,8 @@
             no-caps
             unelevated
             color="indigo"
-            :label="unsure ? 'Not Full' : 'Agree — Not Full'"
-            @click="emit('capacity', 'Not Full')"
+            :label="agreeBtn.label"
+            @click="emit('capacity', agreeBtn.capacity)"
           />
         </template>
       </div>
@@ -211,10 +219,12 @@ const props = defineProps({
   frames: { type: Array, default: () => [] }, // [{ path, imageUrl, timeLabel, ts }]
   // Sailing the frames belong to — needed to file a per-frame label.
   sailingKey: { type: String, default: null },
-  // Fullness only: the robot has NO verdict for this sailing. The intro owns
-  // up to it and the bottom buttons drop the agree/disagree framing (there is
-  // no claim to agree with) — they still record a capacity report.
-  unsure: { type: Boolean, default: false },
+  // Fullness only — the robot's claim for this sailing: 'notFull' (tail rule
+  // saw the terminal empty), 'full' (cars ran through the window's end), or
+  // null (no verdict: the intro owns up to it and the bottom buttons drop
+  // the agree/disagree framing). Both bottom buttons always record a
+  // capacity report; which one counts as "agree" follows the claim.
+  claim: { type: String, default: 'notFull' },
 })
 // frame-label: { framePath, sailingKey, carsWaiting, autoP } for the frame on screen.
 const emit = defineEmits([
@@ -333,6 +343,23 @@ function openZoom(url) {
 const DISAGREE_WORDS = ['Disagree!', 'I object!', 'No way —', 'Nope.', 'Objection!', 'Hard no —']
 const disagreeWord = computed(
   () => DISAGREE_WORDS[Math.abs(props.robotAt || 0) % DISAGREE_WORDS.length],
+)
+
+// Fullness bottom buttons: the capacity each side files and its label,
+// derived from the robot's claim (see the claim prop).
+const agreeBtn = computed(() =>
+  props.claim === 'full'
+    ? { label: 'Agree — Full', capacity: 'Full' }
+    : props.claim == null
+      ? { label: 'Not Full', capacity: 'Not Full' }
+      : { label: 'Agree — Not Full', capacity: 'Not Full' },
+)
+const disagreeBtn = computed(() =>
+  props.claim === 'full'
+    ? { label: `${disagreeWord.value} It was Not Full`, capacity: 'Not Full' }
+    : props.claim == null
+      ? { label: 'It was Full', capacity: 'Full' }
+      : { label: `${disagreeWord.value} It was Full`, capacity: 'Full' },
 )
 </script>
 

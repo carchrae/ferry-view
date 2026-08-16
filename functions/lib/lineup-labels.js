@@ -128,6 +128,33 @@ export function firstSustainedPositiveTs(frames) {
 // confirmed (inconclusive — NOT "full"). The streaming equivalent in
 // webcam.js (pending → confirm, solid cars CLEARS a stamped verdict) must
 // match this rule.
+// Terminal-camera "ferry left FULL" rule (2026-08-16). `frames` is
+// capture-ordered [{ ts, p }] — raw probabilities, because full needs a
+// stricter cut than the 0.5 cars/empty split: the last FULL_TAIL_FRAMES
+// frames of the departure window must ALL read confidently cars
+// (p >= FULL_CONFIDENT_P). Cars still waiting when the ferry leaves means
+// somebody didn't get on. Callers must apply the crosswalk veto themselves
+// (Tom's standing rule: the lineup never reaching the crosswalk vetoes any
+// full claim) — the server reads the sailingStatus doc, the browser the
+// sailing object, the trainer predictions.json; keeping the veto out of the
+// pure rule keeps it testable. Measured (2026-08-16, 510 tagged sailings):
+// with the crosswalk veto this scores 95.7% precision at 87% coverage of
+// Full-tagged sailings; the handful of misses are riders' "10%" tags —
+// nearly full, never "Not Full". Mutually exclusive with
+// terminalEmptyFrameTs by construction: four confident-cars frames at the
+// end are solid cars, so the tail can never contain an empty pair.
+// Returns the LAST frame's ts, or null.
+export const FULL_TAIL_FRAMES = 4
+export const FULL_CONFIDENT_P = 0.7
+export function terminalFullAtDeparture(frames) {
+  const list = frames || []
+  if (list.length < FULL_TAIL_FRAMES) return null
+  const tail = list.slice(-FULL_TAIL_FRAMES)
+  if (!tail.every((f) => typeof f?.p === 'number' && f.p >= FULL_CONFIDENT_P)) return null
+  const lastTs = list[list.length - 1].ts
+  return typeof lastTs === 'number' ? lastTs : null
+}
+
 export const MIN_ALL_EMPTY_FRAMES = 10
 export function terminalEmptyFrameTs(frames) {
   const list = frames || []

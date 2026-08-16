@@ -147,6 +147,7 @@ function expandAggregateRecord(r) {
     crosswalkFullAtAuto: r.cwa || null,
     crosswalkAutoProb: r.cwp ?? null,
     ferryNotFullAuto: r.nf || null,
+    ferryFullAuto: r.fl || null,
   }
 }
 
@@ -202,6 +203,8 @@ async function fetchDirectBounded() {
       crosswalkAutoProb: d.crosswalkAutoProb ?? null,
       ferryNotFullAuto: d.ferryNotFullAuto || null,
       terminalEmptyFrameTs: d.terminalEmptyFrameTs || null,
+      ferryFullAuto: d.ferryFullAuto || null,
+      terminalFullProb: d.terminalFullProb ?? null,
     })
   })
   return sailings

@@ -33,7 +33,12 @@ import {
   TERMINAL_MASKS,
 } from '../functions/lib/terminal-features.js'
 import { thumbnailJpeg } from '../functions/lib/lineup-features.js'
-import { terminalEmptyFrameTs } from '../functions/lib/lineup-labels.js'
+import {
+  terminalEmptyFrameTs,
+  terminalFullAtDeparture,
+  FULL_TAIL_FRAMES,
+  FULL_CONFIDENT_P,
+} from '../functions/lib/lineup-labels.js'
 import { isDarkAt } from '../functions/lib/daylight.js'
 import {
   buildExamplesPage,
@@ -402,9 +407,16 @@ for (const v of verdicts) {
   v.matchFull = !v.tag ? 'untagged' : v.tag.capacity === 'Full' ? 'match' : 'mismatch'
   v.darkFrames = v.frames.filter((f) => f.dark).length
 }
-// Sailings the crosswalk classifier called full (only those with terminal
-// frames appear on this page; the crosswalk page lists them all).
-const flaggedFull = verdicts.filter((v) => v.cw?.crosswalkDetectedTs != null)
+// FULL verdicts (2026-08-16): the shared terminal rule — last
+// FULL_TAIL_FRAMES frames all confidently cars — gated on the crosswalk
+// having been reached (the veto: no crossing, never full). Replaces the old
+// crosswalk-alone flagging, which under strict scoring ran 121 agree / 63
+// contradict; this rule measured 95.7% precision at 87% coverage of
+// Full-tagged sailings.
+for (const v of verdicts) v.fullAt = terminalFullAtDeparture(v.frames)
+const flaggedFull = verdicts.filter(
+  (v) => v.fullAt != null && v.cw?.crosswalkDetectedTs != null,
+)
 // The crosswalk reading is CONTEXT on a not-full verdict, never a veto: a
 // lineup that reached the crosswalk and then all boarded is still "everyone
 // waiting got on". (A veto was tried 2026-08-10 and removed 2026-08-16 —
@@ -609,11 +621,16 @@ function verdictsSectionHtml(srcFor) {
   </details>
 
   <h2>Ferry full verdicts</h2>
-  <p>The crosswalk classifier (see <a href="crosswalk.html">crosswalk page</a>)
-  deems the ferry <strong>at least 75% full</strong> when the lineup passes the
-  crosswalk — note it never claims <em>completely</em> full.
+  <p>The ferry counts as having left <strong>full</strong> when the terminal's
+  last <strong>${FULL_TAIL_FRAMES} frames</strong> all read confidently cars
+  (p ≥ ${FULL_CONFIDENT_P}) — cars still waiting right up to departure —
+  <strong>and</strong> the lineup reached the crosswalk (the standing veto:
+  never crossing means never full; see the
+  <a href="crosswalk.html">crosswalk page</a>). This replaced the
+  crosswalk-alone flagging on 2026-08-16, which under strict scoring
+  contradicted 63 human tags.
   ${flaggedFull.length} of the ${verdicts.length} sailings with terminal frames
-  were flagged. Scored <strong>strictly</strong> (full = 0% available, so any
+  are flagged. Scored <strong>strictly</strong> (full = 0% available, so any
   percent-available tag means the ferry left with room):
   ${fullCounts.match} agree (human said Full),
   <strong>${fullCounts.mismatch} contradict — the ferry left with room</strong>

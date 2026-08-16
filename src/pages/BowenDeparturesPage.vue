@@ -238,6 +238,8 @@
             :frames="sailing.arrival?.timelapse || []"
             :not-full-at="sailing.terminalEmptyFrameTs ?? sailing.ferryNotFullAuto ?? null"
             :not-full-prob="sailing.terminalEmptyProb ?? null"
+            :full-at="sailing.terminalFullAt ?? sailing.ferryFullAuto ?? null"
+            :full-prob="sailing.terminalFullProb ?? null"
             :can-compute-not-full-prob="(sailing.departureTimelapsePaths?.length ?? 0) >= 2"
             :capacity-reports="sailing.reports || []"
             :terminal-frames="sailing.departure?.timelapse || []"
@@ -303,10 +305,10 @@ import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport, loadLineupReportsForSailings } from 'src/composables/useLineupReport'
 import { predictCrosswalk, browserClassifierReady } from 'src/composables/useLineupClassifier'
 import {
-  predictNotFull,
+  predictTerminal,
   terminalClassifierReady,
   classifyAllTerminalFrames,
-  cachedNotFull,
+  cachedTerminal,
 } from 'src/composables/useTerminalClassifier'
 import RobotVerdictDetails from 'src/components/RobotVerdictDetails.vue'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
@@ -560,9 +562,16 @@ function queueBrowserPredictions(sailings) {
     // Certainty computed on an earlier pass (or a click) survives aggregate
     // snapshot rebuilds via the composable's localStorage cache — re-apply
     // it here, no network involved.
+    const cachedCrosswalkOk =
+      sailing.crosswalkFullAtAuto != null || sailing.crosswalkFullAt != null
     if (sailing.ferryNotFullAuto != null && sailing.terminalEmptyProb == null) {
-      const cached = cachedNotFull(sailing.sailingKey)
-      if (cached?.prob != null) sailing.terminalEmptyProb = cached.prob
+      const cached = cachedTerminal(sailing.sailingKey, { crosswalkOk: cachedCrosswalkOk })
+      if (cached?.kind === 'notFull' && cached.prob != null)
+        sailing.terminalEmptyProb = cached.prob
+    }
+    if (sailing.ferryFullAuto != null && sailing.terminalFullProb == null) {
+      const cached = cachedTerminal(sailing.sailingKey, { crosswalkOk: cachedCrosswalkOk })
+      if (cached?.kind === 'full' && cached.prob != null) sailing.terminalFullProb = cached.prob
     }
     if (sailing.dateIso < cutoffIso) continue // frames aged out of Storage
     const wantCrosswalk =
@@ -572,6 +581,7 @@ function queueBrowserPredictions(sailings) {
     const wantTerminal =
       terminalClassifierReady &&
       sailing.ferryNotFullAuto == null &&
+      sailing.ferryFullAuto == null &&
       (sailing.departureTimelapsePaths?.length ?? 0) >= 2
     if (!wantCrosswalk && !wantTerminal) continue
     if (inFlight.has(sailing.sailingKey)) continue
@@ -593,15 +603,23 @@ function queueBrowserPredictions(sailings) {
           }
         }
         if (wantTerminal) {
-          const verdict = await predictNotFull(
+          // Crosswalk evidence gates the full verdict — include a detection
+          // the crosswalk step above may have just produced.
+          const crosswalkOk =
+            sailing.crosswalkFullAtAuto != null || sailing.crosswalkFullAt != null
+          const verdict = await predictTerminal(
             sailing.sailingKey,
             sailing.departureTimelapsePaths,
-            { final },
+            { final, crosswalkOk },
           )
-          if (verdict) {
+          if (verdict?.kind === 'notFull') {
             sailing.ferryNotFullAuto = true
             sailing.terminalEmptyFrameTs = verdict.emptyTs
             sailing.terminalEmptyProb = verdict.prob
+          } else if (verdict?.kind === 'full') {
+            sailing.ferryFullAuto = true
+            sailing.terminalFullAt = verdict.fullAt
+            sailing.terminalFullProb = verdict.prob
           }
         }
       } catch (err) {
@@ -624,12 +642,14 @@ async function onComputeCertainty(sailing, done) {
   try {
     const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
     const final = sailing.actualDepartureTime != null || sailing.dateIso < todayIso
-    const verdict = await predictNotFull(sailing.sailingKey, sailing.departureTimelapsePaths, {
+    const verdict = await predictTerminal(sailing.sailingKey, sailing.departureTimelapsePaths, {
       final,
       force: true,
+      crosswalkOk: sailing.crosswalkFullAtAuto != null || sailing.crosswalkFullAt != null,
     })
     if (verdict?.prob != null) {
-      sailing.terminalEmptyProb = verdict.prob
+      if (verdict.kind === 'full') sailing.terminalFullProb = verdict.prob
+      else sailing.terminalEmptyProb = verdict.prob
       done(true)
     } else {
       // Frames unreachable, or this browser's model finds no empty pair on a
@@ -688,9 +708,10 @@ async function onShowVerdictDetails(sailing) {
     const frames = await classifyAllTerminalFrames(sailing.departureTimelapsePaths)
     // Prefer the browser verdict's ts — it matches the frames on screen when
     // the browser and server models disagree on the exact confirming frame.
-    const cached = cachedNotFull(sailing.sailingKey)
+    const cached = cachedTerminal(sailing.sailingKey)
     verdictDetails.value.frames = frames || []
-    if (cached?.emptyTs != null) verdictDetails.value.emptyTs = cached.emptyTs
+    if (cached?.kind === 'notFull' && cached.emptyTs != null)
+      verdictDetails.value.emptyTs = cached.emptyTs
   } catch {
     verdictDetails.value.frames = []
   }

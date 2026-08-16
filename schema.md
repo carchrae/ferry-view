@@ -107,7 +107,9 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `ferryNotFullAuto` | boolean? | Terminal classifier confirmed the waiting area emptied at departure — tail rule (2026-08-16): two consecutive empty frames after the last SOLID cars frame. NOT one-way anymore: solid cars returning clear the verdict (and these three fields) — the empty window was mid-sailing. Confirmation is also recorded as a robot capacity report (`lastCapacity: "Not Full"`, `capacitySource: "robot"`) unless a user/automated value exists, and withdrawn with the verdict when the robot was the source |
 | `terminalEmptyFrameTs` / `terminalEmptyProb` | number? | Confirming empty frame's epoch ms / probability |
 | `terminalAutoModel` | number? | Version of the terminal-cars classifier model behind `ferryNotFullAuto` |
-| `terminalCarsSeen` / `terminalEmptySeen` / `terminalEmptyPending` / `terminalCarsPending` | mixed? | Streaming state for the tail rule (webcam.js): solid-cars-seen flag, cumulative observed-empty count, and the lone empty/cars frame awaiting its confirming neighbour (`{ ts }`) |
+| `ferryFullAuto` | boolean? | Terminal classifier confirmed cars were still waiting at departure: the last 4 frames all confidently cars (p ≥ 0.7) AND the lineup reached the crosswalk (`crosswalkFullAtAuto` or `crosswalkFullAt` — never crossing vetoes full). Cleared (with `terminalFullProb`) when a later sub-0.7 frame breaks the run. Also filed/withdrawn as a robot 'Full' capacity report, and mirrored as aggregate key `fl` |
+| `terminalFullProb` | number? | The stamping frame's cars probability behind `ferryFullAuto` |
+| `terminalCarsSeen` / `terminalEmptySeen` / `terminalEmptyPending` / `terminalCarsPending` / `terminalFullRun` | mixed? | Streaming state for the tail + full rules (webcam.js): solid-cars-seen flag, cumulative observed-empty count, the lone empty/cars frame awaiting its confirming neighbour (`{ ts }`), and the running count of consecutive confidently-cars frames |
 
 ---
 

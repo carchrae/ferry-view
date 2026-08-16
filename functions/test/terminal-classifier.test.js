@@ -2,7 +2,13 @@ import { describe, it, expect } from 'vitest'
 import sharp from 'sharp'
 import { extractTerminalFeatures, TERMINAL_FEATURE_LENGTH } from '../lib/terminal-features.js'
 import { classifyTerminal, scoreTerminalFeatures, terminalState } from '../lib/terminal-classifier.js'
-import { terminalEmptyFrameTs, MIN_ALL_EMPTY_FRAMES } from '../lib/lineup-labels.js'
+import {
+  terminalEmptyFrameTs,
+  terminalFullAtDeparture,
+  MIN_ALL_EMPTY_FRAMES,
+  FULL_TAIL_FRAMES,
+  FULL_CONFIDENT_P,
+} from '../lib/lineup-labels.js'
 
 async function solidJpeg(shade, width = 320, height = 240) {
   return sharp({
@@ -158,5 +164,39 @@ describe('terminalEmptyFrameTs (tail rule)', () => {
     expect(terminalEmptyFrameTs(seq(T, T))).toBe(null)
     expect(terminalEmptyFrameTs([])).toBe(null)
     expect(terminalEmptyFrameTs(undefined)).toBe(null)
+  })
+})
+
+describe('terminalFullAtDeparture', () => {
+  const p = (...ps) => ps.map((v, i) => ({ ts: i + 1, p: v }))
+
+  it('confirms when the last FULL_TAIL_FRAMES frames are all confidently cars', () => {
+    expect(terminalFullAtDeparture(p(0.2, 0.9, 0.8, 0.75, 0.7))).toBe(5)
+    // exactly the minimum length works too
+    expect(terminalFullAtDeparture(p(0.9, 0.9, 0.9, 0.9))).toBe(FULL_TAIL_FRAMES)
+  })
+
+  it('needs at least FULL_TAIL_FRAMES frames', () => {
+    expect(terminalFullAtDeparture(p(0.9, 0.9, 0.9))).toBe(null)
+    expect(terminalFullAtDeparture([])).toBe(null)
+    expect(terminalFullAtDeparture(undefined)).toBe(null)
+  })
+
+  it('one weak frame in the tail breaks it — plain 0.5 cars is not enough', () => {
+    expect(terminalFullAtDeparture(p(0.9, 0.9, FULL_CONFIDENT_P - 0.01, 0.9, 0.9))).toBe(null)
+    expect(terminalFullAtDeparture(p(0.9, 0.6, 0.9, 0.9, 0.9))).toBe(null)
+    // ...but earlier weak frames outside the tail do not matter
+    expect(terminalFullAtDeparture(p(0.1, 0.9, 0.9, 0.9, 0.9))).toBe(5)
+  })
+
+  it('is mutually exclusive with the not-full tail rule on the same frames', () => {
+    const frames = p(0.9, 0.9, 0.9, 0.9, 0.9, 0.9)
+    const withState = frames.map((f) => ({ ...f, carsPresent: f.p >= 0.5 }))
+    expect(terminalFullAtDeparture(frames)).toBe(6)
+    expect(terminalEmptyFrameTs(withState)).toBe(null)
+    const emptied = p(0.9, 0.9, 0.2, 0.1, 0.1, 0.1)
+    const emptiedState = emptied.map((f) => ({ ...f, carsPresent: f.p >= 0.5 }))
+    expect(terminalFullAtDeparture(emptied)).toBe(null)
+    expect(terminalEmptyFrameTs(emptiedState)).toBe(4)
   })
 })
