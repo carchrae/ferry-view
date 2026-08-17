@@ -84,6 +84,9 @@
               robot: {{ bandWord(currentScore.band) }} ({{ currentScore.p.toFixed(2) }})
             </span>
           </div>
+          <div v-if="unsureLeft" class="text-caption text-grey-6">
+            {{ unsureLeft }} frame{{ unsureLeft === 1 ? '' : 's' }} the robot is unsure about
+          </div>
           <div class="row q-gutter-sm q-mt-xs">
             <q-btn
               dense
@@ -106,9 +109,6 @@
               @click="labelFrame(false)"
             />
           </div>
-          <div v-if="unsureLeft" class="text-caption text-grey-6 q-mt-xs">
-            {{ unsureLeft }} frame{{ unsureLeft === 1 ? '' : 's' }} the robot is unsure about
-          </div>
         </div>
       </template>
       <p v-else class="text-caption text-italic">
@@ -118,7 +118,7 @@
            labels above (whole sailing vs one photo) — say so for fullness,
            where the two are easy to conflate. -->
       <div v-if="kind === 'fullness'" class="text-caption text-grey-7 q-mt-md">
-        Overall, did this ferry leave full? Your answer is saved as a capacity report.
+        Did this ferry leave full? Your answer is saved as a capacity report.
       </div>
       <!-- q-space between every pair so the choices never run together
            (and stay apart when the row wraps on a phone). -->
