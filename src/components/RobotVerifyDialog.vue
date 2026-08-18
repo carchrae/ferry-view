@@ -5,30 +5,15 @@
     @update:model-value="emit('update:modelValue', $event)"
   >
     <q-card class="q-pa-md verify-card">
+      <!-- Camera + sailing identity, not a task heading: plenty of riders
+           open this just to see the photos. -->
       <div class="text-subtitle2 q-mb-xs">
-        <q-icon name="smart_toy" color="indigo" class="q-mr-xs" />Verify before agreeing
+        <q-icon name="photo_camera" color="indigo" class="q-mr-xs" />{{ cameraName
+        }}<template v-if="sailingLabel"> — {{ sailingLabel }}</template>
+        <span v-if="departedLabel" class="text-grey-6 text-weight-regular">
+          (left {{ departedLabel }})</span
+        >
       </div>
-      <p v-if="kind === 'crosswalk'" class="text-caption q-mb-sm">
-        These are the frames the robot judged. It thinks the lineup first shows
-        past the crosswalk at <strong>{{ timeLabel(robotAt) }}</strong> — make
-        sure to actually verify, the robot has poor eyesight.
-      </p>
-      <p v-else-if="claim === 'full'" class="text-caption q-mb-sm">
-        These are the terminal frames the robot judged. It thinks the ferry left
-        <strong>full</strong> — cars were still waiting right up to departure.
-        Make sure to actually verify, the robot has poor eyesight.
-      </p>
-      <p v-else-if="claim == null" class="text-caption q-mb-sm">
-        The robot looked at these terminal frames but couldn't tell whether the
-        ferry left full. Your eyes are better — say whether cars were waiting or loading in
-        each photo and the robot learns from it.
-      </p>
-      <p v-else class="text-caption q-mb-sm">
-        These are the terminal frames the robot judged. It thinks everyone
-        waiting got on<template v-if="robotAt != null">
-          — terminal empty at <strong>{{ timeLabel(robotAt) }}</strong></template>.
-        Make sure to actually verify, the robot has poor eyesight.
-      </p>
       <template v-if="frame">
         <!-- Tap the frame for the fullscreen pinch/zoom viewer — the small
              dialog image is hard to judge cars by. -->
@@ -42,12 +27,7 @@
         </div>
         <div class="row items-center justify-between q-mt-xs">
           <q-btn flat dense round icon="chevron_left" :disable="index <= 0" @click="index--" />
-          <div class="text-caption">
-            {{ frame.timeLabel }}
-            <q-badge v-if="frame.ts === robotAt" color="indigo" class="q-ml-xs" dense>
-              robot's frame
-            </q-badge>
-          </div>
+          <div class="text-caption">{{ frame.timeLabel }}</div>
           <q-btn
             flat
             dense
@@ -57,18 +37,54 @@
             @click="index++"
           />
         </div>
+        <!-- Always rendered while the robot has a frame in the list — one
+             constant-size button, so landing on the robot's frame doesn't
+             resize the dialog. -->
         <q-btn
-          v-if="frame.ts !== robotAt && robotIndex >= 0"
+          v-if="robotIndex >= 0"
           flat
           dense
           no-caps
           size="sm"
           color="indigo"
           icon="my_location"
-          :label="`Jump to the robot's frame (${timeLabel(robotAt)})`"
+          :label="
+            frame.ts === robotAt
+              ? 'This is the robot\'s frame'
+              : `Jump to the robot's frame (${timeLabel(robotAt)})`
+          "
           class="q-mt-xs"
           @click="index = robotIndex"
         />
+      </template>
+      <!-- The robot's claim (or lack of one), below the photos — viewers who
+           only came for the pictures can stop reading at the image. -->
+      <p v-if="kind === 'crosswalk' && robotAt != null" class="text-caption q-my-sm">
+        These are the frames the robot judged. It thinks the lineup first shows
+        past the crosswalk at <strong>{{ timeLabel(robotAt) }}</strong> — make
+        sure to actually verify, the robot has poor eyesight.
+      </p>
+      <p v-else-if="kind === 'crosswalk'" class="text-caption q-my-sm">
+        The lineup photos for this sailing. If you can tell when the lineup
+        reached the crosswalk, mark that frame — the robot learns from it.
+      </p>
+      <p v-else-if="claim === 'full'" class="text-caption q-my-sm">
+        These are the terminal frames the robot judged. It thinks the ferry left
+        <strong>full</strong> — cars were still waiting right up to departure.
+        Make sure to actually verify, the robot has poor eyesight.
+      </p>
+      <p v-else-if="claim == null" class="text-caption q-my-sm">
+        The robot looked at these terminal frames but couldn't tell whether the
+        ferry left full. Your eyes are better — say whether cars were waiting or loading in
+        each photo and the robot learns from it.
+      </p>
+      <p v-else class="text-caption q-my-sm">
+        These are the terminal frames the robot judged. It thinks everyone
+        waiting got on<template v-if="robotAt != null">
+          — terminal empty at <strong>{{ timeLabel(robotAt) }}</strong></template>.
+        Make sure to actually verify, the robot has poor eyesight.
+      </p>
+      <template v-if="frame">
         <!-- Per-frame labels: the question the terminal classifier actually
              predicts. Deliberately NOT v-close-popup — labelling is
              repeatable, and each answer advances to the next frame the robot
@@ -143,7 +159,7 @@
           />
           <q-space />
           <q-btn
-            v-if="!frame || frame.ts === robotAt"
+            v-if="robotAt != null && (!frame || frame.ts === robotAt)"
             v-close-popup
             dense
             no-caps
@@ -153,13 +169,17 @@
             @click="emit('agree')"
           />
           <q-btn
-            v-else
+            v-else-if="frame"
             v-close-popup
             dense
             no-caps
             unelevated
-            color="deep-orange"
-            :label="`${disagreeWord} It was ${frame.timeLabel}`"
+            :color="robotAt != null ? 'deep-orange' : 'indigo'"
+            :label="
+              robotAt != null
+                ? `${disagreeWord} It was ${frame.timeLabel}`
+                : `It was ${frame.timeLabel}`
+            "
             @click="emit('mark', frame.ts)"
           />
         </template>
@@ -225,6 +245,10 @@ const props = defineProps({
   // the agree/disagree framing). Both bottom buttons always record a
   // capacity report; which one counts as "agree" follows the claim.
   claim: { type: String, default: 'notFull' },
+  // Dialog title parts: the sailing's scheduled time label ("7:30 am") and,
+  // when the departure was logged, the actual time it left.
+  sailingLabel: { type: String, default: null },
+  departedLabel: { type: String, default: null },
 })
 // frame-label: { framePath, sailingKey, carsWaiting, autoP } for the frame on screen.
 const emit = defineEmits([
@@ -239,6 +263,12 @@ const emit = defineEmits([
 const index = ref(0)
 const robotIndex = computed(() => props.frames.findIndex((f) => f.ts === props.robotAt))
 const frame = computed(() => props.frames[index.value] || null)
+
+// Which webcam these frames come from — the dialog's identity for riders who
+// open it just for the photos.
+const cameraName = computed(() =>
+  props.kind === 'crosswalk' ? 'Bowen at crosswalk' : 'Front of Bowen lineup',
+)
 
 // Each open starts on the robot's own frame (or the last frame when the
 // detection frame isn't in the list / the verdict is timeless).

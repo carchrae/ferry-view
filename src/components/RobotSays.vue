@@ -171,6 +171,8 @@
       kind="crosswalk"
       :robot-at="autoAt"
       :frames="frames"
+      :sailing-label="sailingLabel"
+      :departed-label="departedLabel"
       @agree="emit('agree')"
       @mark="emit('mark', $event)"
       @refute="emit('refute')"
@@ -186,6 +188,8 @@
       "
       :frames="terminalFrames"
       :sailing-key="sailingKey"
+      :sailing-label="sailingLabel"
+      :departed-label="departedLabel"
       :claim="fullVisible ? 'full' : fullnessVisible ? 'notFull' : null"
       @capacity="emit('capacity', $event)"
       @frame-label="emit('frame-label', $event)"
@@ -270,6 +274,9 @@ const props = defineProps({
   canComputeNotFullProb: { type: Boolean, default: false },
   // Needed to file per-frame labels from the fullness dialog.
   sailingKey: { type: String, default: null },
+  // Verify-dialog titles: scheduled time label and actual departure label.
+  sailingLabel: { type: String, default: null },
+  departedLabel: { type: String, default: null },
 })
 // agree: robot's crosswalk time confirmed · mark: rider disagreed and marks
 // the viewed frame's ts instead · refute: rider says the lineup has NOT

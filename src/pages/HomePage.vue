@@ -610,12 +610,59 @@
         <q-card-section class="row items-start q-pb-none">
           <div class="col">
             <div class="text-subtitle1">{{ selectedTypical?.title }}</div>
-            <div class="text-caption text-grey-6">Typical, based on recent history</div>
+            <div class="text-caption text-grey-6">Status and recent history</div>
           </div>
           <q-btn flat dense icon="close" aria-label="Close" @click="showTypicalDialog = false" />
         </q-card-section>
         <q-separator class="q-mt-sm" />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
+          <!-- The sailing's status, spelled out — this is what most riders
+               opened the dialog to learn; history tables come after. -->
+          <div v-if="typicalStatus.length">
+            <div
+              v-for="(line, i) in typicalStatus"
+              :key="i"
+              class="row items-center q-py-xs text-body2"
+            >
+              <q-icon :name="line.icon" size="18px" :color="line.color" class="q-mr-sm" />
+              <span class="col">{{ line.text }}</span>
+            </div>
+          </div>
+          <div v-else class="text-caption text-grey-6 q-py-xs">
+            Nothing recorded for this sailing yet.
+          </div>
+          <!-- The webcams — always offered on Bowen departures, plenty of
+               riders just want the photos. When the robot reported, the same
+               dialogs double as its verification. -->
+          <div v-if="selectedTypical?.label === 'Bowen'" class="text-center q-mt-sm">
+            <div
+              v-if="selectedTypical?.robotCrosswalk || selectedTypical?.robotCapacity"
+              class="text-caption text-grey-6"
+            >
+              <q-icon name="smart_toy" size="12px" color="indigo" />
+              The robot reported on this sailing — check its work:
+            </div>
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="indigo"
+              icon="photo_camera"
+              label="Bowen at crosswalk"
+              @click="openRobotFromTypical('crosswalk')"
+            />
+            <q-btn
+              flat
+              dense
+              no-caps
+              color="indigo"
+              icon="photo_camera"
+              label="Front of Bowen lineup"
+              @click="openRobotFromTypical('fullness')"
+            />
+          </div>
+          <q-separator class="q-my-sm" />
+          <div class="text-caption text-grey-7 q-mb-xs">What's typical for this sailing:</div>
           <SailingHistoryDetail
             v-if="selectedTypical?.info"
             :info="selectedTypical.info"
@@ -623,50 +670,6 @@
           />
           <div v-else class="text-caption text-grey-6 q-pa-sm text-center">
             No recent history for this sailing yet.
-          </div>
-          <div v-if="selectedTypical?.label === 'Bowen'" class="text-center q-mt-sm">
-            <q-btn
-              flat
-              dense
-              no-caps
-              color="primary"
-              icon="photo_camera"
-              :label="`See ${formatTime12h(selectedTypical.time)} departures`"
-              :to="{ path: '/bowen-departures', query: { time: selectedTypical.time } }"
-              @click="showTypicalDialog = false"
-            />
-          </div>
-          <!-- The robot reported on this sailing (the square badge in the
-               schedule) — offer its frame-check dialogs so a rider can agree
-               or correct it without leaving the page. -->
-          <div
-            v-if="selectedTypical?.robotCrosswalk || selectedTypical?.robotCapacity"
-            class="text-center q-mt-xs"
-          >
-            <div class="text-caption text-grey-6">
-              <q-icon name="smart_toy" size="12px" color="indigo" />
-              The robot reported on this sailing — check its work:
-            </div>
-            <q-btn
-              v-if="selectedTypical?.robotCrosswalk"
-              flat
-              dense
-              no-caps
-              color="indigo"
-              icon="directions_walk"
-              label="Verify crosswalk time"
-              @click="openRobotFromTypical('crosswalk')"
-            />
-            <q-btn
-              v-if="selectedTypical?.robotCapacity"
-              flat
-              dense
-              no-caps
-              color="indigo"
-              icon="directions_boat"
-              label="Verify not full"
-              @click="openRobotFromTypical('fullness')"
-            />
           </div>
           <div class="text-caption text-grey-5 q-mt-sm q-px-xs">
             Predictions are a guess — there's no certainty with the ferry.
@@ -684,6 +687,8 @@
       :frames="robotVerify.frames"
       :sailing-key="robotVerify.sailingKey"
       :claim="robotVerify.claim"
+      :sailing-label="robotVerify.sailingLabel"
+      :departed-label="robotVerify.departedLabel"
       @agree="onRobotVerifyAgree"
       @mark="onRobotVerifyMark"
       @refute="onRobotVerifyRefute"
@@ -958,13 +963,114 @@ function openHistory(time, label, entry = null) {
     time,
     label,
     title: `${todayDow.value} ${formatTime12h(time)} ${dir}`,
-    // Robot-sourced values on the clicked sailing (Bowen only) — the dialog
-    // offers verify buttons for these (see openRobotFromTypical).
+    // The clicked schedule entry itself — the dialog's status section reads
+    // it (see typicalStatus).
+    entry,
+    // Robot-sourced values on the clicked sailing (Bowen only) — the camera
+    // buttons mention the robot's report when these are set.
     robotCrosswalk: entry?.crosswalkSource === 'robot',
     robotCapacity: entry?.capacitySource === 'robot',
   }
   showTypicalDialog.value = true
 }
+
+// The selected sailing's status as explicit sentences — what actually
+// happened (or is happening), read from the schedule entry. Tolerates both
+// entry shapes: past rows carry diffText/lastCapacity, upcoming rows
+// lateText/deckSpace.
+const typicalStatus = computed(() => {
+  const e = selectedTypical.value?.entry
+  if (!e) return []
+  const lines = []
+  if (e.skipped) {
+    lines.push({ icon: 'block', color: 'negative', text: 'This sailing did not run.' })
+    return lines
+  }
+  if (e.dangerousCargo)
+    lines.push({
+      icon: 'warning',
+      color: 'orange-9',
+      text: 'Dangerous cargo sailing — no foot passengers.',
+    })
+  if (e.repositioning)
+    lines.push({ icon: 'warning', color: 'orange-9', text: 'Repositioning sailing.' })
+  const late = e.diffText || e.lateText
+  const departed = Boolean(e.diffText)
+  // Actual departure time when a departure event matched (matching.js keeps
+  // it on _depDisplay) — riders want the time itself, not just the lateness.
+  const depAt = e._depDisplay ? formatTime12h(e._depDisplay) : null
+  if (late === '?') {
+    lines.push({
+      icon: 'schedule',
+      color: 'grey-7',
+      text: 'Departed — exact time not recorded.',
+    })
+  } else if (late === '✓' || late === 'On time') {
+    lines.push({
+      icon: 'schedule',
+      color: 'positive',
+      text: departed ? `Departed on time${depAt ? ` at ${depAt}` : ''}.` : 'Expected on time.',
+    })
+  } else if (late) {
+    lines.push({
+      icon: 'schedule',
+      color: 'deep-orange',
+      text: departed
+        ? `Departed${depAt ? ` at ${depAt}` : ''} — ${late}.`
+        : `Currently running ${late}.`,
+    })
+  }
+  const cap = e.lastCapacity
+  const capSrc =
+    e.capacitySource === 'robot'
+      ? ' (the robot, from the webcam)'
+      : e.capacitySource === 'user'
+        ? ' (reported by a rider)'
+        : ''
+  // When we know WHEN it filled (automated fill events), say so — the
+  // table's "Filled by" column, for the current sailing.
+  const filledTime =
+    e.filledAt && e.filledAt !== 'user_reported' ? dayjs(e.filledAt).tz(TZ).format('h:mm a') : null
+  if (cap === 'Full') {
+    lines.push({
+      icon: 'directions_boat',
+      color: 'deep-orange',
+      text: `The ferry left full${filledTime ? ` — full by ${filledTime}` : ''}${capSrc}.`,
+    })
+  } else if (cap === 'Not Full') {
+    lines.push({ icon: 'directions_boat', color: 'positive', text: `The ferry left with room${capSrc}.` })
+  } else if (cap) {
+    const n = parseInt(cap)
+    lines.push({
+      icon: 'directions_boat',
+      color: 'grey-8',
+      text: isNaN(n)
+        ? `Capacity: ${cap}${capSrc}.`
+        : `The ferry left about ${100 - n}% full${capSrc}.`,
+    })
+  } else if (e.deckSpace) {
+    lines.push({
+      icon: 'directions_boat',
+      color: 'grey-8',
+      text: `Deck space right now: ${e.deckSpace} available.`,
+    })
+  }
+  if (e.crosswalkFullAt) {
+    const at =
+      e.crosswalkFullAt === 'user_reported'
+        ? null
+        : dayjs(e.crosswalkFullAt).tz(TZ).format('h:mm a')
+    const src = e.crosswalkSource === 'robot' ? 'the robot' : 'a rider'
+    lines.push({
+      icon: 'directions_walk',
+      color: 'grey-8',
+      text: at
+        ? `Car lineup reached the crosswalk at ${at} (per ${src}).`
+        : `Car lineup reached the crosswalk (per ${src}).`,
+    })
+  }
+  return lines
+})
 function openTypical(s) {
   openHistory(s.shortTime, s.label, s)
 }
@@ -1000,6 +1106,8 @@ const robotVerify = ref({
   sailingKey: null,
   autoProb: null,
   claim: 'notFull',
+  sailingLabel: null,
+  departedLabel: null,
 })
 
 async function openRobotVerify(kind, time) {
@@ -1020,18 +1128,18 @@ async function openRobotVerify(kind, time) {
       $q.notify({ type: 'warning', message: "Couldn't find that sailing's photos" })
       return
     }
-    // The robot's detection ts: the classifier stamp when present, else the
-    // recorded value itself (the badge only routes here when its source is
-    // 'robot', so crosswalkFullAt IS the robot's time). Fullness may be
-    // timeless (the aggregate's bare nf flag) — the dialog handles null.
+    // The robot's detection ts when there is one — but the dialog also opens
+    // with NO robot claim now (the typical dialog's camera buttons are for
+    // anyone who wants the photos): crosswalk with robotAt null becomes a
+    // plain photo browser with a "mark the frame" action, fullness with
+    // claim null asks the per-frame question without defending a verdict.
+    const rawCw = s.crosswalkFullAtAuto ?? s.crosswalkFullAt ?? null
     const robotAt =
       kind === 'crosswalk'
-        ? (s.crosswalkFullAtAuto ?? s.crosswalkFullAt ?? null)
+        ? typeof rawCw === 'number'
+          ? rawCw
+          : null
         : (s.terminalEmptyFrameTs ?? null)
-    if (kind === 'crosswalk' && robotAt == null) {
-      $q.notify({ type: 'warning', message: "The robot's crosswalk time is no longer available" })
-      return
-    }
     robotVerify.value = {
       open: true,
       kind,
@@ -1039,9 +1147,13 @@ async function openRobotVerify(kind, time) {
       frames: (kind === 'crosswalk' ? s.arrival?.timelapse : s.departure?.timelapse) || [],
       sailingKey: s.sailingKey,
       autoProb: s.crosswalkAutoProb ?? null,
-      // The badge routes here only for robot-sourced capacity, so the
-      // sailing's own full/not-full flag says which claim to defend.
-      claim: s.ferryFullAuto ? 'full' : 'notFull',
+      claim: s.ferryFullAuto
+        ? 'full'
+        : s.ferryNotFullAuto || s.terminalEmptyFrameTs != null
+          ? 'notFull'
+          : null,
+      sailingLabel: formatTime12h(s.sailingTime),
+      departedLabel: s.actualDepartureTime ? formatTime12h(s.actualDepartureTime) : null,
     }
   } catch (err) {
     console.error('Failed to open robot verification:', err)

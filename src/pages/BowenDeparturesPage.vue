@@ -128,6 +128,7 @@
             <RobotSays
               :auto-at="upcomingLineup.crosswalkFullAtAuto ?? null"
               :auto-prob="upcomingLineup.crosswalkAutoProb ?? null"
+              :sailing-label="formatTime12h(upcomingLineup.sailingTime)"
               :crosswalk-reports="crosswalkByKey.get(upcomingLineup.sailingKey) || []"
               :human-at="humanCrosswalkAt(upcomingLineup)"
               :frames="upcomingLineup.timelapse"
@@ -240,6 +241,10 @@
             :not-full-prob="sailing.terminalEmptyProb ?? null"
             :full-at="sailing.terminalFullAt ?? sailing.ferryFullAuto ?? null"
             :full-prob="sailing.terminalFullProb ?? null"
+            :sailing-label="formatTime12h(sailing.sailingTime)"
+            :departed-label="
+              sailing.actualDepartureTime ? formatTime12h(sailing.actualDepartureTime) : null
+            "
             :can-compute-not-full-prob="(sailing.departureTimelapsePaths?.length ?? 0) >= 2"
             :capacity-reports="sailing.reports || []"
             :terminal-frames="sailing.departure?.timelapse || []"
