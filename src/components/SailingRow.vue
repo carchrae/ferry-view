@@ -51,26 +51,36 @@
             {{ skipped ? '?' : late.text }}
           </div>
         </div>
-        <div v-if="capacity || crosswalk || typeBadge" class="sr-status text-caption">
-          <template v-if="capacity">
-            <span class="text-weight-bold" :class="'text-' + capacity.color">{{
-              statusText
-            }}</span>
-            <RobotIcon v-if="capacity.robot" />
-          </template>
-          <template v-if="crosswalk">
-            <span v-if="capacity" class="text-grey-5"> · </span>
-            <span class="text-weight-bold text-deep-orange"
-              >{{ crosswalkText }}</span
-            >
-            <RobotIcon v-if="crosswalk.robot" />
-          </template>
-          <template v-if="typeBadge">
-            <span v-if="capacity || crosswalk" class="text-grey-5"> · </span>
-            <span class="text-orange-9">{{ typeBadge.text }}</span>
-          </template>
+        <!-- Two columns: how it is now, then how it usually is. Gridded
+             rather than run together so the readings line up down a stack of
+             cards instead of starting wherever the previous card's text
+             happened to end. -->
+        <div
+          v-if="hasNowFact || hint"
+          class="sr-status sr-facts text-caption"
+          :class="{ 'sr-facts--hint-only': !hasNowFact }"
+        >
+          <span v-if="hasNowFact" class="sr-fact-now">
+            <template v-if="capacity">
+              <span class="text-weight-bold" :class="'text-' + capacity.color">{{
+                statusText
+              }}</span>
+              <RobotIcon v-if="capacity.robot" />
+            </template>
+            <template v-if="crosswalk">
+              <span v-if="capacity" class="text-grey-5"> · </span>
+              <span class="text-weight-bold text-deep-orange"
+                >{{ crosswalkText }}</span
+              >
+              <RobotIcon v-if="crosswalk.robot" />
+            </template>
+            <template v-if="typeBadge">
+              <span v-if="capacity || crosswalk" class="text-grey-5"> · </span>
+              <span class="text-orange-9">{{ typeBadge.text }}</span>
+            </template>
+          </span>
+          <HintLine v-if="hint" :hint="hint" inline @click="$emit('typical')" />
         </div>
-        <HintLine v-if="hint" :hint="hint" @click="$emit('typical')" />
       </div>
     </div>
   </div>
@@ -286,6 +296,13 @@ const typeBadge = computed(() => {
 
 // Cards rail: fullness color when known, crosswalk orange as a fallback,
 // neutral otherwise.
+// Is there anything to say about the sailing right now? Gates the first grid
+// column: an empty span would still take its column gap, leaving the hint
+// pushed in by a few pixels for no reason.
+const hasNowFact = computed(() =>
+  Boolean(capacity.value || crosswalk.value || typeBadge.value),
+)
+
 const railColor = computed(() => {
   if (skipped.value) return 'grey-4'
   if (capacity.value) return capacity.value.color
@@ -324,24 +341,36 @@ const vFitScale = {
   },
 }
 
-// The "typically fills by ..." prediction sub-line, shared by every design.
-// In the cards design this renders INSIDE the card, which is itself clickable
+// The "typically fills by ..." prediction, shared by every design. Renders as
+// its own line by default; `inline` makes it a span so the cards design can
+// run it on after the fullness reading, which is the order a rider reads in
+// ("85% full · usually on time" — what it is now, then what it usually is).
+//
+// In the cards design this sits INSIDE the card, which is itself clickable
 // (@click -> 'open'), so the native click has to be stopped here or tapping
 // the hint would open the history dialog as well. A no-op for the designs
 // that render it outside the clickable row.
 const HintLine = (p, { emit }) =>
   h(
-    'div',
+    p.inline ? 'span' : 'div',
     {
-      class: `typical-hint text-caption cursor-pointer text-${p.hint.color}`,
+      class: [
+        p.inline ? 'typical-hint-inline' : 'typical-hint',
+        'text-caption',
+        'cursor-pointer',
+        `text-${p.hint.color}`,
+      ],
       onClick: (e) => {
         e.stopPropagation()
         emit('click')
       },
     },
-    [p.hint.text + ' ', h(QIcon, { name: 'info_outline', size: '12px' })],
+    p.hint.text,
   )
-HintLine.props = { hint: { type: Object, required: true } }
+HintLine.props = {
+  hint: { type: Object, required: true },
+  inline: { type: Boolean, default: false },
+}
 HintLine.emits = ['click']
 </script>
 
@@ -397,6 +426,38 @@ HintLine.emits = ['click']
   line-height: 1.2;
 }
 
+.sr-facts {
+  display: grid;
+  // Auto, with no floor: a card holds a single sailing, so there is no second
+  // row here for the columns to line up with — a minimum width would only
+  // strand empty space to the left of the hint. (The top card is the opposite
+  // case: two sailings in one grid, which is what a floor is for.) The grid
+  // still earns its place by giving the hint its own box, so a wrapped second
+  // line indents to the hint rather than running back under the reading.
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: baseline;
+}
+
+// Nothing to report right now: one column, so the hint starts at the card's
+// edge instead of after an empty cell and its gap.
+.sr-facts--hint-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+// The hint wraps within its column rather than ellipsizing. These cards are
+// half-width on a phone (Bowen and HSB sit side by side), so a single clipped
+// line would cut "usually +11min, full to CW 10:51am" down to nothing useful
+// — better to grow the card by a line. Baseline alignment keeps the first
+// line level with the fullness reading either way.
+.sr-facts .typical-hint-inline {
+  min-width: 0;
+}
+
+.sr-fact-now {
+  min-width: 0;
+}
+
 .sr-track {
   height: 5px;
   margin-top: 3px;
@@ -427,5 +488,11 @@ HintLine.emits = ['click']
   line-height: 1.1;
   padding-left: 2px;
   margin-top: 1px;
+}
+
+// Inline variant: no block spacing, and it must be able to shrink — the
+// fullness reading in front of it is the fact that can't be cut.
+.typical-hint-inline {
+  white-space: normal;
 }
 </style>

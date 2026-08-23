@@ -111,7 +111,7 @@
               <q-card flat bordered class="full-height" :class="day.key === todayKey ? 'today-card' : ''">
                 <q-card-section class="bg-blue-grey-1 q-py-sm">
                   <div class="text-subtitle2 text-weight-bold">{{ day.label }}</div>
-                  <div class="text-caption text-grey-6">{{ weekCount }} week(s)</div>
+                  <div class="text-caption text-grey-6">{{ weekLabel(weekCounts[panel][day.key]) }}</div>
                 </q-card-section>
                 <q-card-section
                   v-if="!byDayOfWeek[panel]?.[day.key]"
@@ -134,8 +134,17 @@
                         <div class="text-weight-medium text-body2">{{ formatTime12h(time) }}</div>
                       </q-item-section>
                       <q-item-section class="col">
-                        <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
-                        <div v-if="fullText(info, panel)" class="text-body2" :class="busyClass(info, panel)">● {{ fullText(info, panel) }}</div>
+                        <div
+                          v-for="(fact, fi) in rowFacts(info, panel)"
+                          :key="fi"
+                          class="text-body2"
+                          :class="'text-' + factColor(fact)"
+                        >
+                          ● {{ factDetailText(fact) }}
+                        </div>
+                        <div v-if="!rowFacts(info, panel).length" class="text-body2 text-grey-5">
+                          ● not enough history
+                        </div>
                       </q-item-section>
                       <q-item-section side>
                         <div class="row items-center no-wrap">
@@ -188,7 +197,7 @@
             <q-card flat bordered class="full-height" :class="selectedDay === todayKey ? 'today-card' : ''">
               <q-card-section class="bg-blue-grey-1 q-py-sm">
                 <div class="text-subtitle2 text-weight-bold">{{ dayNames.find(d => d.key === selectedDay)?.label }}</div>
-                <div class="text-caption text-grey-6">{{ weekCount }} week(s)</div>
+                <div class="text-caption text-grey-6">{{ weekLabel(weekCounts[panel][selectedDay]) }}</div>
               </q-card-section>
               <q-card-section
                 v-if="!byDayOfWeek[panel]?.[selectedDay]"
@@ -211,8 +220,17 @@
                       <div class="text-weight-medium text-body2">{{ formatTime12h(time) }}</div>
                     </q-item-section>
                     <q-item-section class="col">
-                      <div class="text-body2" :class="latenessClass(info.avgLateness)">● {{ latenessText(info) }}</div>
-                      <div v-if="fullText(info, panel)" class="text-body2" :class="busyClass(info, panel)">● {{ fullText(info, panel) }}</div>
+                      <div
+                        v-for="(fact, fi) in rowFacts(info, panel)"
+                        :key="fi"
+                        class="text-body2"
+                        :class="'text-' + factColor(fact)"
+                      >
+                        ● {{ factDetailText(fact) }}
+                      </div>
+                      <div v-if="!rowFacts(info, panel).length" class="text-body2 text-grey-5">
+                        ● not enough history
+                      </div>
                     </q-item-section>
                     <q-item-section side>
                       <div class="row items-center no-wrap">
@@ -246,19 +264,74 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive } from 'vue'
-import { dayjs, TZ, nowInVancouver, formatTime12h } from '../../functions/lib/time.js'
+import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { nowInVancouver, formatTime12h } from '../../functions/lib/time.js'
 import { useHistoricalStats, DAY_KEYS } from 'src/composables/useHistoricalStats'
+import {
+  typicalFacts,
+  factDetailText,
+  factColor,
+  weeksOfData,
+  DEFAULT_HISTORY_WEEKS,
+} from 'src/lib/historical-stats.js'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 
-const weeksBack = ref(4)
-const directionTab = ref('hsb')
+// URL is the source of truth for these three, so a view can be linked or
+// bookmarked: the direction is a path segment (/history/bowen), and the other
+// two ride in the query string ONLY when they differ from the defaults, so an
+// ordinary visit keeps a clean /history/hsb.
+const DEFAULT_WEEKS = DEFAULT_HISTORY_WEEKS
+const DEFAULT_DIRECTION = 'hsb'
+const DEFAULT_EXCLUDE_HOLIDAYS = true
+
+const route = useRoute()
+const router = useRouter()
+
+function weeksFromQuery(q) {
+  const n = parseInt(q, 10)
+  return !isNaN(n) && n >= 1 && n <= 52 ? n : DEFAULT_WEEKS
+}
+
+const weeksBack = ref(weeksFromQuery(route.query.weeks))
+const directionTab = ref(route.params.direction || DEFAULT_DIRECTION)
 const showMobileSettings = ref(false)
 
 // excludeHolidays comes from the composable: flipping it re-filters the
 // already-fetched docs reactively instead of re-running the Firestore query.
 const { loading, error, byDayOfWeek, impactedDates, excludeHolidays, fetchStats } =
   useHistoricalStats()
+excludeHolidays.value = route.query.holidays !== 'include'
+
+// Mirror state into the URL. `replace`, not `push`: flipping a checkbox or
+// nudging the week count shouldn't stack up history entries the back button
+// then has to walk out of — the URL still updates, so it stays shareable.
+function syncUrl() {
+  const query = {}
+  if (weeksBack.value !== DEFAULT_WEEKS) query.weeks = String(weeksBack.value)
+  if (excludeHolidays.value !== DEFAULT_EXCLUDE_HOLIDAYS) query.holidays = 'include'
+  const path = `/history/${directionTab.value}`
+  if (route.path === path && JSON.stringify(query) === JSON.stringify(route.query)) return
+  router.replace({ path, query })
+}
+
+watch([directionTab, weeksBack, excludeHolidays], syncUrl)
+
+// Back/forward, or a link into the page while it's already open.
+watch(
+  () => [route.params.direction, route.query.weeks, route.query.holidays],
+  ([dir, weeks, holidays]) => {
+    const nextDirection = dir || DEFAULT_DIRECTION
+    const nextWeeks = weeksFromQuery(weeks)
+    const nextExclude = holidays !== 'include'
+    if (directionTab.value !== nextDirection) directionTab.value = nextDirection
+    if (excludeHolidays.value !== nextExclude) excludeHolidays.value = nextExclude
+    if (weeksBack.value !== nextWeeks) {
+      weeksBack.value = nextWeeks
+      fetchData()
+    }
+  },
+)
 
 const expandedRows = reactive(new Set())
 function rowKey(dir, dayKey, time) { return `${dir}|${dayKey}|${time}` }
@@ -281,70 +354,14 @@ function nextDay() {
 
 const dayNames = DAY_KEYS.map(key => ({ key, label: key }))
 
-function latenessClass(lateness) {
-  if (lateness === null) return 'text-grey-5'
-  if (lateness <= 0) return 'text-positive'
-  if (lateness <= 5) return 'text-warning'
-  return 'text-negative text-weight-bold'
-}
-
-// How often something happens, as a plain word (drives the coloured row text).
-function freqWord(pct) {
-  if (pct === null) return ''
-  if (pct >= 60) return 'Usually'
-  if (pct >= 30) return 'Often'
-  if (pct > 0) return 'Sometimes'
-  return 'Rarely'
-}
-
-// Coloured lateness line: how likely it is to be late, and by how much.
-function latenessText(info) {
-  if (info.avgLateness === null) return 'No departure data'
-  if (info.avgLateness <= 0) return 'Usually on time'
-  const freq = info.latePct !== null ? freqWord(info.latePct) : ''
-  return `${freq ? freq + ' ' : ''}late · +${info.avgLateness}m`
-}
-
-function fullLabel(info) {
-  if (info.fullPct >= 80) return 'Often Full'
-  if (info.fullPct >= 50) return 'Sometimes Full'
-  if (info.fullPct > 0) return 'Seldom Full'
-  if (info.notFullCount > 0) return 'Rarely Full'
-  return ''
-}
-
-// Coloured capacity line: how likely to be full (and when it fills), or how
-// busy. Bowen riders tapping "Full" never supply a fill time (see
-// SailingTagCards' rate()) — fall back to the crosswalk-full time there, the
-// closest available "when it fills" signal. Even when no sailing was ever
-// tagged Full outright, a crosswalk mark is still real evidence on its own
-// (a busy lineup), so it gets its own line rather than showing nothing.
-function fullText(info, panel) {
-  if (info.fullPct > 0) {
-    const label = fullLabel(info)
-    const fillTime = panel === 'bowen' ? info.avgCwTime : info.avgFillTime
-    const byLabel = panel === 'bowen' ? 'full to CW by' : 'by'
-    return fillTime ? `${label} · ${byLabel} ${fillTime}` : label
-  }
-  if (panel === 'bowen' && info.avgCwTime) return `Full to CW by ${info.avgCwTime}`
-  if (info.avgCapacityPct !== null) return `~${100 - info.avgCapacityPct}% full`
-  if (info.notFullCount > 0) return fullLabel(info)
-  return null
-}
-
-function busyClass(info, panel) {
-  if (info.fullPct >= 80) return 'text-negative text-weight-bold'
-  if (info.fullPct >= 50) return 'text-warning text-weight-bold'
-  if (info.fullPct > 0) return 'text-orange'
-  if (panel === 'bowen' && info.avgCwTime) return 'text-orange'
-  if (info.avgCapacityPct !== null) {
-    const busy = 100 - info.avgCapacityPct
-    if (busy >= 70) return 'text-warning'
-    if (busy >= 40) return 'text-orange'
-    return 'text-positive'
-  }
-  if (info.notFullCount > 0) return 'text-positive'
-  return 'text-grey-6'
+// Row wording comes from the shared facts in src/lib/historical-stats.js, the
+// same ones behind the home page's hint line. This page used to carry its own
+// copy with different thresholds — 50%/80% for fullness against the home
+// page's 40% — so one sailing could be "Sometimes Full" here and "often full"
+// there. Layout still differs (a row per fact, with room to spell it out);
+// only the judgement is shared.
+function rowFacts(info, panel) {
+  return typicalFacts(info, panel)
 }
 
 function exceptionTooltip(info) {
@@ -352,17 +369,26 @@ function exceptionTooltip(info) {
   return `${n} exception${n === 1 ? '' : 's'} excluded from averages`
 }
 
+function weekLabel(n) {
+  if (!n) return 'no data'
+  return `${n} week${n === 1 ? '' : 's'} of data`
+}
+
 function sortedEntries(data) {
   if (!data) return []
   return Object.entries(data).sort((a, b) => a[0].localeCompare(b[0]))
 }
 
-const startDate = computed(() => nowInVancouver().subtract(weeksBack.value, 'week').format('YYYY-MM-DD'))
-const endDate = computed(() => nowInVancouver().subtract(1, 'day').format('YYYY-MM-DD'))
-const weekCount = computed(() => {
-  const start = dayjs.tz(startDate.value, TZ)
-  const end = dayjs.tz(endDate.value, TZ)
-  return Math.max(end.diff(start, 'week'), 1)
+// Weeks of data per day card, counted from the dates actually present rather
+// than the requested span — see weeksOfData(). Memoized across the 7 cards so
+// each render walks the data once, not once per card.
+const weekCounts = computed(() => {
+  const out = {}
+  for (const panel of ['hsb', 'bowen']) {
+    out[panel] = {}
+    for (const key of DAY_KEYS) out[panel][key] = weeksOfData(byDayOfWeek.value[panel]?.[key])
+  }
+  return out
 })
 
 function fetchData() {
@@ -370,6 +396,9 @@ function fetchData() {
 }
 
 onMounted(() => {
+  // Normalize /history -> /history/hsb so the address bar always shows the
+  // view you're actually looking at.
+  syncUrl()
   fetchData()
 })
 </script>

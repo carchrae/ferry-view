@@ -18,15 +18,15 @@
     <q-banner v-if="user" dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
       <template v-if="user.displayName">
         You appear here as <strong>{{ formatReporterName(user.displayName) }}</strong>.
-        <router-link to="/profile">Change your name</router-link>
+        <router-link to="/settings">Change your name</router-link>
       </template>
       <template v-else>
         You don't have a displayed name yet — you show as "Anonymous".
-        <router-link to="/profile">Set your name</router-link>
+        <router-link to="/settings">Set your name</router-link>
       </template>
     </q-banner>
     <q-banner v-else dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
-      <router-link to="/profile">Sign in</router-link> to appear on the leaderboard with your name.
+      <router-link to="/settings">Sign in</router-link> to appear on the leaderboard with your name.
     </q-banner>
 
     <div class="row q-col-gutter-md">

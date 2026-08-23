@@ -1,370 +1,23 @@
 import { ref, computed } from 'vue'
 import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore'
 import { db } from 'boot/firebase'
-import { dayjs, TZ, normalizeTime, nowInVancouver } from '../../functions/lib/time.js'
+import { dayjs, nowInVancouver } from '../../functions/lib/time.js'
 import { getImpactedDates } from '../../functions/lib/holidays.js'
+import { aggregateSailings } from '../lib/historical-stats.js'
 
-// ---------------------------------------------------------------------------
-// Day-of-week + schedule constants
-// ---------------------------------------------------------------------------
-
-export const DAY_KEYS = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-]
-const DOW_MAP = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' }
-
-const HSB_TIMES = new Set(['04:40', '05:45', '06:50', '08:05', '09:20', '10:35', '11:55', '13:10', '14:35', '15:55', '17:20', '18:35', '19:50', '20:55', '22:00', '23:00'])
-const BOWEN_TIMES = new Set(['05:15', '06:15', '07:30', '08:45', '10:00', '11:15', '12:35', '13:55', '15:15', '16:40', '18:00', '19:15', '20:25', '21:30', '22:30', '23:30'])
-const EXPECTED_DIR = {}
-for (const t of HSB_TIMES) EXPECTED_DIR[t] = 'To Bowen'
-for (const t of BOWEN_TIMES) EXPECTED_DIR[t] = 'To HSB'
-
-// Map a stored `direction` to a panel key. "To Bowen" departs Horseshoe Bay
-// (panel 'hsb'); "To HSB" departs Bowen ('bowen').
-export function directionToPanel(direction) {
-  if (direction === 'To Bowen') return 'hsb'
-  if (direction === 'To HSB') return 'bowen'
-  return null
-}
-
-// Map an upcoming-sailing `label` ('HSB' | 'Bowen') to its history panel key.
-export function labelToPanel(label) {
-  if (label === 'HSB') return 'hsb'
-  if (label === 'Bowen') return 'bowen'
-  return null
-}
-
-// ---------------------------------------------------------------------------
-// Exception (outlier) detection
-//
-// A single sailing that is wildly late — a breakdown, a medical hold, a missed
-// crossing — is an "exception", not the typical experience. Such days are
-// excluded from every average so one bad day doesn't poison the baseline, but
-// they are still surfaced (small icon + detail) so users can see they happened.
-//
-// Detection is robust to tiny samples: use the median and the median absolute
-// deviation (MAD). A departure is an exception when its lateness deviates from
-// the median by more than max(MAD * K, ABS_MIN) minutes. The absolute floor
-// stops a very consistent sailing (MAD ~ 0) from flagging trivial wobble.
-// ---------------------------------------------------------------------------
-
-export const EXCEPTION_MIN_SAMPLES = 4
-const EXCEPTION_ABS_MIN = 12
-const EXCEPTION_MAD_K = 3
-
-function median(nums) {
-  if (!nums.length) return null
-  const s = [...nums].sort((a, b) => a - b)
-  const mid = Math.floor(s.length / 2)
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
-}
-
-function mean(nums) {
-  return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
-}
-
-// Given the lateness values for one sailing time, returns { med, spread } used
-// to test each value, or null when there aren't enough samples to judge.
-function latenessExceptionBounds(values) {
-  if (values.length < EXCEPTION_MIN_SAMPLES) return null
-  const med = median(values)
-  const mad = median(values.map((v) => Math.abs(v - med)))
-  const spread = Math.max(mad * EXCEPTION_MAD_K, EXCEPTION_ABS_MIN)
-  return { med, spread }
-}
-
-// ---------------------------------------------------------------------------
-// Parsing helpers (shared with the history page)
-// ---------------------------------------------------------------------------
-
-function parseMinutes(timeStr) {
-  if (!timeStr) return null
-  const parts = String(timeStr).split(':')
-  if (parts.length < 2) return null
-  const h = parseInt(parts[0])
-  const m = parseInt(parts[1])
-  if (isNaN(h) || isNaN(m)) return null
-  return h * 60 + m
-}
-
-// filledAt is stored inconsistently (epoch-ms numbers, ISO strings, Firestore
-// Timestamps, or 'user_reported'). Reduce any of them to minutes past midnight
-// in TZ so fill times can be averaged as a time-of-day.
-function parseFilledMinutes(v) {
-  if (v === null || v === undefined || v === 'user_reported') return null
-  let dj
-  if (typeof v === 'number') {
-    dj = dayjs(v).tz(TZ)
-  } else if (v && typeof v === 'object' && typeof v.seconds === 'number') {
-    dj = dayjs(v.seconds * 1000).tz(TZ)
-  } else if (typeof v === 'string') {
-    const n = Number(v)
-    dj = !isNaN(n) && v.trim() !== '' ? dayjs(n).tz(TZ) : dayjs(v).tz(TZ)
-  } else {
-    return null
-  }
-  return dj && dj.isValid() ? dj.hour() * 60 + dj.minute() : null
-}
-
-export function minutesToLabel(mins) {
-  const h = Math.floor(mins / 60)
-  const m = Math.round(mins % 60)
-  const ampm = h < 12 ? 'am' : 'pm'
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
-}
-
-// ---------------------------------------------------------------------------
-// Aggregation
-// ---------------------------------------------------------------------------
-
-// Aggregates raw sailingStatus docs into per-direction / per-day-of-week /
-// per-time stats. Exceptions are detected per sailing time and excluded from
-// every average, but retained (flagged) in `dates`.
-//
-// Returns { hsb: { [dayKey]: { [time]: info } }, bowen: {...} }
-export function aggregateSailings(docs) {
-  const groups = { hsb: {}, bowen: {} }
-
-  for (const doc of docs) {
-    const dow = dayjs.tz(doc.dateIso, TZ).day()
-    const dayKey = DOW_MAP[dow]
-    if (!dayKey) continue
-
-    const dir = directionToPanel(doc.direction)
-    if (!dir) continue
-
-    const time = normalizeTime(doc.sailingTime)
-    if (!time) continue
-
-    // Drop phantom docs whose direction contradicts the schedule (legacy bug).
-    const expected = EXPECTED_DIR[time]
-    if (expected && expected !== doc.direction) continue
-
-    if (!groups[dir][dayKey]) groups[dir][dayKey] = {}
-    const grp = groups[dir][dayKey]
-    if (!grp[time]) grp[time] = []
-
-    let lateness = null
-    if (doc.actualDepartureTime) {
-      const dep = parseMinutes(normalizeTime(doc.actualDepartureTime))
-      const sched = parseMinutes(time)
-      if (dep !== null && sched !== null) lateness = dep - sched
-    }
-    grp[time].push({
-      dateIso: doc.dateIso,
-      actualDep: doc.actualDepartureTime ? normalizeTime(doc.actualDepartureTime) : null,
-      lateness,
-      capacity: doc.lastCapacity || null,
-      capacitySource: doc.capacitySource ?? null,
-      filledAt: doc.filledAt ?? null,
-      filledMinutes: doc.lastCapacity === 'Full' ? parseFilledMinutes(doc.filledAt) : null,
-      // Bowen-side "full to crosswalk" time (minutes past midnight in TZ).
-      // Mutually exclusive with filledMinutes: only To HSB sailings carry it.
-      crosswalkMinutes: parseFilledMinutes(doc.crosswalkFullAt),
-    })
-  }
-
-  const result = { hsb: {}, bowen: {} }
-  for (const dir of ['hsb', 'bowen']) {
-    for (const dayKey of DAY_KEYS) {
-      const grp = groups[dir][dayKey]
-      if (!grp) continue
-      result[dir][dayKey] = {}
-      for (const [time, dates] of Object.entries(grp)) {
-        result[dir][dayKey][time] = computeTimeInfo(time, dates)
-      }
-    }
-  }
-  return result
-}
-
-function computeTimeInfo(time, rawDates) {
-  const sched = parseMinutes(time)
-  const dates = [...rawDates].sort((a, b) => a.dateIso.localeCompare(b.dateIso))
-
-  // Flag exceptions from the lateness distribution.
-  const latenessVals = dates.filter((d) => d.lateness !== null).map((d) => d.lateness)
-  const bounds = latenessExceptionBounds(latenessVals)
-  for (const d of dates) {
-    d.isException = false
-    d.exceptionReason = null
-    if (bounds && d.lateness !== null && Math.abs(d.lateness - bounds.med) > bounds.spread) {
-      d.isException = true
-      const typical = Math.round(bounds.med)
-      d.exceptionReason = `departed ${fmtMin(d.lateness)} vs typical ${fmtMin(typical)}`
-    }
-  }
-
-  const typical = dates.filter((d) => !d.isException)
-  const exceptionCount = dates.length - typical.length
-
-  const typLateness = typical.filter((d) => d.lateness !== null).map((d) => d.lateness)
-  const avgLatenessRaw = mean(typLateness)
-  const avgLateness = avgLatenessRaw === null ? null : Math.round(avgLatenessRaw)
-  const lateCount = typLateness.filter((l) => l >= 2).length
-  const latePct = typLateness.length ? Math.round((lateCount / typLateness.length) * 100) : null
-
-  // Bowen capacity is only ever known when a rider tags it (no automated
-  // deck-space reading for To HSB sailings), so most Bowen dates have no
-  // capacity value at all. Those un-reported dates must not count as "not
-  // full" evidence — the denominator here is reported dates only, mirroring
-  // how latePct is scoped to dates with a lateness value.
-  const reportedCapacity = typical.filter((d) => d.capacity)
-  const fullCount = reportedCapacity.filter((d) => d.capacity === 'Full').length
-  const fullPct = reportedCapacity.length
-    ? Math.round((fullCount / reportedCapacity.length) * 100)
-    : null
-  const fillMins = typical.map((d) => d.filledMinutes).filter((m) => m !== null && m !== undefined)
-  const avgFillTime = fillMins.length ? minutesToLabel(mean(fillMins)) : null
-
-  // Bowen-side equivalent: typical time the lineup reached the crosswalk.
-  const cwMins = typical.map((d) => d.crosswalkMinutes).filter((m) => m !== null && m !== undefined)
-  const avgCwTime = cwMins.length ? minutesToLabel(mean(cwMins)) : null
-
-  const numbers = typical
-    .filter((d) => d.capacity && d.capacity !== 'Full')
-    .map((d) => parseInt(d.capacity))
-    .filter((n) => !isNaN(n) && n <= 100)
-  const avgCapacityPct = numbers.length ? Math.round(mean(numbers)) : null
-
-  // Riders can tag a sailing "Not Full" without giving a percentage — it carries
-  // no numeric weight in avgCapacityPct, but it's still positive evidence the
-  // sailing wasn't full, so it's tracked separately for the "Rarely Full" case.
-  const notFullCount = typical.filter((d) => d.capacity === 'Not Full').length
-
-  return {
-    sched,
-    count: typical.length,
-    totalCount: dates.length,
-    exceptionCount,
-    avgLateness,
-    latePct,
-    // Denominators behind latePct / fullPct. `count` counts dates, but a date
-    // often has no lateness and usually no capacity tag, so `count` alone
-    // can't tell "4 sailings, all on time and never full" from "4 sailings we
-    // know nothing about" — and only the first of those is safe to reassure
-    // a rider with.
-    latenessCount: typLateness.length,
-    reportedCount: reportedCapacity.length,
-    fullPct,
-    avgFillTime,
-    avgCwTime,
-    avgCapacityPct,
-    notFullCount,
-    dates,
-  }
-}
-
-function fmtMin(m) {
-  return `${m >= 0 ? '+' : ''}${m}m`
-}
-
-// Look up the typical stats for one sailing, or null if none.
-export function getTypical(byDayOfWeek, panel, dayKey, time) {
-  if (!byDayOfWeek || !panel || !dayKey || !time) return null
-  return byDayOfWeek[panel]?.[dayKey]?.[normalizeTime(time)] || null
-}
-
-// ---------------------------------------------------------------------------
-// Home-page hint helpers — compact "typically late / full" badges
-// ---------------------------------------------------------------------------
-
-// A sailing counts as "typically late" at or above this share of departures
-// running >= 2 min behind; below it, the same number reads as "usually on
-// time". Shared by the warning and the reassurance so they can't disagree.
-const LATE_PCT_WARN = 40
-// Same idea for fullness: at or above this share of capacity-tagged sailings
-// coming back "Full", the sailing gets a warning.
-const FULL_PCT_WARN = 40
-// Below freqWord's "often" floor, so "rarely full" is never claimed for a
-// sailing the warning branch would have called "often full". Between the two
-// the sailing is genuinely borderline and gets no line at all.
-const RARELY_FULL_PCT = 30
-// Riders tag Bowen capacity by hand, so reports are sparse — but one or two
-// "not full" tags are not enough to promise a rider there will be room.
-const MIN_CAPACITY_REPORTS = 3
-
-// Frequency adverb for a percentage, or null below the noise floor.
-function freqWord(pct) {
-  if (pct === null || pct === undefined) return null
-  if (pct >= 60) return 'usually'
-  if (pct >= 30) return 'often'
-  if (pct > 0) return 'sometimes'
-  return null
-}
-
-// Returns a single-line { text, color } hint for an upcoming sailing based on
-// its typical history (e.g. "often +5min, usually full by 4:15 pm"), or null
-// when nothing noteworthy. Each part carries its own frequency word, but a
-// shared word isn't repeated (e.g. "often +5min, full" — not "often +5min,
-// often full"). Lateness under 3 minutes is not mentioned. Only surfaces
-// signals backed by enough samples. When `compact` (mobile), the fill time
-// drops "by" and its space (e.g. "usually full 4:15pm") to save width.
-// `panel` distinguishes Bowen departures ('bowen'), where riders tapping
-// "Full" never supply a fill time (see SailingTagCards' rate()) — the
-// crosswalk-full time is the closest available "when it fills" signal there.
-export function typicalHints(info, compact = false, panel = null) {
-  if (!info || info.count < EXCEPTION_MIN_SAMPLES) return null
-  const segs = []
-  let severity = 0 // 0 none, 1 warning, 2 negative
-
-  if (info.avgLateness !== null && info.avgLateness >= 3 && info.latePct !== null && info.latePct >= LATE_PCT_WARN) {
-    segs.push({ freq: freqWord(info.latePct), text: `+${info.avgLateness}min` })
-    severity = Math.max(severity, info.avgLateness >= 6 ? 2 : 1)
-  }
-
-  if (info.fullPct >= FULL_PCT_WARN) {
-    const fillTime = panel === 'bowen' ? info.avgCwTime : info.avgFillTime
-    const fillWord = panel === 'bowen' ? 'full to CW' : 'full'
-    let fullText = 'full'
-    if (fillTime) {
-      fullText = compact ? `${fillWord} ${fillTime.replace(' ', '')}` : `${fillWord} by ${fillTime}`
-    }
-    segs.push({ freq: freqWord(info.fullPct), text: fullText })
-    severity = Math.max(severity, info.fullPct >= 70 ? 2 : 1)
-  } else if (panel === 'bowen' && info.avgCwTime) {
-    // No sailing was ever tagged Full outright, but a crosswalk mark is still
-    // real evidence of a busy lineup on its own — surface it rather than
-    // showing nothing. No percentage backs a frequency word here, so none is
-    // used (mirrors SailingHistoryDetail's plain "full to CW by X" fallback).
-    segs.push({ freq: null, text: `full to CW by ${info.avgCwTime}` })
-    severity = Math.max(severity, 1)
-  } else if (info.avgCapacityPct !== null && (100 - info.avgCapacityPct) >= 60) {
-    segs.push({ freq: 'usually', text: `~${100 - info.avgCapacityPct}% full` })
-    severity = Math.max(severity, 1)
-  }
-
-  // Nothing concerning. A blank line here used to be ambiguous — a rider can't
-  // tell "this sailing is reliably fine" from "we have no history for it", and
-  // reads the silence as the latter. So say the good news outright, but only
-  // for the facts actually backed by samples: an unqualified reassurance drawn
-  // from a missing warning would be the worst kind of wrong.
-  if (!segs.length) {
-    const good = []
-    if (info.latenessCount >= EXCEPTION_MIN_SAMPLES && info.latePct !== null && info.latePct < LATE_PCT_WARN) {
-      good.push('usually on time')
-    }
-    if (info.reportedCount >= MIN_CAPACITY_REPORTS && info.fullPct !== null && info.fullPct < RARELY_FULL_PCT) {
-      good.push('rarely full')
-    }
-    if (!good.length) return null
-    return { text: good.join(', '), color: 'positive' }
-  }
-
-  let text
-  if (segs.length === 2 && segs[0].freq && segs[0].freq === segs[1].freq) {
-    // Both share a frequency word — state it once, up front.
-    text = `${segs[0].freq} ${segs[0].text}, ${segs[1].text}`
-  } else {
-    text = segs.map((s) => (s.freq ? `${s.freq} ${s.text}` : s.text)).join(', ')
-  }
-
-  return {
-    text,
-    color: severity === 2 ? 'negative' : severity === 1 ? 'warning' : 'orange',
-  }
-}
+// The pure half of this module now lives in src/lib/historical-stats.js so it
+// can be tested without Firestore. Re-exported here so every existing
+// `from 'src/composables/useHistoricalStats'` import keeps working.
+export {
+  DAY_KEYS,
+  EXCEPTION_MIN_SAMPLES,
+  directionToPanel,
+  labelToPanel,
+  minutesToLabel,
+  aggregateSailings,
+  getTypical,
+  typicalHints,
+} from '../lib/historical-stats.js'
 
 // ---------------------------------------------------------------------------
 // Composable — fetch + aggregate sailingStatus over a date range
@@ -408,19 +61,12 @@ async function fetchFromAggregate(start, end) {
 }
 
 // Degraded-mode fallback when the aggregate is missing or long-stale. Bounded
-// two ways: a hard doc cap (a 52-week HistoryPage request could otherwise
-// scan ~11k docs; range scans return ascending dateIso, so truncation drops
-// the newest days — acceptable for a fallback), and a short-lived cache so
-// HomePage + HistoryPage mounts in the same session share one scan.
+// by a hard doc cap: a 52-week HistoryPage request could otherwise scan ~11k
+// docs. Range scans return ascending dateIso, so truncation drops the newest
+// days — acceptable for a fallback. Caching lives in loadHistoryDocs below.
 const DIRECT_LIMIT = 2500
-const DIRECT_CACHE_TTL_MS = 10 * 60 * 1000
-let directCache = null // { key, docs, at }
 
 async function fetchDirect(start, end) {
-  const key = `${start}|${end}`
-  if (directCache?.key === key && Date.now() - directCache.at < DIRECT_CACHE_TTL_MS) {
-    return directCache.docs
-  }
   const q = query(
     collection(db, 'sailingStatus'),
     where('dateIso', '>=', start),
@@ -430,8 +76,49 @@ async function fetchDirect(start, end) {
   const snap = await getDocs(q)
   const out = []
   snap.forEach((d) => out.push(d.data()))
-  directCache = { key, docs: out, at: Date.now() }
   return out
+}
+
+// One fetch per date range for the whole session, shared by every composable
+// instance.
+//
+// HomePage and HistoryPage each call useHistoricalStats(), and both want the
+// same default window — so without this, navigating home -> history -> home
+// re-read the same data three times. That was one Firestore read per visit on
+// the aggregate path and a bounded range scan on the fallback path, neither of
+// which tells us anything we didn't already have.
+//
+// Keyed by range rather than a single slot, so a HistoryPage set to a longer
+// window doesn't evict the home page's data (or vice versa) and send the next
+// navigation back to the network. Capped because the key space is unbounded —
+// the week count comes from the URL.
+//
+// `inflight` collapses concurrent callers onto one request: without it two
+// components mounting in the same tick would both miss the cache and fire.
+const DOCS_CACHE_TTL_MS = 10 * 60 * 1000
+const DOCS_CACHE_MAX = 4
+const docsCache = new Map() // key -> { docs, at }
+const inflight = new Map() // key -> Promise
+
+async function loadHistoryDocs(start, end) {
+  const key = `${start}|${end}`
+  const hit = docsCache.get(key)
+  if (hit && Date.now() - hit.at < DOCS_CACHE_TTL_MS) return hit.docs
+  const pending = inflight.get(key)
+  if (pending) return pending
+
+  const promise = (async () => {
+    try {
+      const docs = (await fetchFromAggregate(start, end)) ?? (await fetchDirect(start, end))
+      docsCache.set(key, { docs, at: Date.now() })
+      if (docsCache.size > DOCS_CACHE_MAX) docsCache.delete(docsCache.keys().next().value)
+      return docs
+    } finally {
+      inflight.delete(key)
+    }
+  })()
+  inflight.set(key, promise)
+  return promise
 }
 
 export function useHistoricalStats() {
@@ -451,7 +138,7 @@ export function useHistoricalStats() {
       // Always compute the impacted set so the holiday toggle can be flipped
       // without refetching — exclusion happens reactively in byDayOfWeek.
       impactedDates.value = [...getImpactedDates(start, end)].sort()
-      docs.value = (await fetchFromAggregate(start, end)) ?? (await fetchDirect(start, end))
+      docs.value = await loadHistoryDocs(start, end)
     } catch (e) {
       console.error('[useHistoricalStats] fetch failed:', e)
       error.value = e.message

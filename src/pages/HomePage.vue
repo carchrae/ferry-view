@@ -1,5 +1,47 @@
 <template>
   <q-page class="q-pa-sm">
+    <!-- Stale-data overlay. The page keeps rendering underneath — the numbers
+         are still the best we have — but it must not look live when it isn't.
+         Suppressed for a grace period after mount so a slow first snapshot
+         can't flash it. -->
+    <div v-if="isStale" class="stale-overlay">
+      <q-card class="stale-card" flat bordered>
+        <q-card-section class="row items-center no-wrap q-py-sm q-px-md">
+          <q-icon
+            :name="isOnline ? 'sync_problem' : 'sentiment_dissatisfied'"
+            :color="isOnline ? 'warning' : 'grey-6'"
+            size="28px"
+            class="q-mr-md"
+          />
+          <div class="col">
+            <div class="text-subtitle2">
+              {{ isOnline ? 'Not updating' : 'No connection' }}
+            </div>
+            <div class="text-caption text-grey-7">
+              <template v-if="isOnline">
+                Nothing new since {{ formatTime12h(ferryData.lastUpdate) }} — what's below may
+                be out of date.
+              </template>
+              <template v-else>
+                You're offline. This is the last data that reached the app.
+              </template>
+            </div>
+          </div>
+          <q-btn
+            v-if="isOnline"
+            dense
+            no-caps
+            unelevated
+            color="primary"
+            icon="refresh"
+            label="Refresh"
+            class="q-ml-md"
+            @click="reloadPage"
+          />
+        </q-card-section>
+      </q-card>
+    </div>
+
     <!-- Loading state: hold back the whole page until the ferry data is ready -->
     <q-inner-loading :showing="!ferryData && !error" color="primary" />
 
@@ -68,8 +110,59 @@
 
       <!-- Sailings (one col-md-6 block) -->
       <div v-if="ferryData" class="col-12 col-md-6">
-        <!-- Vessel Status -->
-        <q-card flat bordered :style="vesselCardStyle" class="q-mb-sm">
+        <!-- Vessel Status. In the 'cards' style it takes the same shape as the
+             sailing cards below — left rail, tight body, no tint — and absorbs
+             the two loose lines that used to float underneath it (last update,
+             last sailing). Busyness moves from the card's background tint to
+             the rail, which is how the cards below express state. -->
+        <div v-if="sailingDesign === 'cards'" class="vs-card row no-wrap q-mb-sm">
+          <div class="vs-rail" :class="'bg-' + vesselRailColor"></div>
+          <div class="vs-body">
+            <div class="row items-center no-wrap">
+              <q-icon :name="speedIcon" size="20px" class="q-mr-sm" />
+              <div class="col ellipsis">
+                <div class="text-subtitle2 ellipsis">{{ ferryData.vesselName }}</div>
+                <div class="text-caption text-grey-8 ellipsis">{{ speedText }}</div>
+              </div>
+              <div class="text-caption text-grey-6 text-right text-no-wrap q-ml-sm">
+                <div>Updated {{ formatTime12h(ferryData.lastUpdate) }}</div>
+                <!-- How the boat is running, right under how fresh that is. -->
+                <div
+                  v-if="lastSailingStatus"
+                  class="text-weight-medium"
+                  :class="'text-' + lastSailingStatus.color"
+                >
+                  {{ lastSailingStatus.text }}
+                </div>
+              </div>
+            </div>
+            <!-- Below the rule: the next boat each way with its current
+                 fullness and the typical-history hint — the same two facts,
+                 in the same order, that the sailing rows below carry. -->
+            <div v-if="nextHints.length" class="vs-next text-caption">
+              <!-- Route / time / what-to-expect as three grid columns. The
+                   cells are direct children of the grid, not wrapped per row,
+                   which is what lets the two rows share column widths and line
+                   up despite "Bowen" and "HSB" being different lengths. -->
+              <template v-for="n in nextHints" :key="n.label">
+                <span class="text-grey-7 text-no-wrap">{{ n.label }}</span>
+                <span class="text-grey-7 text-no-wrap">{{ n.time }}</span>
+                <span class="vs-next-fact">
+                  <span
+                    v-if="n.status"
+                    class="text-weight-bold"
+                    :class="'text-' + n.status.color"
+                    >{{ n.status.text }}</span
+                  >
+                  <span v-if="n.status && n.hint" class="text-grey-5"> · </span>
+                  <span v-if="n.hint" :class="'text-' + n.hint.color">{{ n.hint.text }}</span>
+                </span>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <q-card v-else flat bordered :style="vesselCardStyle" class="q-mb-sm">
           <q-card-section horizontal class="items-center q-pa-sm">
             <q-icon :name="speedIcon" size="sm" class="q-mr-sm" />
             <div>
@@ -84,7 +177,7 @@
           </q-card-section>
         </q-card>
         <div
-          v-if="lastSailing && !lastSailing.skipped"
+          v-if="sailingDesign !== 'cards' && lastSailing && !lastSailing.skipped"
           class="text-center text-caption text-grey-7 q-mb-xs"
         >
           <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
@@ -110,20 +203,11 @@
 
         <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col-12">
-            <q-card flat bordered>
-              <q-card-section class="q-pa-sm">
-                <div
-                  v-if="anyCrosswalkBadge || anyRobotBadge"
-                  class="text-center text-caption text-grey-6 q-mb-sm"
-                >
-                  <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
-                  <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
-                  <template v-if="anyRobotBadge">
-                    <q-icon name="smart_toy" size="12px" color="indigo" />
-                    {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction
-                    — tap time to verify
-                  </template>
-                </div>
+            <!-- Plain wrapper, not a card: it holds cards, and a border round
+                 a group of bordered cards just adds a second frame and eats
+                 width the sailing rows need. -->
+            <q-card flat>
+              <q-card-section class="q-py-sm q-px-none">
                 <div class="row items-start q-col-gutter-sm q-mb-md">
                   <div class="col">
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
@@ -193,24 +277,24 @@
                   Predictions are just a guess — there's no certainty with the ferry.
                 </div>
                 <div
+                  v-if="anyCrosswalkBadge || anyRobotBadge"
+                  class="text-center text-caption text-grey-6 q-mt-sm"
+                >
+                  <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
+                  <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
+                  <template v-if="anyRobotBadge">
+                    <q-icon name="smart_toy" size="12px" color="indigo" />
+                    {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction
+                    <span class="gt-xs">— tap time to verify</span>
+                  </template>
+                </div>
+                <div
                   v-if="ferryData && ferryData.usingFallback"
                   class="text-center text-caption text-grey-6 q-mt-sm"
                 >
                   <q-icon name="warning" size="xs" color="negative" class="q-mr-xs" />
                   bowenferry.ca departure feed is down — using AIS or BCF website (if those all
                   fail, departures show as <q-badge rounded color="grey" dense>?</q-badge>).
-                </div>
-                <div class="row items-center justify-center q-mt-sm design-picker">
-                  <span class="text-caption text-grey-6 q-mr-sm">style</span>
-                  <q-option-group
-                    v-model="sailingDesign"
-                    :options="sailingDesignOptions"
-                    type="radio"
-                    color="primary"
-                    inline
-                    dense
-                    size="sm"
-                  />
                 </div>
               </q-card-section>
             </q-card>
@@ -531,8 +615,8 @@
             <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
             <template v-if="anyRobotBadge">
               <q-icon name="smart_toy" size="12px" color="indigo" />
-              {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction —
-              tap time to verify
+              {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction
+              <span class="gt-xs">— tap time to verify</span>
             </template>
           </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">
@@ -656,35 +740,47 @@
           <!-- The webcams — always offered on Bowen departures, plenty of
                riders just want the photos. When the robot reported, the same
                dialogs double as its verification. -->
-          <div v-if="selectedTypical?.label === 'Bowen'" class="text-center q-mt-sm">
-            <div
-              v-if="selectedTypical?.robotCrosswalk || selectedTypical?.robotCapacity"
-              class="text-caption text-grey-6"
-            >
-              <q-icon name="smart_toy" size="12px" color="indigo" />
-              The robot reported on this sailing — check its work:
-            </div>
+          <div
+            v-if="selectedTypical?.label === 'Bowen'"
+            class="row justify-center q-gutter-sm q-mt-sm"
+          >
             <q-btn
-              flat
-              dense
+              outline
               no-caps
               color="indigo"
               icon="photo_camera"
-              label="Bowen at crosswalk"
+              label="At crosswalk"
+              class="q-px-md"
               @click="openRobotFromTypical('crosswalk')"
             />
             <q-btn
-              flat
-              dense
+              outline
               no-caps
               color="indigo"
               icon="photo_camera"
-              label="Front of Bowen lineup"
+              label="Front of lineup"
+              class="q-px-md"
               @click="openRobotFromTypical('fullness')"
             />
           </div>
           <q-separator class="q-my-sm" />
-          <div class="text-caption text-grey-7 q-mb-xs">What's typical for this sailing:</div>
+          <div
+            class="text-caption text-grey-8 q-mb-xs q-px-xs ellipsis"
+            title="Predictions are a guess — there's no certainty with the ferry."
+          >
+            Predictions are a guess — there's no certainty with the ferry.
+          </div>
+          <!-- The hint itself, then what it means. Repeating it here is the
+               point of the dialog: the rider tapped a line of shorthand and
+               this is where it gets unpacked, so it has to be in front of
+               them while they read the explanation. -->
+          <div
+            v-if="typicalHintLine"
+            class="text-body2 text-weight-medium text-center q-px-xs q-mb-sm"
+            :class="'text-' + typicalHintLine.color"
+          >
+            {{ typicalHintLine.text }}
+          </div>
           <SailingHistoryDetail
             v-if="selectedTypical?.info"
             :info="selectedTypical.info"
@@ -693,10 +789,30 @@
           <div v-else class="text-caption text-grey-6 q-pa-sm text-center">
             No recent history for this sailing yet.
           </div>
-          <div class="text-caption text-grey-5 q-mt-sm q-px-xs">
-            Predictions are a guess — there's no certainty with the ferry.
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
+    <!-- One-time offer of the new default look, for devices that had already
+         picked a style before it changed. -->
+    <q-dialog v-model="showStyleOffer">
+      <q-card style="min-width: 300px; max-width: 400px">
+        <q-card-section>
+          <div class="text-subtitle1">Sailings have a new look</div>
+          <div class="text-body2 text-grey-8 q-mt-sm">
+            Cards are the default now — the same information, with fullness and what's typical
+            for the sailing on the card. You're set to
+            <b>{{ sailingDesignLabel(sailingDesign) }}</b
+            >, which we've left alone. Want to try cards?
+          </div>
+          <div class="text-caption text-grey-6 q-mt-sm">
+            You can switch back any time under Settings.
           </div>
         </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Keep mine" @click="declineStyleOffer" />
+          <q-btn unelevated no-caps color="primary" label="Try cards" @click="acceptStyleOffer" />
+        </q-card-actions>
       </q-card>
     </q-dialog>
 
@@ -729,7 +845,8 @@ import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
 import { formatTime12h, normalizeTime, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
-import { isStaging, logAnalyticsEvent } from 'src/boot/firebase'
+import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
+import { isStaging } from 'src/boot/firebase'
 import RideCard from 'src/components/RideCard.vue'
 import SailingRow from 'src/components/SailingRow.vue'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
@@ -741,12 +858,20 @@ import {
   typicalHints,
   labelToPanel,
 } from 'src/composables/useHistoricalStats'
+import { DEFAULT_HISTORY_WEEKS } from 'src/lib/historical-stats.js'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
 import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
+import {
+  useSailingDesign,
+  shouldOfferNewDefault,
+  markNewDefaultOffered,
+  sailingDesignLabel,
+  DEFAULT_SAILING_DESIGN,
+} from 'src/composables/useSailingDesign'
 import { useWebcamHealth } from 'src/composables/useWebcamHealth'
 import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
@@ -763,38 +888,32 @@ const nowMs = () => Date.now()
 
 const schedule = useSchedule(ferryData, nowDate, oneMinuteFromNowDate)
 
-// Switchable design treatments for the home sailing rows (see SailingRow.vue);
-// the radio row under the schedule picks one and the choice sticks per device.
-const SAILING_DESIGN_KEY = 'sailingRowDesign'
-const sailingDesignOptions = [
-  { label: 'Classic', value: 'classic' },
-  { label: 'Cards', value: 'cards' },
-  { label: 'Meter', value: 'meter' },
-  { label: 'Board', value: 'board' },
-]
-const storedDesign = localStorage.getItem(SAILING_DESIGN_KEY)
-const sailingDesign = ref(
-  sailingDesignOptions.some((o) => o.value === storedDesign) ? storedDesign : 'classic',
-)
-// Two GA events size up each style's popularity: sailing_style_change counts
-// picks, sailing_style_view counts visits that stuck with a style. The CHOSEN
-// flag (set the first time the user ever touches the picker) splits view
-// events into source=user vs source=default, so "classic" views distinguish
-// deliberate returns to classic from users who never tried another style.
-// Break events down by the `style` and `source` params (register both as
-// custom dimensions in GA4).
-const SAILING_DESIGN_CHOSEN_KEY = 'sailingRowDesignChosen'
-watch(sailingDesign, (v, prev) => {
-  localStorage.setItem(SAILING_DESIGN_KEY, v)
-  localStorage.setItem(SAILING_DESIGN_CHOSEN_KEY, '1')
-  logAnalyticsEvent('sailing_style_change', { style: v, previous: prev })
+// The rows' design treatment (see SailingRow.vue). The picker now lives on the
+// settings page; useSailingDesign holds the value so both pages see one ref.
+// The view event is logged from here, not there, because it counts visits that
+// looked at a style rather than visits that changed one.
+const { sailingDesign, logSailingStyleView } = useSailingDesign()
+onMounted(logSailingStyleView)
+
+// The default moved from classic to cards. Devices that never chose just get
+// the new look; devices with a stored choice keep it and are asked once,
+// because quietly changing something they deliberately set is worse than
+// asking. Marked as offered on either answer, and on dismissal — an ignored
+// prompt is still a prompt they've seen.
+const showStyleOffer = ref(false)
+onMounted(() => {
+  if (shouldOfferNewDefault()) showStyleOffer.value = true
 })
-onMounted(() =>
-  logAnalyticsEvent('sailing_style_view', {
-    style: sailingDesign.value,
-    source: localStorage.getItem(SAILING_DESIGN_CHOSEN_KEY) ? 'user' : 'default',
-  }),
-)
+watch(showStyleOffer, (open) => {
+  if (!open) markNewDefaultOffered()
+})
+function acceptStyleOffer() {
+  sailingDesign.value = DEFAULT_SAILING_DESIGN
+  showStyleOffer.value = false
+}
+function declineStyleOffer() {
+  showStyleOffer.value = false
+}
 
 // Current leaderboard champions, celebrated in a row under the sailing buttons:
 // the top capacity reporter and the top ride sharer ("hero"). Read live from the
@@ -952,7 +1071,7 @@ function delayDepartures() {
 // late or full. Day-of-week specific; holiday-impacted dates are excluded from
 // the baseline (and flagged separately via holidayContext).
 const { byDayOfWeek: historyByDayOfWeek, fetchStats: fetchHistory } = useHistoricalStats()
-onMounted(() => fetchHistory({ weeksBack: 8, excludeHolidays: true }))
+onMounted(() => fetchHistory({ weeksBack: DEFAULT_HISTORY_WEEKS, excludeHolidays: true }))
 
 const todayIso = computed(() => nowInVancouver().format('YYYY-MM-DD'))
 const todayDow = computed(() => nowInVancouver().format('dddd'))
@@ -969,6 +1088,95 @@ function sailingTypical(s) {
 function sailingHints(s) {
   return typicalHints(sailingTypical(s), $q.screen.xs, labelToPanel(s.label))
 }
+
+// Where an upcoming sailing stands right now: the deck-space reading if there
+// is one, else the crosswalk mark. Bowen departures have no automated capacity
+// (nothing reports To HSB deck space), so the crosswalk time a rider or the
+// robot marked is the only live fullness signal that side.
+function sailingStatusFact(s) {
+  if (s.deckSpace) {
+    const text = s.full || capacityFullLabel(s.deckSpace)
+    if (text) return { text, color: getDeckColor(s.deckSpace) }
+  }
+  if (s.crosswalkFullAt) {
+    const at = s.crosswalkFullAt
+    const time = at === 'user_reported' ? '' : dayjs(at).tz(TZ).format('h:mm')
+    return { text: time ? `C ${time}` : 'C', color: 'deep-orange' }
+  }
+  return null
+}
+
+// The next boat each way for the status card's footer: how full it is now,
+// then what it's typically like. Always compact — this sits in a header, not a
+// full-width row. A sailing with neither fact is dropped rather than shown
+// blank, so the footer shrinks to what's actually known.
+const nextHints = computed(() =>
+  [
+    { label: 'Bowen', sailing: allUpcomingBowen.value[0] },
+    { label: 'HSB', sailing: allUpcomingHSB.value[0] },
+  ]
+    .filter((n) => n.sailing)
+    .map((n) => ({
+      label: n.label,
+      time: formatTime12h(n.sailing.shortTime),
+      status: sailingStatusFact(n.sailing),
+      hint: typicalHints(sailingTypical(n.sailing), true, labelToPanel(n.sailing.label)),
+    }))
+    .filter((n) => n.status || n.hint),
+)
+
+// --- Stale-data detection -------------------------------------------------
+//
+// ferryStatus/current is rewritten on nearly every one-minute poll — the
+// vessel's SOG jitters even at the dock (hence STOPPED_SOG_KNOTS), and speed
+// is part of the change diff — so `lastUpdate` standing still for minutes
+// means the data is not reaching us, not that the ferry is quiet.
+//
+// Which end is broken doesn't matter to the reader; whether they can do
+// anything about it does, so the offline case gets a different message and no
+// pointless Refresh button.
+const STALE_AFTER_MS = 5 * 60 * 1000
+// Nothing is judged stale until the page has been up this long, so a slow
+// first snapshot can't flash the overlay on load.
+const STALE_GRACE_MS = 10 * 1000
+
+const nowTick = ref(Date.now())
+const mountedAt = ref(Date.now())
+const isOnline = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
+let staleTicker
+
+function setOnline() {
+  isOnline.value = true
+}
+function setOffline() {
+  isOnline.value = false
+}
+function reloadPage() {
+  window.location.reload()
+}
+
+const isStale = computed(() => {
+  if (!ferryData.value?.lastUpdate) return false
+  if (nowTick.value - mountedAt.value < STALE_GRACE_MS) return false
+  const t = timeToDate(ferryData.value.lastUpdate)
+  if (!t) return false
+  return nowTick.value - t.valueOf() > STALE_AFTER_MS
+})
+
+// How the last sailing ran, as the line under the update time. Spelled out
+// rather than reusing the row badges' shorthand: this line sits on its own
+// under a timestamp with nothing to give it context, so "5 min late" and
+// "✓ on time" have to read on their own. Skipped sailings have nothing to say.
+const lastSailingStatus = computed(() => {
+  const s = lastSailing.value
+  if (!s || s.skipped) return null
+  if (s.ontime) return { text: '✓ on time', color: 'positive' }
+  const t = s.diffText
+  if (!t || t === '✓') return null
+  // getLateText (functions/lib/constants.js) yields "5m late" / "6m early".
+  const m = /^(\d+)m (late|early)$/.exec(t)
+  return { text: m ? `${m[1]} min ${m[2]}` : t, color: s.diffColor }
+})
 
 // Prediction-detail dialog: shows the historical data behind a sailing. Opened
 // either from a sailing's typical-history hint or by tapping any sailing time
@@ -1001,6 +1209,15 @@ function openHistory(time, label, entry = null) {
 // happened (or is happening), read from the schedule entry. Tolerates both
 // entry shapes: past rows carry diffText/lastCapacity, upcoming rows
 // lateText/deckSpace.
+// The one-line hint for the sailing being explained — the same string the
+// home page row showed, so the dialog visibly answers the thing that was
+// tapped. Full (non-compact) wording: there is room here.
+const typicalHintLine = computed(() =>
+  selectedTypical.value?.info
+    ? typicalHints(selectedTypical.value.info, false, labelToPanel(selectedTypical.value.label))
+    : null,
+)
+
 const typicalStatus = computed(() => {
   const e = selectedTypical.value?.entry
   if (!e) return []
@@ -1046,9 +1263,9 @@ const typicalStatus = computed(() => {
   const cap = e.lastCapacity
   const capSrc =
     e.capacitySource === 'robot'
-      ? ' (the robot, from the webcam)'
+      ? ' (robot predicted)'
       : e.capacitySource === 'user'
-        ? ' (reported by a rider)'
+        ? ' (rider reported)'
         : ''
   // When we know WHEN it filled (automated fill events), say so — the
   // table's "Filled by" column, for the current sailing.
@@ -1083,13 +1300,13 @@ const typicalStatus = computed(() => {
       e.crosswalkFullAt === 'user_reported'
         ? null
         : dayjs(e.crosswalkFullAt).tz(TZ).format('h:mm a')
-    const src = e.crosswalkSource === 'robot' ? 'the robot' : 'a rider'
+    const src = e.crosswalkSource === 'robot' ? 'robot predicted' : 'rider reported'
     lines.push({
       icon: 'directions_walk',
       color: 'grey-8',
       text: at
-        ? `Car lineup reached the crosswalk at ${at} (per ${src}).`
-        : `Car lineup reached the crosswalk (per ${src}).`,
+        ? `Lineup reached the crosswalk at ${at} (${src}).`
+        : `Lineup reached the crosswalk (${src}).`,
     })
   }
   return lines
@@ -1497,8 +1714,11 @@ const colorGradient = [
   '#FFB3B3', // Light Red
 ]
 
-const vesselCardStyle = computed(() => {
-  if (!ferryData.value) return {}
+// How rough today is looking: recent lateness plus imminent full sailings,
+// each weighted by how close it is to now. Shared so the tinted card and the
+// 'cards' rail can't disagree about it.
+const vesselBusyScore = computed(() => {
+  if (!ferryData.value) return 0
   let score = 0
   pastSailings.value.forEach((s, i) => {
     if (s.diffText && s.diffText !== '✓' && !s.diffText.includes('early')) {
@@ -1513,7 +1733,23 @@ const vesselCardStyle = computed(() => {
       }
     }
   })
-  return { backgroundColor: colorGradient[Math.min(Math.round(score), colorGradient.length - 1)] }
+  return score
+})
+
+const vesselCardStyle = computed(() => {
+  if (!ferryData.value) return {}
+  const i = Math.min(Math.round(vesselBusyScore.value), colorGradient.length - 1)
+  return { backgroundColor: colorGradient[i] }
+})
+
+// The 'cards' style says the same thing with a rail instead of a tint, so it
+// uses semantic colours rather than the pastel gradient — the rail is thin,
+// and a 5px strip of "Warm Primrose" reads as no colour at all.
+const vesselRailColor = computed(() => {
+  const rounded = Math.round(vesselBusyScore.value)
+  if (rounded <= 0) return 'positive'
+  if (rounded <= 2) return 'warning'
+  return 'negative'
 })
 
 const speedIcon = computed(() => {
@@ -1527,14 +1763,88 @@ onMounted(() => {
     cacheBusters.value = allCamUrls.map(() => Date.now())
     camRetries.value = allCamUrls.map(() => 0)
   }, 60000)
+  // Well under the 5-minute threshold, so the overlay appears promptly rather
+  // than up to a tick late.
+  mountedAt.value = Date.now()
+  nowTick.value = Date.now()
+  staleTicker = setInterval(() => {
+    nowTick.value = Date.now()
+  }, 15000)
+  window.addEventListener('online', setOnline)
+  window.addEventListener('offline', setOffline)
 })
 onUnmounted(() => {
   clearInterval(camRefreshInterval)
+  clearInterval(staleTicker)
+  window.removeEventListener('online', setOnline)
+  window.removeEventListener('offline', setOffline)
   Object.values(retryTimeouts).forEach(clearTimeout)
 })
 </script>
 
 <style lang="scss" scoped>
+// Mirrors .sr-card / .sr-rail / .sr-card-body in SailingRow.vue (scoped there,
+// so the rules can't be shared) — same border, radius and rail width, with a
+// slightly roomier body because this one is a header rather than a list row.
+.stale-overlay {
+  position: sticky;
+  top: 8px;
+  z-index: 100;
+  margin-bottom: 8px;
+  // Sticky rather than fixed: it stays in view while scrolling but still
+  // occupies layout, so it can never sit on top of the first sailing row.
+  pointer-events: none;
+}
+
+.stale-card {
+  pointer-events: auto;
+  background: #fff8e1;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+.vs-card {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.vs-rail {
+  width: 5px;
+  flex: 0 0 auto;
+}
+
+.vs-body {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px 6px;
+}
+
+.vs-next {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  display: grid;
+  // Route and time size to their widest content and so align down the rows;
+  // the facts take the rest. minmax(0, 1fr) rather than 1fr so the column is
+  // allowed to shrink below its content and ellipsize instead of forcing the
+  // card wider.
+  grid-template-columns: auto auto minmax(0, 1fr);
+  column-gap: 6px;
+  row-gap: 2px;
+  align-items: baseline;
+  line-height: 1.25;
+}
+
+// Fullness reading then hint, on one line — the order a rider reads in: what
+// it is now, then what it usually is. The route and time are short and must
+// survive, so this is the column that gives way.
+.vs-next-fact {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 $star-clip: polygon(
   50% 0%,
   61% 35%,
@@ -1623,11 +1933,6 @@ $star-clip: polygon(
 
 /* Row-style switcher under the schedule: keep the radio labels caption-sized
    so the control reads as a footnote, not a form. */
-.design-picker :deep(.q-radio__label) {
-  font-size: 12px;
-  color: $grey-7;
-}
-
 .staging-tools {
   display: flex;
   gap: 4px;

@@ -1,5 +1,6 @@
 <template>
   <div>
+    <TypicalHintExplainer :info="info" :panel="panel" />
     <div class="detail-summary text-caption text-grey-7">{{ detailSummary }}</div>
     <table class="date-detail-table">
       <thead>
@@ -40,6 +41,7 @@
 <script setup>
 import { computed } from 'vue'
 import { minutesToLabel } from 'src/composables/useHistoricalStats'
+import TypicalHintExplainer from 'src/components/TypicalHintExplainer.vue'
 
 const props = defineProps({
   info: { type: Object, required: true },
@@ -93,7 +95,9 @@ const detailSummary = computed(() => {
 </script>
 
 <style scoped>
-.detail-summary { padding: 4px 8px 0; }
+.detail-summary {
+  padding: 4px 8px 0;
+}
 
 .date-detail-table {
   width: 100%;

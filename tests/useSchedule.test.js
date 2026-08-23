@@ -1,47 +1,37 @@
 import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
-import { useSchedule, parseTimeToday } from '../src/composables/useSchedule.js'
-import { ref, reactive } from 'vue'
+import { useSchedule, timeToDate } from '../src/composables/useSchedule.js'
+import { ref } from 'vue'
+import { dayjs, TZ } from '../functions/lib/time.js'
+// The real parser, not a copy: the local duplicate this file used to carry
+// never got normalizeTime() when the app started normalizing every time
+// field, so the whole suite was asserting against a shape the app hadn't
+// produced in a long time.
+import { parseFerryData } from '../functions/lib/api.js'
+import { normalizeTime } from '../functions/lib/time.js'
 
 const SAMPLE_API_DATA = JSON.parse(
   `{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"QUEEN OF CAPILANO","SOG":"10.60","heading":"8","LatestUpdate":"8:56:01 PM","Fresh":"True","pointtype":"Vessel"},"atberth":{"date":"Wednesday May 6th","times":[[["Departed","Horseshoe Bay","8:54:12 PM"],["Arrived","Horseshoe Bay","8:43:42 PM"],["Departed","Bowen","8:24:52 PM"],["Arrived","Bowen","8:11:52 PM"],["Departed","Horseshoe Bay","7:52:02 PM"],["Arrived","Horseshoe Bay","7:33:21 PM"],["Departed","Bowen","7:15:13 PM"],["Arrived","Bowen","6:57:13 PM"],["Departed","Horseshoe Bay","6:39:08 PM"],["Arrived","Horseshoe Bay","6:22:53 PM"],["Departed","Bowen","6:00:18 PM"],["Arrived","Bowen","5:38:33 PM"],["Departed","Horseshoe Bay","5:19:45 PM"],["Arrived","Horseshoe Bay","4:53:11 PM"],["Departed","Bowen","4:35:46 PM"],["Arrived","Bowen","4:23:03 PM"],["Departed","Horseshoe Bay","4:04:11 PM"],["Arrived","Horseshoe Bay","3:41:12 PM"],["Departed","Bowen","3:22:52 PM"],["Arrived","Bowen","2:59:22 PM"]]]},"deckSpace":{"lastUpdated":"8:55 PM","Fresh":"True","times":[[["10:00 pm","100%","0"],["11:00 pm","100%","1"]]]},"schbowen":{"date":"Wednesday May 6th","times":[[["5:15 AM","0"],["6:15 AM","0"],["7:30 AM","0"],["8:45 AM","0"],["10:00 AM","0"],["11:15 AM","0"],["12:35 PM","0"],["1:55 PM","0"],["3:15 PM","0"],["4:40 PM","1"],["6:00 PM","0"],["7:15 PM","0"],["8:25 PM","0"],["9:30 PM","0"],["10:30 PM","0"],["11:30 PM","0"]]]},"schHSB":{"times":[[["4:40 AM","0","1",""],["5:45 AM","0","0",""],["6:50 AM","0","0",""],["8:05 AM","0","0",""],["9:20 AM","1","0",""],["10:35 AM","0","0",""],["11:55 AM","0","0",""],["1:10 PM","0","0",""],["2:35 PM","0","0",""],["3:55 PM","0","0",""],["5:20 PM","0","0",""],["6:35 PM","0","0",""],["7:50 PM","0","0",""],["8:55 PM","0","0",""],["10:00 PM","0","0","100%"],["11:00 PM","0","0","100%"]]]},"todayException":{"times":[[[]]]},"otherException":{"times":[[[]]]},"todayFullDayException":{"times":[[[]]]},"otherFullDayException":{"times":[[[]]]},"geometry":{"type":"Polygon","coordinates":[[[-13722499.2565014,6339637.64460797],[-13722516.9448003,6339632.71436257],[-13722536.3644581,6339494.53631733],[-13722503.0320349,6339489.85175075],[-13722483.6123771,6339628.02979599],[-13722499.2565014,6339637.64460797]]]}},{"type":"Feature","properties":{"name":"QUEEN OF CAPILANO","pointtype":"Vessel"},"geometry":{"type":"Point","coordinates":[-13722509.4773739,6339564.91932101]}}]}`
 )
 
-function parseFerryData(data) {
-  const vessel = data.features[0]
-  const atberth = vessel.atberth || {}
-  const deckSpace = vessel.deckSpace || {}
-  const schBowen = vessel.schbowen || {}
-  const schHSB = vessel.schHSB || {}
-
-  const recentActivity = (atberth.times?.[0] || []).map(entry => ({
-    action: entry[0],
-    location: entry[1],
-    time: entry[2],
+// The three inline fixtures below are hand-written in the API's human 12-hour
+// format and handed straight to useSchedule, skipping the parser that would
+// normally normalize them. Apply the same normalizeTime() the real pipeline
+// does (functions/lib/api.js) rather than restating ~170 time literals in
+// 24-hour form — the fixtures stay readable and can't drift from the app.
+function normalizeFixture(data) {
+  const times = (list) => (list || []).map((e) => ({
+    ...e,
+    time: normalizeTime(e.time),
+    ...(e.matchedDepartureTime
+      ? { matchedDepartureTime: normalizeTime(e.matchedDepartureTime) }
+      : {}),
   }))
-
-  const bowenSchedule = (schBowen.times?.[0] || []).map(entry => ({
-    time: entry[0],
-    dangerousCargo: entry[1] === '1',
-  }))
-
-  const hsbSchedule = (schHSB.times?.[0] || []).map(entry => ({
-    time: entry[0],
-    dangerousCargo: entry[1] === '1',
-    repositioning: entry[2] === '1',
-    deckSpace: entry[3] || null,
-  }))
-
   return {
-    vesselName: vessel.properties.name,
-    speed: vessel.properties.SOG,
-    heading: vessel.properties.heading,
-    lastUpdate: vessel.properties.LatestUpdate,
-    isFresh: vessel.properties.Fresh === 'True',
-    date: atberth.date || schBowen.date,
-    recentActivity,
-    bowenSchedule,
-    hsbSchedule,
+    ...data,
+    recentActivity: times(data.recentActivity),
+    bowenSchedule: times(data.bowenSchedule),
+    hsbSchedule: times(data.hsbSchedule),
   }
 }
 
@@ -57,29 +47,43 @@ function makeNow(hour, minute) {
 const nowDate = () => makeNow(20, 56)
 const oneMinuteFromNowDate = () => makeNow(20, 57)
 
-describe('parseTimeToday', () => {
-  it('parses AM times', () => {
-    const t = parseTimeToday('5:15 AM')
-    assert.equal(t.getHours(), 5)
-    assert.equal(t.getMinutes(), 15)
+// Replaced the old parseTimeToday: 24-hour input, and a dayjs in the ferry's
+// timezone rather than a JS Date, so the assertions read hour()/minute() and
+// stay correct whatever timezone the test host is in.
+describe('timeToDate', () => {
+  it('parses morning times', () => {
+    const t = timeToDate('05:15')
+    assert.equal(t.hour(), 5)
+    assert.equal(t.minute(), 15)
   })
 
-  it('parses PM times', () => {
-    const t = parseTimeToday('8:54 PM')
-    assert.equal(t.getHours(), 20)
-    assert.equal(t.getMinutes(), 54)
+  it('parses evening times', () => {
+    const t = timeToDate('20:54')
+    assert.equal(t.hour(), 20)
+    assert.equal(t.minute(), 54)
   })
 
-  it('parses noon as 12 PM', () => {
-    const t = parseTimeToday('12:00 PM')
-    assert.equal(t.getHours(), 12)
-    assert.equal(t.getMinutes(), 0)
+  it('parses noon', () => {
+    const t = timeToDate('12:00')
+    assert.equal(t.hour(), 12)
+    assert.equal(t.minute(), 0)
   })
 
-  it('parses midnight as 00', () => {
-    const t = parseTimeToday('12:00 AM')
-    assert.equal(t.getHours(), 0)
-    assert.equal(t.getMinutes(), 0)
+  it('parses midnight', () => {
+    const t = timeToDate('00:00')
+    assert.equal(t.hour(), 0)
+    assert.equal(t.minute(), 0)
+  })
+
+  it('dates the time to today in the ferry timezone', () => {
+    const t = timeToDate('05:15')
+    assert.equal(t.format('YYYY-MM-DD'), dayjs().tz(TZ).format('YYYY-MM-DD'))
+  })
+
+  it('returns null for empty or unparseable input', () => {
+    assert.equal(timeToDate(''), null)
+    assert.equal(timeToDate(null), null)
+    assert.equal(timeToDate('not a time'), null)
   })
 })
 
@@ -109,17 +113,24 @@ describe('useSchedule', () => {
     it('upcoming includes 9:30 PM and later', () => {
       const result = schedule.upcomingSailings()
       const times = result.map(s => s.time.trim())
-      assert.ok(times.some(t => t.includes('9:30 PM')), 'Missing 9:30 PM')
-      assert.ok(times.some(t => t.includes('10:30 PM')), 'Missing 10:30 PM')
-      assert.ok(times.some(t => t.includes('11:30 PM')), 'Missing 11:30 PM')
-      assert.ok(times.some(t => t.includes('10:00 PM')), 'Missing 10:00 PM')
-      assert.ok(times.some(t => t.includes('11:00 PM')), 'Missing 11:00 PM')
+      assert.ok(times.some(t => t.includes('21:30')), 'Missing 9:30 PM')
+      assert.ok(times.some(t => t.includes('22:30')), 'Missing 10:30 PM')
+      assert.ok(times.some(t => t.includes('23:30')), 'Missing 11:30 PM')
+      assert.ok(times.some(t => t.includes('22:00')), 'Missing 10:00 PM')
+      assert.ok(times.some(t => t.includes('23:00')), 'Missing 11:00 PM')
     })
 
-    it('upcoming does not include cancelled 9:20 AM HSB', () => {
+    // Was 'upcoming does not include cancelled 9:20 AM HSB'. There is no
+    // `cancelled` field anywhere in the app any more, so that assertion could
+    // only ever pass: find() on a field nothing sets always returns undefined.
+    // 9:20 AM is also in the past at 8:56 PM, so it tested nothing twice over.
+    it('upcoming carries the dangerous-cargo flag through', () => {
       const result = schedule.upcomingSailings()
-      const hsbCancelled = result.find(s => s.label === 'HSB' && s.cancelled)
-      assert.equal(hsbCancelled, undefined, 'Should not include cancelled sailings')
+      // No cargo sailings remain this late in the day, but the field must be
+      // carried (not dropped) for SailingRow's "Cargo" badge to work.
+      for (const s of result) {
+        assert.ok('dangerousCargo' in s, `${s.shortTime} missing dangerousCargo`)
+      }
     })
   })
 
@@ -132,10 +143,11 @@ describe('useSchedule', () => {
     it('returns all when no limit', () => {
       const result = schedule.pastSailings()
       // Past = matched + skipped + orphan
-      // HSB: 5 matched + 8 skipped = 13
+      // HSB: 5 matched + 9 skipped = 14  (9 includes the 9:20 AM cargo
+      //   sailing, which used to be excluded as "cancelled")
       // Bowen: 4 matched + 8 skipped + 1 orphan = 13
-      // Total: 26
-      assert.equal(result.length, 26, `Expected 26, got ${result.length}`)
+      // Total: 27
+      assert.equal(result.length, 27, `Expected 27, got ${result.length}`)
     })
 
     it('contains both HSB and Bowen entries', () => {
@@ -158,24 +170,29 @@ describe('useSchedule', () => {
       const result = schedule.allPastHSB()
       console.log('allPastHSB count:', result.length)
       console.log('allPastHSB:', result.map(s => s.shortTime))
-      // 5 matched + 8 skipped (no departure data, before last consumed schedule)
-      assert.equal(result.length, 13, `Expected 13, got ${result.length}`)
+      // 5 matched + 9 skipped (no departure data, before last consumed
+      // schedule) — the 9th being the 9:20 AM dangerous-cargo sailing.
+      assert.equal(result.length, 14, `Expected 14, got ${result.length}`)
     })
 
     it('includes early morning skipped sailings with cancelled tag', () => {
       const result = schedule.allPastHSB()
       // 4:40am, 5:45am, 6:50am, 8:05am have no departure data → appear as skipped
-      const early = result.find(s => s.shortTime === '4:40am')
+      const early = result.find(s => s.shortTime === '04:40')
       assert.ok(early, 'Should include 4:40 AM as skipped')
       assert.equal(early.skipped, true, '4:40 AM should have skipped: true')
       // Skipped entries have no diffText
       assert.equal(early.diffText, null, 'Skipped entries should have no lateness badge')
     })
 
-    it('excludes cancelled 9:20am', () => {
+    // Reversed deliberately: a dangerous-cargo sailing is a real sailing that
+    // carries no cars, not a cancellation, and the app now shows it (flagged
+    // "Cargo") instead of hiding it. 9:20 AM is the sample's only such entry.
+    it('includes the 9:20am dangerous-cargo sailing, flagged', () => {
       const result = schedule.allPastHSB()
-      const cancelled = result.find(s => s.shortTime === '9:20am')
-      assert.equal(cancelled, undefined, 'Should not include cancelled 9:20 AM')
+      const cargo = result.find(s => s.shortTime === '09:20')
+      assert.ok(cargo, 'Should include the 9:20 AM cargo sailing')
+      assert.equal(cargo.dangerousCargo, true, '9:20 AM should be flagged as cargo')
     })
 
     it('shows lateness, on-time, and skipped badges', () => {
@@ -196,12 +213,12 @@ describe('useSchedule', () => {
     it('does not show bogus lateness for departures within 1 minute', () => {
       const result = schedule.allPastHSB()
       // 5:19pm matched to 5:20 PM = -1 min → ontime
-      const five19 = result.find(s => s.shortTime === '5:19pm')
+      const five19 = result.find(s => s.shortTime === '17:19')
       assert.ok(five19, 'Should include 5:19pm')
       assert.equal(five19.ontime, true, '5:19pm (1 min early) should be ontime')
       assert.equal(five19.diffText, '✓', '5:19pm should show checkmark')
       // 8:54pm matched to 8:55 PM = -1 min → ontime
-      const eight54 = result.find(s => s.shortTime === '8:54pm')
+      const eight54 = result.find(s => s.shortTime === '20:54')
       assert.ok(eight54, 'Should include 8:54pm')
       assert.equal(eight54.ontime, true, '8:54pm (1 min early) should be ontime')
       assert.equal(eight54.diffText, '✓', '8:54pm should show checkmark')
@@ -209,7 +226,7 @@ describe('useSchedule', () => {
 
     it('includes 8:54pm (just departed)', () => {
       const result = schedule.allPastHSB()
-      const late = result.find(s => s.shortTime === '8:54pm')
+      const late = result.find(s => s.shortTime === '20:54')
       assert.ok(late, 'Should include 8:54 PM HSB departure (actual time)')
     })
   })
@@ -225,13 +242,13 @@ describe('useSchedule', () => {
 
     it('excludes cancelled 4:40 PM', () => {
       const result = schedule.allPastBowen()
-      const cancelled = result.find(s => s.shortTime.includes('4:40 PM'))
+      const cancelled = result.find(s => s.shortTime.includes('16:40'))
       assert.equal(cancelled, undefined, 'Should not include cancelled 4:40 PM')
     })
 
     it('includes 5:15 AM as skipped (no departure, later Bowen sailed)', () => {
       const result = schedule.allPastBowen()
-      const five15 = result.find(s => s.shortTime === '5:15am')
+      const five15 = result.find(s => s.shortTime === '05:15')
       assert.ok(five15, 'Should include 5:15 AM as skipped')
       assert.equal(five15.skipped, true, '5:15 AM should have skipped: true')
       assert.equal(five15.diffText, null, 'Skipped entries should have no lateness badge')
@@ -317,32 +334,32 @@ describe('useSchedule — morning sample (5:15 AM should NOT appear in upcoming)
   let morningSchedule
 
   before(() => {
-    const ferryData = ref(MORNING_FERRY_DATA)
+    const ferryData = ref(normalizeFixture(MORNING_FERRY_DATA))
     morningSchedule = useSchedule(ferryData, morningNow, morningNowPlus1)
   })
 
   describe('upcomingSailings', () => {
     it('does NOT include 5:15 AM Bowen (cancelled/skipped, later Bowen sailed)', () => {
       const result = morningSchedule.upcomingSailings()
-      const five15 = result.find(s => s.shortTime === '5:15am')
+      const five15 = result.find(s => s.shortTime === '05:15')
       assert.equal(five15, undefined, '5:15 AM Bowen should NOT appear in upcoming — it was skipped')
     })
 
     it('does NOT include 4:40 AM HSB (cancelled/skipped, later HSB sailed)', () => {
       const result = morningSchedule.upcomingSailings()
-      const four40 = result.find(s => s.shortTime === '4:40am')
+      const four40 = result.find(s => s.shortTime === '04:40')
       assert.equal(four40, undefined, '4:40 AM HSB should NOT appear in upcoming — it was skipped')
     })
 
     it('includes 8:45 AM Bowen (truly upcoming, not yet happened)', () => {
       const result = morningSchedule.upcomingSailings()
-      const eight45 = result.find(s => s.shortTime === '8:45am')
+      const eight45 = result.find(s => s.shortTime === '08:45')
       assert.ok(eight45, '8:45 AM Bowen should appear in upcoming')
     })
 
     it('includes 9:20 AM HSB (truly upcoming)', () => {
       const result = morningSchedule.upcomingSailings()
-      const nine20 = result.find(s => s.shortTime === '9:20am')
+      const nine20 = result.find(s => s.shortTime === '09:20')
       assert.ok(nine20, '9:20 AM HSB should appear in upcoming')
     })
   })
@@ -350,28 +367,28 @@ describe('useSchedule — morning sample (5:15 AM should NOT appear in upcoming)
   describe('allUpcomingBowen', () => {
     it('does NOT include 5:15 AM Bowen', () => {
       const result = morningSchedule.allUpcomingBowen()
-      const five15 = result.find(s => s.shortTime === '5:15am')
+      const five15 = result.find(s => s.shortTime === '05:15')
       assert.equal(five15, undefined, '5:15 AM Bowen should not be in allUpcomingBowen')
     })
 
     it('starts with 8:45 AM as first upcoming Bowen sailing', () => {
       const result = morningSchedule.allUpcomingBowen()
       assert.ok(result.length > 0)
-      assert.equal(result[0].shortTime, '8:45am', 'First upcoming Bowen should be 8:45 AM')
+      assert.equal(result[0].shortTime, '08:45', 'First upcoming Bowen should be 8:45 AM')
     })
   })
 
   describe('allUpcomingHSB', () => {
     it('does NOT include 4:40 AM HSB', () => {
       const result = morningSchedule.allUpcomingHSB()
-      const four40 = result.find(s => s.shortTime === '4:40am')
+      const four40 = result.find(s => s.shortTime === '04:40')
       assert.equal(four40, undefined, '4:40 AM HSB should not be in allUpcomingHSB')
     })
 
     it('starts with 9:20 AM as first upcoming HSB sailing', () => {
       const result = morningSchedule.allUpcomingHSB()
       assert.ok(result.length > 0)
-      assert.equal(result[0].shortTime, '9:20am', 'First upcoming HSB should be 9:20 AM')
+      assert.equal(result[0].shortTime, '09:20', 'First upcoming HSB should be 9:20 AM')
     })
   })
 })
@@ -444,7 +461,7 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
   let debugSchedule
 
   before(() => {
-    const ferryData = ref(DEBUG_FERRY_DATA)
+    const ferryData = ref(normalizeFixture(DEBUG_FERRY_DATA))
     debugSchedule = useSchedule(ferryData, debugNow, debugNowPlus1)
   })
 
@@ -457,14 +474,14 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
     it('first entry is skipped 4:40 AM (no departure data — morning sailing never happened)', () => {
       const result = debugSchedule.allPastHSB()
       const first = result[0]
-      assert.equal(first.shortTime, '4:40am', 'First HSB past should be 4:40 AM')
+      assert.equal(first.shortTime, '04:40', 'First HSB past should be 4:40 AM')
       assert.equal(first.skipped, true, '4:40 AM should be skipped')
       assert.equal(first.diffText, null, 'Skipped entries have no lateness badge')
     })
 
     it('6:50 AM matched to 6:48 AM departure (2m early)', () => {
       const result = debugSchedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '6:48am')
+      const entry = result.find(s => s.shortTime === '06:48')
       assert.ok(entry, '6:48 AM departure should appear in past')
       assert.equal(entry.diffText, '✓', '6:48 AM (2 min early) should be on time')
       assert.equal(entry.ontime, true, '6:48 AM should be ontime')
@@ -472,29 +489,32 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
 
     it('8:05 AM matched to 8:04 AM departure (ontime)', () => {
       const result = debugSchedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '8:04am')
+      const entry = result.find(s => s.shortTime === '08:04')
       assert.ok(entry, '8:04 AM departure should appear in past')
       assert.equal(entry.ontime, true, '8:04 AM (1 min early) should be ontime')
     })
 
     it('9:20 AM matched to 9:19 AM departure (ontime)', () => {
       const result = debugSchedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '9:19am')
+      const entry = result.find(s => s.shortTime === '09:19')
       assert.ok(entry, '9:19 AM departure should appear in past')
       assert.equal(entry.ontime, true, '9:19 AM (1 min early) should be ontime')
     })
 
     it('10:35 AM matched to 10:38 AM (3m late)', () => {
       const result = debugSchedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '10:38am')
+      const entry = result.find(s => s.shortTime === '10:38')
       assert.ok(entry, '10:38 AM departure should appear in past')
-      assert.equal(entry.diffText, '✓', '10:38 AM (3 min late) should be on time')
-      assert.equal(entry.ontime, true, '10:38 AM should be ontime')
+      // LATE_THRESHOLD is 2 minutes (functions/lib/constants.js; AGENTS.md
+      // "≥2 mins late is late"), so 3 minutes late reads as late. This test
+      // predates that threshold and used to expect "✓".
+      assert.equal(entry.diffText, '3m late', '10:38 AM is 3 minutes late')
+      assert.equal(entry.ontime, undefined, '10:38 AM should not be ontime')
     })
 
     it('11:55 AM matched to 12:15 PM (20m late)', () => {
       const result = debugSchedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '12:15pm')
+      const entry = result.find(s => s.shortTime === '12:15')
       assert.ok(entry, '12:15 PM departure should appear in past')
       assert.equal(entry.diffText, '20m late', '12:15 PM should be 20m late')
     })
@@ -509,42 +529,42 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
     it('first entry is skipped 5:15 AM (no departure data — morning sailing never happened)', () => {
       const result = debugSchedule.allPastBowen()
       const first = result[0]
-      assert.equal(first.shortTime, '5:15am', 'First Bowen past should be 5:15 AM')
+      assert.equal(first.shortTime, '05:15', 'First Bowen past should be 5:15 AM')
       assert.equal(first.skipped, true, '5:15 AM should be skipped')
       assert.equal(first.diffText, null, 'Skipped entries have no lateness badge')
     })
 
     it('7:30 AM matched to 7:30 AM departure (ontime)', () => {
       const result = debugSchedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '7:30am')
+      const entry = result.find(s => s.shortTime === '07:30')
       assert.ok(entry, '7:30 AM departure should appear in past')
       assert.equal(entry.ontime, true, '7:30 AM should be ontime')
     })
 
     it('8:45 AM matched to 8:45 AM departure (ontime)', () => {
       const result = debugSchedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '8:45am')
+      const entry = result.find(s => s.shortTime === '08:45')
       assert.ok(entry, '8:45 AM departure should appear in past')
       assert.equal(entry.ontime, true, '8:45 AM should be ontime')
     })
 
     it('10:00 AM matched to 10:00 AM departure (ontime)', () => {
       const result = debugSchedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '10:00am')
+      const entry = result.find(s => s.shortTime === '10:00')
       assert.ok(entry, '10:00 AM departure should appear in past')
       assert.equal(entry.ontime, true, '10:00 AM should be ontime')
     })
 
     it('11:15 AM matched to 11:27 AM (12m late)', () => {
       const result = debugSchedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '11:27am')
+      const entry = result.find(s => s.shortTime === '11:27')
       assert.ok(entry, '11:27 AM departure should appear in past')
       assert.equal(entry.diffText, '12m late', '11:27 AM should be 12m late')
     })
 
     it('12:35 PM matched to 1:04 PM (29m late)', () => {
       const result = debugSchedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '1:04pm')
+      const entry = result.find(s => s.shortTime === '13:04')
       assert.ok(entry, '1:04 PM departure should appear in past')
       assert.equal(entry.diffText, '29m late', '1:04 PM should be 29m late')
     })
@@ -574,7 +594,7 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
     it('includes overdue 1:10 PM HSB as first entry (30m late)', () => {
       const result = debugSchedule.upcomingSailings()
       const first = result[0]
-      assert.equal(first.shortTime, '1:10pm', 'First upcoming should be 1:10 PM HSB')
+      assert.equal(first.shortTime, '13:10', 'First upcoming should be 1:10 PM HSB')
       assert.equal(first.lateText, '30m late', '1:10 PM should be 30m late')
     })
 
@@ -592,7 +612,7 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
 
     it('includes 1:10 PM as overdue first entry', () => {
       const result = debugSchedule.allUpcomingHSB()
-      assert.equal(result[0].shortTime, '1:10pm', 'First upcoming HSB should be 1:10 PM')
+      assert.equal(result[0].shortTime, '13:10', 'First upcoming HSB should be 1:10 PM')
       assert.equal(result[0].lateText, '30m late')
     })
   })
@@ -605,7 +625,7 @@ describe('useSchedule — live debug data (1:40 PM)', () => {
 
     it('first entry is 1:55 PM', () => {
       const result = debugSchedule.allUpcomingBowen()
-      assert.equal(result[0].shortTime, '1:55pm', 'First upcoming Bowen should be 1:55 PM')
+      assert.equal(result[0].shortTime, '13:55', 'First upcoming Bowen should be 1:55 PM')
     })
   })
 })
@@ -679,7 +699,7 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
   let debug2Schedule
 
   before(() => {
-    const ferryData = ref(DEBUG2_FERRY_DATA)
+    const ferryData = ref(normalizeFixture(DEBUG2_FERRY_DATA))
     debug2Schedule = useSchedule(ferryData, debug2Now, debug2NowPlus1)
   })
 
@@ -692,14 +712,14 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
     it('first entry is skipped 4:40 AM', () => {
       const result = debug2Schedule.allPastHSB()
       const first = result[0]
-      assert.equal(first.shortTime, '4:40am')
+      assert.equal(first.shortTime, '04:40')
       assert.equal(first.skipped, true)
       assert.equal(first.diffText, null)
     })
 
     it('6:50 AM matched to 6:48 AM departure (2m early)', () => {
       const result = debug2Schedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '6:48am')
+      const entry = result.find(s => s.shortTime === '06:48')
       assert.ok(entry)
       assert.equal(entry.diffText, '✓')
       assert.equal(entry.ontime, true)
@@ -707,36 +727,37 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
 
     it('8:05 AM matched to 8:04 AM departure (ontime)', () => {
       const result = debug2Schedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '8:04am')
+      const entry = result.find(s => s.shortTime === '08:04')
       assert.ok(entry)
       assert.equal(entry.ontime, true)
     })
 
     it('9:20 AM matched to 9:19 AM departure (ontime)', () => {
       const result = debug2Schedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '9:19am')
+      const entry = result.find(s => s.shortTime === '09:19')
       assert.ok(entry)
       assert.equal(entry.ontime, true)
     })
 
     it('10:35 AM matched to 10:38 AM (3m late)', () => {
       const result = debug2Schedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '10:38am')
+      const entry = result.find(s => s.shortTime === '10:38')
       assert.ok(entry)
-      assert.equal(entry.diffText, '✓')
-      assert.equal(entry.ontime, true)
+      // See the same case in the 1:40 PM suite: 3 minutes late is late.
+      assert.equal(entry.diffText, '3m late')
+      assert.equal(entry.ontime, undefined)
     })
 
     it('11:55 AM matched to 12:15 PM (20m late)', () => {
       const result = debug2Schedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '12:15pm')
+      const entry = result.find(s => s.shortTime === '12:15')
       assert.ok(entry)
       assert.equal(entry.diffText, '20m late')
     })
 
     it('1:10 PM matched to 1:41 PM (31m late)', () => {
       const result = debug2Schedule.allPastHSB()
-      const entry = result.find(s => s.shortTime === '1:41pm')
+      const entry = result.find(s => s.shortTime === '13:41')
       assert.ok(entry, '1:41 PM departure should appear in past')
       assert.equal(entry.diffText, '31m late', '1:41 PM should be 31m late')
     })
@@ -751,42 +772,42 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
     it('first entry is skipped 5:15 AM', () => {
       const result = debug2Schedule.allPastBowen()
       const first = result[0]
-      assert.equal(first.shortTime, '5:15am')
+      assert.equal(first.shortTime, '05:15')
       assert.equal(first.skipped, true)
       assert.equal(first.diffText, null)
     })
 
     it('7:30 AM matched to 7:30 AM departure (ontime)', () => {
       const result = debug2Schedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '7:30am')
+      const entry = result.find(s => s.shortTime === '07:30')
       assert.ok(entry)
       assert.equal(entry.ontime, true)
     })
 
     it('8:45 AM matched to 8:45 AM departure (ontime)', () => {
       const result = debug2Schedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '8:45am')
+      const entry = result.find(s => s.shortTime === '08:45')
       assert.ok(entry)
       assert.equal(entry.ontime, true)
     })
 
     it('10:00 AM matched to 10:00 AM departure (ontime)', () => {
       const result = debug2Schedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '10:00am')
+      const entry = result.find(s => s.shortTime === '10:00')
       assert.ok(entry)
       assert.equal(entry.ontime, true)
     })
 
     it('11:15 AM matched to 11:27 AM (12m late)', () => {
       const result = debug2Schedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '11:27am')
+      const entry = result.find(s => s.shortTime === '11:27')
       assert.ok(entry)
       assert.equal(entry.diffText, '12m late')
     })
 
     it('12:35 PM matched to 1:04 PM (29m late)', () => {
       const result = debug2Schedule.allPastBowen()
-      const entry = result.find(s => s.shortTime === '1:04pm')
+      const entry = result.find(s => s.shortTime === '13:04')
       assert.ok(entry)
       assert.equal(entry.diffText, '29m late')
     })
@@ -811,7 +832,7 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
     it('returns 17 total entries (1:55 PM Bowen is first, 1:10 PM now in past)', () => {
       const result = debug2Schedule.upcomingSailings()
       assert.equal(result.length, 17, `Expected 17, got ${result.length}`)
-      assert.equal(result[0].shortTime, '1:55pm', 'First upcoming should be 1:55 PM Bowen')
+      assert.equal(result[0].shortTime, '13:55', 'First upcoming should be 1:55 PM Bowen')
     })
   })
 
@@ -819,7 +840,7 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
     it('returns 8 entries (no overdue — 1:10 PM now has departed event)', () => {
       const result = debug2Schedule.allUpcomingHSB()
       assert.equal(result.length, 8, `Expected 8, got ${result.length}`)
-      assert.equal(result[0].shortTime, '2:35pm', 'First upcoming HSB should be 2:35 PM')
+      assert.equal(result[0].shortTime, '14:35', 'First upcoming HSB should be 2:35 PM')
     })
   })
 
@@ -827,7 +848,7 @@ describe('useSchedule — second debug capture (1:51 PM, HSB 1:10 PM has departe
     it('returns 9 entries (1:55 PM through 11:30 PM)', () => {
       const result = debug2Schedule.allUpcomingBowen()
       assert.equal(result.length, 9, `Expected 9, got ${result.length}`)
-      assert.equal(result[0].shortTime, '1:55pm', 'First upcoming Bowen should be 1:55 PM')
+      assert.equal(result[0].shortTime, '13:55', 'First upcoming Bowen should be 1:55 PM')
     })
   })
 })

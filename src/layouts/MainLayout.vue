@@ -29,14 +29,14 @@
         <!-- Desktop nav tabs -->
         <q-tabs v-model="currentTab" shrink stretch class="gt-sm">
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
-          <q-route-tab name="status" label="History" icon="history" to="/status" />
+          <q-route-tab name="status" label="History" icon="history" to="/history" />
           <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
           <q-route-tab name="map" label="Map" icon="map" to="/map" />
         </q-tabs>
 
-        <q-btn flat dense round icon="account_circle" aria-label="Profile" to="/profile" />
-
-        <q-btn flat dense round icon="info" aria-label="About Bowen Lift" @click="showAttributions = true" />
+        <!-- One destination instead of two: About now lives behind a button on
+             the settings page (and the title still opens it directly). -->
+        <q-btn flat dense round icon="settings" aria-label="Settings" to="/settings" />
       </q-toolbar>
     </q-header>
 
@@ -80,80 +80,7 @@
     </q-dialog>
 
     <!-- Attributions dialog -->
-    <q-dialog v-model="showAttributions">
-      <q-card style="min-width: 300px">
-        <q-card-section class="row items-center">
-          <div class="text-h6">Attributions</div>
-          <q-space />
-          <q-btn flat round dense icon="close" aria-label="Close" v-close-popup />
-        </q-card-section>
-        <q-card-section v-if="isInstallable" class="q-pt-none">
-          <q-btn
-            no-caps
-            color="primary"
-            icon="add_to_home_screen"
-            label="Install Bowen Lift"
-            class="full-width"
-            @click="install"
-          />
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <q-list>
-            <q-item clickable tag="a" href="https://bowenferry.ca" target="_blank">
-              <q-item-section avatar><q-icon name="api" color="primary" /></q-item-section>
-              <q-item-section>
-                <q-item-label>Carlos</q-item-label>
-                <q-item-label caption>AIS tracking and ferry status API</q-item-label>
-              </q-item-section>
-              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
-            </q-item>
-            <q-item clickable tag="a" href="https://bowenislandmunicipality.ca/" target="_blank">
-              <q-item-section avatar><q-icon name="videocam" color="primary" /></q-item-section>
-              <q-item-section>
-                <q-item-label>Bowen Island Municipality</q-item-label>
-                <q-item-label caption>Community centre webcam</q-item-label>
-              </q-item-section>
-              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
-            </q-item>
-            <q-item clickable tag="a" href="https://www.bcferries.com/" target="_blank">
-              <q-item-section avatar><q-icon name="directions_boat" color="primary" /></q-item-section>
-              <q-item-section>
-                <q-item-label>BC Ferries</q-item-label>
-                <q-item-label caption>Terminal webcams and ferry service</q-item-label>
-              </q-item-section>
-              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
-            </q-item>
-            <q-item clickable tag="a" href="https://bowenbook.ca/ron-woodall-art/" target="_blank">
-              <q-item-section avatar>
-                <img src="/app-icon.png" alt="Bowen Lift logo" style="width: 32px; height: 32px;" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>Ron Woodall</q-item-label>
-                <q-item-label caption>Cartoonist — Lift logo</q-item-label>
-              </q-item-section>
-              <q-item-section side><q-icon name="open_in_new" size="xs" /></q-item-section>
-            </q-item>
-            <q-item clickable tag="a" href="mailto:carchrae@gmail.com">
-              <q-item-section avatar><q-icon name="person" color="primary" /></q-item-section>
-              <q-item-section>
-                <q-item-label>Tom Carchrae</q-item-label>
-                <q-item-label caption>Just a guy who mashed this up</q-item-label>
-              </q-item-section>
-              <q-item-section side><q-icon name="email" size="xs" /></q-item-section>
-            </q-item>
-            <q-item>
-              <q-item-section avatar><q-icon name="smart_toy" color="primary" /></q-item-section>
-              <q-item-section>
-                <q-item-label>Big Pickle &amp; Claude</q-item-label>
-                <q-item-label caption>
-                  Mashing tools — both challenged by the illogical nature of the ferry
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
+    <AboutDialog v-model="showAttributions" />
 
     <q-drawer
       v-model="leftDrawerOpen"
@@ -170,9 +97,14 @@
           <q-item-section>Home</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/status" @click="leftDrawerOpen = false">
-          <q-item-section avatar><q-icon name="directions_boat" /></q-item-section>
-          <q-item-section>Ferry Status</q-item-section>
+        <q-item clickable v-ripple to="/history" @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="history" /></q-item-section>
+          <q-item-section>History</q-item-section>
+        </q-item>
+
+        <q-item clickable v-ripple to="/bowen-departures" @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="photo_camera" /></q-item-section>
+          <q-item-section>Bowen Departures</q-item-section>
         </q-item>
 
         <q-item clickable v-ripple to="/rides" @click="leftDrawerOpen = false">
@@ -185,19 +117,21 @@
           <q-item-section>Map</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/bowen-departures" @click="leftDrawerOpen = false">
-          <q-item-section avatar><q-icon name="photo_camera" /></q-item-section>
-          <q-item-section>Bowen Departures</q-item-section>
-        </q-item>
-
         <q-item clickable v-ripple to="/leaderboard" @click="leftDrawerOpen = false">
           <q-item-section avatar><q-icon name="emoji_events" /></q-item-section>
           <q-item-section>Leaderboard</q-item-section>
         </q-item>
 
-        <q-item clickable v-ripple to="/profile" @click="leftDrawerOpen = false">
-          <q-item-section avatar><q-icon name="account_circle" /></q-item-section>
-          <q-item-section>Profile</q-item-section>
+        <q-separator class="q-my-sm" />
+
+        <q-item clickable v-ripple to="/settings" @click="leftDrawerOpen = false">
+          <q-item-section avatar><q-icon name="settings" /></q-item-section>
+          <q-item-section>Settings</q-item-section>
+        </q-item>
+
+        <q-item clickable v-ripple @click="openAttributions">
+          <q-item-section avatar><q-icon name="info" /></q-item-section>
+          <q-item-section>About</q-item-section>
         </q-item>
       </q-list>
     </q-drawer>
@@ -210,7 +144,7 @@
     <q-footer class="gt-sm-hide lt-md bg-primary text-white shadow-up-3">
       <q-tabs v-model="currentTab" active-color="white" indicator-color="white" class="text-grey-4">
         <q-route-tab name="home" label="Home" icon="home" to="/" exact />
-        <q-route-tab name="status" label="History" icon="history" to="/status" />
+        <q-route-tab name="status" label="History" icon="history" to="/history" />
         <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
         <q-route-tab name="map" label="Map" icon="map" to="/map" />
       </q-tabs>
@@ -225,11 +159,12 @@ import { useInstall } from 'src/composables/useInstall'
 import { useAuth } from 'src/composables/useAuth'
 import { isAnonymous } from 'src/composables/useAnonymity'
 import { isStaging, productionDataOverride } from '../boot/firebase.js'
+import AboutDialog from 'src/components/AboutDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const currentTab = ref(
-  route.path === '/status' ? 'status'
+  route.path === '/history' ? 'status'
     : route.path === '/rides' ? 'rides'
       : route.path === '/map' ? 'map'
         : 'home'
@@ -237,7 +172,15 @@ const currentTab = ref(
 const leftDrawerOpen = ref(false)
 const showAttributions = ref(false)
 
-const { isInstallable, install, showIosHint } = useInstall()
+// From the drawer: close the drawer first, or the dialog opens behind it.
+function openAttributions() {
+  leftDrawerOpen.value = false
+  showAttributions.value = true
+}
+
+// The install button moved into AboutDialog with the rest of that dialog;
+// only the iOS hint is still driven from here.
+const { showIosHint } = useInstall()
 
 // Prompt a signed-in user who has no displayed name to set one — once per user.
 const { user } = useAuth()
@@ -272,7 +215,7 @@ watch(
 
 function goSetName() {
   showNamePrompt.value = false
-  router.push('/profile')
+  router.push('/settings')
 }
 
 function toggleLeftDrawer() {

@@ -153,4 +153,8 @@ function sanitizeForCompare(data) {
   }
 }
 
-export { checkDataChanged, sanitizeForCompare }
+// parseFerryData is exported for tests: it's the single source of truth for
+// the API's shape (notably normalizeTime on every time field). tests/ used to
+// keep its own copy, which silently drifted when times were normalized and
+// left the whole suite asserting against a format the app no longer produces.
+export { checkDataChanged, sanitizeForCompare, parseFerryData }
