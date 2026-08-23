@@ -110,6 +110,7 @@ Per-sailing tracking document. Created by `recordDepartureTimes` and `recordCapa
 | `ferryFullAuto` | boolean? | Terminal classifier confirmed cars were still waiting at departure: the last 4 frames all confidently cars (p ≥ 0.7) AND the lineup reached the crosswalk (`crosswalkFullAtAuto` or `crosswalkFullAt` — never crossing vetoes full). Cleared (with `terminalFullProb`) when a later sub-0.7 frame breaks the run. Also filed/withdrawn as a robot 'Full' capacity report, and mirrored as aggregate key `fl` |
 | `terminalFullProb` | number? | The stamping frame's cars probability behind `ferryFullAuto` |
 | `terminalCarsSeen` / `terminalEmptySeen` / `terminalEmptyPending` / `terminalCarsPending` / `terminalFullRun` | mixed? | Streaming state for the tail + full rules (webcam.js): solid-cars-seen flag, cumulative observed-empty count, the lone empty/cars frame awaiting its confirming neighbour (`{ ts }`), and the running count of consecutive confidently-cars frames |
+| `terminalLastFrameTs` | number? | Capture time of the most recent departure-timelapse frame. Every terminal rule means *consecutive* frames, but the counters above can't tell a real run from one stitched across a capture gap (stalled camera, poll outage) — so a frame more than 3 minutes after this one resets `terminalEmptyPending` / `terminalCarsPending` / `terminalFullRun` rather than confirming them |
 
 ---
 
@@ -211,6 +212,27 @@ Latest arrival webcam photo (community camera). Single document, overwritten on 
 | `arrivalTime` | string | `"15:00"` — actual arrival time |
 | `dateIso` | string | `"2026-05-20"` |
 | `recordedAt` | number | Epoch ms |
+
+---
+
+## `snapshots/webcamHealth`
+
+Per-camera stalled-camera status (`functions/lib/webcam-health.js`). A frozen
+webcam keeps serving its last good JPEG, so the fetch succeeds and the picture
+looks fine — this doc is the only signal that it isn't current. Written **only**
+on a break/recover transition or a 15-minute heartbeat while broken, so it
+costs effectively nothing in steady state. One sub-object per camera, keyed by
+the Storage path segment (`bowen` = BC Ferries terminal cam, `community` =
+Bowen Community Centre cam).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `{camera}.stale` | boolean | The camera is serving a frozen frame: 3 byte-identical captures in a row, or 2 more than 2.5 min apart (the cameras refresh ~once a minute, so captures that straddle a refresh must differ). While true, that camera's captures and classifier predictions are suspended |
+| `{camera}.lastChangeAt` | number | Epoch ms of the last frame whose bytes actually differed — i.e. when the picture last moved |
+| `{camera}.staleSince` | number? | Epoch ms when the camera was declared stalled; null while healthy |
+| `{camera}.lastCheckedAt` | number | Epoch ms of the write. Clients ignore a `stale: true` older than ~40 min: that's a doc abandoned by a dead poll, not a live outage |
+| `{camera}.label` | string | Human-readable camera name for logs and the UI banner |
+| `updatedAt` | number | Epoch ms of the most recent write to this doc |
 
 ---
 

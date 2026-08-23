@@ -18,6 +18,74 @@ that appears at least twice wins — a stable image beats a mid-refresh tear —
 else the largest). Files are public with immutable cache headers (the
 timestamped names never change).
 
+## Stalled cameras
+
+Both cameras burn a clock into every frame, so two genuinely fresh captures can
+never be byte-identical. When a camera freezes, though, its server keeps
+serving the last good JPEG: the fetch succeeds, the bytes are a valid image,
+and every consumer downstream happily "works" — we upload the same picture into
+the timelapse every cycle and run the classifiers on a photo of the past. That
+is worse than no frame at all, because the verdicts it produces are
+indistinguishable from real ones, and `crosswalkFullAtAuto` is **permanent and
+sticky**: one detection off a frozen frame pins a wrong "full to crosswalk"
+time on the sailing and turns every later probe into an unconditional save.
+
+`functions/lib/webcam-health.js` hashes the frame `pickBestFrame` chose —
+before compression, so the comparison is independent of sharp's encoder — and
+compares it to the previous capture from the same camera. **Both cameras
+refresh about once a minute**, which is what makes a repeat meaningful, and
+gives two rules:
+
+- `STALE_IDENTICAL_FRAMES` (3) — for the departure timelapse, which captures
+  once a minute against a once-a-minute refresh. Sampling can land twice inside
+  a single refresh and see the same frame twice; it can't do that three times.
+- `CONCLUSIVE_GAP_MS` (2.5 min) — for everything slower: the lineup timelapse
+  (one per 5 min) and the one-shot arrival/departure photos. Two captures that
+  far apart straddle at least one refresh, so a single repeat is already
+  conclusive and waiting for a third would just cost minutes. At the lineup
+  cadence this is what does the detecting.
+
+So a frozen terminal cam is caught in ~2 minutes and a frozen community cam on
+its first repeat. Getting this wrong in the "stalled" direction is cheap —
+recovery is immediate, since the very next differing frame clears it, so a
+false positive costs one skipped capture. Getting it wrong the other way means
+predictions built on a photo of the past, which is expensive and invisible.
+That asymmetry is why the rules lean aggressive.
+
+While a camera is stalled, all four of its capture paths bail immediately after
+the fetch — no Storage upload, no Firestore write, **no classifier call**. The
+fetch still happens, because it's the only way to notice the camera recovering.
+Each path's dedupe guard is left untouched (`webcamSnapshotPath` unset, the
+arrival singleton unchanged), so the next poll retries and the photo lands as
+soon as the picture moves again.
+
+State lives in a per-instance cache mirrored to `snapshots/webcamHealth`, read
+once per cold start and written only on a break/recover transition or a
+15-minute heartbeat while broken — so detection costs no reads or writes in
+steady state. The client reads that doc (`src/composables/useWebcamHealth.js`)
+and shows a banner over the home page's camera grid plus a "Stuck" badge on the
+affected tile; a `stale: true` whose `lastCheckedAt` is older than 40 minutes is
+ignored, since that's a doc abandoned by a dead poll rather than a live outage.
+Cloud Functions logs carry `"Webcam stalled: …"` / `"Webcam recovered: …"` on
+each transition and a per-skip warning naming the path and how long the picture
+has been frozen.
+
+**Consecutiveness across an outage.** Every terminal rule ("two consecutive
+empty frames", "4 confidently-cars frames") means consecutive *in time*, but
+the streaming state is just counters on the sailing doc — they can't tell a
+real run from one stitched across a gap. `terminalLastFrameTs` closes that:
+a frame more than 3 minutes after the previous one resets `terminalEmptyPending`
+/ `terminalCarsPending` / `terminalFullRun` instead of confirming them, so the
+first frame back after an outage starts a fresh run rather than asserting an
+agreement that never happened. Already-confirmed verdicts and cumulative facts
+(`terminalCarsSeen`, `terminalEmptySeen`) are unaffected. The lineup classifier
+already had this guard as `PENDING_CONFIRM_MAX_MS`.
+
+Related hardening in `captureSamples`: a non-2xx response or a zero-length body
+is discarded rather than kept as a sample. `pickBestFrame` prefers the
+*largest* buffer when no two samples match, so an HTML error page could
+outweigh a real 14 KB terminal JPEG and get stored as a `.jpg`.
+
 ## The four capture paths
 
 Terminology: a Bowen loading **cycle** runs from one Bowen departure to the

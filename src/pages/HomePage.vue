@@ -377,6 +377,24 @@
 
       <!-- Cameras Grid -->
       <div class="col-12 col-md-6">
+        <!-- A frozen camera still returns a perfectly good-looking picture, so
+             say so out loud: without this the image reads as live. -->
+        <q-banner
+          v-if="anyStalled"
+          dense
+          rounded
+          class="bg-orange-1 text-orange-10 q-mb-sm"
+        >
+          <template v-slot:avatar>
+            <q-icon name="videocam_off" color="orange-9" />
+          </template>
+          <div v-for="camera in Object.keys(stalledCameras)" :key="camera" class="text-caption">
+            {{ stalledMessage(camera) }}
+          </div>
+          <div class="text-caption text-grey-8">
+            Photos and robot predictions are paused for it until it recovers.
+          </div>
+        </q-banner>
         <div class="row q-col-gutter-sm">
           <div v-for="(cam, index) in displayCams" :key="index" class="col-6">
             <q-card
@@ -392,6 +410,10 @@
                 @error="handleCamError(cam.globalIndex)"
                 @load="handleCamLoad(cam.globalIndex)"
               >
+                <div v-if="cam.stalled" class="absolute-top-right q-pa-xs bg-orange-9 text-white">
+                  <q-icon name="videocam_off" size="14px" class="q-mr-xs" />
+                  <span class="text-caption">Stuck</span>
+                </div>
                 <template v-slot:error>
                   <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
                     <q-icon name="videocam_off" size="24px" />
@@ -725,6 +747,7 @@ import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenS
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
+import { useWebcamHealth } from 'src/composables/useWebcamHealth'
 import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
@@ -1359,11 +1382,16 @@ function handleCamLoad(camIndex) {
   }
 }
 
+const { stalledCameras, anyStalled, stalledMessage, isCamStalled } = useWebcamHealth()
+
 const displayCams = computed(() =>
   displayIndexes.map((i) => ({
     src: `${allCamUrls[i]}?t=${cacheBusters.value[i]}`,
     label: allCamLabels[i],
     globalIndex: i,
+    // Only the two cameras the server captures from are health-checked; the
+    // four HSB cams have no capture pipeline watching them.
+    stalled: isCamStalled(allCamLabels[i]),
   })),
 )
 

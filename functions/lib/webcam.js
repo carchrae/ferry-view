@@ -21,6 +21,12 @@ import {
   timelapseDecision,
   departureTimelapseDecision,
 } from './webcam-decision.js'
+import {
+  recordFrame,
+  staleSkipMessage,
+  CAMERA_BOWEN,
+  CAMERA_COMMUNITY,
+} from './webcam-health.js'
 
 // Re-exported so existing imports of the decision logic from this file (and
 // the test suite) keep working — the actual definitions now live in
@@ -49,6 +55,13 @@ const SAMPLE_DELAY_MS = 1000
 // intervening frames may have been negative without a trace (classify-first
 // probes discard non-sticky negatives without a write; webcam fetches fail).
 const PENDING_CONFIRM_MAX_MS = 7 * 60 * 1000
+// The terminal equivalent, for the departure timelapse's 1-minute cadence.
+// Every terminal rule ("two consecutive empty frames", "FULL_TAIL_FRAMES
+// confidently-cars frames") means consecutive *in time*, but the streaming
+// state is just counters on the doc — they can't tell a real run from one
+// stitched across a gap. A stalled camera (or any capture outage) is exactly
+// that gap, so frames either side of one must not confirm each other.
+const TERMINAL_FRAME_GAP_MAX_MS = 3 * 60 * 1000
 
 // Logs which sailing a capture was attributed to and how late that sailing
 // is against its scheduled time — the trace needed to reconstruct why a
@@ -77,7 +90,20 @@ async function captureSamples(url) {
     if (i > 0) await new Promise(r => setTimeout(r, SAMPLE_DELAY_MS))
     try {
       const res = await fetch(url)
+      // An error response still has a body, and pickBestFrame prefers the
+      // LARGEST buffer when no two samples match — so an HTML error page can
+      // outweigh a real 14 KB terminal JPEG and get stored as a .jpg. Reject
+      // it here: a camera answering with errors is a failed camera, and
+      // "no samples" is already handled by every caller.
+      if (!res.ok) {
+        logger.warn(`Webcam sample ${i} returned HTTP ${res.status} for ${url}`)
+        continue
+      }
       const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length === 0) {
+        logger.warn(`Webcam sample ${i} was empty for ${url}`)
+        continue
+      }
       samples.push(buf)
     } catch (e) {
       logger.warn(`Webcam sample ${i} failed:`, e.message)
@@ -129,6 +155,14 @@ export async function captureBowenWebcam(db, sailingKey, sailingTime, dateIso, r
   }
 
   const best = pickBestFrame(samples)
+  // A frozen camera would file last hour's picture as this sailing's departure
+  // photo. Skipping leaves webcamSnapshotPath unset, so the next poll retries
+  // — the photo lands as soon as the camera recovers, inside the 10-min guard.
+  const health = await recordFrame(db, CAMERA_BOWEN, best)
+  if (health.stale) {
+    logger.warn(staleSkipMessage('Departure photo', CAMERA_BOWEN, health))
+    return
+  }
   const timestamp = Date.now()
   const blobPath = `webcams/bowen/${dateIso}/${sailingKey}_${timestamp}.jpg`
   const bucket = getStorage().bucket()
@@ -176,7 +210,18 @@ export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arri
     return
   }
 
-  const best = await compressSnapshot(pickBestFrame(samples))
+  const raw = pickBestFrame(samples)
+  // Freshness is judged on the raw upstream bytes, before compression, and
+  // before anything is written: a stalled community cam would otherwise file
+  // a photo of the previous cycle's lineup as this arrival's. The arrival
+  // singleton is left untouched, so the next poll retries.
+  const health = await recordFrame(db, CAMERA_COMMUNITY, raw)
+  if (health.stale) {
+    logger.warn(staleSkipMessage('Arrival photo', CAMERA_COMMUNITY, health))
+    return
+  }
+
+  const best = await compressSnapshot(raw)
   const timestamp = Date.now()
   const blobPath = `webcams/community/${dateIso}/${sailingTime}_To HSB_${timestamp}.jpg`
   const bucket = getStorage().bucket()
@@ -232,7 +277,20 @@ export async function captureLineupTimelapse(db, data) {
     return
   }
 
-  const best = await compressSnapshot(pickBestFrame(samples))
+  const raw = pickBestFrame(samples)
+  // Stalled community cam → no frame and, crucially, no crosswalk verdict.
+  // Running the classifier on a frozen picture is the dangerous failure: it
+  // would keep re-asserting whatever the last live frame showed, and because
+  // crosswalkFullAtAuto is permanent and sticky, one bad detection during an
+  // outage would pin a wrong "full to crosswalk" time on the sailing and turn
+  // every later probe into an unconditional save.
+  const health = await recordFrame(db, CAMERA_COMMUNITY, raw)
+  if (health.stale) {
+    logger.warn(staleSkipMessage('Lineup timelapse', CAMERA_COMMUNITY, health))
+    return
+  }
+
+  const best = await compressSnapshot(raw)
   const timestamp = Date.now()
 
   // Classified before the upload (same compressed buffer as always, so
@@ -365,6 +423,15 @@ export async function captureDepartureTimelapse(db, data) {
   // preserve detail (potential future departure-fullness ML), like the single
   // departure photo (captureBowenWebcam).
   const best = pickBestFrame(samples)
+  // Stalled terminal cam → no frame and no cars/empty verdict. This one is the
+  // worst to get wrong: a frozen empty berth would repeat the "no cars" read
+  // every minute and confirm a not-full verdict out of a single stale image,
+  // filing a robot capacity report against the sailing.
+  const health = await recordFrame(db, CAMERA_BOWEN, best)
+  if (health.stale) {
+    logger.warn(staleSkipMessage('Departure timelapse', CAMERA_BOWEN, health))
+    return
+  }
   const timestamp = Date.now()
   const blobPath = `webcams/bowen/${data.dateIso}/timelapse/${decision.sailingTime}_To HSB_${timestamp}.jpg`
   const bucket = getStorage().bucket()
@@ -405,6 +472,28 @@ export async function captureDepartureTimelapse(db, data) {
     const cur = snap.exists ? snap.data() : {}
     curCapacitySource = cur.capacitySource || null
     curLastCapacity = cur.lastCapacity || null
+
+    // Frames either side of a capture gap aren't consecutive, so the in-flight
+    // run/pending state doesn't carry across one — otherwise the first frame
+    // after a stalled camera recovers could confirm a pending parked before
+    // the outage, asserting a two-frame agreement that never happened. Only
+    // the in-flight counters reset; cumulative facts (terminalCarsSeen,
+    // terminalEmptySeen) and already-confirmed verdicts are unaffected.
+    const gapBroken =
+      cur.terminalLastFrameTs != null &&
+      timestamp - cur.terminalLastFrameTs > TERMINAL_FRAME_GAP_MAX_MS
+    if (gapBroken) {
+      logger.warn(
+        `Terminal frame gap of ${Math.round((timestamp - cur.terminalLastFrameTs) / 60000)}m ` +
+          `for ${snapshotKey} — resetting in-flight cars/empty/full run state`,
+      )
+      if (cur.terminalCarsPending) terminalFields.terminalCarsPending = FieldValue.delete()
+      if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+      if (cur.terminalFullRun) terminalFields.terminalFullRun = 0
+    }
+    const prev = gapBroken
+      ? { ...cur, terminalCarsPending: null, terminalEmptyPending: null, terminalFullRun: 0 }
+      : cur
     // NO crosswalk veto here (tried 2026-08-10, removed 2026-08-16): a lineup
     // reaching the crosswalk does NOT contradict an empty terminal. A long
     // line that all gets aboard is exactly "everyone waiting got on" — the
@@ -422,8 +511,8 @@ export async function captureDepartureTimelapse(db, data) {
     // verdicts are easy to eyeball, and a dedicated night model is the
     // winter plan.
     if (verdict.carsPresent === true) {
-      if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
-      if (cur.terminalCarsPending) {
+      if (prev.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+      if (prev.terminalCarsPending) {
         // Second consecutive cars frame — solid. Start a new tail: any
         // stamped verdict was mid-sailing and comes back out, everywhere it
         // was written (doc fields, aggregate nf, robot capacity report).
@@ -451,11 +540,11 @@ export async function captureDepartureTimelapse(db, data) {
       // Unknown (reserved for e.g. a future night model declining to
       // answer): confirms nothing, counts as nothing — breaks both the
       // empty run and cars solidity.
-      if (cur.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
-      if (cur.terminalCarsPending) terminalFields.terminalCarsPending = FieldValue.delete()
+      if (prev.terminalEmptyPending) terminalFields.terminalEmptyPending = FieldValue.delete()
+      if (prev.terminalCarsPending) terminalFields.terminalCarsPending = FieldValue.delete()
     } else {
       // Empty frame. An isolated preceding cars frame was a blip: forget it.
-      if (cur.terminalCarsPending) terminalFields.terminalCarsPending = FieldValue.delete()
+      if (prev.terminalCarsPending) terminalFields.terminalCarsPending = FieldValue.delete()
       const emptySeen = (cur.terminalEmptySeen || 0) + 1
       terminalFields.terminalEmptySeen = emptySeen
       // Cars-first guard, softened by the long quiet window (mirrors
@@ -463,14 +552,17 @@ export async function captureDepartureTimelapse(db, data) {
       const confirmable = cur.terminalCarsSeen || emptySeen >= MIN_ALL_EMPTY_FRAMES
       if (cur.ferryNotFullAuto) {
         // Already stamped in this tail — keep the original confirming ts.
-      } else if (cur.terminalEmptyPending && confirmable) {
+      } else if (prev.terminalEmptyPending && confirmable) {
         terminalFields.terminalEmptyFrameTs = timestamp
         terminalFields.ferryNotFullAuto = true
         terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
         const modelVersion = terminalModelVersion()
         if (modelVersion != null) terminalFields.terminalAutoModel = modelVersion
         firstConfirm = true
-      } else if (!cur.terminalEmptyPending) {
+      } else if (!prev.terminalEmptyPending) {
+        // Including after a gap: the pending from before the outage was
+        // dropped above, so this frame starts a fresh run rather than
+        // silently leaving the sailing with no pending at all.
         terminalFields.terminalEmptyPending = { ts: timestamp }
       }
     }
@@ -487,7 +579,7 @@ export async function captureDepartureTimelapse(db, data) {
     // Limitation: a crosswalk verdict landing after the window's last frame
     // means the server never stamps; the browser mirror recomputes it.
     if (verdict.probability >= FULL_CONFIDENT_P) {
-      const fullRun = (cur.terminalFullRun || 0) + 1
+      const fullRun = (prev.terminalFullRun || 0) + 1
       terminalFields.terminalFullRun = fullRun
       const crosswalkOk = cur.crosswalkFullAtAuto != null || cur.crosswalkFullAt != null
       if (fullRun >= FULL_TAIL_FRAMES && crosswalkOk && !cur.ferryFullAuto) {
@@ -523,6 +615,9 @@ export async function captureDepartureTimelapse(db, data) {
       direction: 'To HSB',
       dateIso: data.dateIso,
       departureTimelapsePaths: FieldValue.arrayUnion(blobPath),
+      // Capture time of this frame — the next frame checks it to tell a real
+      // consecutive run from one stitched across a camera outage.
+      terminalLastFrameTs: timestamp,
       ...terminalFields,
     },
     { merge: true },
