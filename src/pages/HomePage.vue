@@ -119,9 +119,9 @@
                   <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
                   <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
                   <template v-if="anyRobotBadge">
-                    <q-icon name="smart_toy" size="12px" />
-                    {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot — tap time
-                    to verify
+                    <q-icon name="smart_toy" size="12px" color="indigo" />
+                    {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction
+                    — tap time to verify
                   </template>
                 </div>
                 <div class="row items-start q-col-gutter-sm q-mb-md">
@@ -410,7 +410,7 @@
                 @error="handleCamError(cam.globalIndex)"
                 @load="handleCamLoad(cam.globalIndex)"
               >
-                <div v-if="cam.stalled" class="absolute-top-right q-pa-xs bg-orange-9 text-white">
+                <div v-if="cam.stalled" class="absolute-top-left q-pa-xs bg-orange-9 text-white">
                   <q-icon name="videocam_off" size="14px" class="q-mr-xs" />
                   <span class="text-caption">Stuck</span>
                 </div>
@@ -530,9 +530,9 @@
             <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
             <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
             <template v-if="anyRobotBadge">
-              <q-icon name="smart_toy" size="12px" />
-              {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot — tap time to
-              verify
+              <q-icon name="smart_toy" size="12px" color="indigo" />
+              {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction —
+              tap time to verify
             </template>
           </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">

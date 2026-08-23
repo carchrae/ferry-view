@@ -70,9 +70,9 @@
             <span class="text-orange-9">{{ typeBadge.text }}</span>
           </template>
         </div>
+        <HintLine v-if="hint" :hint="hint" @click="$emit('typical')" />
       </div>
     </div>
-    <HintLine v-if="hint" :hint="hint" @click="$emit('typical')" />
   </div>
 
   <!-- Meter: time + status on one line, a thin fullness bar beneath it. -->
@@ -325,12 +325,19 @@ const vFitScale = {
 }
 
 // The "typically fills by ..." prediction sub-line, shared by every design.
+// In the cards design this renders INSIDE the card, which is itself clickable
+// (@click -> 'open'), so the native click has to be stopped here or tapping
+// the hint would open the history dialog as well. A no-op for the designs
+// that render it outside the clickable row.
 const HintLine = (p, { emit }) =>
   h(
     'div',
     {
       class: `typical-hint text-caption cursor-pointer text-${p.hint.color}`,
-      onClick: () => emit('click'),
+      onClick: (e) => {
+        e.stopPropagation()
+        emit('click')
+      },
     },
     [p.hint.text + ' ', h(QIcon, { name: 'info_outline', size: '12px' })],
   )

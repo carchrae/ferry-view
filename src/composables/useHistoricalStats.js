@@ -240,6 +240,13 @@ function computeTimeInfo(time, rawDates) {
     exceptionCount,
     avgLateness,
     latePct,
+    // Denominators behind latePct / fullPct. `count` counts dates, but a date
+    // often has no lateness and usually no capacity tag, so `count` alone
+    // can't tell "4 sailings, all on time and never full" from "4 sailings we
+    // know nothing about" — and only the first of those is safe to reassure
+    // a rider with.
+    latenessCount: typLateness.length,
+    reportedCount: reportedCapacity.length,
     fullPct,
     avgFillTime,
     avgCwTime,
@@ -262,6 +269,21 @@ export function getTypical(byDayOfWeek, panel, dayKey, time) {
 // ---------------------------------------------------------------------------
 // Home-page hint helpers — compact "typically late / full" badges
 // ---------------------------------------------------------------------------
+
+// A sailing counts as "typically late" at or above this share of departures
+// running >= 2 min behind; below it, the same number reads as "usually on
+// time". Shared by the warning and the reassurance so they can't disagree.
+const LATE_PCT_WARN = 40
+// Same idea for fullness: at or above this share of capacity-tagged sailings
+// coming back "Full", the sailing gets a warning.
+const FULL_PCT_WARN = 40
+// Below freqWord's "often" floor, so "rarely full" is never claimed for a
+// sailing the warning branch would have called "often full". Between the two
+// the sailing is genuinely borderline and gets no line at all.
+const RARELY_FULL_PCT = 30
+// Riders tag Bowen capacity by hand, so reports are sparse — but one or two
+// "not full" tags are not enough to promise a rider there will be room.
+const MIN_CAPACITY_REPORTS = 3
 
 // Frequency adverb for a percentage, or null below the noise floor.
 function freqWord(pct) {
@@ -287,12 +309,12 @@ export function typicalHints(info, compact = false, panel = null) {
   const segs = []
   let severity = 0 // 0 none, 1 warning, 2 negative
 
-  if (info.avgLateness !== null && info.avgLateness >= 3 && info.latePct !== null && info.latePct >= 40) {
+  if (info.avgLateness !== null && info.avgLateness >= 3 && info.latePct !== null && info.latePct >= LATE_PCT_WARN) {
     segs.push({ freq: freqWord(info.latePct), text: `+${info.avgLateness}min` })
     severity = Math.max(severity, info.avgLateness >= 6 ? 2 : 1)
   }
 
-  if (info.fullPct >= 40) {
+  if (info.fullPct >= FULL_PCT_WARN) {
     const fillTime = panel === 'bowen' ? info.avgCwTime : info.avgFillTime
     const fillWord = panel === 'bowen' ? 'full to CW' : 'full'
     let fullText = 'full'
@@ -313,7 +335,22 @@ export function typicalHints(info, compact = false, panel = null) {
     severity = Math.max(severity, 1)
   }
 
-  if (!segs.length) return null
+  // Nothing concerning. A blank line here used to be ambiguous — a rider can't
+  // tell "this sailing is reliably fine" from "we have no history for it", and
+  // reads the silence as the latter. So say the good news outright, but only
+  // for the facts actually backed by samples: an unqualified reassurance drawn
+  // from a missing warning would be the worst kind of wrong.
+  if (!segs.length) {
+    const good = []
+    if (info.latenessCount >= EXCEPTION_MIN_SAMPLES && info.latePct !== null && info.latePct < LATE_PCT_WARN) {
+      good.push('usually on time')
+    }
+    if (info.reportedCount >= MIN_CAPACITY_REPORTS && info.fullPct !== null && info.fullPct < RARELY_FULL_PCT) {
+      good.push('rarely full')
+    }
+    if (!good.length) return null
+    return { text: good.join(', '), color: 'positive' }
+  }
 
   let text
   if (segs.length === 2 && segs[0].freq && segs[0].freq === segs[1].freq) {
