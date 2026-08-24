@@ -447,7 +447,7 @@ HintLine.emits = ['click']
 
 // The hint wraps within its column rather than ellipsizing. These cards are
 // half-width on a phone (Bowen and HSB sit side by side), so a single clipped
-// line would cut "usually +11min, full to CW 10:51am" down to nothing useful
+// line would cut "usually +11min, at C 10:51am" down to nothing useful
 // — better to grow the card by a line. Baseline alignment keeps the first
 // line level with the fullness reading either way.
 .sr-facts .typical-hint-inline {

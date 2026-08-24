@@ -10,7 +10,7 @@
           <th>Actual dep</th>
           <th>+/- min</th>
           <th>Full</th>
-          <th>{{ isBowen ? 'Full to CW' : 'Filled by' }}</th>
+          <th>{{ isBowen ? 'At C' : 'Filled by' }}</th>
         </tr>
       </thead>
       <tbody>
@@ -78,10 +78,10 @@ const detailSummary = computed(() => {
   }
   if (info.fullPct > 0) {
     const fillBy = isBowen.value ? info.avgCwTime : info.avgFillTime
-    const byLabel = isBowen.value ? 'full to CW by' : 'fills by'
+    const byLabel = isBowen.value ? 'at C by' : 'fills by'
     parts.push(fillBy ? `full ${info.fullPct}% · ${byLabel} ${fillBy}` : `full ${info.fullPct}%`)
   } else if (isBowen.value && info.avgCwTime) {
-    parts.push(`full to CW by ${info.avgCwTime}`)
+    parts.push(`at C by ${info.avgCwTime}`)
   } else if (info.avgCapacityPct !== null) {
     parts.push(`avg ${100 - info.avgCapacityPct}% full`)
   } else if (info.notFullCount > 0) {

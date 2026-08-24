@@ -448,12 +448,12 @@ export function factHintText(fact, compact = false) {
     case 'onTime':
       return 'on time'
     case 'full': {
-      const word = fact.isBowen ? 'full to CW' : 'full'
+      const word = fact.isBowen ? 'at C' : 'full'
       if (!fact.fillTime) return 'full'
       return compact ? `${word} ${fact.fillTime.replace(' ', '')}` : `${word} by ${fact.fillTime}`
     }
     case 'crosswalk':
-      return `full to CW by ${fact.fillTime}`
+      return `at C by ${fact.fillTime}`
     case 'busy':
       return `~${fact.pct}% full`
     case 'rarelyFull':
@@ -473,11 +473,11 @@ export function factDetailText(fact) {
       return 'usually on time'
     case 'full': {
       const label = `${fact.freq} full`
-      const by = fact.isBowen ? 'full to CW by' : 'fills by'
+      const by = fact.isBowen ? 'at C by' : 'fills by'
       return fact.fillTime ? `${label} · ${by} ${fact.fillTime}` : label
     }
     case 'crosswalk':
-      return `full to CW by ${fact.fillTime}`
+      return `at C by ${fact.fillTime}`
     case 'busy':
       return `usually ~${fact.pct}% full`
     case 'rarelyFull':
@@ -519,7 +519,7 @@ export function factExplanation(fact) {
             : ` It typically filled by ${fact.fillTime}.`
           : '')
     case 'crosswalk':
-      return `"full to CW by ${fact.fillTime}" — no sailing was tagged Full outright, but riders ` +
+      return `"at C by ${fact.fillTime}" — no sailing was tagged Full outright, but riders ` +
         `marked the lineup reaching the crosswalk, which is its own evidence of a busy sailing. ` +
         `That is the typical time they marked.`
     case 'busy':
