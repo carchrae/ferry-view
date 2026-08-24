@@ -147,8 +147,9 @@ import { updateProfile } from 'firebase/auth'
 import { db, auth } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
+import { useToday } from 'src/composables/useToday'
 import SignInOptions from 'src/components/SignInOptions.vue'
-import { normalizeTime, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
+import { normalizeTime, dayjs, TZ } from '../../functions/lib/time.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -160,7 +161,10 @@ const { createRide, updateRide, deleteRide } = useRides({ live: false })
 const editId = computed(() => route.params.id || null)
 const isEdit = computed(() => !!editId.value)
 
-const today = nowInVancouver().format('YYYY-MM-DD')
+// Reactive across midnight — a plain const here let a form left open
+// overnight keep yesterday as its default date, and keep offering it as a
+// valid pick. See useToday.
+const { todayIso } = useToday()
 const saving = ref(false)
 const deleting = ref(false)
 const showDate = ref(false)
@@ -175,7 +179,7 @@ const form = ref({
   direction: 'on-bowen',
   recurring: false,
   schedule: '',
-  date: today,
+  date: todayIso.value,
   sailing: '',
   authorName: user.value?.displayName || '',
   description: '',
@@ -191,9 +195,9 @@ const submitLabel = computed(() => {
 const displayDate = computed(() => {
   if (!form.value.date) return ''
   const d = dayjs.tz(form.value.date, TZ)
-  const now = nowInVancouver()
-  if (d.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')) return 'Today'
-  if (d.format('YYYY-MM-DD') === now.add(1, 'day').format('YYYY-MM-DD')) return 'Tomorrow'
+  const iso = d.format('YYYY-MM-DD')
+  if (iso === todayIso.value) return 'Today'
+  if (iso === dayjs.tz(todayIso.value, TZ).add(1, 'day').format('YYYY-MM-DD')) return 'Tomorrow'
   return d.format('ddd, MMM D')
 })
 
@@ -231,7 +235,7 @@ watchEffect(async () => {
     direction: d.direction,
     recurring: !!d.recurring,
     schedule: d.schedule || '',
-    date: d.date || today,
+    date: d.date || todayIso.value,
     sailing: d.sailing || '',
     authorName: d.authorName || '',
     description: d.description || '',
@@ -241,7 +245,7 @@ watchEffect(async () => {
 })
 
 function dateFn(date) {
-  return date >= today
+  return date >= todayIso.value
 }
 
 function normalizeSailingTime(t) {

@@ -266,8 +266,9 @@
 <script setup>
 import { ref, computed, onMounted, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { nowInVancouver, formatTime12h } from '../../functions/lib/time.js'
+import { formatTime12h } from '../../functions/lib/time.js'
 import { useHistoricalStats, DAY_KEYS } from 'src/composables/useHistoricalStats'
+import { useToday } from 'src/composables/useToday'
 import {
   typicalFacts,
   factDetailText,
@@ -342,8 +343,15 @@ function toggleRow(dir, dayKey, time) {
 }
 function isExpanded(dir, dayKey, time) { return expandedRows.has(rowKey(dir, dayKey, time)) }
 
-const selectedDay = ref(nowInVancouver().format('dddd'))
-const todayKey = computed(() => nowInVancouver().format('dddd'))
+// Reactive across midnight — see useToday for why the obvious
+// computed(() => nowInVancouver()...) silently isn't.
+const { todayIso, todayDow: todayKey } = useToday()
+const selectedDay = ref(todayKey.value)
+// A page left open overnight follows the rollover only if it was still
+// showing today; a day the reader deliberately picked stays put.
+watch(todayKey, (dow, prev) => {
+  if (selectedDay.value === prev) selectedDay.value = dow
+})
 const selectedDayIdx = computed(() => dayNames.findIndex(d => d.key === selectedDay.value))
 function prevDay() {
   selectedDay.value = dayNames[(selectedDayIdx.value + dayNames.length - 1) % dayNames.length].key
@@ -401,6 +409,10 @@ onMounted(() => {
   syncUrl()
   fetchData()
 })
+
+// The window is relative to today (start = now - N weeks, end = yesterday),
+// so a rollover needs a refetch, not just a re-slice of what's loaded.
+watch(todayIso, fetchData)
 </script>
 
 <style scoped>

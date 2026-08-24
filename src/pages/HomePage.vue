@@ -859,6 +859,7 @@ import {
   labelToPanel,
 } from 'src/composables/useHistoricalStats'
 import { DEFAULT_HISTORY_WEEKS } from 'src/lib/historical-stats.js'
+import { useToday } from 'src/composables/useToday'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
 import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
@@ -1071,11 +1072,20 @@ function delayDepartures() {
 // late or full. Day-of-week specific; holiday-impacted dates are excluded from
 // the baseline (and flagged separately via holidayContext).
 const { byDayOfWeek: historyByDayOfWeek, fetchStats: fetchHistory } = useHistoricalStats()
-onMounted(() => fetchHistory({ weeksBack: DEFAULT_HISTORY_WEEKS, excludeHolidays: true }))
 
-const todayIso = computed(() => nowInVancouver().format('YYYY-MM-DD'))
-const todayDow = computed(() => nowInVancouver().format('dddd'))
+// Reactive across midnight — see useToday for why the obvious
+// computed(() => nowInVancouver()...) silently isn't.
+const { todayIso, todayDow } = useToday()
 const holidayContext = computed(() => getHolidayContext(todayIso.value))
+
+// The 8-week baseline window is relative to today, and yesterday's sailings
+// only join it once the day rolls over — so refetch rather than re-slicing
+// the data loaded at mount. immediate:true covers the initial load.
+watch(
+  todayIso,
+  () => fetchHistory({ weeksBack: DEFAULT_HISTORY_WEEKS, excludeHolidays: true }),
+  { immediate: true },
+)
 
 // Typical stats for an upcoming sailing (day-of-week specific), or null.
 function sailingTypical(s) {
@@ -1153,6 +1163,10 @@ function setOffline() {
 }
 function reloadPage() {
   window.location.reload()
+}
+function onVisible() {
+  if (document.visibilityState !== 'visible') return
+  nowTick.value = Date.now()
 }
 
 const isStale = computed(() => {
@@ -1518,7 +1532,7 @@ const lastSailing = computed(() => {
   return a.sortTime > b.sortTime ? a : b
 })
 const sortedRides = computed(() => {
-  const todayStr = nowInVancouver().format('YYYY-MM-DD')
+  const todayStr = todayIso.value
   const upcoming = upcomingSailingTimes.value
 
   return [...rides.value]
@@ -1772,12 +1786,16 @@ onMounted(() => {
   }, 15000)
   window.addEventListener('online', setOnline)
   window.addEventListener('offline', setOffline)
+  // Timers are throttled or suspended while the page is hidden, so the stale
+  // overlay would otherwise be up to a tick late on resume.
+  document.addEventListener('visibilitychange', onVisible)
 })
 onUnmounted(() => {
   clearInterval(camRefreshInterval)
   clearInterval(staleTicker)
   window.removeEventListener('online', setOnline)
   window.removeEventListener('offline', setOffline)
+  document.removeEventListener('visibilitychange', onVisible)
   Object.values(retryTimeouts).forEach(clearTimeout)
 })
 </script>
