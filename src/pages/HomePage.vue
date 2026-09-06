@@ -868,7 +868,11 @@ import { DEFAULT_HISTORY_WEEKS } from 'src/lib/historical-stats.js'
 import { useToday } from 'src/composables/useToday'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
-import { loadBowenSailings, loadUpcomingLineup } from 'src/composables/useBowenSailings'
+import {
+  loadBowenSailings,
+  loadUpcomingLineup,
+  loadSailingFrames,
+} from 'src/composables/useBowenSailings'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
@@ -1400,11 +1404,28 @@ async function openRobotVerify(kind, time) {
           ? rawCw
           : null
         : (s.terminalEmptyFrameTs ?? null)
+    // Frames come from the RAW sailing record, never the built cards —
+    // finalize() swaps the newest sailing's departure card for the live-cam
+    // stub (no timelapse) while its frames are sitting in the cache, which
+    // was the "frames are no longer available" bug
+    // (docs/robot-verify-missing-frames.md). The boarding-sailing fallback
+    // above has no raw card either, so its lineup frames still apply.
+    let raw = await loadSailingFrames(todayIso, t)
+    const wanted = kind === 'crosswalk' ? 'lineup' : 'departure'
+    // One extra aggregate read in the failing case only — never on the
+    // happy path (the cached snapshot can lag new frames by up to 5 min).
+    if (!raw?.[wanted]?.length) raw = await loadSailingFrames(todayIso, t, true)
+    // Arrival cards are never stubbed, so they remain a safe crosswalk
+    // fallback (covers the boarding-sailing shape built above).
+    const frames =
+      (raw?.[wanted]?.length ? raw[wanted] : null) ||
+      (kind === 'crosswalk' ? s.arrival?.timelapse : null) ||
+      []
     robotVerify.value = {
       open: true,
       kind,
       robotAt,
-      frames: (kind === 'crosswalk' ? s.arrival?.timelapse : s.departure?.timelapse) || [],
+      frames,
       sailingKey: s.sailingKey,
       autoProb: s.crosswalkAutoProb ?? null,
       claim: s.ferryFullAuto

@@ -15,6 +15,16 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# Same lock as the cron jobs: a manual train overlapping the nightly run
+# would race version numbers and rewrite manifest/report files mid-read.
+LOCK_DIR="training-data/.pipeline.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "Another pipeline run (nightly cron or export) is in progress — try again shortly." >&2
+  echo "If you're sure nothing is running: rm -rf $LOCK_DIR" >&2
+  exit 1
+fi
+trap 'rmdir "$LOCK_DIR"' EXIT
+
 status=0
 node scripts/train-lineup-classifier.mjs || status=1
 echo

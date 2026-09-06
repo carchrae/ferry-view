@@ -1,6 +1,13 @@
 import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore'
 import { db, storageBucket } from 'src/boot/firebase'
-import { nowInVancouver, dayjs, formatTime12h, timeToDate, TZ } from '../../functions/lib/time.js'
+import {
+  nowInVancouver,
+  dayjs,
+  formatTime12h,
+  timeToDate,
+  normalizeTime,
+  TZ,
+} from '../../functions/lib/time.js'
 
 // Same live camera the home page shows as "Bowen Terminal".
 export const BOWEN_TERMINAL_CAM_URL =
@@ -332,6 +339,24 @@ function deriveUpcomingLineup(raw) {
 
 export async function loadUpcomingLineup() {
   return deriveUpcomingLineup(await fetchRawSailings())
+}
+
+// Raw timelapse frames for one sailing, straight off the aggregate record.
+// Deliberately NOT read from the built cards: finalize() replaces the newest
+// sailing's departure card with the live-camera stub, which has no timelapse
+// (that substitution is a rendering choice — a live view beats minutes-old
+// frames — and must not decide what the verify dialog can reach). See
+// docs/robot-verify-missing-frames.md.
+export async function loadSailingFrames(dateIso, sailingTime, force = false) {
+  const t = normalizeTime(sailingTime)
+  const r = (await fetchRawSailings(force)).find(
+    (x) => x.dateIso === dateIso && normalizeTime(x.sailingTime) === t,
+  )
+  if (!r) return null
+  return {
+    lineup: buildTimelapse(r.lineupTimelapsePaths),
+    departure: buildTimelapse(r.departureTimelapsePaths),
+  }
 }
 
 function finalize(sailings, todayIso) {

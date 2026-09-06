@@ -1,6 +1,10 @@
 # Robot Verify — "The frames are no longer available to view"
 
-**Status:** proposed, not implemented. Reported 2026-08-24.
+**Status:** FIXED 2026-09-06 — `loadSailingFrames()` in `useBowenSailings.js`
+reads frames off the raw cached records, and HomePage's `openRobotVerify`
+uses it with the retry-once-on-empty described below (frames no longer come
+from the doctored cards). The analysis is kept for the record. Reported
+2026-08-24.
 
 The frame-check dialog on the home page intermittently claims a sailing's
 photos are gone when they are sitting in the aggregate the whole time. The

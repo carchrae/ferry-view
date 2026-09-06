@@ -32,6 +32,7 @@ import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { recomputeBowenSailings } from './lib/bowen-sailings-aggregate.js'
+import { recomputeHistoricalStats } from './lib/history-aggregate.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const VERDICT = join(HERE, '../training-data/dark-detections-verdict.json')
@@ -85,6 +86,9 @@ for (const key of keys) {
   const humanMarkRemains = cur.crosswalkFullAt != null && !robotReport
   if (cur.ferryFullAuto && !humanMarkRemains) {
     del.ferryFullAuto = FieldValue.delete()
+    // Mirror webcam.js's own withdrawal path: the probability goes with the
+    // verdict it justified.
+    del.terminalFullProb = FieldValue.delete()
     if (!cur.ferryNotFullAuto) del.terminalAutoModel = FieldValue.delete()
     why.push('full verdict (lost its crosswalk precondition)')
     if (cur.capacitySource === 'robot' && cur.lastCapacity === 'Full') {
@@ -105,9 +109,15 @@ for (const key of keys) {
 
 console.log(`${touched} docs ${APPLY ? 'updated' : 'would be updated'}`)
 if (APPLY && touched) {
+  // BOTH client aggregates mirror the cleared fields — bowenSailings feeds
+  // the departures page immediately, historicalStats would otherwise serve
+  // the phantom robot data until its 03:10 nightly rebuild (plus the
+  // client's stale-grace window).
   console.log('Rebuilding aggregates/bowenSailings…')
   await recomputeBowenSailings(db)
+  console.log('Rebuilding aggregates/historicalStats…')
+  await recomputeHistoricalStats(db)
   console.log('Done.')
 } else if (touched) {
-  console.log('Dry run — re-run with --apply to write and rebuild the aggregate.')
+  console.log('Dry run — re-run with --apply to write and rebuild the aggregates.')
 }

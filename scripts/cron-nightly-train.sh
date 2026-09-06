@@ -37,7 +37,11 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="$REPO_DIR/training-data/logs"
-LOCK_DIR="$REPO_DIR/training-data/.train.lock"
+# One lock for the WHOLE pipeline — shared with the export cron and
+# scripts/train-all.sh, so a manual `npm run train` can never interleave with
+# the nightly run (concurrent trainers would race version numbers and rewrite
+# manifest/report files under each other).
+LOCK_DIR="$REPO_DIR/training-data/.pipeline.lock"
 LOG_FILE="$LOG_DIR/train-$(date +%Y-%m-%d).log"
 
 # Cron strips the login PATH; include the usual node locations — macOS
@@ -59,9 +63,16 @@ fi
 
 mkdir -p "$LOG_DIR"
 
-# mkdir is atomic, and works on macOS where flock isn't available.
+# mkdir is atomic, and works on macOS where flock isn't available. A lock
+# left behind by a crash/reboot (trap doesn't run on SIGKILL/power loss)
+# would otherwise silently disable the pipeline forever — anything older
+# than 12h is treated as stale and broken.
+if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +720 2>/dev/null)" ]; then
+  echo "$(date '+%F %T') breaking stale lock ($LOCK_DIR older than 12h)" >>"$LOG_FILE"
+  rmdir "$LOCK_DIR" 2>/dev/null || rm -rf "$LOCK_DIR"
+fi
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  echo "$(date '+%F %T') another training run is already in progress (rm -rf $LOCK_DIR if stale)" >>"$LOG_FILE"
+  echo "$(date '+%F %T') another pipeline run is already in progress (rm -rf $LOCK_DIR if stale)" >>"$LOG_FILE"
   exit 0
 fi
 trap 'rmdir "$LOCK_DIR"' EXIT
@@ -86,13 +97,26 @@ status=0
     staging)
       echo "--- $(date '+%F %T') publishing results pages (staging) ---"
       bash "$REPO_DIR/scripts/deploy-classifier-results.sh" || status=1 ;;
-    *)
+    production)
       echo "--- $(date '+%F %T') publishing results pages (production) ---"
       bash "$REPO_DIR/scripts/deploy-classifier-results.sh" --production || status=1 ;;
+    *)
+      # A typo must never fail OPEN into a production publish.
+      echo "Unknown FERRY_RESULTS_TARGET='$TARGET' (use production|staging|skip) — pages NOT published"
+      status=1 ;;
   esac
   echo "=== $(date '+%F %T') nightly train finished (status=$status) ==="
 } >>"$LOG_FILE" 2>&1
 
 # Prune logs older than 60 days.
 find "$LOG_DIR" -name 'train-*.log' -mtime +60 -delete 2>/dev/null || true
+
+# Cron only mails when a job produces OUTPUT — an exit code alone is silent.
+# Surface failures outside the log redirect so MAILTO= actually fires.
+if [ $status -ne 0 ]; then
+  {
+    echo "nightly train FAILED — full log: $LOG_FILE"
+    tail -30 "$LOG_FILE"
+  } >&2
+fi
 exit $status

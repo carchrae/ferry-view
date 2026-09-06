@@ -153,8 +153,9 @@ export function buildNightlyPage(runs) {
 candidate is archived to <code>functions/models/history/</code> no matter how
 it scores, and every archived version competes on TODAY's held-out data — the
 winner becomes the live model (highlighted rows = the live model changed).
-Crosswalk ranks by sequence severity cost (lower is better; ties by
-precision+recall), terminal-cars by frame F1 (higher is better). Back to the
+Crosswalk ranks by sequence severity cost over the HELD-OUT sailings only
+(lower is better; ties by precision+recall), terminal-cars by held-out frame
+F1 (higher is better). Back to the
 <a href="index.html">classifier summary</a>.</p>
 <table>
   <tr><th>run</th><th>classifier</th><th>candidate</th><th>live decision</th><th>ranking (best first)</th></tr>

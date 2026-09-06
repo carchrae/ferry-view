@@ -24,7 +24,10 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="$REPO_DIR/training-data/logs"
-LOCK_DIR="$REPO_DIR/training-data/.export.lock"
+# Shared with cron-nightly-train.sh and train-all.sh: the nightly job runs
+# this same exporter, and two exporters (or an exporter under a trainer)
+# rewriting manifest/archives concurrently would corrupt them.
+LOCK_DIR="$REPO_DIR/training-data/.pipeline.lock"
 LOG_FILE="$LOG_DIR/export-$(date +%Y-%m-%d).log"
 
 # Cron strips the login PATH; include the usual node locations — macOS
@@ -46,20 +49,37 @@ fi
 
 mkdir -p "$LOG_DIR"
 
-# mkdir is atomic, and works on macOS where flock isn't available.
+# mkdir is atomic, and works on macOS where flock isn't available. Break
+# locks older than 12h — a crash/reboot mid-run never runs the trap, and a
+# stale lock would silently stop exports until frames age out of Storage.
+if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +720 2>/dev/null)" ]; then
+  echo "$(date '+%F %T') breaking stale lock ($LOCK_DIR older than 12h)" >>"$LOG_FILE"
+  rmdir "$LOCK_DIR" 2>/dev/null || rm -rf "$LOCK_DIR"
+fi
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  echo "$(date '+%F %T') another export is already running (rm -rf $LOCK_DIR if stale)" >>"$LOG_FILE"
+  echo "$(date '+%F %T') another pipeline run is already in progress (rm -rf $LOCK_DIR if stale)" >>"$LOG_FILE"
   exit 0
 fi
 trap 'rmdir "$LOCK_DIR"' EXIT
 
+status=0
 {
   echo "=== $(date '+%F %T') export starting (project=${FERRY_PROJECT:-bowen-ferry}, days=${FERRY_DAYS:-45}) ==="
   node "$REPO_DIR/scripts/export-lineup-dataset.mjs" \
     --project "${FERRY_PROJECT:-bowen-ferry}" \
-    --days "${FERRY_DAYS:-45}"
-  echo "=== $(date '+%F %T') export finished ==="
+    --days "${FERRY_DAYS:-45}" || status=1
+  echo "=== $(date '+%F %T') export finished (status=$status) ==="
 } >>"$LOG_FILE" 2>&1
 
 # Prune logs older than 60 days.
 find "$LOG_DIR" -name 'export-*.log' -mtime +60 -delete 2>/dev/null || true
+
+# Cron only mails when a job produces OUTPUT — surface failures outside the
+# log redirect so MAILTO= actually fires.
+if [ $status -ne 0 ]; then
+  {
+    echo "lineup export FAILED — full log: $LOG_FILE"
+    tail -20 "$LOG_FILE"
+  } >&2
+fi
+exit $status

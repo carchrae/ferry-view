@@ -245,13 +245,23 @@ if (LABEL_ONLY || labeled.length < MIN_LABELS) {
 // not-full verdicts in the report classify every frame.
 const samples = []
 for (const r of rows) {
+  // A truncated JPEG (corrupt in Storage itself — seen 2026-09-05 on two
+  // lineup frames) must not abort the run; the crosswalk trainer has the
+  // same guard.
+  let features
+  try {
+    features = await extractTerminalFeatures(readFileSync(join(DATA, 'frames', r.path)))
+  } catch (e) {
+    console.warn(`Skipping unreadable frame file: ${r.path} (${e.message})`)
+    continue
+  }
   samples.push({
     path: r.path,
     sailingKey: r.sailingKey,
     ts: r.ts,
     y: r.label === '0' || r.label === '1' ? Number(r.label) : null,
     source: r.source || 'hand',
-    features: await extractTerminalFeatures(readFileSync(join(DATA, 'frames', r.path))),
+    features,
   })
 }
 const labeledSamples = samples.filter((s) => s.y != null)
@@ -347,6 +357,11 @@ const asTrainedRow = (m) => ({
 })
 function evalHistoricalTerminal(m) {
   if (!Array.isArray(m.weights) || m.weights.length !== TERMINAL_FEATURE_LENGTH) return null
+  // Length alone can't prove compatibility (an ROI/mask retune can keep the
+  // length while changing what every pixel means) — regions AND masks must
+  // match before an archived model may be re-scored on today's features.
+  if (JSON.stringify(m.regions) !== JSON.stringify(TERMINAL_REGIONS)) return null
+  if (JSON.stringify(m.masks ?? null) !== JSON.stringify(TERMINAL_MASKS ?? null)) return null
   const th = m.threshold ?? 0.5
   let tp = 0
   let fp = 0
@@ -904,13 +919,22 @@ const identicalTo = (m) =>
   m &&
   m.bias === shippedModel.bias &&
   m.threshold === shippedModel.threshold &&
+  m.emptyThreshold === shippedModel.emptyThreshold &&
   JSON.stringify(m.weights) === JSON.stringify(shippedModel.weights)
 const dupOf = [prevModel, ...pastModels].find(identicalTo)
 const f1 = (p, r) => (p && r ? Math.round(((2 * p * r) / (p + r)) * 1000) / 1000 : 0)
 
 if (!AUTO) {
-  if (dupOf) {
-    console.log(`Model identical to v${dupOf.version} — no new version written.`)
+  if (dupOf && dupOf.version === prevModel?.version) {
+    console.log(`Model identical to live v${dupOf.version} — nothing to write.`)
+  } else if (dupOf) {
+    // Reproduced an ARCHIVED version that isn't live (an --auto run may have
+    // kept an older champion live). Manual train means "ship what I just
+    // trained" — the archived twin goes live under its original version.
+    writeFileSync(OUT, JSON.stringify(dupOf, null, 2) + '\n')
+    console.log(
+      `Model identical to archived v${dupOf.version} — made v${dupOf.version} live (was v${prevVersion}). Deploy functions to activate.`,
+    )
   } else {
     // Past versions stay browsable as files (history/<name>-v<n>.json) — the
     // report's Model history table reads that directory.
@@ -949,8 +973,17 @@ if (!AUTO) {
       })),
   ].sort((x, y) => y.f1 - x.f1 || y.p - x.p)
   const best = contenders[0]
-  const replaced = best.model.version !== prevVersion
-  if (replaced) {
+  // No comparable archived versions → "beat every prior version" is vacuous;
+  // fall back to the absolute floor rather than shipping ungated.
+  const vetoed =
+    contenders.length === 1 &&
+    ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)
+  const replaced = !vetoed && best.model.version !== prevVersion
+  if (vetoed) {
+    console.log(
+      `No comparable archived versions and candidate below the ${METRIC_FLOOR} floor — live model left unchanged.`,
+    )
+  } else if (replaced) {
     writeFileSync(OUT, JSON.stringify(best.model, null, 2) + '\n')
     console.log(
       `Live model replaced: v${prevVersion} → v${best.model.version} (F1 ${best.f1}) — deploy functions to activate.`,
@@ -968,7 +1001,7 @@ if (!AUTO) {
       recall: testM.recall,
       score: f1(testM.precision, testM.recall),
     },
-    winner: best.model.version,
+    winner: vetoed ? prevVersion : best.model.version,
     previousLive: prevVersion,
     replaced,
     ranking: contenders.map((c) => ({ label: c.label, score: c.f1 })),

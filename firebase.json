@@ -3,7 +3,18 @@
     {
       "source": "functions",
       "codebase": "default",
-      "entryPoint": "pollFerryStatus"
+      "entryPoint": "pollFerryStatus",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local",
+        "backup",
+        "tmp",
+        "models/history",
+        "test"
+      ]
     }
   ],
   "firestore": {

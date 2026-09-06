@@ -211,7 +211,10 @@ const rows = samples.map((s) => {
       : Buffer.from(Uint8Array.from(s.features, (f) => Math.round(f * 255))).toString('base64')
   return { ...s, p, yhat, fb64, split: isTest(s.sailingKey) ? 'test' : 'train' }
 })
-const cardRows = rows.filter((r) => r.y != null)
+// Dark labeled frames are in neither split (excluded above) — no card, or a
+// black frame would render with a train/test badge and count as an error the
+// model never made.
+const cardRows = rows.filter((r) => r.y != null && !r.dark)
 
 // Sequence predictions: every frame of every sailing (labeled or not), in
 // capture order, through the shared rule (first positive confirmed by the
@@ -298,7 +301,9 @@ function severityProfile(preds) {
     unknown: [],
   }
   for (const s of preds) {
-    if (s.frames.length < 2) continue
+    // Dark frames were never classified — a sailing needs two CLASSIFIABLE
+    // frames before its non-detection can count as a miss.
+    if (s.frames.filter((f) => !f.dark).length < 2) continue
     if (s.detectedTs == null) {
       if (s.humanTs != null) buckets.missed.push(s.key)
       continue
@@ -333,6 +338,11 @@ for (const k of ['phantom', 'early30']) {
 // match gets its stored metrics only.
 function evalHistorical(m) {
   if (!Array.isArray(m.weights) || m.weights.length !== FEATURE_LENGTH) return null
+  // Feature LENGTH alone can't prove compatibility — an ROI moved without
+  // resizing (it has happened: fe779d2) keeps the length while changing what
+  // every pixel means. A model trained on different crops must not be
+  // re-scored, or a meaningless score could win champion selection.
+  if (JSON.stringify(m.regions) !== JSON.stringify(REGIONS)) return null
   const th = m.threshold ?? 0.7
   const score = (f) => {
     let z = m.bias || 0
@@ -357,6 +367,11 @@ function evalHistorical(m) {
     humanTs: frames[0].crosswalkAt,
   }))
   const prof = severityProfile(preds)
+  // Champion selection must NOT use the full-dataset cost: ~80% of those
+  // sailings are in the fresh candidate's train split, so an overfit
+  // candidate would beat honest past champions by memorization. Selection
+  // uses the held-out sailings only; the full profile stays for display.
+  const testProf = severityProfile(preds.filter((p) => isTest(p.key)))
   const r = (n, d) => (d ? Math.round((n / d) * 1000) / 1000 : null)
   return {
     today: { precision: r(tp, tp + fp), recall: r(tp, tp + fn) },
@@ -366,6 +381,7 @@ function evalHistorical(m) {
       missed: prof.counts.missed,
       cost: prof.cost,
     },
+    testCost: testProf.cost,
   }
 }
 
@@ -433,7 +449,9 @@ writeFileSync(
       crosswalkDetectedTs: s.detectedTs,
       crosswalkDetectedProb: s.after ? Math.round(s.after.p * 1000) / 1000 : null,
       humanCrosswalkTs: s.humanTs,
-      notFullByCrosswalk: s.detectedTs == null && s.frames.length >= 2,
+      // Only CLASSIFIABLE (non-dark) frames are evidence of absence — an
+      // all-dark sailing was never looked at and proves nothing.
+      notFullByCrosswalk: s.detectedTs == null && s.frames.filter((f) => !f.dark).length >= 2,
       inProgress: s.key.startsWith(todayIso),
     })),
     null,
@@ -697,8 +715,17 @@ const identicalTo = (m) =>
 const dupOf = [prevModel, ...pastModels].find(identicalTo)
 
 if (!AUTO) {
-  if (dupOf) {
-    console.log(`Model identical to v${dupOf.version} — no new version written.`)
+  if (dupOf && dupOf.version === prevModel?.version) {
+    console.log(`Model identical to live v${dupOf.version} — nothing to write.`)
+  } else if (dupOf) {
+    // The retrain reproduced an ARCHIVED version that is not the live one
+    // (e.g. --auto previously kept an older champion live). A manual train
+    // means "ship what I just trained" — so the archived twin goes live,
+    // keeping its original version number.
+    writeFileSync(OUT, JSON.stringify(dupOf, null, 2) + '\n')
+    console.log(
+      `Model identical to archived v${dupOf.version} — made v${dupOf.version} live (was v${prevVersion}). Deploy functions to activate.`,
+    )
   } else {
     // Past versions stay browsable as files (history/<name>-v<n>.json) — the
     // report's Model history table reads that directory.
@@ -720,11 +747,14 @@ if (!AUTO) {
     archiveModel(OUT, shippedModel)
     console.log(`Candidate archived as v${shippedModel.version}.`)
   }
+  // Ranked on HELD-OUT sailings only (see evalHistorical) — the full-dataset
+  // cost in the display tables is train-contaminated for the candidate.
+  const candTestProfile = severityProfile(predictions.filter((s) => isTest(s.key)))
   const contenders = [
     {
       label: `candidate v${candidate.version}`,
       model: candidate,
-      cost: seqProfile.cost,
+      cost: candTestProfile.cost,
       pr: (testM.precision || 0) + (testM.recall || 0),
     },
     ...pastEvals
@@ -732,13 +762,24 @@ if (!AUTO) {
       .map(({ m, ev }) => ({
         label: `v${m.version}`,
         model: m,
-        cost: ev.seq.cost,
+        cost: ev.testCost,
         pr: (ev.today.precision || 0) + (ev.today.recall || 0),
       })),
   ].sort((x, y) => x.cost - y.cost || y.pr - x.pr)
   const best = contenders[0]
-  const replaced = best.model.version !== prevVersion
-  if (replaced) {
+  // "Beat every prior version" is vacuous when no archived version is
+  // comparable (fresh checkout, or a REGIONS change invalidating the whole
+  // archive) — fall back to the absolute floor rather than shipping an
+  // ungated candidate.
+  const vetoed =
+    contenders.length === 1 &&
+    ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)
+  const replaced = !vetoed && best.model.version !== prevVersion
+  if (vetoed) {
+    console.log(
+      `No comparable archived versions and candidate below the ${METRIC_FLOOR} floor — live model left unchanged.`,
+    )
+  } else if (replaced) {
     writeFileSync(OUT, JSON.stringify(best.model, null, 2) + '\n')
     console.log(
       `Live model replaced: v${prevVersion} → v${best.model.version} (severity cost ${best.cost}) — deploy functions to activate.`,
@@ -749,14 +790,14 @@ if (!AUTO) {
   recordAndRenderNightly(DATA, repoRoot, {
     at: shippedModel.trainedAt,
     classifier: 'crosswalk',
-    scoreName: 'severity cost',
+    scoreName: 'severity cost (held-out)',
     candidate: {
       version: candidate.version,
       precision: testM.precision,
       recall: testM.recall,
-      score: seqProfile.cost,
+      score: candTestProfile.cost,
     },
-    winner: best.model.version,
+    winner: vetoed ? prevVersion : best.model.version,
     previousLive: prevVersion,
     replaced,
     ranking: contenders.map((c) => ({ label: c.label, score: c.cost })),
