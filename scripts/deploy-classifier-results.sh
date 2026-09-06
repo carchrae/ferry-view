@@ -36,8 +36,9 @@ if [ ! -f "$SRC/index.html" ]; then
 fi
 
 COUNT=$(find "$SRC/thumbs" -name '*.jpg' 2>/dev/null | wc -l | tr -d ' ')
+PAGES=$(find "$SRC" -maxdepth 1 -name '*.html' | wc -l | tr -d ' ')
 echo "Deploying classifier results → $DEST"
-echo "  3 pages + $COUNT thumbnails ($(du -sh "$SRC" | cut -f1))"
+echo "  $PAGES pages + $COUNT thumbnails ($(du -sh "$SRC" | cut -f1))"
 [ ${#DRY_RUN[@]} -gt 0 ] && echo "  (dry run — nothing will be uploaded)"
 
 # Thumbnails first, so a page is never live before the images it references.

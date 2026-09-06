@@ -5,6 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
 import { isRecent, nowInVancouver, timeToDate, dayjs } from './time.js'
 import { classifyLineup, lineupModelVersion, modelUsable } from './lineup-classifier.js'
+import { isDarkAt } from './daylight.js'
 import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import { updateSailingStatus } from './helpers.js'
@@ -296,7 +297,22 @@ export async function captureLineupTimelapse(db, data) {
   // Classified before the upload (same compressed buffer as always, so
   // training stays consistent): a classify-first probe writes nothing unless
   // the lineup is already full — or was already detected full (sticky).
-  const verdict = await classifyLineup(best)
+  //
+  // DARK frames are never classified. Unlike the terminal cam (which
+  // auto-exposes and where night verdicts proved worth keeping), the
+  // community cam genuinely goes black below civil twilight (median frame
+  // luminance 0.16 vs 0.47 by day), the model has ~zero labeled dark
+  // training frames, and it misreads headlight/streetlight blobs as a
+  // queue: of 26 dark detections in the 2026-09-05 archive analysis
+  // (training-data/experiments/dark-frame-analysis.mjs), none was
+  // human-confirmed, 9 were explicitly refuted, and 14 sat on sailings
+  // riders tagged Not Full. crosswalkFullAtAuto is permanent and sticky, so
+  // one dark false positive pins a wrong "full to crosswalk" on the sailing
+  // and files a wrong robot report. No verdict also means a dark
+  // classify-first probe saves nothing — junk night frames stop
+  // accumulating. Unconditional captures still save (frames stay taggable,
+  // and they build the dark archive a future night model needs).
+  const verdict = isDarkAt(timestamp) ? null : await classifyLineup(best)
 
   const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
   // At most ONE sailingStatus read per invocation: shared by the sticky

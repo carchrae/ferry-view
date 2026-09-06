@@ -216,6 +216,7 @@
                       :key="'pb' + i"
                       :sailing="event"
                       kind="past"
+                      :first="i === 0"
                       :design="sailingDesign"
                       @open="openHistory(event.scheduledTime, event.label, event)"
                     />
@@ -232,6 +233,7 @@
                       :key="'ph' + i"
                       :sailing="event"
                       kind="past"
+                      :first="i === 0"
                       :design="sailingDesign"
                       @open="openHistory(event.scheduledTime, event.label, event)"
                     />
@@ -248,6 +250,7 @@
                       :key="'ub' + i"
                       :sailing="s"
                       kind="upcoming"
+                      :first="i === 0"
                       :design="sailingDesign"
                       :hint="sailingHints(s)"
                       @open="openHistory(s.shortTime, s.label, s)"
@@ -263,6 +266,7 @@
                       :key="'uh' + i"
                       :sailing="s"
                       kind="upcoming"
+                      :first="i === 0"
                       :design="sailingDesign"
                       :hint="sailingHints(s)"
                       @open="openHistory(s.shortTime, s.label, s)"

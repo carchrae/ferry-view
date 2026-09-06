@@ -1,5 +1,6 @@
 import model from '../../functions/models/lineup-classifier.json'
 import { firstSustainedPositiveTs } from '../../functions/lib/lineup-labels.js'
+import { isDarkAt } from '../../functions/lib/daylight.js'
 
 // Browser-side lineup classifier — phase 1 of automated crosswalk detection.
 //
@@ -95,7 +96,9 @@ async function classifyFrame(path) {
 // Predictions are cached per device: a classified sailing is never refetched,
 // and predictions for frames that later age out of Storage survive locally.
 // Keyed by model.trainedAt so a retrained model re-classifies everything.
-const CACHE_KEY = 'lineupAutoPredictions.v1'
+// v2: dark frames (isDarkAt) are excluded from classification, mirroring the
+// server gate — cached night detections from v1 must be re-derived.
+const CACHE_KEY = 'lineupAutoPredictions.v2'
 let cache = null
 function loadCache() {
   if (cache) return cache
@@ -127,8 +130,12 @@ export async function predictCrosswalk(sailingKey, lineupTimelapsePaths, { final
   const hit = c.sailings[sailingKey]
   if (hit && (hit.ts != null || hit.final)) return hit.ts != null ? { ts: hit.ts, prob: hit.prob } : null
 
+  // Dark frames are dropped BEFORE sequencing, mirroring the server gate in
+  // webcam.js (see the comment there — the community cam goes black at night
+  // and the model misreads lights as a queue). Confirmation then requires two
+  // consecutive DAYLIGHT positives, same as production going forward.
   const paths = [...(lineupTimelapsePaths || [])]
-    .filter((p) => frameTs(p) != null)
+    .filter((p) => frameTs(p) != null && !isDarkAt(frameTs(p)))
     .sort((a, b) => frameTs(a) - frameTs(b))
   if (paths.length < 2) return null
 

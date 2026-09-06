@@ -6,6 +6,239 @@
 //   crosswalk.html  crosswalk examples: predicted times + per-sailing cards
 //   terminal.html   terminal examples: not-full verdicts + per-sailing cards
 import { createHash } from 'node:crypto'
+import { execSync } from 'node:child_process'
+import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs'
+import { join, dirname, basename } from 'node:path'
+
+// Past shipped models live as plain files in functions/models/history/
+// (<name>-v<version>.json — committed, same versions classifier-models.js
+// mirrors to Firestore). The directory is the registry the report reads;
+// any version missing from it but present in git history (models shipped
+// before the directory existed) is backfilled INTO it here, so the archive
+// materializes itself on the first trainer run. The trainers also drop a
+// copy in on every new ship (see archiveModel). Unversioned pre-registry
+// models are skipped. Returns versioned models newest-first.
+export function modelHistory(repoRoot, relPath) {
+  const dir = join(repoRoot, dirname(relPath), 'history')
+  const base = basename(relPath, '.json')
+  const byVersion = new Map()
+  try {
+    for (const f of readdirSync(dir)) {
+      const match = new RegExp(`^${base}-v(\\d+)\\.json$`).exec(f)
+      if (!match) continue
+      try {
+        const m = JSON.parse(readFileSync(join(dir, f), 'utf8'))
+        if (m?.version) byVersion.set(m.version, m)
+      } catch {
+        // Unreadable archive file — git backfill below may still cover it.
+      }
+    }
+  } catch {
+    // No history directory yet — created by the backfill.
+  }
+  try {
+    const shas = execSync(`git log --format=%H -- "${relPath}"`, { cwd: repoRoot })
+      .toString()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+    for (const sha of shas) {
+      let m
+      try {
+        m = JSON.parse(
+          execSync(`git show ${sha}:"${relPath}"`, { cwd: repoRoot, maxBuffer: 64e6 }).toString(),
+        )
+      } catch {
+        continue
+      }
+      if (!m?.version || byVersion.has(m.version)) continue
+      byVersion.set(m.version, m)
+      try {
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, `${base}-v${m.version}.json`), JSON.stringify(m, null, 1) + '\n')
+      } catch {
+        // Read-only checkout — history still returned, just not materialized.
+      }
+    }
+  } catch {
+    // Not a git checkout — directory contents alone.
+  }
+  return [...byVersion.values()].sort((a, b) => b.version - a.version)
+}
+
+// Each trainer computes rich history rows (re-scored on today's data) only
+// for ITS OWN classifier, but both trainers rebuild the shared index.html.
+// Persisting the rows lets the other trainer show this one's last computed
+// table instead of falling back to as-trained-only — so `npm run train`
+// (both trainers back-to-back) ends with both sections complete, whichever
+// ran last. Stored under <data>/report/ (gitignored, regenerated).
+export function saveHistoryRows(dataDir, key, rows) {
+  const dir = join(dataDir, 'report')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, `history-${key}.json`), JSON.stringify(rows, null, 1) + '\n')
+}
+
+// Loads the other classifier's saved rows, relabeling its 'this run' to the
+// dated 'last run' it now is. Returns null when never saved (caller falls
+// back to as-trained rows from the model archive).
+export function loadHistoryRows(dataDir, key) {
+  try {
+    const rows = JSON.parse(readFileSync(join(dataDir, 'report', `history-${key}.json`), 'utf8'))
+    return rows.map((r) =>
+      r.label === 'this run'
+        ? { ...r, label: `last run (${(r.trainedAt || '').slice(0, 10)})` }
+        : r,
+    )
+  } catch {
+    return null
+  }
+}
+
+// --- Nightly auto-training log -----------------------------------------------
+// Every --auto trainer run appends one entry per classifier to
+// <data>/nightly-runs.json (persistent, survives report regeneration) and the
+// nightly.html page renders them newest-first. Entry shape:
+//   { at, classifier, candidate: {version, precision, recall, score},
+//     scoreName, winner, previousLive, replaced, ranking: [{label, score}] }
+export function recordNightlyRun(dataDir, entry) {
+  const file = join(dataDir, 'nightly-runs.json')
+  let runs = []
+  try {
+    runs = JSON.parse(readFileSync(file, 'utf8'))
+  } catch {
+    // First run.
+  }
+  runs.push(entry)
+  writeFileSync(file, JSON.stringify(runs, null, 1) + '\n')
+  return runs
+}
+
+export function recordAndRenderNightly(dataDir, repoRoot, entry) {
+  const runs = recordNightlyRun(dataDir, entry)
+  const html = buildNightlyPage(runs)
+  for (const dir of [join(dataDir, 'report'), join(repoRoot, 'public', 'classifier-results')]) {
+    try {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'nightly.html'), html)
+    } catch {
+      // A missing public dir on a fresh checkout is not worth failing the run.
+    }
+  }
+}
+
+export function buildNightlyPage(runs) {
+  const rows = [...runs]
+    .reverse()
+    .map((r) => {
+      const c = r.candidate || {}
+      return `
+  <tr class="${r.replaced ? 'replaced' : ''}">
+    <td>${esc((r.at || '?').slice(0, 16).replace('T', ' '))}</td>
+    <td>${esc(r.classifier)}</td>
+    <td>v${esc(c.version ?? '?')} — P ${c.precision ?? '—'} / R ${c.recall ?? '—'} · ${esc(r.scoreName || 'score')} ${c.score ?? '—'}</td>
+    <td>${r.replaced ? `<strong>v${esc(r.winner)}</strong> replaced v${esc(r.previousLive)}` : `v${esc(r.winner)} kept`}</td>
+    <td class="ranking">${esc((r.ranking || []).map((x) => `${x.label} ${x.score}`).join(' · '))}</td>
+  </tr>`
+    })
+    .join('')
+  return `<!doctype html>
+<meta charset="utf-8">
+<title>Nightly classifier training runs</title>
+<style>${SHARED_CSS}
+  tr.replaced td { background: #2a71; }
+  td.ranking { font-size: 0.8rem; opacity: 0.8; }
+</style>
+<h1>Nightly training runs</h1>
+<p class="method">Each night the trainers retrain on the freshest export, the
+candidate is archived to <code>functions/models/history/</code> no matter how
+it scores, and every archived version competes on TODAY's held-out data — the
+winner becomes the live model (highlighted rows = the live model changed).
+Crosswalk ranks by sequence severity cost (lower is better; ties by
+precision+recall), terminal-cars by frame F1 (higher is better). Back to the
+<a href="index.html">classifier summary</a>.</p>
+<table>
+  <tr><th>run</th><th>classifier</th><th>candidate</th><th>live decision</th><th>ranking (best first)</th></tr>
+  ${rows || '<tr><td colspan="5"><em>No auto runs recorded yet.</em></td></tr>'}
+</table>
+`
+}
+
+// Console rendering of the same history rows the summary page tables show —
+// every training run prints this after its own metrics, so the comparison
+// against all prior models is right there in the terminal.
+export function printHistory(title, rows) {
+  if (!rows?.length) return
+  const cols = [
+    ['model', (r) => r.label],
+    ['trained', (r) => (r.trainedAt || '?').slice(0, 10)],
+    ['frames', (r) => r.frames ?? '—'],
+    ['P/R own test', (r) => (r.asTrained ? `${r.asTrained.precision}/${r.asTrained.recall}` : '—')],
+    ["P/R today's test", (r) => (r.today ? `${r.today.precision}/${r.today.recall}` : '—')],
+    ['agree', (r) => r.seq?.agree ?? '—'],
+    ['phantom', (r) => r.seq?.phantom ?? '—'],
+    ['missed', (r) => r.seq?.missed ?? '—'],
+    ['cost', (r) => r.seq?.cost ?? '—'],
+  ]
+  const table = [cols.map(([h]) => h), ...rows.map((r) => cols.map(([, f]) => String(f(r))))]
+  const widths = cols.map((_, i) => Math.max(...table.map((row) => row[i].length)))
+  console.log(`\n${title}`)
+  for (const row of table) console.log('  ' + row.map((c, i) => c.padEnd(widths[i])).join('  '))
+}
+
+// Archive a freshly shipped model alongside the live file:
+// <dir of outPath>/history/<name>-v<version>.json. Called by the trainers
+// right after writing the live model; versions are immutable, so an existing
+// archive file is left untouched.
+export function archiveModel(outPath, model) {
+  if (!model?.version) return
+  const dir = join(dirname(outPath), 'history')
+  const file = join(dir, `${basename(outPath, '.json')}-v${model.version}.json`)
+  mkdirSync(dir, { recursive: true })
+  try {
+    readFileSync(file)
+  } catch {
+    writeFileSync(file, JSON.stringify(model, null, 1) + '\n')
+  }
+}
+
+// The "Model history" table. `rows` come from the trainer, newest first:
+//   { label, trainedAt, frames,                        // identity
+//     asTrained: {precision, recall} | null,           // that version's own
+//                                                      // held-out split
+//     today: {precision, recall} | null,               // re-scored on the
+//                                                      // CURRENT test split
+//     seq: {agree, phantom, missed, cost} | null }     // severity profile on
+//                                                      // the current dataset
+// Only the lineup trainer fills today/seq (it has the features in memory);
+// a summary regenerated by the other trainer shows '—' there.
+function historyTableHtml(rows) {
+  if (!rows?.length) return ''
+  const n = (x) => (x == null ? '—' : x)
+  const tr = (r) => `
+  <tr>
+    <th>${esc(r.label)}</th><td>${esc((r.trainedAt || '?').slice(0, 10))}</td>
+    <td>${n(r.frames)}</td>
+    <td>${r.asTrained ? `${r.asTrained.precision} / ${r.asTrained.recall}` : '—'}</td>
+    <td>${r.today ? `${r.today.precision} / ${r.today.recall}` : '—'}</td>
+    <td>${n(r.seq?.agree)}</td><td>${n(r.seq?.phantom)}</td><td>${n(r.seq?.missed)}</td>
+    <td>${n(r.seq?.cost)}</td>
+  </tr>`
+  return `
+<h3>Model history</h3>
+<table>
+  <tr><th>model</th><th>trained</th><th>labeled frames</th>
+    <th>P / R (own test set)</th><th>P / R (today's test set)</th>
+    <th>agree</th><th>phantom</th><th>missed</th><th>cost</th></tr>
+  ${rows.map(tr).join('')}
+</table>
+<p class="legend">"own test set" is what each version measured at training
+time — different data, different era, only roughly comparable. "today's test
+set" and the severity columns re-score that version's weights on the CURRENT
+dataset (same deterministic by-sailing split every version has always used),
+so those columns compare like for like. agree/phantom/missed/cost are the
+sequence severity profile (phantom = detected on a rider-refuted sailing;
+cost weights phantom 10 … late 1).</p>`
+}
 
 export const esc = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
@@ -490,6 +723,7 @@ export function buildSummaryPage({ crosswalk, terminal }) {
   ${row(`test (${m.testFrames ?? '?'})`, m.test)}
 </table>
 <p>${cfg.statsLine} · threshold ${cfg.model.threshold} · trained ${esc(cfg.model.trainedAt || '?')}</p>
+${historyTableHtml(cfg.history)}
 ${stageHtml(cfg.regions, `wmap-${key}`, { photo: cfg.photo, aspect: frameAspect })}
 <p class="legend">the learned weight maps, drawn at the exact position each
 region occupies in the camera frame (matching the dashed boxes on the example
@@ -544,7 +778,8 @@ webcams: one detects when the car lineup passes the crosswalk, the other
 detects an empty terminal (ferry left not full). They run in milliseconds,
 ship as JSON weights, and everything they learn comes from rider tags and
 reviewed labels. This page is the summary; the example pages show every
-labeled frame and every sequence decision.</p>
+labeled frame and every sequence decision. Automated retraining decisions are
+logged on the <a href="nightly.html">nightly training runs</a> page.</p>
 ${cw}
 ${tm}
 <script>

@@ -1,6 +1,6 @@
 <template>
   <!-- Classic: the original chip row — time + q-badge chips, shrunk to fit. -->
-  <div v-if="design === 'classic'" class="q-mt-xs">
+  <div v-if="design === 'classic'" :class="first ? '' : 'q-mt-xs'">
     <div class="row items-center no-wrap cursor-pointer" @click="$emit('open')">
       <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ timeText }}</div>
       <div v-fit-scale class="row items-center no-wrap col badge-fit">
@@ -36,7 +36,7 @@
 
   <!-- Cards: bordered tile with a fullness-colored left rail; time up top,
        one status line below with the fill / crosswalk time spelled out. -->
-  <div v-else-if="design === 'cards'" class="q-mt-xs">
+  <div v-else-if="design === 'cards'" :class="first ? '' : 'q-mt-xs'">
     <div class="sr-card row no-wrap cursor-pointer" @click="$emit('open')">
       <div class="sr-rail" :class="'bg-' + railColor"></div>
       <div class="sr-card-body">
@@ -86,7 +86,7 @@
   </div>
 
   <!-- Meter: time + status on one line, a thin fullness bar beneath it. -->
-  <div v-else-if="design === 'meter'" class="q-mt-sm">
+  <div v-else-if="design === 'meter'" :class="first ? '' : 'q-mt-sm'">
     <div class="cursor-pointer" @click="$emit('open')">
       <div class="row items-baseline no-wrap">
         <div class="sr-time">{{ timeText }}</div>
@@ -136,7 +136,7 @@
 
   <!-- Board: departure-board typography — big time, plain colored text
        underneath, no chips or chrome. -->
-  <div v-else class="q-mt-sm">
+  <div v-else :class="first ? '' : 'q-mt-sm'">
     <div class="cursor-pointer" @click="$emit('open')">
       <div class="row items-baseline no-wrap">
         <div class="sr-time-lg">{{ timeText }}</div>
@@ -186,6 +186,9 @@ const props = defineProps({
   kind: { type: String, required: true }, // 'past' | 'upcoming'
   design: { type: String, default: 'classic' },
   hint: { type: Object, default: null }, // typicalHints() result, upcoming only
+  // First row in its column: drops the top gap, since the column header (or
+  // section divider) above already provides the separation.
+  first: { type: Boolean, default: false },
 })
 
 defineEmits(['open', 'typical'])

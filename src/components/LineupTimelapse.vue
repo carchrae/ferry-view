@@ -15,6 +15,13 @@
         <span>{{ current.timeLabel }}</span>
         <span>{{ index + 1 }} / {{ frames.length }}</span>
       </div>
+      <div v-if="currentIsDark" class="absolute-top-right owl-badge">
+        🦉
+        <q-tooltip>
+          Night frame — too dark for the robot, so it doesn't auto-classify it. Your eyes (and
+          tags) still count.
+        </q-tooltip>
+      </div>
     </q-img>
     <q-card-actions class="q-py-sm q-px-xs items-center no-wrap">
       <q-btn
@@ -82,6 +89,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
+import { isDarkAt } from '../../functions/lib/daylight.js'
 
 // Animates the timelapse frames of one sailing (community lineup or Bowen
 // terminal). frames: [{ imageUrl, timeLabel, ts }], oldest first. Opens on
@@ -136,6 +144,11 @@ let preloaded = false
 
 const current = computed(() => props.frames[Math.min(index.value, props.frames.length - 1)] || {})
 const atEnd = computed(() => index.value >= props.frames.length - 1)
+
+// The owl marks frames the app considers dark (solar elevation, not pixels —
+// see lib/daylight.js): on these the crosswalk robot deliberately stays
+// silent, so riders know a missing robot verdict at night is by design.
+const currentIsDark = computed(() => Boolean(current.value.ts && isDarkAt(current.value.ts)))
 
 const centerLabel = computed(() =>
   props.crosswalkFullAt
@@ -236,3 +249,15 @@ onMounted(() => {
 
 onUnmounted(pause)
 </script>
+
+<style scoped>
+/* q-img overlay divs get a default full-width dark backdrop; the owl is a
+   small floating chip instead. */
+.owl-badge {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 0 0 0 8px;
+  padding: 2px 8px;
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+</style>

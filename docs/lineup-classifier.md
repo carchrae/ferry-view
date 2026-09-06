@@ -162,6 +162,61 @@ doesn't stop the frames (they're cheap and useful for training). A disabled
 model skips the probe entirely — no fetch, no capture, identical to the
 pre-classifier behavior.
 
+### Dark frames are never classified (2026-09-05)
+
+Below civil twilight (`isDarkAt()` in `functions/lib/daylight.js`, solar
+elevation < −6°) the crosswalk classifier does not run at all — server
+(`captureLineupTimelapse`), browser mirror (`useLineupClassifier`, cache key
+`v2`), and the trainer's train/test sets and sequence simulation all apply
+the same gate. This is the **opposite** of the terminal camera's policy
+(night verdicts kept, dark frames only marked), and deliberately so:
+
+- The terminal cam auto-exposes — its night frames look like day and its
+  night verdicts proved ~50-for-~50 correct. The community cam genuinely
+  goes black: median frame luminance 0.16 at night vs 0.47 by day.
+- The model has essentially no labeled dark frames (1 in the 2026-09-05
+  export), and in the dark it misreads headlight/streetlight blobs as a
+  queue. Of the 26 dark detections in the 45-day archive, **zero** were
+  human-confirmed, 9 were explicitly refuted, and 14 sat on sailings riders
+  tagged Not Full (a full-to-crosswalk lineup implies ≥75% full).
+- The stakes are asymmetric: `crosswalkFullAtAuto` is permanent and sticky,
+  so one dark false positive pins a wrong crosswalk time, files a wrong
+  robot report, and floods Storage with junk night frames via the sticky
+  save.
+
+Consequences: a dark classify-first probe is discarded before any write
+(post-9pm cycles go quiet at night — that's the desired behavior; the old
+night "detections" were noise), unconditional captures still save their
+frames unclassified (riders can tag them, and they build the dark archive a
+future night model needs), and a `crosswalkAutoPending` from dusk can never
+be confirmed by a dark frame. Twilight itself (−6°…0°) still classifies:
+measured recall 1.0 / precision 0.83 on the (small) labeled twilight set,
+and the gate analysis (`training-data/experiments/dark-frame-analysis.mjs`)
+showed the −6° cut loses no human-corroborated detection. Revisit with a
+night model when the winter dark archive is labeled.
+
+### Detection-error severity (2026-09-05)
+
+Not all mistakes are equal: a detection one frame before the rider's mark is
+a near-miss, while a detection on a sailing the rider **refuted** ("never
+crossed") is a phantom — the worst failure, because `crosswalkFullAtAuto` is
+permanent. The trainer therefore evaluates the sequence rule by
+**time-distance from the human word**, not just frame accuracy. Each
+≥2-frame sailing lands in one bucket — `phantom` (detected but refuted),
+`early30`/`early10` (≥30 / 10–30 min before the mark), `agree` (within
+±10 min — one 5-minute cadence step of slack either way), `late10`/`late30`,
+`missed` (marked but never detected), `unknown` (detected, no human word) —
+and the weighted sum (weights in `SEQ_COSTS`, phantom = 10 … late = 1) is a
+single comparable cost per model version, stored in the model JSON under
+`metrics.sequence` and shown on the report's predictions section. Refutes
+come from `training-data/lineup-reports.json` via the same latest-wins
+`effectiveCrosswalk()` rule the app uses (deleted reports skipped).
+`training-data/experiments/boundary-weight-experiment.mjs` tests whether
+downweighting/excluding boundary frames at training time improves this
+profile: on 5-fold CV it trades +6 agreeing sailings and −2 misses for
+2× the phantoms, so the trainer's `--boundary-weight` flag stays **off**
+by default — re-test when the tagged dataset grows.
+
 ## 5. Training workflow
 
 ```bash
@@ -169,8 +224,15 @@ pre-classifier behavior.
 npm run lineup:export             # defaults: --project bowen-ferry --days 15
 
 # 2. Train once enough labels exist (~200+ tagged sailings across weather/light)
-npm run lineup:train              # writes functions/models/lineup-classifier.json
+npm run train                     # BOTH classifiers back-to-back (scripts/train-all.sh);
+                                  # each prints its metrics + the prior-model comparison,
+                                  # and the shared report ends with both sections complete
+npm run lineup:train              # just this one — writes functions/models/lineup-classifier.json
                                   # needs functions deps: cd functions && npm install
+# Notes: identical retrained weights (unchanged data/config) do NOT mint a new
+# version; every shipped version is archived in functions/models/history/ and
+# a trainer below the 0.8 metric floor exits without writing (reports still
+# regenerate).
 
 # 3. Deploy — the model activates
 npm run deploy:functions
@@ -234,6 +296,39 @@ crontab -e
 PATH, a lock against overlapping runs, and dated logs under
 `training-data/logs/` (pruned after 60 days). Check
 `training-data/logs/export-<date>.log` if the dataset stops growing.
+
+### Nightly auto-training (champion selection)
+
+`scripts/cron-nightly-train.sh` goes further than the weekly export — it
+exports, retrains **both** classifiers with `--auto`, and lets the results
+decide what's live:
+
+- the fresh candidate is **always archived** to `functions/models/history/`,
+  win or lose (a losing candidate may be vindicated by more data later),
+- **all** archived versions are re-scored on today's held-out split and the
+  best becomes `functions/models/<name>.json` — crosswalk by lowest sequence
+  severity cost (ties by precision+recall), terminal-cars by highest frame
+  F1 (ties by precision),
+- every decision is appended to `training-data/nightly-runs.json` and shown
+  on the **nightly.html** results page (linked from the report index),
+- the metric floor doesn't apply in `--auto` — beating every prior version
+  on the same data is the stronger gate,
+- the regenerated classifier-results pages (index / crosswalk / terminal /
+  nightly + thumbs) are **published to the results bucket**
+  (`scripts/deploy-classifier-results.sh --production`; needs `gcloud auth`
+  on the cron machine) so `/classifier-results` in the app shows each
+  night's run — set `FERRY_RESULTS_TARGET=staging` or `skip` to override,
+- the **model** never deploys: the winning weights reach production on the
+  next `npm run deploy:functions:production` (and the browser mirror on the
+  next webapp deploy).
+
+```bash
+crontab -e
+# nightly 03:00 — replaces the weekly export line (this runs the export too)
+0 3 * * * /path/to/ferry-mirror/scripts/cron-nightly-train.sh
+```
+
+Logs land in `training-data/logs/train-<date>.log`.
 
 ## 7. Ferry-fullness signals (terminal-cars classifier)
 

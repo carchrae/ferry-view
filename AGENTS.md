@@ -22,6 +22,14 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 - Daily cleanup function `cleanupWebcams` deletes `webcams/` files older than **14 days** (checks `timeCreated` metadata). Capture timing/volume/retention: `docs/webcams.md`.
 - Staging cost switch: on `bowen-ferry-staging`, all scheduled functions + Firestore triggers are dormant unless Firestore `control/staging`.activeUntil is in the future — wake with `npm run staging:run-until -- 4h` (see `functions/lib/control.js`). Production is never gated. Trigger gating also stops restore-storms when restoring a prod backup into staging. `npm run staging:refresh [-- 4h]` = force dormant → backup prod → restore into staging → wake.
 
+## Agent Environment
+- **Scratchpad**: use `/scratchpad/` (gitignored) for all temporary files — throwaway
+  scripts, screenshots, logs, intermediate data. Don't use `/tmp` or the session temp dir.
+  It already has a local `playwright` install (Chromium is in `~/Library/Caches/ms-playwright`)
+  for driving the dev server headless — see `.claude/skills/verify`.
+- **Sandbox**: Claude runs sandboxed here, so installing npm packages and running local
+  tooling is fine without asking. Deploys are still off-limits (Tom runs those).
+
 ## Relevant Files
 - `functions/lib/constants.js`: shared lateness helpers and notification defaults.
 - `functions/lib/matching.js`: `buildPast`, `buildUpcoming`, `parseDeckSpace`.

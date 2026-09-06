@@ -29,6 +29,10 @@
           @error="onImageError"
           @click="openZoom(arrival.imageUrl)"
         >
+          <div v-if="arrival.arrivalTs && isDarkAt(arrival.arrivalTs)" class="absolute-top-right owl-badge">
+            🦉
+            <q-tooltip>Night photo — too dark for the robot to auto-classify.</q-tooltip>
+          </div>
           <template v-slot:error>
             <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
               <q-icon name="videocam_off" size="24px" />
@@ -160,6 +164,10 @@
           @error="onImageError"
           @click="openZoom(departure.imageUrl)"
         >
+          <div v-if="departure.live && darkNow" class="absolute-top-right owl-badge">
+            🦉
+            <q-tooltip>The app thinks it's dark out right now.</q-tooltip>
+          </div>
           <template v-slot:error>
             <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
               <q-icon name="videocam_off" size="24px" />
@@ -247,6 +255,7 @@ import { ref, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { dayjs, TZ } from '../../functions/lib/time.js'
+import { isDarkAt } from '../../functions/lib/daylight.js'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 import LineupTimelapse from 'src/components/LineupTimelapse.vue'
 
@@ -275,6 +284,11 @@ const emit = defineEmits(['rate', 'crosswalk', 'refute'])
 const $q = useQuasar()
 // Phone-width screens get the terse captions so each fits on one line.
 const brief = computed(() => $q.screen.lt.sm)
+
+// Owl badge (see LineupTimelapse for the per-frame version): evaluated once
+// per mount — the 5-minute data cache re-mounts these cards often enough
+// that dusk shows up within minutes.
+const darkNow = isDarkAt(Date.now())
 
 const zoomSrc = ref(null)
 const zoomOpen = ref(false)
@@ -325,5 +339,13 @@ const crosswalkLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 <style scoped>
 .tag-btn {
   min-height: 36px;
+}
+
+.owl-badge {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 0 0 0 8px;
+  padding: 2px 8px;
+  font-size: 1.1rem;
+  line-height: 1.4;
 }
 </style>

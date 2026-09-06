@@ -50,6 +50,8 @@ credentials.json
 
 # Temp
 .tmp/
+# Claude's working directory — throwaway scripts/screenshots, never committed
+/scratchpad/
 # Firestore backups (backup-db.js, scripts/staging-refresh.sh dated dirs)
 /functions/backup/
 
@@ -61,3 +63,4 @@ credentials.json
 # plus ~5k thumbnails). Deployed to Cloud Storage instead, self-contained —
 # npm run deploy:classifier-results
 public/classifier-results/
+/nono-claude.sh

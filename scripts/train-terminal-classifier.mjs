@@ -47,6 +47,12 @@ import {
   fmtTime,
   thumbName,
   encodeFeatures,
+  modelHistory,
+  archiveModel,
+  printHistory,
+  saveHistoryRows,
+  loadHistoryRows,
+  recordAndRenderNightly,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -314,6 +320,75 @@ const trainM = metrics(train)
 const testM = metrics(test)
 console.log('train:', trainM)
 console.log('test :', testM)
+// Rider labels are drawn from the model's UNSURE band by design — the
+// hardest frames — so a metric drop after a rider-label influx needs this
+// split to tell "noisy labels" from "honest hard examples".
+for (const src of ['hand', 'rider']) {
+  const sub = test.filter((s) => s.source === src)
+  if (sub.length) console.log(`test/${src}:`, metrics(sub), `(${sub.length} frames)`)
+}
+
+// --- Model history (report comparison) ----------------------------------------
+// Past terminal versions (functions/models/history/, git-backfilled) re-run
+// over TODAY's test split — same features, same deterministic by-sailing
+// split — plus each version's own as-trained metrics. The crosswalk model's
+// history shows as-trained only here (its features aren't loaded in this
+// trainer; the lineup trainer fills the re-scored columns when it runs).
+const asTrainedRow = (m) => ({
+  label: `v${m.version}`,
+  trainedAt: m.trainedAt,
+  frames:
+    (m.dataset?.labeledFrames ??
+      (m.metrics?.trainFrames != null ? m.metrics.trainFrames + m.metrics.testFrames : null)) ||
+    null,
+  asTrained: m.metrics?.test
+    ? { precision: m.metrics.test.precision, recall: m.metrics.test.recall }
+    : null,
+})
+function evalHistoricalTerminal(m) {
+  if (!Array.isArray(m.weights) || m.weights.length !== TERMINAL_FEATURE_LENGTH) return null
+  const th = m.threshold ?? 0.5
+  let tp = 0
+  let fp = 0
+  let fn = 0
+  for (const s of test) {
+    let z = m.bias || 0
+    for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) z += m.weights[i] * s.features[i]
+    const yhat = 1 / (1 + Math.exp(-z)) >= th ? 1 : 0
+    if (yhat === 1 && s.y === 1) tp++
+    if (yhat === 1 && s.y === 0) fp++
+    if (yhat === 0 && s.y === 1) fn++
+  }
+  const r = (n, d) => (d ? Math.round((n / d) * 1000) / 1000 : null)
+  return { today: { precision: r(tp, tp + fp), recall: r(tp, tp + fn) } }
+}
+let deployedTerminalVersion = null
+try {
+  deployedTerminalVersion = JSON.parse(readFileSync(OUT, 'utf8')).version
+} catch {
+  // No deployed model yet.
+}
+const pastModels = modelHistory(repoRoot, 'functions/models/terminal-cars-classifier.json')
+const pastEvals = pastModels.map((m) => ({ m, ev: evalHistoricalTerminal(m) }))
+const terminalHistory = [
+  {
+    label: 'this run',
+    trainedAt: new Date().toISOString(),
+    frames: labeledSamples.length,
+    asTrained: { precision: testM.precision, recall: testM.recall },
+    today: { precision: testM.precision, recall: testM.recall },
+  },
+  ...pastEvals.map(({ m, ev }) => ({
+    ...asTrainedRow(m),
+    label: `v${m.version}${m.version === deployedTerminalVersion ? ' (shipped)' : ''}`,
+    ...(ev || {}),
+  })),
+]
+const crosswalkHistory =
+  loadHistoryRows(DATA, 'crosswalk') ??
+  modelHistory(repoRoot, 'functions/models/lineup-classifier.json').map(asTrainedRow)
+saveHistoryRows(DATA, 'terminal', terminalHistory)
+printHistory('vs prior models (terminal-cars):', terminalHistory)
 
 // --- Report pages (always written, even when the floor blocks the model) ------
 const freshModel = {
@@ -708,6 +783,7 @@ function summaryPage(srcFor) {
         foff: 0,
         photo: backdropCrosswalkPath ? srcFor({ path: backdropCrosswalkPath }) : null,
         statsLine: `${cLines.filter((l) => /,[01],\d*$/.test(l)).length} labeled of ${cLines.length} archived lineup frames`,
+        history: crosswalkHistory,
       }
     }
   } catch {
@@ -721,6 +797,7 @@ function summaryPage(srcFor) {
       foff: -0.5,
       photo: srcFor(backdropTerminal),
       statsLine: `${labeledSamples.length} labeled of ${samples.length} archived terminal frames · ${flagged.length}/${verdicts.length} sailings flagged not full`,
+      history: terminalHistory,
     },
   })
 }
@@ -769,7 +846,10 @@ writeFileSync(join(PUB_DIR, 'terminal.html'), terminalPage(pubSrc))
 writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc))
 console.log(`Webapp copy: ${join(PUB_DIR, 'terminal.html')}`)
 
-if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {
+// --auto (the nightly job): no metric floor — the candidate is always
+// archived and only goes live by beating every prior version on today's data.
+const AUTO = args.includes('--auto')
+if (!AUTO && !FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < METRIC_FLOOR)) {
   console.error(
     `Test precision/recall below ${METRIC_FLOOR} — not writing model (use --force to override).\n` +
       `  test split: ${test.length} frames (${bySource(test)}) across ${testBySailing.size} sailings` +
@@ -782,12 +862,13 @@ if (!FORCE && ((testM.precision ?? 0) < METRIC_FLOOR || (testM.recall ?? 0) < ME
 // Version + training-set snapshot, mirroring train-lineup-classifier.mjs —
 // the functions sync versioned models into Firestore (classifierModels/
 // terminal-cars-v{version}) and stamp the version on every robot verdict.
-let prevVersion = 0
+let prevModel = null
 try {
-  prevVersion = JSON.parse(readFileSync(OUT, 'utf8')).version || 0
+  prevModel = JSON.parse(readFileSync(OUT, 'utf8'))
 } catch {
   // First versioned model.
 }
+const prevVersion = prevModel?.version || 0
 const dates = samples.map((s) => s.sailingKey.slice(0, 10)).sort()
 const labelSources = {}
 for (const s of labeledSamples) labelSources[s.source] = (labelSources[s.source] || 0) + 1
@@ -800,25 +881,96 @@ const dataset = {
   sailings: new Set(samples.map((s) => s.sailingKey)).size,
 }
 
-writeFileSync(
-  OUT,
-  JSON.stringify(
+// New versions number from the max across live + history — the live file may
+// hold an older champion once nightly selection is in play.
+const nextVersion = Math.max(prevVersion, ...pastModels.map((m) => m.version || 0), 0) + 1
+const shippedModel = {
+  enabled: true,
+  type: 'logistic',
+  version: nextVersion,
+  regions: TERMINAL_REGIONS,
+  masks: TERMINAL_MASKS,
+  weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),
+  bias: Math.round(b * 1e6) / 1e6,
+  threshold: THRESHOLD,
+  emptyThreshold: EMPTY_THRESHOLD,
+  metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
+  dataset,
+  trainedAt: new Date().toISOString(),
+}
+// Training is deterministic — unchanged data + config reproduces some earlier
+// model's weights; don't mint a new version for a duplicate.
+const identicalTo = (m) =>
+  m &&
+  m.bias === shippedModel.bias &&
+  m.threshold === shippedModel.threshold &&
+  JSON.stringify(m.weights) === JSON.stringify(shippedModel.weights)
+const dupOf = [prevModel, ...pastModels].find(identicalTo)
+const f1 = (p, r) => (p && r ? Math.round(((2 * p * r) / (p + r)) * 1000) / 1000 : 0)
+
+if (!AUTO) {
+  if (dupOf) {
+    console.log(`Model identical to v${dupOf.version} — no new version written.`)
+  } else {
+    // Past versions stay browsable as files (history/<name>-v<n>.json) — the
+    // report's Model history table reads that directory.
+    archiveModel(OUT, shippedModel)
+    writeFileSync(OUT, JSON.stringify(shippedModel, null, 2) + '\n')
+    console.log(`Model v${nextVersion} written to ${OUT} — deploy functions to activate.`)
+  }
+} else {
+  // Nightly champion selection, mirroring train-lineup-classifier.mjs:
+  // archive the candidate no matter what, rank ALL versions on today's test
+  // split by frame F1 (ties by precision — a false "empty" files a wrong
+  // robot report, so precision matters more than recall here), and make the
+  // winner live.
+  let candidate = shippedModel
+  if (dupOf) {
+    candidate = dupOf
+    console.log(`Candidate identical to v${dupOf.version} — not re-archived.`)
+  } else {
+    archiveModel(OUT, shippedModel)
+    console.log(`Candidate archived as v${shippedModel.version}.`)
+  }
+  const contenders = [
     {
-      enabled: true,
-      type: 'logistic',
-      version: prevVersion + 1,
-      regions: TERMINAL_REGIONS,
-      masks: TERMINAL_MASKS,
-      weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),
-      bias: Math.round(b * 1e6) / 1e6,
-      threshold: THRESHOLD,
-      emptyThreshold: EMPTY_THRESHOLD,
-      metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
-      dataset,
-      trainedAt: new Date().toISOString(),
+      label: `candidate v${candidate.version}`,
+      model: candidate,
+      f1: f1(testM.precision, testM.recall),
+      p: testM.precision || 0,
     },
-    null,
-    2,
-  ) + '\n',
-)
-console.log(`Model v${prevVersion + 1} written to ${OUT} — deploy functions to activate.`)
+    ...pastEvals
+      .filter(({ m, ev }) => ev && m.version !== candidate.version)
+      .map(({ m, ev }) => ({
+        label: `v${m.version}`,
+        model: m,
+        f1: f1(ev.today.precision, ev.today.recall),
+        p: ev.today.precision || 0,
+      })),
+  ].sort((x, y) => y.f1 - x.f1 || y.p - x.p)
+  const best = contenders[0]
+  const replaced = best.model.version !== prevVersion
+  if (replaced) {
+    writeFileSync(OUT, JSON.stringify(best.model, null, 2) + '\n')
+    console.log(
+      `Live model replaced: v${prevVersion} → v${best.model.version} (F1 ${best.f1}) — deploy functions to activate.`,
+    )
+  } else {
+    console.log(`Live model stays v${prevVersion} (F1 ${best.f1} — still the best).`)
+  }
+  recordAndRenderNightly(DATA, repoRoot, {
+    at: shippedModel.trainedAt,
+    classifier: 'terminal-cars',
+    scoreName: 'F1',
+    candidate: {
+      version: candidate.version,
+      precision: testM.precision,
+      recall: testM.recall,
+      score: f1(testM.precision, testM.recall),
+    },
+    winner: best.model.version,
+    previousLive: prevVersion,
+    replaced,
+    ranking: contenders.map((c) => ({ label: c.label, score: c.f1 })),
+  })
+}
