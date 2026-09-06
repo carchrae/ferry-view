@@ -47,12 +47,17 @@ describe('typicalHints — warnings', () => {
 
   it('spells out when a Bowen sailing fills, using the crosswalk time', () => {
     const h = typicalHints(info({ fullPct: 80, avgCwTime: '4:15 pm' }), false, 'bowen')
-    assert.equal(h.text, 'usually at C by 4:15 pm')
+    assert.equal(h.text, 'usually C by 4:15 pm')
   })
 
   it('drops "by" and the space when compact (mobile width)', () => {
     const h = typicalHints(info({ fullPct: 80, avgCwTime: '4:15 pm' }), true, 'bowen')
-    assert.equal(h.text, 'usually at C 4:15pm')
+    assert.equal(h.text, 'usually C 4:15pm')
+  })
+
+  it('abbreviates lateness to "+Nm" when compact (mobile width)', () => {
+    const h = typicalHints(info({ avgLateness: 7, latePct: 65 }), true)
+    assert.equal(h.text, 'usually +7m')
   })
 
   it('states a shared frequency word once', () => {
@@ -62,7 +67,7 @@ describe('typicalHints — warnings', () => {
 
   it('surfaces a crosswalk mark even when nothing was ever tagged Full', () => {
     const h = typicalHints(info({ fullPct: 0, avgCwTime: '5:05 pm' }), false, 'bowen')
-    assert.equal(h.text, 'at C by 5:05 pm')
+    assert.equal(h.text, 'C by 5:05 pm')
     assert.equal(h.color, 'warning')
   })
 })

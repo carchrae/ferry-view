@@ -198,7 +198,7 @@
         >
           <q-icon name="celebration" size="xs" />
           {{ holidayContext.onHoliday ? holidayContext.name : `${holidayContext.name} weekend` }}
-          — expect heavier traffic than typical
+          — expect heavier traffic than usual
         </div>
 
         <div class="row q-mb-sm q-col-gutter-sm">
@@ -207,8 +207,8 @@
                  a group of bordered cards just adds a second frame and eats
                  width the sailing rows need. -->
             <q-card flat>
-              <q-card-section class="q-py-sm q-px-none">
-                <div class="row items-start q-col-gutter-sm q-mb-md">
+              <q-card-section class="q-py-xs q-px-none">
+                <div class="row items-start q-col-gutter-sm q-mb-sm">
                   <div class="col">
                     <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
                     <SailingRow
@@ -240,7 +240,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="text-center text-grey-8 q-my-sm">upcoming</div>
+                <div class="section-divider text-caption text-grey-7 q-my-xs">upcoming</div>
                 <div class="row items-start q-col-gutter-sm">
                   <div class="col">
                     <SailingRow
@@ -273,12 +273,12 @@
                     </div>
                   </div>
                 </div>
-                <div class="text-center text-caption text-grey-5 q-mt-sm">
+                <div class="text-center text-caption text-grey-5 q-mt-xs">
                   Predictions are just a guess — there's no certainty with the ferry.
                 </div>
                 <div
                   v-if="anyCrosswalkBadge || anyRobotBadge"
-                  class="text-center text-caption text-grey-6 q-mt-sm"
+                  class="text-center text-caption text-grey-6 q-mt-xs"
                 >
                   <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
                   <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
@@ -326,6 +326,61 @@
               to="/bowen-departures"
             />
           </div>
+        </div>
+
+        <!-- Rides — above the champions row so an open ride request is on
+             screen without scrolling. -->
+        <div class="col-12 col-md-6 q-mb-sm">
+          <q-card flat bordered>
+            <q-card-section v-if="!sortedRides.length" class="text-center q-pa-sm">
+              <div class="text-body2 text-grey-7">
+                Need a ride from the ferry? Or have room in your car?
+              </div>
+              <q-btn
+                color="primary"
+                no-caps
+                dense
+                label="Offer or Request a Ride"
+                icon="img:app-icon.png"
+                to="/rides/post"
+                class="q-mt-sm"
+              />
+            </q-card-section>
+          </q-card>
+          <q-card v-if="sortedRides.length" flat bordered>
+            <q-card-section class="q-pa-sm">
+              <RideCard
+                v-for="ride in sortedRides"
+                :key="ride.id"
+                :ride="ride"
+                :upcoming="ride.isUpcoming"
+                class="q-mt-sm"
+              />
+
+              <div class="row q-gutter-sm q-mt-sm">
+                <q-btn
+                  no-caps
+                  dense
+                  outline
+                  class="col"
+                  color="primary"
+                  icon="list"
+                  label="Ride Sharing"
+                  to="/rides"
+                />
+
+                <q-btn
+                  no-caps
+                  dense
+                  class="col"
+                  color="primary"
+                  icon="add"
+                  label="Post a Ride"
+                  to="/rides/post"
+                />
+              </div>
+            </q-card-section>
+          </q-card>
         </div>
 
         <!-- Leaderboard champions: top capacity reporter + top ride sharer -->
@@ -404,59 +459,6 @@
           </div>
         </div>
 
-        <!-- Rides -->
-        <div class="col-12 col-md-6">
-          <q-card flat bordered>
-            <q-card-section v-if="!sortedRides.length" class="text-center q-pa-sm">
-              <div class="text-body2 text-grey-7">
-                Need a ride from the ferry? Or have room in your car?
-              </div>
-              <q-btn
-                color="primary"
-                no-caps
-                dense
-                label="Offer or Request a Ride"
-                icon="img:app-icon.png"
-                to="/rides/post"
-                class="q-mt-sm"
-              />
-            </q-card-section>
-          </q-card>
-          <q-card v-if="sortedRides.length" flat bordered class="q-mt-sm">
-            <q-card-section class="q-pa-sm">
-              <RideCard
-                v-for="ride in sortedRides"
-                :key="ride.id"
-                :ride="ride"
-                :upcoming="ride.isUpcoming"
-                class="q-mt-sm"
-              />
-
-              <div class="row q-gutter-sm q-mt-sm">
-                <q-btn
-                  no-caps
-                  dense
-                  outline
-                  class="col"
-                  color="primary"
-                  icon="list"
-                  label="Ride Sharing"
-                  to="/rides"
-                />
-
-                <q-btn
-                  no-caps
-                  dense
-                  class="col"
-                  color="primary"
-                  icon="add"
-                  label="Post a Ride"
-                  to="/rides/post"
-                />
-              </div>
-            </q-card-section>
-          </q-card>
-        </div>
       </div>
 
       <!-- Cameras Grid -->
@@ -1947,6 +1949,21 @@ $star-clip: polygon(
   line-height: 1.1;
   padding-left: 2px;
   margin-top: 1px;
+}
+
+// Centered label with a rule running behind it either side ("—— upcoming ——"),
+// so the section break reads without spending a full line-height of margin.
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
+  }
 }
 
 /* Row-style switcher under the schedule: keep the radio labels caption-sized

@@ -444,16 +444,17 @@ export function factHintText(fact, compact = false) {
   if (!fact) return null
   switch (fact.kind) {
     case 'late':
-      return `+${fact.minutes}min`
+      // Mobile drops the "in" — the same "+5m" the lateness badges use.
+      return compact ? `+${fact.minutes}m` : `+${fact.minutes}min`
     case 'onTime':
       return 'on time'
     case 'full': {
-      const word = fact.isBowen ? 'at C' : 'full'
+      const word = fact.isBowen ? 'C' : 'full'
       if (!fact.fillTime) return 'full'
       return compact ? `${word} ${fact.fillTime.replace(' ', '')}` : `${word} by ${fact.fillTime}`
     }
     case 'crosswalk':
-      return `at C by ${fact.fillTime}`
+      return compact ? `C ${fact.fillTime.replace(' ', '')}` : `C by ${fact.fillTime}`
     case 'busy':
       return `~${fact.pct}% full`
     case 'rarelyFull':
