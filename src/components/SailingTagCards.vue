@@ -16,6 +16,7 @@
           :crosswalk-full-at="arrival.crosswalkFullAt || null"
           :default-ts="arrival.arrivalTs || null"
           taggable
+          dark-gated
           :autoplay="autoplay"
           @crosswalk="emit('crosswalk', { sailingKey: arrival.sailingKey, ...$event })"
           @refute="emit('refute', { sailingKey: arrival.sailingKey })"
@@ -164,10 +165,9 @@
           @error="onImageError"
           @click="openZoom(departure.imageUrl)"
         >
-          <div v-if="departure.live && darkNow" class="absolute-top-right owl-badge">
-            🦉
-            <q-tooltip>The app thinks it's dark out right now.</q-tooltip>
-          </div>
+          <!-- No owl on the terminal cam: street light + auto-exposure keep
+               its classifier active at night — the owl is reserved for the
+               dark-gated community lineup. -->
           <template v-slot:error>
             <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
               <q-icon name="videocam_off" size="24px" />
@@ -284,11 +284,6 @@ const emit = defineEmits(['rate', 'crosswalk', 'refute'])
 const $q = useQuasar()
 // Phone-width screens get the terse captions so each fits on one line.
 const brief = computed(() => $q.screen.lt.sm)
-
-// Owl badge (see LineupTimelapse for the per-frame version): evaluated once
-// per mount — the 5-minute data cache re-mounts these cards often enough
-// that dusk shows up within minutes.
-const darkNow = isDarkAt(Date.now())
 
 const zoomSrc = ref(null)
 const zoomOpen = ref(false)

@@ -122,6 +122,7 @@
               :frames="upcomingLineup.timelapse"
               :crosswalk-full-at="upcomingLineup.crosswalkFullAt || null"
               taggable
+              dark-gated
               @crosswalk="onUpcomingCrosswalk"
               @refute="onUpcomingTimelapseRefute"
             />

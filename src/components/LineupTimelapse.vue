@@ -15,7 +15,7 @@
         <span>{{ current.timeLabel }}</span>
         <span>{{ index + 1 }} / {{ frames.length }}</span>
       </div>
-      <div v-if="currentIsDark" class="absolute-top-right owl-badge">
+      <div v-if="darkGated && currentIsDark" class="absolute-top-right owl-badge">
         🦉
         <q-tooltip>
           Night frame — too dark for the robot, so it doesn't auto-classify it. Your eyes (and
@@ -115,6 +115,12 @@ const props = defineProps({
   taggable: { type: Boolean, default: false },
   autoplay: { type: Boolean, default: false },
   defaultTs: { type: Number, default: null },
+  // Show the 🦉 on dark frames. ONLY for the community-lineup timelapse,
+  // whose classifier skips dark frames (webcam.js dark gate). The terminal
+  // cam has a street light and auto-exposure — its classifier runs at night
+  // (night verdicts proved worth keeping), so an owl there would wrongly
+  // claim the robot isn't looking.
+  darkGated: { type: Boolean, default: false },
 })
 
 // crosswalk: record the current frame's ts as the mark · refute: the lineup
