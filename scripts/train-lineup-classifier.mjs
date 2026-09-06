@@ -37,6 +37,7 @@ import {
 } from '../functions/lib/lineup-features.js'
 import { isDarkAt } from '../functions/lib/daylight.js'
 import { effectiveCrosswalk } from '../functions/lib/lineup-labels.js'
+import { TZ } from '../functions/lib/time.js'
 import {
   buildExamplesPage,
   buildSummaryPage,
@@ -438,7 +439,7 @@ printHistory('vs prior models (crosswalk):', crosswalkHistory)
 // lineup never confirmed past the crosswalk, so the ferry DEFINITELY left
 // with room — except for today's still-boarding sailing (inProgress), where
 // the lineup may simply not have built yet.
-const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Vancouver' })
+const todayIso = new Date().toLocaleDateString('en-CA', { timeZone: TZ })
 const PREDICTIONS_JSON = join(DATA, 'predictions.json')
 writeFileSync(
   PREDICTIONS_JSON,

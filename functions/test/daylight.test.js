@@ -23,4 +23,34 @@ describe('daylight', () => {
     expect(isDarkAt(ts('2026-12-15T17:30:00-08:00'))).toBe(true)
     expect(isDarkAt(ts('2026-12-15T12:00:00-08:00'))).toBe(false)
   })
+
+  // The formula pinned against a PUBLIC daylight table, so trusting it never
+  // requires trusting the astronomy: these instants are published
+  // sunrise/sunset and civil-twilight times for Snug Cove (49.38, -123.33)
+  // from api.sunrise-sunset.org (fetched 2026-09-06), spanning equinox, both
+  // solstices, and the DST change. At a published civil-twilight instant the
+  // geometric elevation is -6° by definition (measured agreement: ±0.07°);
+  // at published sunrise/sunset it is -0.833° (solar radius + refraction) —
+  // the formula omits refraction, so the tolerance there is wider. Refraction
+  // is irrelevant at the -7° gate this module exists for.
+  it('matches the published Vancouver daylight table across the year', () => {
+    const twilight = [
+      '2026-06-22T05:06:42+00:00', // Jun civil dusk ends
+      '2026-09-06T13:04:35+00:00', // Sep civil dawn begins
+      '2026-12-22T00:54:23+00:00', // Dec civil dusk ends
+    ]
+    for (const iso of twilight) {
+      expect(Math.abs(solarElevation(ts(iso)) - -6)).toBeLessThan(0.2)
+    }
+    const sunEdges = [
+      '2026-03-20T14:13:28+00:00', // equinox sunrise
+      '2026-06-21T12:05:11+00:00', // solstice sunrise
+      '2026-09-23T02:12:57+00:00', // equinox sunset
+      '2026-11-01T15:00:27+00:00', // Nov 1 sunrise (the former DST-end date)
+      '2026-12-21T16:04:30+00:00', // solstice sunrise
+    ]
+    for (const iso of sunEdges) {
+      expect(Math.abs(solarElevation(ts(iso)) - -0.833)).toBeLessThan(0.5)
+    }
+  })
 })

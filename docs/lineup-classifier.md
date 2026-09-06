@@ -162,10 +162,13 @@ doesn't stop the frames (they're cheap and useful for training). A disabled
 model skips the probe entirely — no fetch, no capture, identical to the
 pre-classifier behavior.
 
-### Dark frames are never classified (2026-09-05)
+### Dark frames are never classified (2026-09-05; boundary tuned 2026-09-06)
 
-Below civil twilight (`isDarkAt()` in `functions/lib/daylight.js`, solar
-elevation < −6°) the crosswalk classifier does not run at all — server
+Below `DARK_ELEVATION_DEG = −7°` (`isDarkAt()` in `functions/lib/daylight.js`
+— just past civil twilight; −6° proved too pessimistic at dawn, while the
+archive shows frames stay visible to about −8° but the model misreads even
+visible dusk frames, so −8 waits for a twilight-capable model) the crosswalk
+classifier does not run at all — server
 (`captureLineupTimelapse`), browser mirror (`useLineupClassifier`, cache key
 `v2`), and the trainer's train/test sets and sequence simulation all apply
 the same gate. This is the **opposite** of the terminal camera's policy

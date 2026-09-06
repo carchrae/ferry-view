@@ -98,7 +98,9 @@ async function classifyFrame(path) {
 // Keyed by model.trainedAt so a retrained model re-classifies everything.
 // v2: dark frames (isDarkAt) are excluded from classification, mirroring the
 // server gate — cached night detections from v1 must be re-derived.
-const CACHE_KEY = 'lineupAutoPredictions.v2'
+// v3: dark boundary moved −6° → −7° (daylight.js) — v2 results computed with
+// the old exclusion set must be re-derived.
+const CACHE_KEY = 'lineupAutoPredictions.v3'
 let cache = null
 function loadCache() {
   if (cache) return cache

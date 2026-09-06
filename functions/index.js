@@ -42,7 +42,7 @@ import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings
 import { functionsActive } from './lib/control.js'
 import { ensureClassifierModelDocs } from './lib/classifier-models.js'
 import { isValidLineupReport } from './lib/lineup-labels.js'
-import { nowInVancouver, timeToDate } from './lib/time.js'
+import { nowInVancouver, timeToDate, TZ } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
 const VAPID_PUBLIC_KEY = defineSecret('VAPID_PUBLIC_KEY')
@@ -536,7 +536,7 @@ export const onRideWrite = onDocumentWritten('rides/{rideId}', async () => {
 export const refreshLeaderboard = onSchedule(
   {
     schedule: 'every day 03:00',
-    timeZone: 'America/Vancouver',
+    timeZone: TZ,
   },
   async () => {
     if (!(await functionsActive())) return
@@ -550,7 +550,7 @@ export const refreshLeaderboard = onSchedule(
 export const refreshHistoryAggregate = onSchedule(
   {
     schedule: 'every day 03:10',
-    timeZone: 'America/Vancouver',
+    timeZone: TZ,
   },
   async () => {
     if (!(await functionsActive())) return
@@ -565,7 +565,7 @@ export const refreshHistoryAggregate = onSchedule(
 export const refreshBowenSailingsAggregate = onSchedule(
   {
     schedule: 'every day 03:20',
-    timeZone: 'America/Vancouver',
+    timeZone: TZ,
   },
   async () => {
     if (!(await functionsActive())) return
@@ -613,7 +613,7 @@ export const rebuildLeaderboard = onRequest(async (req, res) => {
 export const cleanupWebcams = onSchedule(
   {
     schedule: 'every day 00:00',
-    timeZone: 'America/Vancouver',
+    timeZone: TZ,
   },
   async () => {
     if (!(await functionsActive())) return

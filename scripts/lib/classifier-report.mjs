@@ -7,6 +7,7 @@
 //   terminal.html   terminal examples: not-full verdicts + per-sailing cards
 import { createHash } from 'node:crypto'
 import { execSync } from 'node:child_process'
+import { TZ } from '../../functions/lib/time.js'
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 
@@ -246,7 +247,7 @@ export const esc = (s) =>
 
 export const fmtTime = (ms) =>
   new Date(ms).toLocaleString('en-CA', {
-    timeZone: 'America/Vancouver',
+    timeZone: TZ,
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

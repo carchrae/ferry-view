@@ -22,11 +22,25 @@ export function solarElevation(tsMs, lat = LAT, lon = LON) {
   return (Math.asin(sinEl) * 180) / Math.PI
 }
 
-// Dark = sun below civil twilight (−6°). Terminal-cars frames taken in the
-// dark are treated as UNKNOWN — the model misreads headlights/glare (night
-// error is ~2× daytime), so dark frames neither confirm emptiness nor count
-// as cars. In winter most evening sailings will be dark; a dedicated
-// night model (more labeled dark frames) is the eventual fix.
+// Dark = sun below −7° (a bit past civil twilight's −6°). Where the line
+// sits, from the 2026-09 archive (training-data/experiments/
+// dark-frame-analysis.mjs, community cam):
+//   - frames stay VISIBLE to about −8° (median luminance 0.34 in the
+//     −8..−6 band vs 0.40 in daylight); below −8/−9 they go genuinely black
+//     (0.15–0.19),
+//   - but the crosswalk model is unreliable on dusk lighting even when the
+//     image is visible — a rider-refuted detection sits at −6.9° with
+//     luminance 0.36 — and NO real detection in the archive was ever lost
+//     to gating anywhere below −6 (dawn twilight lineups never produced a
+//     confirmed pair),
+//   - −6 was measurably too pessimistic at dawn (2026-09-06: 06:00 was
+//     −6.6°, image clearly visible, owl shown — Tom's report).
+// −7 is the compromise: the visible early-dawn band classifies, the
+// refuted −6.9 dusk case stays gated only via the pair rule, and −8 (full
+// visibility) is the number to revisit once a twilight/night model exists.
+// Terminal-cars frames in the dark are treated as UNKNOWN by callers — that
+// camera's street light keeps its classifier active regardless.
+export const DARK_ELEVATION_DEG = -7
 export function isDarkAt(tsMs) {
-  return solarElevation(tsMs) < -6
+  return solarElevation(tsMs) < DARK_ELEVATION_DEG
 }
