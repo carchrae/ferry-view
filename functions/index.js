@@ -334,7 +334,30 @@ async function maybeSendNotifications(data) {
   await checkLatenessAndNotify(data)
 }
 
+// --- Manual/legacy HTTP endpoints: DISABLED (2026-09-06, review H3) ----------
+// v2 onRequest functions deploy publicly invokable, none of these checked
+// auth, and each hit forces expensive Firestore work — ~1,700 billed reads
+// for the history rebuild, and getFerryStatus ran a full forced refresh WITH
+// writes while bypassing the staging cost gate. That's an open cost-DoS hole
+// for anyone who guesses the URL (it's derivable from the project id), the
+// exact failure class of the July 2026 read-cost incident. Nothing calls
+// them: the app reads ferryStatus/current via its listener, and the
+// aggregates rebuild on their nightly schedules (the post-deploy "seed" use
+// is served by just waiting for the next scheduled run). The code is kept
+// for revival as operator tools — but revive them properly with a secret
+// check (defineSecret + header compare) or a restricted invoker, not by
+// flipping this flag and leaving them public again.
+const MANUAL_ENDPOINTS_ENABLED = false
+function manualEndpointDisabled(res) {
+  if (MANUAL_ENDPOINTS_ENABLED) return false
+  res
+    .status(410)
+    .json({ error: 'Disabled — see docs/codebase-review-2026-09-06.md (H3) for why and how to revive' })
+  return true
+}
+
 export const getFerryStatus = onRequest(async (req, res) => {
+  if (manualEndpointDisabled(res)) return
   const result = await refreshFerryData(db, {forceUpdate: true})
   if (!result) {
     res.status(500).json({ error: 'Failed to fetch ferry data' })
@@ -576,6 +599,7 @@ export const refreshBowenSailingsAggregate = onSchedule(
 // Manual one-shot: seed aggregates/bowenSailings. Hit once after deploy so
 // clients don't fall back to direct range scans until the first 03:20 run.
 export const rebuildBowenSailings = onRequest(async (req, res) => {
+  if (manualEndpointDisabled(res)) return
   try {
     const result = await recomputeBowenSailings(db)
     res.json(result)
@@ -588,6 +612,7 @@ export const rebuildBowenSailings = onRequest(async (req, res) => {
 // Manual one-shot: seed aggregates/historicalStats. Hit once after deploy so
 // clients don't fall back to direct range scans until the first 03:10 run.
 export const rebuildHistoryAggregate = onRequest(async (req, res) => {
+  if (manualEndpointDisabled(res)) return
   try {
     const result = await recomputeHistoricalStats(db)
     res.json(result)
@@ -600,6 +625,7 @@ export const rebuildHistoryAggregate = onRequest(async (req, res) => {
 // Manual one-shot: backfill the userReport flag on pre-existing user records,
 // then seed/rebuild the aggregate doc. Hit once after deploying this change.
 export const rebuildLeaderboard = onRequest(async (req, res) => {
+  if (manualEndpointDisabled(res)) return
   try {
     const backfilled = await backfillUserReportFlag(db)
     const { reporters, riders } = await recomputeLeaderboard(db)

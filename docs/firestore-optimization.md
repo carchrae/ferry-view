@@ -82,7 +82,10 @@ repeat leaderboard clicks → **0**.
 
 Deploy order: verify indexes (no-op) → functions + manual
 `rebuildBowenSailings` seed → client (degrades gracefully if `reportsAsOf`
-is absent).
+is absent). *(2026-09-06: the manual seed endpoints are disabled — they were
+publicly invokable with no auth; see docs/codebase-review-2026-09-06.md H3.
+The nightly 03:20 schedule seeds the aggregate instead, and clients degrade
+gracefully until it runs.)*
 
 ## 3. Windowed-aggregate analysis
 

@@ -100,14 +100,17 @@ subscriptions are kept and retried forever. Latent only because
 **Fix:** return an explicit `'ok' | 'gone'`; delete on `gone`, stamp
 `lastNotifiedAt` on delivered; apply the same in the recovery branch.
 
-### H3. Four unauthenticated HTTPS endpoints allow read-cost DoS
+### H3. Four unauthenticated HTTPS endpoints allow read-cost DoS — **FIXED 2026-09-06 (disabled)**
 `getFerryStatus`, `rebuildBowenSailings`, `rebuildHistoryAggregate`,
-`rebuildLeaderboard` (functions/index.js) are publicly invokable with no
+`rebuildLeaderboard` (functions/index.js) were publicly invokable with no
 auth. One `rebuildHistoryAggregate` hit ≈ 1,700 billed reads; `getFerryStatus`
-forces a full refresh with writes and bypasses the staging cost gate.
-**Fix:** secret header (`defineSecret`) or restricted invoker on the three
-rebuild endpoints; delete or de-fang `getFerryStatus` (the app uses the
-Firestore listener, not this endpoint).
+forced a full refresh with writes and bypassed the staging cost gate.
+Nothing in the app or scripts calls them, so per Tom's direction all four now
+return **410 Gone** via a shared `manualEndpointDisabled()` guard
+(`MANUAL_ENDPOINTS_ENABLED = false`). The handler code is kept; the comment
+above the flag explains the hole and directs any revival through a secret
+header check or restricted invoker rather than re-flipping the flag. Takes
+effect on the next functions deploy.
 
 ### H4. AIS-outage fallbacks are dead code — an AIS feed outage silently stops all terminal frames and capacity verdicts
 `api.js:98` sets `aisLocation: atTerminal || 'transit'` — never null — and
