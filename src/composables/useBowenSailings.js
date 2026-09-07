@@ -381,3 +381,36 @@ function finalize(sailings, todayIso) {
 
   return built
 }
+
+// Recent frames for ONE live camera, flattened across sailings into a single
+// ascending strip — the home page's fullscreen viewer plays it back. Frames
+// are captured per sailing (5-minute timelapse), so a camera's recent history
+// is the tail of the newest sailings' frames stitched together; gaps between
+// capture windows are real and the per-frame time label shows them.
+// camera: 'community' = the Bowen Community lineup cam, 'bowen' = the BC
+// Ferries Bowen terminal cam. The four HSB cams have no capture pipeline, so
+// they have no frames at all.
+const CAMERA_FRAME_LIMIT = 36
+
+export async function loadCameraFrames(camera, force = false) {
+  const key = camera === 'community' ? 'lineupTimelapsePaths' : 'departureTimelapsePaths'
+  const raw = await fetchRawSailings(force)
+  const paths = []
+  // raw is newest-first: walk until we have enough, then keep the newest tail.
+  for (const s of raw) {
+    for (const p of s[key] || []) if (!paths.includes(p)) paths.push(p)
+    if (paths.length >= CAMERA_FRAME_LIMIT) break
+  }
+  const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  return buildTimelapse(paths)
+    .slice(-CAMERA_FRAME_LIMIT)
+    .map((f) => ({
+      ...f,
+      // Frames can reach back past midnight; date the ones that aren't today
+      // so "9:15 pm" isn't read as tonight.
+      timeLabel:
+        dayjs(f.ts).tz(TZ).format('YYYY-MM-DD') === todayIso
+          ? f.timeLabel
+          : dayjs(f.ts).tz(TZ).format('MMM D, h:mm a'),
+    }))
+}

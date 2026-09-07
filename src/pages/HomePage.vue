@@ -532,7 +532,7 @@
     <!-- Fullscreen viewer -->
     <q-dialog v-model="fullscreen" maximized transition-show="fade" transition-hide="fade">
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
-        <img :src="fullscreenSrc" class="fullscreen-img" />
+        <img :src="viewerSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 2">
           <q-btn
             round
@@ -544,34 +544,67 @@
             @click="fullscreen = false"
           />
         </div>
-        <div class="absolute-bottom row justify-center q-pa-md q-gutter-sm" style="z-index: 1">
-          <q-btn
-            round
-            flat
-            icon="chevron_left"
-            color="white"
-            size="lg"
-            aria-label="Previous webcam"
-            @click.stop="prevCam"
-          />
-          <q-btn
-            round
-            flat
-            icon="refresh"
-            color="white"
-            size="lg"
-            aria-label="Refresh webcam"
-            @click.stop="refreshFullscreen"
-          />
-          <q-btn
-            round
-            flat
-            icon="chevron_right"
-            color="white"
-            size="lg"
-            aria-label="Next webcam"
-            @click.stop="nextCam"
-          />
+        <div class="absolute-bottom column items-center q-pa-md" style="z-index: 1">
+          <!-- Timelapse playback. Only the two cameras the server captures
+               from have stored frames; the four HSB cams stay a single live
+               still, so the bar is absent for them. Clicks must not bubble —
+               the viewer backdrop closes on click. -->
+          <div
+            v-if="hasPlayback"
+            class="playback-bar row items-center no-wrap q-px-sm q-mb-sm"
+            @click.stop
+          >
+            <q-btn
+              round
+              flat
+              dense
+              :icon="playing ? 'pause' : 'play_arrow'"
+              color="white"
+              :aria-label="playing ? 'Pause playback' : 'Play playback'"
+              @click.stop="togglePlayback"
+            />
+            <q-slider
+              :model-value="frameIndex"
+              :min="0"
+              :max="viewerFrames.length - 1"
+              :step="1"
+              dense
+              color="white"
+              class="col q-mx-sm"
+              aria-label="Scrub frames"
+              @update:model-value="scrubTo"
+            />
+            <div class="text-caption text-white frame-time">{{ currentFrameLabel }}</div>
+          </div>
+          <div class="row justify-center q-gutter-sm">
+            <q-btn
+              round
+              flat
+              icon="chevron_left"
+              color="white"
+              size="lg"
+              aria-label="Previous webcam"
+              @click.stop="prevCam"
+            />
+            <q-btn
+              round
+              flat
+              icon="refresh"
+              color="white"
+              size="lg"
+              aria-label="Refresh webcam"
+              @click.stop="refreshFullscreen"
+            />
+            <q-btn
+              round
+              flat
+              icon="chevron_right"
+              color="white"
+              size="lg"
+              aria-label="Next webcam"
+              @click.stop="nextCam"
+            />
+          </div>
         </div>
         <div
           class="absolute-top q-pa-sm text-white text-subtitle1"
@@ -872,6 +905,7 @@ import {
   loadBowenSailings,
   loadUpcomingLineup,
   loadSailingFrames,
+  loadCameraFrames,
 } from 'src/composables/useBowenSailings'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
@@ -1660,22 +1694,129 @@ const fullscreenSrc = computed(
   () => `${allCamUrls[fullscreenIndex.value]}?t=${cacheBusters.value[fullscreenIndex.value]}`,
 )
 
+// Fullscreen playback: the two cameras the server captures from have a
+// stored 5-minute timelapse, so tapping their photo offers a looping clip of
+// the recent past behind the live still. It does NOT start on its own — the
+// viewer opens on the live frame and waits for play. The four HSB cams have
+// no capture pipeline, so they keep the plain live still (hasPlayback stays
+// false).
+const CAMERA_FRAME_SOURCE = { 4: 'bowen', 5: 'community' }
+const FRAME_MS = 700
+
+// Stored frames, oldest first. The live camera image is appended as the last
+// frame: it IS the most recent picture, it's what the grid was showing when
+// the rider tapped, and it's where playback starts (and loops back to).
+const playbackFrames = ref([])
+const frameIndex = ref(0)
+const playing = ref(false)
+let playTimer = null
+
+const viewerFrames = computed(() =>
+  playbackFrames.value.length
+    ? [...playbackFrames.value, { imageUrl: fullscreenSrc.value, timeLabel: 'Live' }]
+    : [],
+)
+const hasPlayback = computed(() => viewerFrames.value.length > 1)
+const currentFrame = computed(
+  () => viewerFrames.value[Math.min(frameIndex.value, viewerFrames.value.length - 1)] || null,
+)
+const viewerSrc = computed(() => currentFrame.value?.imageUrl || fullscreenSrc.value)
+const currentFrameLabel = computed(() => currentFrame.value?.timeLabel || '')
+
+function stopPlayback() {
+  playing.value = false
+  if (playTimer) {
+    clearInterval(playTimer)
+    playTimer = null
+  }
+}
+
+function startPlayback() {
+  if (!hasPlayback.value) return
+  stopPlayback()
+  playing.value = true
+  // Wraps at the end — the clip loops, ending each pass back on the live frame.
+  playTimer = setInterval(() => {
+    frameIndex.value = (frameIndex.value + 1) % viewerFrames.value.length
+  }, FRAME_MS)
+}
+
+function togglePlayback() {
+  if (playing.value) stopPlayback()
+  else startPlayback()
+}
+
+// Dragging the slider is a manual scrub: playback stops so the frame stays
+// where the rider put it.
+function scrubTo(value) {
+  stopPlayback()
+  frameIndex.value = value
+}
+
+// Frames are small (~40-80 KB) and immutably cached, so preloading the strip
+// keeps playback from flickering on the first pass.
+function preloadFrames(frames) {
+  for (const f of frames) {
+    const img = new Image()
+    img.src = f.imageUrl
+  }
+}
+
+// One aggregate doc read at most, usually zero: loadCameraFrames shares the
+// module cache the sailing cards and the robot dialog already filled.
+async function loadCamPlayback(camIndex) {
+  stopPlayback()
+  playbackFrames.value = []
+  frameIndex.value = 0
+  const camera = CAMERA_FRAME_SOURCE[camIndex]
+  if (!camera) return
+  try {
+    const frames = await loadCameraFrames(camera)
+    // The rider may have closed the viewer or moved to another camera while
+    // this was in flight — don't stomp on what they're looking at now.
+    if (!fullscreen.value || fullscreenIndex.value !== camIndex) return
+    if (frames.length < 1) return
+    playbackFrames.value = frames
+    frameIndex.value = frames.length // the live frame, already on screen
+    preloadFrames(frames)
+  } catch (err) {
+    console.error('Failed to load camera playback frames:', err)
+  }
+}
+
 function openFullscreen(index) {
   fullscreenIndex.value = index
   fullscreen.value = true
+  loadCamPlayback(index)
 }
 
 function refreshFullscreen() {
+  stopPlayback()
   cacheBusters.value[fullscreenIndex.value] = Date.now()
+  // Back to the live frame — refreshing is a request to see now, not a frame
+  // from an hour ago.
+  frameIndex.value = Math.max(0, viewerFrames.value.length - 1)
 }
 
 function nextCam() {
   fullscreenIndex.value = (fullscreenIndex.value + 1) % allCamUrls.length
+  loadCamPlayback(fullscreenIndex.value)
 }
 
 function prevCam() {
   fullscreenIndex.value = (fullscreenIndex.value - 1 + allCamUrls.length) % allCamUrls.length
+  loadCamPlayback(fullscreenIndex.value)
 }
+
+watch(fullscreen, (open) => {
+  if (!open) {
+    stopPlayback()
+    playbackFrames.value = []
+    frameIndex.value = 0
+  }
+})
+
+onUnmounted(stopPlayback)
 
 // True when any Bowen sailing shown (past or upcoming) carries a crosswalk
 // tag, so the "C = …" legend only appears when there's a C badge to explain.
@@ -1964,6 +2105,21 @@ $star-clip: polygon(
   height: 100%;
   object-fit: contain;
   cursor: default;
+}
+
+/* The playback bar floats over the photo, so it carries its own scrim to stay
+   readable against a bright frame. */
+.playback-bar {
+  width: min(520px, 92vw);
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 24px;
+  cursor: default;
+}
+
+.frame-time {
+  min-width: 68px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .badge-gap {
