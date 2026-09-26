@@ -143,7 +143,7 @@
               <!-- Route / time / what-to-expect as three grid columns. The
                    cells are direct children of the grid, not wrapped per row,
                    which is what lets the two rows share column widths and line
-                   up despite "Bowen" and "HSB" being different lengths. -->
+                   up despite "to HSB" and "to Bowen" being different lengths. -->
               <template v-for="n in nextHints" :key="n.label">
                 <span class="text-grey-7 text-no-wrap">{{ n.label }}</span>
                 <span class="text-grey-7 text-no-wrap">{{ n.time }}</span>
@@ -1166,8 +1166,8 @@ function sailingStatusFact(s) {
 // blank, so the footer shrinks to what's actually known.
 const nextHints = computed(() =>
   [
-    { label: 'Bowen', sailing: allUpcomingBowen.value[0] },
-    { label: 'HSB', sailing: allUpcomingHSB.value[0] },
+    { label: 'to HSB', sailing: allUpcomingBowen.value[0] },
+    { label: 'to Bowen', sailing: allUpcomingHSB.value[0] },
   ]
     .filter((n) => n.sailing)
     .map((n) => ({
