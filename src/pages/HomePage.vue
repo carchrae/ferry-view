@@ -210,7 +210,9 @@
               <q-card-section class="q-py-xs q-px-none">
                 <div class="row items-start q-col-gutter-sm q-mb-sm">
                   <div class="col">
-                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
+                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">
+                      to Horseshoe Bay
+                    </div>
                     <SailingRow
                       v-for="(event, i) in recentPastBowen.slice(-3)"
                       :key="'pb' + i"
@@ -225,9 +227,7 @@
                     </div>
                   </div>
                   <div class="col">
-                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">
-                      Horseshoe Bay
-                    </div>
+                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
                     <SailingRow
                       v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
@@ -660,7 +660,7 @@
           </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">
             <div class="col">
-              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Bowen</div>
+              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">to Horseshoe Bay</div>
               <SailingRow
                 v-for="(event, i) in allPastBowen"
                 :key="'pb' + i"
@@ -672,7 +672,7 @@
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
             <div class="col">
-              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">Horseshoe Bay</div>
+              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
               <SailingRow
                 v-for="(event, i) in allPastHSB"
                 :key="'ph' + i"
