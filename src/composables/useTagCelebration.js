@@ -433,6 +433,94 @@ function sadTrombone(ctx, out, t0) {
   })
 }
 
+// Tune helper: play "note:beats" tokens from t0 at `beat` seconds per beat.
+const PITCH = {
+  C4: 261.63,
+  D4: 293.66,
+  E4: 329.63,
+  F4: 349.23,
+  G4: 392,
+  A4: 440,
+  B4: 493.88,
+  C5: 523.25,
+  D5: 587.33,
+  E5: 659.25,
+  F5: 698.46,
+  G5: 783.99,
+  A5: 880,
+}
+function playTune(ctx, out, t0, tune, beat, style) {
+  let t = t0
+  for (const tok of tune.split(/\s+/).filter(Boolean)) {
+    const [n, b = '1'] = tok.split(':')
+    const d = Number(b) * beat
+    style(t, PITCH[n], d)
+    t += d
+  }
+  return t - t0
+}
+
+// Night: "Twinkle Twinkle Little Star" (traditional) on a little music box —
+// soft triangle plinks with a faint octave shimmer.
+const TWINKLE = `C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2
+  G5 G5 F5 F5 E5 E5 D5:2 G5 G5 F5 F5 E5 E5 D5:2
+  C5 C5 G5 G5 A5 A5 G5:2 F5 F5 E5 E5 D5 D5 C5:2`
+function twinkleTwinkle(ctx, out, t0) {
+  return playTune(ctx, out, t0, TWINKLE, 0.32, (at, f, d) => {
+    voice(ctx, out, {
+      at,
+      d: Math.min(d, 0.6),
+      g: 0.06,
+      type: 'triangle',
+      attack: 0.01,
+      path: [[0, f]],
+    })
+    voice(ctx, out, { at, d: 0.25, g: 0.012, type: 'sine', attack: 0.01, path: [[0, f * 2]] })
+  })
+}
+
+// Morning: a rooster ("cock-a-doodle-doo!"), then "Morning Has Broken" — the
+// traditional Gaelic tune Bunessan — in the anthem's square-wave voice.
+function rooster(ctx, out, t0) {
+  const crow = [
+    [0, 0.12, 520, 680],
+    [0.16, 0.12, 600, 760],
+    [0.32, 0.14, 660, 860],
+  ]
+  for (const [at, d, a, b] of crow)
+    voice(ctx, out, {
+      at: t0 + at,
+      d,
+      g: 0.04,
+      type: 'sawtooth',
+      path: [
+        [0, a],
+        [d * 0.8, b],
+      ],
+    })
+  voice(ctx, out, {
+    at: t0 + 0.5,
+    d: 0.85,
+    g: 0.045,
+    type: 'sawtooth',
+    path: [
+      [0, 700],
+      [0.25, 1050],
+      [0.8, 620],
+    ],
+    vibrato: 50,
+    rate: 12,
+  })
+  return 1.4
+}
+const MORNING_HAS_BROKEN = `C4 E4 G4 C5:2 A4 G4 A4 G4 E4:3
+  G4 A4 C5 D5:2 C5 A4 G4 E4 D4:3`
+function morningHasBroken(ctx, out, t0) {
+  return playTune(ctx, out, t0, MORNING_HAS_BROKEN, 0.34, (at, f, d) =>
+    voice(ctx, out, { at, d: d * 0.95, g: 0.035, path: [[0, f]] }),
+  )
+}
+
 // A surprised "whoa!" (a quick upward swoop and a sparkle), then a low,
 // wobbly whale-song sweep.
 function surprisedWhale(ctx, out, t0) {
@@ -541,18 +629,34 @@ export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
   // Scene events. A breakdown silences the anthem and plays a sad trombone
   // until it's over; a whale dips the anthem under a surprised jingle.
   const playing = () => !stopped && master && ctx.state === 'running'
+  // The anthem is silenced while there's trouble or it's night/morning.
   let trouble = false
+  let phase = 'day'
+  const anthemOn = () => !trouble && phase === 'day'
+  const applyAnthem = (fast) => {
+    anthem.gain.cancelScheduledValues(ctx.currentTime)
+    anthem.gain.setTargetAtTime(anthemOn() ? 1 : 0, ctx.currentTime, fast ? 0.12 : 0.4)
+  }
   stop.setTrouble = (on) => {
     if (!master || on === trouble) return
     trouble = on
-    anthem.gain.cancelScheduledValues(ctx.currentTime)
-    anthem.gain.setTargetAtTime(on ? 0 : 1, ctx.currentTime, on ? 0.12 : 0.4)
+    applyAnthem(on)
     if (on && playing()) sadTrombone(ctx, master, ctx.currentTime + 0.15)
+  }
+  // Day/night: at nightfall a lullaby; at dawn a rooster and a morning hymn.
+  stop.setPhase = (next) => {
+    if (!master || next === phase) return
+    phase = next
+    applyAnthem(next !== 'day')
+    if (!playing()) return
+    const now = ctx.currentTime + 0.3
+    if (next === 'night') twinkleTwinkle(ctx, master, now)
+    if (next === 'morning') morningHasBroken(ctx, master, now + rooster(ctx, master, now))
   }
   stop.cue = (name) => {
     if (name !== 'whale' || !playing()) return
     const now = ctx.currentTime
-    if (!trouble) {
+    if (anthemOn()) {
       anthem.gain.cancelScheduledValues(now)
       anthem.gain.setTargetAtTime(0.25, now, 0.1)
       anthem.gain.setTargetAtTime(1, now + 2.3, 0.4)

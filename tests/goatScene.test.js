@@ -95,7 +95,7 @@ describe('goatScene', () => {
     assert.ok(early.smoke.length > 0)
   })
 
-  it('season sampler replays real loads: a Full sailing overflows the ferry', () => {
+  it('season sampler replays real loads: the day opens with an empty run, a Full sailing overflows', () => {
     const docs = []
     for (let i = 0; i < 8; i++) {
       const time = `${String(7 + i).padStart(2, '0')}:00`
@@ -114,18 +114,24 @@ describe('goatScene', () => {
     }
     const sampler = seasonSampler(docs, () => 0)
     assert.equal(sampler.dateIso, '2026-08-02')
-    assert.deepEqual(sampler.sailing(0), {
+    // Day starts at half 1: the empty first run from Horseshoe Bay…
+    assert.deepEqual(sampler.sailing(1), {
       dateIso: '2026-08-02',
       time: '07:00',
-      direction: 'To HSB',
-      capacity: 'Full',
+      direction: 'To Bowen',
+      capacity: '90%',
+      empty: true,
     })
-    assert.equal(sampler.load(0), 'full')
-    assert.ok(Math.abs(sampler.load(1) - 0.1) < 1e-9) // 90% space left = 10% full
+    // …then Bowen's first sailing, and the next mainland one.
+    assert.equal(sampler.sailing(2).direction, 'To HSB')
+    assert.equal(sampler.load(2), 'full')
+    assert.ok(Math.abs(sampler.load(3) - 0.1) < 1e-9) // 90% space left = 10% full
     const scene = createGoatScene({ sampler })
+    assert.equal(scene(scene.halfStart(2) - 0.5).deck.length, 0, 'first run is empty')
+    assert.equal(scene(scene.halfStart(2) - 0.5).riders.length, 0)
     // Bowen sailings are all Full: the ferry leaves Bowen with every spot taken
-    assert.equal(scene(halfStart(2) + 3.9).deck.length, CAR_CAPACITY)
-    assert.equal(scene(halfStart(2) + 3.9).sailing.capacity, 'Full')
+    assert.equal(scene(scene.halfStart(3) - 0.5).deck.length, CAR_CAPACITY)
+    assert.equal(scene(scene.halfStart(3) - 0.5).sailing.capacity, 'Full')
   })
 
   it('season sampler needs a day with enough capacity data', () => {
@@ -149,7 +155,7 @@ describe('goatScene', () => {
     assert.equal(goatScene(halfStart(h + 1) + 0.5).ferryX, BERTHS[(h + 1) % 2])
   })
 
-  it('after the last sailing of a replayed day, the ferry sleeps at Bowen, then the next day starts', () => {
+  it('after the last sailing the ferry sleeps at Horseshoe Bay, docks empty, then morning', () => {
     const docs = []
     for (const dateIso of ['2026-08-02', '2026-08-03']) {
       for (let i = 0; i < 8; i++) {
@@ -160,16 +166,49 @@ describe('goatScene', () => {
     }
     const sampler = seasonSampler(docs, () => 0)
     const scene = createGoatScene({ sampler })
-    assert.equal(sampler.isDayStart(16), true) // 8 sailings each way = 16 halves
-    assert.equal(sampler.isDayStart(15), false)
-    const asleep = scene(scene.halfStart(16) + 5)
-    assert.ok(asleep.night > 0 && asleep.night < 1)
-    assert.equal(asleep.ferryX, BERTHS[0])
+    // Day one is halves 1–16; day two starts at half 17, at Horseshoe Bay.
+    assert.equal(sampler.isDayStart(17), true)
+    assert.equal(sampler.isDayStart(16), false)
+    let asleep = null
+    let t = scene.halfStart(17)
+    for (; t < scene.halfStart(18); t += 0.1) {
+      const f = scene(t)
+      if (f.night > 0.5) {
+        asleep = f
+        break
+      }
+    }
+    assert.ok(asleep, 'sleeps overnight')
+    assert.equal(asleep.ferryX, BERTHS[1], 'at Horseshoe Bay')
     assert.equal(asleep.zs.length, 3)
+    assert.equal(asleep.deck.length + asleep.riders.length, 0, 'everyone got off first')
+    assert.equal(
+      asleep.carsIn.length + asleep.carsOut.length + asleep.peds.length,
+      0,
+      'docks empty',
+    )
     assert.equal(asleep.sailing.dateIso, '2026-08-03')
-    assert.equal(asleep.carsOut.length, 0) // nobody drives off in the night
-    const morning = scene(scene.halfStart(16) + 10.5)
-    assert.equal(morning.night, null)
-    assert.equal(morning.sailing.time, '07:00')
+    // Morning: the sky brightens and Bowen's line turns up
+    let morning = null
+    for (; t < scene.halfStart(18); t += 0.1) {
+      const f = scene(t)
+      if (f.morning > 0.8) {
+        morning = f
+        break
+      }
+    }
+    assert.ok(morning && morning.carsIn.length > 0, "Bowen's morning line arriving")
+    // …and the day's first run leaves Horseshoe Bay empty
+    const firstRun = scene(scene.halfStart(18) - 0.5)
+    assert.equal(firstRun.night, null)
+    assert.equal(firstRun.deck.length, 0)
+  })
+
+  it('never has more than 3 breakdowns (at sea or ramp jams) in a day', () => {
+    for (let day = 0; day < 30; day++) {
+      let n = 0
+      for (let h = day * 32; h < (day + 1) * 32; h++) n += breaksDown(h) + rampJams(h)
+      assert.ok(n <= 3, `day ${day}: ${n}`)
+    }
   })
 })

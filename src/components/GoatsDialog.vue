@@ -531,10 +531,13 @@ const skyStyle = computed(() => {
   return { background: `linear-gradient(180deg, ${top} 0%, ${mid} 55%, ${bottom} 100%)` }
 })
 
-// Overnight: fade to black over the first and last moments of the night.
+// Overnight: fade to black as night falls, then brighten slowly back to day
+// through the morning.
 const nightFade = computed(() => {
-  const u = scene.value.night
-  return u == null ? 0 : Math.max(0, Math.min(1, u / 0.12, (1 - u) / 0.12))
+  const { night, morning } = scene.value
+  if (night != null) return Math.min(1, night / 0.12)
+  if (morning != null) return 1 - morning
+  return 0
 })
 // A fixed scatter of stars over the upper sky.
 const STARS = Array.from({ length: 60 }, (_, i) => {
@@ -558,7 +561,7 @@ const replayLabel = computed(() => {
   if (scene.value.night != null)
     return `Overnight · next up ${dayjs(s.dateIso).format('ddd, MMM D')}`
   const route = s.direction === 'To HSB' ? 'Bowen → Mainland' : 'Mainland → Bowen'
-  const how = capacityFullLabel(s.capacity)
+  const how = s.empty ? 'empty run' : capacityFullLabel(s.capacity)
   const when = `${dayjs(s.dateIso).format('ddd, MMM D')} · ${formatTime12h(s.time)} ${route}`
   return `Replaying ${how ? `${when} · ${how}` : when}`
 })
@@ -622,7 +625,11 @@ const sceneViewBox = computed(() => {
 // anthem for a sad trombone; a whale surfacing gets a surprised jingle.
 let lastTrouble = false
 let lastWhale = null
+let lastPhase = 'day'
 function cueSounds(s) {
+  const phase = s.night != null ? 'night' : s.morning != null ? 'morning' : 'day'
+  if (phase !== lastPhase) stopParty?.setPhase?.(phase)
+  lastPhase = phase
   const trouble = s.troubled // until it's moving again, smoke cleared
   if (trouble !== lastTrouble) stopParty?.setTrouble?.(trouble)
   lastTrouble = trouble
@@ -633,6 +640,7 @@ function cueSounds(s) {
 function animateScene() {
   lastTrouble = false
   lastWhale = null
+  lastPhase = 'day'
   const t0 = performance.now()
   const frame = (now) => {
     sceneT.value = (now - t0) / 1000
