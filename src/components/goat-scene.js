@@ -96,6 +96,46 @@ function roadAt(s) {
 }
 
 const mod = (a, n) => ((a % n) + n) % n
+
+// --- Timeline -------------------------------------------------------------
+// Halves are H long, plus any breakdown time:
+//  - at sea: the ferry stalls mid-channel, smoking, for BREAKDOWN_S (about
+//    one crossing in seven);
+//  - at the dock: on arrival the ramp jams, flapping up and down, for
+//    DOCK_BREAKDOWN_S before anyone can get off (about one in ten) — the
+//    whole dock schedule for that visit runs that much later.
+// Each gets a guaranteed early occurrence so a short visit still sees one.
+const BREAKDOWN_S = 3.5
+const DOCK_BREAKDOWN_S = 3
+const FIRST_BREAKDOWN = 3
+const FIRST_DOCK_BREAKDOWN = 6
+export const breaksDown = (h) => h === FIRST_BREAKDOWN || (h > FIRST_BREAKDOWN && rnd(h, 7) < 0.15)
+export const rampJams = (h) =>
+  h === FIRST_DOCK_BREAKDOWN || (h > FIRST_DOCK_BREAKDOWN && rnd(h, 9) < 0.1)
+const dockDelay = (h) => (h >= 0 && rampJams(h) ? DOCK_BREAKDOWN_S : 0)
+// Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
+// just short of it and waits until the whale has gone back under (about one
+// crossing in five, never on a breakdown crossing; the first comes early).
+const WHALE_S = 3.4
+const FIRST_WHALE = 1
+export const whaleCrossing = (h) =>
+  h >= 0 && !breaksDown(h) && (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h, 13) < 0.2))
+const halfLen = (h) =>
+  H + (h >= 0 && breaksDown(h) ? BREAKDOWN_S : 0) + dockDelay(h) + (whaleCrossing(h) ? WHALE_S : 0)
+const STARTS = [0] // STARTS[h] = when half h begins (h >= 0)
+export function halfStart(h) {
+  if (h <= 0) return h * H
+  while (STARTS.length <= h) STARTS.push(STARTS[STARTS.length - 1] + halfLen(STARTS.length - 1))
+  return STARTS[h]
+}
+// Which half t falls in, how far into it (tau), and how far into its dock
+// schedule (tauE — negative while a jammed ramp holds everything up).
+function halfAt(t) {
+  let h = Math.floor(t / H) // upper bound: halves are never shorter than H
+  while (halfStart(h) > t) h--
+  const tau = t - halfStart(h)
+  return { h, tau, tauE: tau - dockDelay(h) }
+}
 const ease = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2)
 
 // Deterministic "random" in [0, 1) per visit — keeps the scene a pure
@@ -107,19 +147,22 @@ function rnd(v, salt) {
 
 // Who's in line at a visit (half index v; a dock's visits are every other
 // half): whoever missed the last sailing, then this visit's newcomers
-// (3–8 cars and 1–3 walk-ons, or a rush of 11–14 and 5–6). Memoized — each
-// visit builds on the one before.
-const LINES = { car: new Map(), ped: new Map() }
+// (3–8 cars and 1–3 walk-ons, or a rush of 11–14 and 5–6 — or, replaying a
+// real day, as many as that sailing actually carried). Memoized per scene
+// instance (S.lines) — each visit builds on the one before.
 const CAPACITY = { car: CAR_CAPACITY, ped: PED_CAPACITY }
-function newcomers(kind, v) {
+function newcomers(S, kind, v) {
   // Mostly quiet sailings; about one in five is a rush that won't all fit.
-  const rush = rnd(v, 3) < 0.2
+  const load = S.sampler?.load(v) // 0..1 how full, or 'full', or null
+  const rush = load === 'full' || (load == null && rnd(v, 3) < 0.2)
   const r = rnd(v, kind === 'car' ? 1 : 2)
   const n =
     kind === 'car'
       ? rush
-        ? 11 + Math.floor(r * 4)
-        : 3 + Math.floor(r * 6)
+        ? CAR_CAPACITY + 1 + Math.floor(r * 4)
+        : typeof load === 'number'
+          ? Math.max(1, Math.round(load * CAR_CAPACITY))
+          : 3 + Math.floor(r * 6)
       : rush
         ? 5 + Math.floor(r * 2)
         : 1 + Math.floor(r * 3)
@@ -131,16 +174,16 @@ function newcomers(kind, v) {
         : SHIRTS[mod(v * 3 + i, SHIRTS.length)],
   }))
 }
-function lineAt(kind, v) {
+function lineAt(S, kind, v) {
   if (v < -2) return []
-  const memo = LINES[kind]
+  const memo = S.lines[kind]
   if (!memo.has(v)) {
     // Build up from the earliest visit so the recursion stays shallow.
     let start = v
     while (start - 2 >= -2 && !memo.has(start - 2)) start -= 2
     for (let u = start; u <= v; u += 2) {
       const carry = u - 2 >= -2 ? memo.get(u - 2).slice(CAPACITY[kind]) : []
-      memo.set(u, carry.concat(newcomers(kind, u)))
+      memo.set(u, carry.concat(newcomers(S, kind, u)))
     }
   }
   return memo.get(v)
@@ -163,7 +206,7 @@ function carArrivals(v, n) {
   let at = ARRIVE_WINDOW[0]
   return gaps.map((g) => (at += g * scale))
 }
-const boarders = (kind, v) => lineAt(kind, v).slice(0, CAPACITY[kind])
+const boarders = (S, kind, v) => lineAt(S, kind, v).slice(0, CAPACITY[kind])
 
 // A car at (x, y) heading along (dx, dy): its transform keeps it upright with
 // the headlights (drawn at +x) leading.
@@ -186,7 +229,9 @@ function car(item, lane, x, y, dx, dy, mirror, mad = false) {
   }
 }
 
-function ped(item, x, y, dx, stride, opacity, mirror, mad = false) {
+// mood: 'mad' (missed the boat — red face, "!") or 'confused' (breakdown —
+// "?"); either way they hop, which callers bake into y.
+function ped(item, x, y, dx, stride, opacity, mirror, mood = null) {
   if (mirror) {
     x = mirror - x
     dx = -dx
@@ -195,7 +240,9 @@ function ped(item, x, y, dx, stride, opacity, mirror, mad = false) {
   return {
     id: item.id,
     shirt: item.color,
-    mad,
+    mad: mood === 'mad',
+    confused: mood === 'confused',
+    flip: dx < 0, // mirrored figure — its ?/! marker counter-flips to stay readable
     transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})${dx < 0 ? ' scale(-1 1)' : ''}`,
     legs: `M0 -4 L${swing.toFixed(1)} 0 M0 -4 L${(-swing).toFixed(1)} 0`,
     opacity,
@@ -247,15 +294,20 @@ function queued(item, s, mirror, bounce = 0) {
 }
 
 // Everything at one dock (side 0 = Bowen, 1 = mainland) at time t.
-function dockItems(t, side, cars, peds, ferryHere, W) {
+// A confused little hop, out of step person to person.
+const puzzledHop = (t, id) =>
+  Math.abs(Math.sin(t * 9 + id.length * 1.3 + id.charCodeAt(id.length - 1))) * 4
+
+// `puzzled`: a breakdown is on, so anyone standing around hops, confused.
+function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const mirror = side === 1 ? W : 0
-  const h = Math.floor(t / H)
+  const { h } = halfAt(t)
   const v = h - mod(h - side, 2) // this dock's latest visit (half index)
-  const sigma = t - v * H
+  const sigma = t - halfStart(v) - dockDelay(v) // this visit's dock schedule clock
 
   // --- cars: board up to capacity; the rest roll forward with the line and
   // stop at the front of the dock, still there as the ferry pulls away ---
-  const line = lineAt('car', v)
+  const line = lineAt(S, 'car', v)
   const nBoard = Math.min(line.length, CAR_CAPACITY)
   line.forEach((item, k) => {
     if (k >= nBoard) {
@@ -274,7 +326,7 @@ function dockItems(t, side, cars, peds, ferryHere, W) {
     }
   })
   const leftCars = line.length - nBoard
-  const nextCars = lineAt('car', v + 2).slice(leftCars)
+  const nextCars = lineAt(S, 'car', v + 2).slice(leftCars)
   const arrivals = carArrivals(v + 2, nextCars.length)
   nextCars.forEach((item, i) => {
     const start = arrivals[i]
@@ -284,14 +336,18 @@ function dockItems(t, side, cars, peds, ferryHere, W) {
   })
 
   // --- walk-ons: same, but the ones left behind hop up and down, mad ---
-  const crowd = lineAt('ped', v)
+  const crowd = lineAt(S, 'ped', v)
   const nWalk = Math.min(crowd.length, PED_CAPACITY)
   crowd.forEach((item, j) => {
     if (j >= nWalk) {
       // Move up with the boarding crowd to the front of the loading dock,
       // then hop there, furious, as the ferry leaves without them.
       const mad = sigma >= HOP[0] && sigma < HOP[1]
-      const hop = mad ? Math.abs(Math.sin(sigma * 11 + j * 1.7)) * 7 : 0
+      const hop = mad
+        ? Math.abs(Math.sin(sigma * 11 + j * 1.7)) * 7
+        : puzzled
+          ? puzzledHop(t, item.id)
+          : 0
       const e = Math.max(0, sigma - PED_LOAD(j)) * PED_V
       const s = Math.max(WAIT_S(j - nWalk), WAIT_S(j) - e)
       const p = roadAt(s)
@@ -304,12 +360,13 @@ function dockItems(t, side, cars, peds, ferryHere, W) {
           s < WAIT_S(j) && s > WAIT_S(j - nWalk) ? e : 0,
           1,
           mirror,
-          mad,
+          mad ? 'mad' : puzzled ? 'confused' : null,
         ),
       )
     } else if (sigma < PED_LOAD(j)) {
       const p = roadAt(WAIT_S(j))
-      peds.push(ped(item, p.x, p.y + LANE.walk, 1, 0, 1, mirror))
+      const hop = puzzled ? puzzledHop(t, item.id) : 0
+      peds.push(ped(item, p.x, p.y + LANE.walk - hop, 1, 0, 1, mirror, puzzled ? 'confused' : null))
     } else {
       const e = (sigma - PED_LOAD(j)) * PED_V
       if (e < WAIT_S(j)) {
@@ -322,7 +379,7 @@ function dockItems(t, side, cars, peds, ferryHere, W) {
     }
   })
   const leftPeds = crowd.length - nWalk
-  const nextPeds = lineAt('ped', v + 2).slice(leftPeds)
+  const nextPeds = lineAt(S, 'ped', v + 2).slice(leftPeds)
   nextPeds.forEach((item, i) => {
     const start = PED_ARRIVE(i, nextPeds.length)
     if (sigma < start) return
@@ -330,12 +387,25 @@ function dockItems(t, side, cars, peds, ferryHere, W) {
     const slot = WAIT_S(leftPeds + i)
     const p = roadAt(Math.max(slot, PED_START_S - e))
     const walking = PED_START_S - e > slot
-    peds.push(ped(item, p.x, p.y + LANE.walk, 1, walking ? e : 0, Math.min(1, e / 20), mirror))
+    const lost = puzzled && !walking
+    const hop = lost ? puzzledHop(t, item.id) : 0
+    peds.push(
+      ped(
+        item,
+        p.x,
+        p.y + LANE.walk - hop,
+        1,
+        walking ? e : 0,
+        Math.min(1, e / 20),
+        mirror,
+        lost ? 'confused' : null,
+      ),
+    )
   })
 
   if (!ferryHere) return
   // --- arrivals leave the ferry: cars nearest the dock first, then walk-offs ---
-  boarders('car', v - 1).forEach((item, i) => {
+  boarders(S, 'car', v - 1).forEach((item, i) => {
     const start = CAR_UNLOAD(i)
     if (sigma < start) return
     const route = deckPath(BERTH - FAR_SLOTS[i]).reverse()
@@ -348,7 +418,7 @@ function dockItems(t, side, cars, peds, ferryHere, W) {
       cars.push(car(item, 'out', p.x, p.y + LANE.out, p.tx, p.ty, mirror))
     }
   })
-  boarders('ped', v - 1).forEach((item, j) => {
+  boarders(S, 'ped', v - 1).forEach((item, j) => {
     const e = (sigma - PED_UNLOAD(j)) * PED_V
     if (e < 0 || e > PED_GONE_S + WALK_ON_LENGTH) return
     const off = along([...WALK_ON].reverse(), e)
@@ -365,14 +435,112 @@ function dockItems(t, side, cars, peds, ferryHere, W) {
 // The whole scene at time t (seconds): ferry position, the cars and walk-ons
 // riding it (offsets relative to the ferry), and everyone ashore.
 function ferryAt(t, W) {
-  const h = Math.floor(t / H)
-  const tau = t - h * H
+  const { h, tauE: tau } = halfAt(t)
   const b = berths(W)
   const from = b[mod(h, 2)]
   const to = b[1 - mod(h, 2)]
-  const moving = tau >= DEPART
-  const x = moving ? from + (to - from) * ease((tau - DEPART) / (H - DEPART)) : from
-  return { x, dir: Math.sign(to - from), moving }
+  const cross = H - DEPART
+  const underway = tau >= DEPART
+  const c = tau - DEPART
+  let p = underway ? ease(Math.min(1, c / cross)) : 0
+  let stop = null // { kind, u } while stopped mid-channel; u = 0..1 through it
+  const brk = breaksDown(h)
+  if (underway && (brk || whaleCrossing(h))) {
+    // Two legs with a stop between, anywhere from a fifth to four-fifths of
+    // the way. A whale gets a gentle slow-down; a breakdown dies suddenly,
+    // still at speed. The second leg eases back up either way.
+    const qs = brk ? 0.2 + rnd(h, 16) * 0.6 : 0.3 + rnd(h, 14) * 0.3
+    const pause = brk ? BREAKDOWN_S : WHALE_S
+    const [t1, t2] = [cross * qs, cross * (1 - qs)]
+    if (c < t1) p = qs * (brk ? 1 - (1 - c / t1) ** 2 : ease(c / t1))
+    else if (c < t1 + pause) {
+      p = qs
+      stop = { kind: brk ? 'breakdown' : 'whale', u: (c - t1) / pause }
+    } else p = qs + (1 - qs) * ease(Math.min(1, (c - t1 - pause) / t2))
+  }
+  return {
+    x: from + (to - from) * p,
+    dir: Math.sign(to - from),
+    moving: underway && !stop,
+    stalled: stop?.kind === 'breakdown',
+    whaleStop: stop?.kind === 'whale' ? stop.u : null,
+    jammed: !underway && tau < 0, // ramp stuck on arrival
+    h,
+  }
+}
+
+// Where a breakdown's smoke, sparks and flames come from: the control tower
+// when stalled at sea, the ramp's hinge when it's jammed. null otherwise.
+function troubleSpot(f, W) {
+  if (f.stalled) return [f.x, 198 - 66]
+  if (f.jammed) return [mod(f.h, 2) === 0 ? RAMP_PIVOT.x : W - RAMP_PIVOT.x, RAMP_PIVOT.y - 4]
+  return null
+}
+
+// Sparks: a few fly out every SPARK_DT, arc under gravity and wink out.
+const SPARK_DT = 0.05
+const SPARK_LIFE = 0.7
+function sparksAt(t, W) {
+  const out = []
+  const newest = Math.floor(t / SPARK_DT)
+  for (let n = newest; n > newest - SPARK_LIFE / SPARK_DT; n--) {
+    const born = n * SPARK_DT
+    const src = troubleSpot(ferryAt(born, W), W)
+    if (!src || rnd(n, 40) < 0.35) continue
+    const age = t - born
+    const vx = (rnd(n, 41) - 0.5) * 90
+    const vy = -40 - rnd(n, 42) * 50
+    out.push({
+      id: `k${n}`,
+      x: src[0] + vx * age,
+      y: src[1] + vy * age + 110 * age * age,
+      opacity: 1 - age / SPARK_LIFE,
+      hot: rnd(n, 43) < 0.5, // yellow-white vs orange
+    })
+  }
+  return out
+}
+
+// Flames: three flickering tongues licking up from the trouble spot.
+function flamesAt(t, W) {
+  const src = troubleSpot(ferryAt(t, W), W)
+  if (!src) return []
+  return [-6, 0, 6].map((dx, k) => {
+    const flick = 0.6 + 0.4 * Math.abs(Math.sin(t * (17 + k * 5) + k * 2))
+    const hgt = (k === 1 ? 17 : 11) * flick
+    const w = k === 1 ? 6 : 4.5
+    const [x, y] = [src[0] + dx, src[1] + 2]
+    return {
+      id: `f${k}`,
+      d: `M${x - w} ${y} Q ${x - w * 0.6} ${y - hgt * 0.5} ${x} ${y - hgt} Q ${x + w * 0.6} ${y - hgt * 0.5} ${x + w} ${y} Z`,
+      color: k === 1 ? '#ffca28' : '#ff7043',
+    }
+  })
+}
+
+// Breakdown smoke: a grey puff leaves the trouble spot every SMOKE_DT, then
+// rises, drifts downwind, swells and fades.
+const SMOKE_DT = 0.12
+const SMOKE_LIFE = 2.4
+function smokeAt(t, W) {
+  const out = []
+  const newest = Math.floor(t / SMOKE_DT)
+  for (let n = newest; n > newest - SMOKE_LIFE / SMOKE_DT; n--) {
+    const born = n * SMOKE_DT
+    const src = troubleSpot(ferryAt(born, W), W)
+    if (!src) continue
+    const age = (t - born) / SMOKE_LIFE
+    const [sx, sy] = src
+    out.push({
+      id: `s${n}`,
+      x: sx + (rnd(n, 31) - 0.5) * 6 + age * 26,
+      y: sy - age * 46,
+      r: 2.5 + age * 9,
+      opacity: (1 - age) * 0.75,
+      shade: Math.round(70 + rnd(n, 32) * 60),
+    })
+  }
+  return out
 }
 
 // Wake: a foam particle drops off the stern every WAKE_DT while under way,
@@ -402,50 +570,147 @@ function wakeAt(t, W) {
   return out
 }
 
-export function goatScene(t, W = WORLD_W) {
-  const h = Math.floor(t / H)
+// The whale on a whale crossing: its tail surfaces just ahead of the stopped
+// ferry's bow, hangs there, and slips back under with a splash.
+function whaleAt(t, W) {
+  const f = ferryAt(t, W)
+  if (f.whaleStop == null) return null
+  const age = f.whaleStop
+  // rise (0→1) over the first fifth, hold, sink over the last third
+  const rise = age < 0.2 ? age / 0.2 : age > 0.67 ? Math.max(0, (1 - age) / 0.33) : 1
+  return {
+    id: `whale${f.h}`,
+    x: f.x + f.dir * (66 + 34 + rnd(f.h, 15) * 20), // bow + a respectful gap
+    rise,
+    tilt: (rnd(f.h, 52) - 0.5) * 16 + (age > 0.67 ? (age - 0.67) * 40 : 0),
+    flip: rnd(f.h, 53) < 0.5,
+    splash: age > 0.67 ? (age - 0.67) / 0.33 : 0, // 0..1 once it's going under
+  }
+}
+
+function sceneFrame(S, t, W) {
+  const { h, tau: tauRaw, tauE: tau } = halfAt(t)
   const side = mod(h, 2)
-  const tau = t - h * H
-  const { x: ferryX, moving } = ferryAt(t, W)
+  const { x: ferryX, moving, stalled, jammed } = ferryAt(t, W)
+  const puzzled = stalled || jammed
+  const riderAt = (item, x) =>
+    ped(
+      item,
+      x,
+      -45 - (puzzled ? puzzledHop(t, item.id) : 0),
+      1,
+      0,
+      1,
+      false,
+      puzzled ? 'confused' : null,
+    )
 
   // Aboard: last visit's riders until they get off, then this visit's once
   // they've boarded. Offsets are physical (ferry frame); the far dock's
   // layout is mirrored, hence `sign`.
   const sign = side === 0 ? 1 : -1
   const deck = []
-  boarders('car', h - 1).forEach((item, i) => {
+  boarders(S, 'car', h - 1).forEach((item, i) => {
     if (tau < CAR_UNLOAD(i)) deck.push({ id: item.id, dx: -sign * FAR_SLOTS[i], color: item.color })
   })
-  boarders('car', h).forEach((item, k) => {
+  boarders(S, 'car', h).forEach((item, k) => {
     if (carBoarded(tau, k)) deck.push({ id: item.id, dx: sign * FAR_SLOTS[k], color: item.color })
   })
   const riders = []
-  boarders('ped', h - 1).forEach((item, j) => {
-    if (tau < PED_UNLOAD(j)) riders.push(ped(item, -sign * RIDER_SPOTS[j], -45, 1, 0, 1, false))
+  boarders(S, 'ped', h - 1).forEach((item, j) => {
+    if (tau < PED_UNLOAD(j)) riders.push(riderAt(item, -sign * RIDER_SPOTS[j]))
   })
-  boarders('ped', h).forEach((item, j) => {
-    if (pedBoarded(tau, j)) riders.push(ped(item, sign * RIDER_SPOTS[j], -45, 1, 0, 1, false))
+  boarders(S, 'ped', h).forEach((item, j) => {
+    if (pedBoarded(tau, j)) riders.push(riderAt(item, sign * RIDER_SPOTS[j]))
   })
 
   // Each dock's ramp: lowered onto the ferry while it's berthed there,
   // raised a moment before it leaves and while it's away.
   const ramps = [0, 1].map((d) => {
-    const down = d === side && !moving ? Math.min(1, tau / 0.15, (DEPART - tau) / 0.25) : 0
+    let down = d === side && !moving ? Math.min(1, tau / 0.15, (DEPART - tau) / 0.25) : 0
+    // Jammed: the ramp flips up and down, never quite seating.
+    if (d === side && tau < 0) down = 0.5 + 0.5 * Math.sin(tauRaw * 7)
     return RAMP_UP + (RAMP_DOWN - RAMP_UP) * Math.max(0, down)
   })
 
   const cars = []
   const peds = []
-  dockItems(t, 0, cars, peds, side === 0, W)
-  dockItems(t, 1, cars, peds, side === 1, W)
+  dockItems(S, t, 0, cars, peds, side === 0, W, puzzled)
+  dockItems(S, t, 1, cars, peds, side === 1, W, puzzled)
   return {
     ferryX,
     wake: wakeAt(t, W),
+    smoke: smokeAt(t, W),
+    sparks: sparksAt(t, W),
+    flames: flamesAt(t, W),
+    whale: whaleAt(t, W),
+    stalled,
+    // The real sailing being replayed right now (season sampler), if any.
+    sailing: S.sampler?.sailing(h) ?? null,
     ramps,
     deck,
     riders,
     carsOut: cars.filter((c) => c.lane === 'out'),
     carsIn: cars.filter((c) => c.lane === 'in'),
     peds,
+  }
+}
+
+// A scene instance: its own lines memo, optionally replaying a real day
+// (see seasonSampler). Returns (t, W) => frame.
+export function createGoatScene({ sampler = null } = {}) {
+  const S = { lines: { car: new Map(), ped: new Map() }, sampler }
+  return (t, W = WORLD_W) => sceneFrame(S, t, W)
+}
+const randomScene = createGoatScene()
+export const goatScene = (t, W) => randomScene(t, W)
+
+// --- Season sampler ----------------------------------------------------------
+// Replays how full the ferry really was on one day, from the history page's
+// sailing records ({ dateIso, sailingTime, direction, lastCapacity }). Bowen
+// visits (even halves) take that day's "To HSB" sailings in order, mainland
+// visits (odd halves) its "To Bowen" ones. lastCapacity is "Full",
+// "Not Full" or "NN%" = space *left*. Returns null when no day has enough
+// data. `pick` chooses the day (0..1, injectable for tests).
+export function seasonSampler(docs, pick = Math.random) {
+  const byDay = new Map()
+  for (const d of docs || []) {
+    if (!d?.dateIso || !d.sailingTime || !d.direction) continue
+    if (!byDay.has(d.dateIso)) byDay.set(d.dateIso, [])
+    byDay.get(d.dateIso).push(d)
+  }
+  const usable = [...byDay.entries()].filter(([, list]) => {
+    const known = list.filter((d) => d.lastCapacity).length
+    return known >= 6 && known >= list.length * 0.6
+  })
+  if (!usable.length) return null
+  usable.sort(([a], [b]) => (a < b ? -1 : 1))
+  const [dateIso, list] = usable[Math.min(usable.length - 1, Math.floor(pick() * usable.length))]
+  const bySide = [0, 1].map((side) =>
+    list
+      .filter((d) => d.direction === (side === 0 ? 'To HSB' : 'To Bowen'))
+      .sort((a, b) => (a.sailingTime < b.sailingTime ? -1 : 1)),
+  )
+  // Start somewhere in the day rather than always at the quiet first sailing.
+  const offset = Math.floor(pick() * Math.max(...bySide.map((l) => l.length), 1))
+  const sailingFor = (v) => {
+    const l = bySide[mod(v, 2)]
+    return l.length ? l[mod(Math.floor(v / 2) + offset, l.length)] : null
+  }
+  return {
+    key: dateIso,
+    dateIso,
+    load(v) {
+      const cap = sailingFor(v)?.lastCapacity
+      if (!cap) return null
+      if (cap === 'Full') return 'full'
+      if (cap === 'Not Full') return 0.35 + rnd(v, 5) * 0.45
+      const left = parseInt(cap)
+      return Number.isNaN(left) ? null : Math.min(1, Math.max(0, 1 - left / 100))
+    },
+    sailing(v) {
+      const d = sailingFor(v)
+      return d && { dateIso, time: d.sailingTime, direction: d.direction, capacity: d.lastCapacity }
+    },
   }
 }
