@@ -318,7 +318,8 @@ function rand(min, max) {
 // Browsers keep audio locked until the user interacts with the page — e.g.
 // when the party opens straight from a link. The anthem then waits for the
 // AudioContext to run; onSoundBlocked(true/false) reports the lock, and
-// stop.unlockSound() (call it from a click) lifts it.
+// stop.unlockSound() (call it from a click) lifts it. stop.setMuted(bool)
+// silences/restores the anthem; start muted with { muted: true }.
 
 const NOTE = { A2: 110, C3: 130.81, F2: 87.31, G2: 98, E4: 329.63, F4: 349.23, G4: 392 }
 Object.assign(NOTE, { A4: 440, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46 })
@@ -371,7 +372,7 @@ function scheduleAnthem(ctx, out, t0) {
   return t - t0 // loop length in seconds
 }
 
-export function startGoatParty({ onSoundBlocked } = {}) {
+export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
   if (typeof window === 'undefined' || !effectsEnabled()) return () => {}
   const timers = []
   let stopped = false
@@ -382,7 +383,7 @@ export function startGoatParty({ onSoundBlocked } = {}) {
   let master = null
   if (ctx) {
     master = ctx.createGain()
-    master.gain.value = 1
+    master.gain.value = muted ? 0 : 1
     master.connect(ctx.destination)
     const loop = (at) => {
       if (stopped) return
@@ -439,5 +440,8 @@ export function startGoatParty({ onSoundBlocked } = {}) {
     if (layer) setTimeout(() => layer.remove(), 1600) // let the last sparks fall
   }
   stop.unlockSound = () => ctx?.resume()
+  stop.setMuted = (m) => {
+    if (master && !stopped) master.gain.setTargetAtTime(m ? 0 : 1, ctx.currentTime, 0.05)
+  }
   return stop
 }

@@ -18,8 +18,10 @@
           <div class="text-subtitle2 goats-dim">Greatest of all time — top contributors</div>
         </div>
         <q-space />
+        <!-- Sound on/off. Opened from a link, audio starts locked until a tap,
+             so the "on" state is spelled out until then. -->
         <q-btn
-          v-if="soundBlocked"
+          v-if="soundBlocked && !muted"
           rounded
           unelevated
           no-caps
@@ -28,7 +30,18 @@
           icon="volume_up"
           label="Tap for sound"
           class="q-mr-sm"
-          @click.stop="unlockSound"
+          @click.stop="toggleSound"
+        />
+        <q-btn
+          v-else
+          round
+          flat
+          dense
+          color="white"
+          :icon="muted ? 'volume_off' : 'volume_up'"
+          :aria-label="muted ? 'Turn sound on' : 'Turn sound off'"
+          class="q-mr-sm"
+          @click.stop="toggleSound"
         />
         <q-btn round flat dense icon="close" color="white" aria-label="Close" v-close-popup />
       </div>
@@ -73,6 +86,7 @@
       <!-- Bowen scene: the ferry shuttles dock to dock; at each stop cars and
            walk-ons pour off, the waiting line boards, and a new line builds. -->
       <svg
+        ref="sceneEl"
         class="goats-scene"
         :viewBox="sceneViewBox"
         :preserveAspectRatio="$q.screen.lt.sm ? 'xMidYMax meet' : 'xMidYMax slice'"
@@ -87,18 +101,13 @@
             <circle cx="11" cy="-10" r="2" fill="#ffe082" />
           </g>
         </defs>
-        <rect x="0" y="196" width="1200" height="64" fill="#1d3f6e" />
-        <path
-          d="M0 204 Q 60 198 120 204 T 240 204 T 360 204 T 480 204 T 600 204 T 720 204 T 840 204 T 960 204 T 1080 204 T 1200 204"
-          stroke="#3d6fa8"
-          stroke-width="3"
-          fill="none"
-        />
+        <rect x="0" y="196" :width="worldW" height="64" fill="#1d3f6e" />
+        <path :d="waveD" stroke="#3d6fa8" stroke-width="3" fill="none" />
         <!-- Bowen hill, road, dock — and the mainland mirrored across x = 600 -->
         <g
           v-for="side in [0, 1]"
           :key="side"
-          :transform="side ? 'translate(1200 0) scale(-1 1)' : ''"
+          :transform="side ? `translate(${worldW} 0) scale(-1 1)` : ''"
         >
           <path
             d="M0 260 L0 96 Q 150 48 290 150 L360 204 L360 260 Z"
@@ -252,7 +261,7 @@ import { useQuasar } from 'quasar'
 import { formatReporterName } from 'src/composables/useLeaderboard'
 import { startGoatParty } from 'src/composables/useTagCelebration'
 import anonymousIcon from 'src/assets/cat.svg'
-import { goatScene, ROAD_D, BERTHS, RAMP_PIVOT, RAMP_LENGTH } from './goat-scene.js'
+import { goatScene, ROAD_D, BERTHS, WORLD_W, RAMP_PIVOT, RAMP_LENGTH } from './goat-scene.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -295,8 +304,28 @@ let stopParty = null
 // Opened straight from a link, the browser won't play sound until a tap —
 // and a tap anywhere else closes the dialog — so offer a button.
 const soundBlocked = ref(false)
-function unlockSound() {
-  stopParty?.unlockSound?.()
+// Sound on/off, remembered across visits (per browser).
+const SOUND_KEY = 'goatsSoundMuted'
+const muted = ref(false)
+try {
+  muted.value = localStorage.getItem(SOUND_KEY) === '1'
+} catch {
+  /* storage blocked — default to sound on */
+}
+function toggleSound() {
+  // Locked (opened from a link) and not muted: this tap just unlocks audio.
+  if (soundBlocked.value && !muted.value) {
+    stopParty?.unlockSound?.()
+    return
+  }
+  muted.value = !muted.value
+  try {
+    localStorage.setItem(SOUND_KEY, muted.value ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+  if (!muted.value) stopParty?.unlockSound?.()
+  stopParty?.setMuted?.(muted.value)
 }
 
 function tick() {
@@ -307,18 +336,47 @@ function tick() {
 // under prefers-reduced-motion).
 const scene = ref(goatScene(0.5))
 let raf = null
+
+// The scene always shows its full height (hills included). A window wider
+// than that aspect widens the world instead — more water between the docks —
+// rather than zooming in and cropping the hilltops. Phones pan (below).
+const sceneEl = ref(null)
+const sceneSize = ref({ w: 0, h: 0 })
+const resizeObs =
+  typeof ResizeObserver === 'undefined'
+    ? null
+    : new ResizeObserver(([entry]) => {
+        const { width: w, height: h } = entry.contentRect
+        sceneSize.value = { w, h }
+      })
+watch(sceneEl, (el) => {
+  resizeObs?.disconnect()
+  if (el) resizeObs?.observe(el)
+})
+onUnmounted(() => resizeObs?.disconnect())
+const worldW = computed(() => {
+  const { w, h } = sceneSize.value
+  if ($q.screen.lt.sm || !w || !h) return WORLD_W
+  return Math.max(WORLD_W, Math.round((w * 260) / h))
+})
+// Water-surface ripple spanning the whole world.
+const waveD = computed(() => {
+  let d = 'M0 204 Q 60 198 120 204'
+  for (let x = 240; x <= worldW.value + 120; x += 120) d += ` T ${x} 204`
+  return d
+})
 // Phones see a closer window that pans with the ferry: fully left (Bowen hill)
 // while it's at the Bowen dock, fully right (mainland) at the other.
 const PHONE_VIEW_W = 560
 const sceneViewBox = computed(() => {
-  if (!$q.screen.lt.sm) return '0 0 1200 260'
+  if (!$q.screen.lt.sm) return `0 0 ${worldW.value} 260`
   const u = Math.min(1, Math.max(0, (scene.value.ferryX - BERTHS[0]) / (BERTHS[1] - BERTHS[0])))
-  return `${(u * (1200 - PHONE_VIEW_W)).toFixed(1)} 85 ${PHONE_VIEW_W} 175`
+  return `${(u * (WORLD_W - PHONE_VIEW_W)).toFixed(1)} 85 ${PHONE_VIEW_W} 175`
 })
 function animateScene() {
   const t0 = performance.now()
   const frame = (now) => {
-    scene.value = goatScene((now - t0) / 1000)
+    scene.value = goatScene((now - t0) / 1000, worldW.value)
     raf = requestAnimationFrame(frame)
   }
   if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
@@ -343,7 +401,10 @@ watch(
     if (!open) return
     index.value = 0
     timer = setInterval(tick, SPOTLIGHT_MS)
-    stopParty = startGoatParty({ onSoundBlocked: (b) => (soundBlocked.value = b) })
+    stopParty = startGoatParty({
+      muted: muted.value,
+      onSoundBlocked: (b) => (soundBlocked.value = b),
+    })
     animateScene()
   },
   { immediate: true },

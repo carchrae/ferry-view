@@ -10,15 +10,19 @@
 // meanwhile the next line builds behind them.
 //
 // Everything is laid out for the Bowen side (dock to the west of its berth)
-// and mirrored across x = 600 for the mainland. SVG viewBox is 0 0 1200 260.
+// and mirrored for the mainland across the middle of a world W units wide
+// (default 1200; wider screens get a wider world — more water, same hills).
+// SVG viewBox is 0 0 W 260.
 
 export const H = 7 // seconds per half cycle
 const DEPART = 4.2
 const CAR_V = 320 // units/s — "much faster"
 const PED_V = 55
 const PED_V_ARRIVE = 70
-const BERTH = 476 // ferry centre at the Bowen dock (mainland: 1200 - BERTH)
-export const BERTHS = [BERTH, 1200 - BERTH]
+const BERTH = 476 // ferry centre at the Bowen dock (mainland: W - BERTH)
+export const WORLD_W = 1200
+export const berths = (W = WORLD_W) => [BERTH, W - BERTH]
+export const BERTHS = berths()
 const DECK_Y = 186 // car deck height (waterline 198 - 12)
 const DOCK = { x: 396, y: 198 } // where the road meets the ramp (s = 0)
 // The dock's hinged ramp: pivots at the dock edge and, lowered, rests on the
@@ -163,9 +167,10 @@ const boarders = (kind, v) => lineAt(kind, v).slice(0, CAPACITY[kind])
 
 // A car at (x, y) heading along (dx, dy): its transform keeps it upright with
 // the headlights (drawn at +x) leading.
+// `mirror` is the world width when drawing the mainland side, else 0.
 function car(item, lane, x, y, dx, dy, mirror, mad = false) {
   if (mirror) {
-    x = 1200 - x
+    x = mirror - x
     dx = -dx
   }
   const flip = dx < 0
@@ -183,7 +188,7 @@ function car(item, lane, x, y, dx, dy, mirror, mad = false) {
 
 function ped(item, x, y, dx, stride, opacity, mirror, mad = false) {
   if (mirror) {
-    x = 1200 - x
+    x = mirror - x
     dx = -dx
   }
   const swing = Math.sin(stride / 3) * 2.2
@@ -242,8 +247,8 @@ function queued(item, s, mirror, bounce = 0) {
 }
 
 // Everything at one dock (side 0 = Bowen, 1 = mainland) at time t.
-function dockItems(t, side, cars, peds, ferryHere) {
-  const mirror = side === 1
+function dockItems(t, side, cars, peds, ferryHere, W) {
+  const mirror = side === 1 ? W : 0
   const h = Math.floor(t / H)
   const v = h - mod(h - side, 2) // this dock's latest visit (half index)
   const sigma = t - v * H
@@ -359,11 +364,12 @@ function dockItems(t, side, cars, peds, ferryHere) {
 
 // The whole scene at time t (seconds): ferry position, the cars and walk-ons
 // riding it (offsets relative to the ferry), and everyone ashore.
-function ferryAt(t) {
+function ferryAt(t, W) {
   const h = Math.floor(t / H)
   const tau = t - h * H
-  const from = BERTHS[mod(h, 2)]
-  const to = 1200 - from
+  const b = berths(W)
+  const from = b[mod(h, 2)]
+  const to = b[1 - mod(h, 2)]
   const moving = tau >= DEPART
   const x = moving ? from + (to - from) * ease((tau - DEPART) / (H - DEPART)) : from
   return { x, dir: Math.sign(to - from), moving }
@@ -373,12 +379,12 @@ function ferryAt(t) {
 // stays where it landed in the water, drifts apart and fades out.
 const WAKE_DT = 0.05
 const WAKE_LIFE = 1.4
-function wakeAt(t) {
+function wakeAt(t, W) {
   const out = []
   const newest = Math.floor(t / WAKE_DT)
   for (let n = newest; n > newest - WAKE_LIFE / WAKE_DT; n--) {
     const born = n * WAKE_DT
-    const f = ferryAt(born)
+    const f = ferryAt(born, W)
     if (!f.moving) continue
     const age = (t - born) / WAKE_LIFE
     for (let k = 0; k < 2; k++) {
@@ -396,11 +402,11 @@ function wakeAt(t) {
   return out
 }
 
-export function goatScene(t) {
+export function goatScene(t, W = WORLD_W) {
   const h = Math.floor(t / H)
   const side = mod(h, 2)
   const tau = t - h * H
-  const { x: ferryX, moving } = ferryAt(t)
+  const { x: ferryX, moving } = ferryAt(t, W)
 
   // Aboard: last visit's riders until they get off, then this visit's once
   // they've boarded. Offsets are physical (ferry frame); the far dock's
@@ -430,11 +436,11 @@ export function goatScene(t) {
 
   const cars = []
   const peds = []
-  dockItems(t, 0, cars, peds, side === 0)
-  dockItems(t, 1, cars, peds, side === 1)
+  dockItems(t, 0, cars, peds, side === 0, W)
+  dockItems(t, 1, cars, peds, side === 1, W)
   return {
     ferryX,
-    wake: wakeAt(t),
+    wake: wakeAt(t, W),
     ramps,
     deck,
     riders,
