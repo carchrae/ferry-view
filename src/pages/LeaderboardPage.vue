@@ -2,6 +2,10 @@
   <q-page class="q-pa-md">
     <div class="row items-center q-mb-sm">
       <div class="text-h6">Bowen Heroes</div>
+      <!-- Desktop: the sign-in prompt sits beside the title (phones get the banner) -->
+      <div v-if="!user && $q.screen.gt.sm" class="q-ml-md text-body2 text-grey-8">
+        <router-link to="/settings">Sign in</router-link> to appear on the leaderboard with your name.
+      </div>
       <q-space />
       <q-btn
         flat
@@ -25,7 +29,7 @@
         <router-link to="/settings">Set your name</router-link>
       </template>
     </q-banner>
-    <q-banner v-else dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
+    <q-banner v-else-if="$q.screen.lt.md" dense rounded class="bg-grey-2 text-grey-9 q-mb-md">
       <router-link to="/settings">Sign in</router-link> to appear on the leaderboard with your name.
     </q-banner>
 
