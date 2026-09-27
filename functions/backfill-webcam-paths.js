@@ -14,47 +14,21 @@
 //   webcams/community/{dateIso}/{sailingTime}_To HSB_{timestamp}.jpg
 //
 // Usage:
-//   GOOGLE_APPLICATION_CREDENTIALS=./credentials.json node backfill-webcam-paths.js [--dry-run] [--project <id>]
+//   node backfill-webcam-paths.js --project <id> [--dry-run]    # auth: firebase login (script-auth.js)
+//   GOOGLE_APPLICATION_CREDENTIALS=./credentials.json node backfill-webcam-paths.js [--dry-run]
 //   node backfill-webcam-paths.js --project bowen-ferry-staging --dry-run
 
-import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
-import { getStorage } from 'firebase-admin/storage'
-import { readFileSync, existsSync } from 'node:fs'
+import { connectAdmin, detectProjectId } from './script-auth.js'
 
 const DRY_RUN = process.argv.includes('--dry-run')
 
-function detectProjectId() {
-  const flag = process.argv.indexOf('--project')
-  if (flag !== -1) return process.argv[flag + 1]
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
-  if (credPath && existsSync(credPath)) {
-    const creds = JSON.parse(readFileSync(credPath, 'utf-8'))
-    if (creds.project_id) return creds.project_id
-  }
-  const adc = process.env.HOME + '/.config/gcloud/application_default_credentials.json'
-  if (existsSync(adc)) {
-    const creds = JSON.parse(readFileSync(adc, 'utf-8'))
-    if (creds.project_id) return creds.project_id
-    if (creds.quota_project_id) return creds.quota_project_id
-  }
-  return process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT
-}
-
 const projectId = detectProjectId()
 if (!projectId) {
-  console.error('Could not detect project ID. Set GOOGLE_APPLICATION_CREDENTIALS or pass --project.')
+  console.error('Could not detect project ID. Pass --project <id> (or set GOOGLE_APPLICATION_CREDENTIALS).')
   process.exit(1)
 }
 
-if (!getApps().length) {
-  initializeApp({
-    projectId,
-    storageBucket: `${projectId}.firebasestorage.app`,
-    credential: applicationDefault(),
-  })
-}
-const db = getFirestore()
+const { db, bucket } = await connectAdmin(projectId, { storage: true })
 
 const COMMUNITY_RE = /^webcams\/community\/(\d{4}-\d{2}-\d{2})\/(\d{2}:\d{2})_To HSB_(\d+)\.jpg$/
 const BOWEN_RE = /^webcams\/bowen\/(\d{4}-\d{2}-\d{2})\/\1_(\d{2}:\d{2})_To HSB_(\d+)\.jpg$/
@@ -94,7 +68,6 @@ async function main() {
   console.log('Backfilling sailingStatus webcam paths from Storage')
   console.log(`  project: ${projectId}${DRY_RUN ? '  (DRY RUN — no writes)' : ''}`)
 
-  const bucket = getStorage().bucket()
   const [files] = await bucket.getFiles({ prefix: 'webcams/' })
   console.log(`  storage files: ${files.length}`)
 

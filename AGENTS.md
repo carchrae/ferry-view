@@ -27,6 +27,11 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
   scripts, screenshots, logs, intermediate data. Don't use `/tmp` or the session temp dir.
   It already has a local `playwright` install (Chromium is in `~/Library/Caches/ms-playwright`)
   for driving the dev server headless — see `.claude/skills/verify`.
+- **Admin scripts**: any local script that connects to Firestore/Storage with admin
+  rights must use `connectAdmin(projectId, { storage })` + `detectProjectId()` from
+  `functions/script-auth.js` — never call `initializeApp`/`applicationDefault()` directly.
+  It uses the `firebase login` account by default (no key file needed) and falls back to
+  firebase-admin with the JSON key when `GOOGLE_APPLICATION_CREDENTIALS` is set.
 - **Sandbox**: Claude runs sandboxed here, so installing npm packages and running local
   tooling is fine without asking. Deploys are still off-limits (Tom runs those).
 

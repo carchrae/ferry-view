@@ -22,12 +22,12 @@
 // Reads the sailing list from training-data/dark-detections-verdict.json
 // (only entries with correct:false are touched).
 //
-// Usage (from repo root; application-default credentials, like backup-db.js):
+// Usage (from repo root; auth via connectAdmin() in script-auth.js):
 //   node functions/cleanup-dark-crosswalk.mjs --project bowen-ferry           # dry run
 //   node functions/cleanup-dark-crosswalk.mjs --project bowen-ferry --apply
 
-import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { FieldValue } from 'firebase-admin/firestore'
+import { connectAdmin } from './script-auth.js'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -45,8 +45,7 @@ if (!projectId) {
 }
 const APPLY = process.argv.includes('--apply')
 
-if (!getApps().length) initializeApp({ projectId, credential: applicationDefault() })
-const db = getFirestore()
+const { db } = await connectAdmin(projectId)
 
 const { sailings } = JSON.parse(readFileSync(VERDICT, 'utf8'))
 const keys = Object.entries(sailings)

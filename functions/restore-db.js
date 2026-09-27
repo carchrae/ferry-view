@@ -1,37 +1,17 @@
-import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
-import { getFirestore, Timestamp } from 'firebase-admin/firestore'
+import { connectAdmin, detectProjectId } from './script-auth.js'
+import { Timestamp } from 'firebase-admin/firestore'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import diff from 'microdiff'
 import { BACKUP_COLLECTIONS } from './lib/backup-collections.js'
 
-function detectProjectId() {
-  const flag = process.argv.indexOf('--project')
-  if (flag !== -1) return process.argv[flag + 1]
-  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
-  if (credPath && existsSync(credPath)) {
-    const creds = JSON.parse(readFileSync(credPath, 'utf-8'))
-    if (creds.project_id) return creds.project_id
-  }
-  const adc = process.env.HOME + '/.config/gcloud/application_default_credentials.json'
-  if (existsSync(adc)) {
-    const creds = JSON.parse(readFileSync(adc, 'utf-8'))
-    if (creds.project_id) return creds.project_id
-    if (creds.quota_project_id) return creds.quota_project_id
-  }
-  return process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT
-}
-
 const projectId = detectProjectId()
 if (!projectId) {
-  console.error('Could not detect project ID. Set GOOGLE_APPLICATION_CREDENTIALS or pass --project.')
+  console.error('Could not detect project ID. Pass --project <id> (or set GOOGLE_APPLICATION_CREDENTIALS).')
   process.exit(1)
 }
 
-if (!getApps().length) {
-  initializeApp({ projectId, credential: applicationDefault() })
-}
-const db = getFirestore()
+const { db } = await connectAdmin(projectId)
 
 const BACKUP_DIR = process.argv.includes('--path')
   ? process.argv[process.argv.indexOf('--path') + 1]

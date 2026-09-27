@@ -32,11 +32,12 @@
  * Usage:
  *   node functions/scripts/repair-arrival-photo-attribution.js [--project bowen-ferry-staging] [--dry-run]
  *
- * Auth: application-default credentials (same as restore-db.js).
+ * Auth: connectAdmin() in ../script-auth.js (`firebase login`, or
+ * GOOGLE_APPLICATION_CREDENTIALS).
  */
 
-import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import { FieldValue } from 'firebase-admin/firestore'
+import { connectAdmin } from '../script-auth.js'
 import { arrivalLineupTarget } from '../lib/webcam-decision.js'
 import { recomputeBowenSailings } from '../lib/bowen-sailings-aggregate.js'
 import { timeToDate, nowInVancouver } from '../lib/time.js'
@@ -46,10 +47,7 @@ const DRY_RUN = args.includes('--dry-run')
 const flagIdx = args.indexOf('--project')
 const PROJECT = flagIdx >= 0 ? args[flagIdx + 1] : 'bowen-ferry-staging'
 
-if (!getApps().length) {
-  initializeApp({ projectId: PROJECT, credential: applicationDefault() })
-}
-const db = getFirestore()
+const { db } = await connectAdmin(PROJECT)
 
 async function main() {
   console.log(`Project: ${PROJECT}  Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'}`)

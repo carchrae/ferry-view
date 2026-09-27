@@ -209,7 +209,7 @@ function main() {
   save('rides', rides.map(migrateRide))
 
   console.log('\nDone. Review the output then restore with:')
-  console.log(`  GOOGLE_APPLICATION_CREDENTIALS=./credentials.json node restore-db.js --path ${DST}`)
+  console.log(`  node restore-db.js --project <id> --path ${DST}`)
 }
 
 main()

@@ -15,8 +15,8 @@
 #        npm run staging:refresh -- --days 14       # smaller window
 #        npm run staging:refresh -- 90m --full      # complete mirror
 #
-# Auth: application-default credentials with access to BOTH projects
-# (GOOGLE_APPLICATION_CREDENTIALS or `gcloud auth application-default login`).
+# Auth: an account with access to BOTH projects — `firebase login`, or
+# GOOGLE_APPLICATION_CREDENTIALS pointing at a key file (functions/script-auth.js).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

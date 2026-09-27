@@ -36,6 +36,8 @@
     "staging:refresh": "bash scripts/staging-refresh.sh",
     "staging:refresh:full": "bash scripts/staging-refresh.sh --full",
     "staging:run-until": "node functions/staging-run-until.js",
+    "leaderboard:rebuild": "node functions/rebuild-leaderboard.js",
+    "leaderboard:rebuild:production": "node functions/rebuild-leaderboard.js --project bowen-ferry",
     "firebase-config": "bash scripts/get-firebase-config.sh",
     "update-vapid-keys:staging": "bash scripts/rotate-vapid-keys.sh staging",
     "generate-vapid-keys:staging": "bash scripts/generate-vapid-keys.sh staging",

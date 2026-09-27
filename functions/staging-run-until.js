@@ -12,11 +12,10 @@
 //   node staging-run-until.js off               # dormant right now
 //   node staging-run-until.js status            # show the current flag
 //
-// Auth: application-default credentials, like backup-db.js
-// (GOOGLE_APPLICATION_CREDENTIALS or `gcloud auth application-default login`).
+// Auth: connectAdmin() in script-auth.js — `firebase login`, or
+// GOOGLE_APPLICATION_CREDENTIALS pointing at a key file.
 
-import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app'
-import { getFirestore } from 'firebase-admin/firestore'
+import { connectAdmin } from './script-auth.js'
 import { STAGING_PROJECT_ID, CONTROL_COLLECTION, CONTROL_DOC } from './lib/control.js'
 
 const PROD_PROJECT_ID = 'bowen-ferry'
@@ -61,15 +60,13 @@ function fail(msg) {
 
 const target = parseTarget()
 
-if (!getApps().length) {
-  initializeApp({ projectId, credential: applicationDefault() })
-}
-const ref = getFirestore().collection(CONTROL_COLLECTION).doc(CONTROL_DOC)
+const { db } = await connectAdmin(projectId)
+const ref = db.collection(CONTROL_COLLECTION).doc(CONTROL_DOC)
 
 const fmt = (ms) => new Date(ms).toLocaleString()
 
 // The admin SDK retries credential failures indefinitely — fail fast instead
-// so a missing ADC login is obvious.
+// so a missing/expired login is obvious.
 function withTimeout(promise, ms = 10_000) {
   return Promise.race([
     promise,
@@ -102,7 +99,7 @@ try {
 } catch (e) {
   console.error(`Failed talking to Firestore in ${projectId}:`, e.message || e)
   console.error(
-    'Credentials: set GOOGLE_APPLICATION_CREDENTIALS or run `gcloud auth application-default login`.',
+    'Credentials: run `npx firebase login`, or set GOOGLE_APPLICATION_CREDENTIALS to a key file.',
   )
   process.exit(1)
 }
