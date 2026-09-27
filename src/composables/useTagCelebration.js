@@ -308,3 +308,116 @@ function floatLabel(layer, origin, text, size) {
 function rand(min, max) {
   return min + Math.random() * (max - min)
 }
+
+// --- GOAT party ----------------------------------------------------------
+// Looping fireworks + a deliberately cheesy chiptune stadium anthem (an
+// original tune, not a cover) while the leaderboard's "Bowen GOATs" panel is
+// open. Returns a stop() that silences and clears everything. Honours the
+// effects preference; fireworks also skip under prefers-reduced-motion.
+
+const NOTE = { A2: 110, C3: 130.81, F2: 87.31, G2: 98, E4: 329.63, F4: 349.23, G4: 392 }
+Object.assign(NOTE, { A4: 440, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46 })
+
+// Lead line as "note:eighths", one bar per string (I–vi–IV–V, twice, big finish).
+const ANTHEM_LEAD = [
+  'E4:2 G4:2 C5:3 B4:1',
+  'A4:4 E4:2 A4:2',
+  'F4:2 A4:2 C5:2 D5:2',
+  'D5:4 B4:2 G4:2',
+  'E5:3 D5:1 C5:2 G4:2',
+  'A4:2 C5:2 F5:4',
+  'E5:2 D5:2 C5:2 D5:2',
+  'C5:8',
+]
+  .join(' ')
+  .split(' ')
+  .map((s) => s.split(':'))
+// Bass root per half bar, pumped as eighth notes.
+const ANTHEM_BASS = 'C3 C3 A2 A2 F2 F2 G2 G2 C3 C3 A2 F2 G2 G2 C3 C3'.split(' ')
+const EIGHTH = 60 / 76 / 2 // seconds, at a stately 76 bpm
+
+function scheduleAnthem(ctx, out, t0) {
+  const tone = (f, at, d, type, g, detune = 0) => {
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.type = type
+    osc.frequency.setValueAtTime(f, at)
+    osc.detune.setValueAtTime(detune, at)
+    gain.gain.setValueAtTime(0.0001, at)
+    gain.gain.exponentialRampToValueAtTime(g, at + 0.02)
+    gain.gain.setValueAtTime(g, at + Math.max(0.03, d - 0.06))
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + d)
+    osc.connect(gain).connect(out)
+    osc.start(at)
+    osc.stop(at + d + 0.05)
+  }
+  let t = t0
+  for (const [n, len] of ANTHEM_LEAD) {
+    const d = Number(len) * EIGHTH
+    // Two slightly detuned squares = that authentic General MIDI wobble.
+    tone(NOTE[n], t, d * 0.95, 'square', 0.035)
+    tone(NOTE[n], t, d * 0.95, 'square', 0.02, 9)
+    t += d
+  }
+  ANTHEM_BASS.forEach((n, half) => {
+    for (let i = 0; i < 4; i++)
+      tone(NOTE[n], t0 + (half * 4 + i) * EIGHTH, EIGHTH * 0.8, 'triangle', 0.09)
+  })
+  return t - t0 // loop length in seconds
+}
+
+export function startGoatParty() {
+  if (typeof window === 'undefined' || !effectsEnabled()) return () => {}
+  const timers = []
+  let stopped = false
+
+  // Music: schedule one loop at a time, queueing the next just before the end.
+  const ctx = getCtx()
+  let master = null
+  if (ctx) {
+    master = ctx.createGain()
+    master.gain.value = 1
+    master.connect(ctx.destination)
+    const loop = (at) => {
+      if (stopped) return
+      const len = scheduleAnthem(ctx, master, at)
+      timers.push(setTimeout(() => loop(at + len), (at + len - ctx.currentTime - 0.3) * 1000))
+    }
+    loop(ctx.currentTime + 0.05)
+  }
+
+  // Fireworks: a random shell over the upper screen every ~0.6 s.
+  let layer = null
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  if (!reduced && typeof document !== 'undefined') {
+    layer = document.createElement('div')
+    layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;'
+    document.body.appendChild(layer)
+    const shell = () => {
+      if (stopped) return
+      burst(
+        layer,
+        rand(0.1, 0.9) * window.innerWidth,
+        rand(0.1, 0.6) * window.innerHeight,
+        22,
+        rand(120, 220),
+      )
+      // Spent sparks are invisible (fill: forwards) — prune them.
+      while (layer.childElementCount > 200) layer.firstChild.remove()
+      timers.push(setTimeout(shell, rand(350, 850)))
+    }
+    shell()
+  }
+
+  return function stop() {
+    if (stopped) return
+    stopped = true
+    timers.forEach(clearTimeout)
+    if (master && ctx) {
+      // Quick fade so already-scheduled notes don't cut off with a click.
+      master.gain.setTargetAtTime(0, ctx.currentTime, 0.05)
+      setTimeout(() => master.disconnect(), 400)
+    }
+    if (layer) setTimeout(() => layer.remove(), 1600) // let the last sparks fall
+  }
+}

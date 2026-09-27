@@ -29,6 +29,29 @@
       <router-link to="/settings">Sign in</router-link> to appear on the leaderboard with your name.
     </q-banner>
 
+    <!-- Bowen GOATs: all-time top contributors (the boards below rank by 30
+         days). Opens a full-screen celebration. -->
+    <div v-if="goats.reporters.length || goats.riders.length" class="row q-mb-md">
+      <div class="col-12 col-md-6">
+        <q-item clickable v-ripple class="goats-launch rounded-borders" @click="goatsOpen = true">
+          <q-item-section avatar class="goats-icon">🐐</q-item-section>
+          <q-item-section>
+            <q-item-label class="text-subtitle1 text-weight-medium">Bowen GOATs</q-item-label>
+            <q-item-label caption>Greatest of all time — top contributors</q-item-label>
+            <q-item-label caption class="text-grey-9 q-mt-xs">
+              <span v-for="e in goatLeaders" :key="e.userUid" class="q-mr-md">
+                🥇 {{ e.anonymous ? 'Anonymous' : formatReporterName(e.userName) }}
+              </span>
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-icon name="celebration" color="amber-8" size="28px" />
+          </q-item-section>
+        </q-item>
+      </div>
+    </div>
+    <GoatsDialog v-model="goatsOpen" :goats="goats" />
+
     <div class="row q-col-gutter-md">
       <!-- Capacity reporters -->
       <div class="col-12 col-md-6">
@@ -120,14 +143,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
+import { useRoute, useRouter } from 'vue-router'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
 import { round1 } from '../../functions/lib/leaderboard-score.js'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { useAuth } from 'src/composables/useAuth'
 import LeaderboardList from 'src/components/LeaderboardList.vue'
 import ScoringExplainDialog from 'src/components/ScoringExplainDialog.vue'
+import GoatsDialog from 'src/components/GoatsDialog.vue'
 import { dayjs, formatTime12h, TZ } from '../../functions/lib/time.js'
 
 const $q = useQuasar()
@@ -137,6 +162,24 @@ const { user } = useAuth()
 const loading = ref(true)
 const board = ref([])
 const rideBoard = ref([])
+// All-time top scorers, precomputed server-side (absent in the client fallback).
+const goats = ref({ reporters: [], riders: [] })
+// The GOATs dialog lives at /leaderboard/goats (linkable; Back closes it).
+const route = useRoute()
+const router = useRouter()
+const goatsOpen = computed({
+  get: () => route.params.goats === 'goats',
+  set: (open) => {
+    if (open) router.push('/leaderboard/goats')
+    // Opened from the board → step back; opened from a link → swap the URL.
+    else if (window.history.state?.back === '/leaderboard') router.back()
+    else router.replace('/leaderboard')
+  },
+})
+// The #1 of each board, teased on the launch row.
+const goatLeaders = computed(() =>
+  [goats.value.reporters[0], goats.value.riders[0]].filter(Boolean),
+)
 let unsubscribe = null
 
 const showScoring = ref(false)
@@ -196,10 +239,11 @@ onMounted(() => {
   // Live-subscribe to the precomputed board; fall back to client aggregation
   // only until the server has seeded the doc.
   unsubscribe = subscribeLeaderboard(
-    ({ reporters, riders, exists }) => {
+    ({ reporters, riders, goats: g, exists }) => {
       if (exists) {
         board.value = reporters
         rideBoard.value = riders
+        goats.value = g
         loading.value = false
       } else {
         load()
@@ -216,3 +260,14 @@ onUnmounted(() => {
   if (unsubscribe) unsubscribe()
 })
 </script>
+
+<style scoped>
+.goats-launch {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+.goats-icon {
+  font-size: 28px;
+  min-width: 0;
+  padding-right: 12px;
+}
+</style>

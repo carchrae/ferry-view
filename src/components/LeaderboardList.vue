@@ -37,6 +37,9 @@
           </q-item-label>
           <q-item-label caption>
             {{ entry.reportCount }} {{ countNoun }}{{ entry.reportCount === 1 ? '' : 's' }}
+            <template v-if="entry.allTimeCredits != null">
+              · {{ entry.allTimeCredits.toFixed(1) }} all time
+            </template>
           </q-item-label>
         </q-item-section>
         <q-item-section side>

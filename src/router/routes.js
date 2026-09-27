@@ -12,7 +12,9 @@ const routes = [
       // redirect so bookmarks and links already out in the world still land.
       { path: 'status', redirect: '/history' },
       { path: 'bowen-departures', component: () => import('pages/BowenDeparturesPage.vue') },
-      { path: 'leaderboard', component: () => import('pages/LeaderboardPage.vue') },
+      // /leaderboard/goats opens the Bowen GOATs celebration over the board
+      // (one record, so the page isn't remounted when the dialog toggles).
+      { path: 'leaderboard/:goats(goats)?', component: () => import('pages/LeaderboardPage.vue') },
       // Was 'profile'. The page grew past a profile — display preferences and
       // notifications live here too — so it is Settings now, with the old path
       // redirecting rather than breaking links already shared.

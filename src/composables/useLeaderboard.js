@@ -117,7 +117,8 @@ export function useLeaderboard() {
 
   // Live-subscribe to the server-precomputed board (aggregates/leaderboard),
   // avoiding a full collection scan on every page load. onData receives
-  // { reporters, riders, exists, updatedAt }; `exists` is false until the first
+  // { reporters, riders, goats, exists, updatedAt } (goats = all-time top
+  // { reporters, riders }); `exists` is false until the first
   // server recompute has run, so callers can fall back to client aggregation.
   // Returns the unsubscribe function.
   function subscribeLeaderboard(onData, onError) {
@@ -128,6 +129,7 @@ export function useLeaderboard() {
         onData({
           reporters: d?.reporters || [],
           riders: d?.riders || [],
+          goats: d?.goats || { reporters: [], riders: [] },
           exists: snap.exists(),
           updatedAt: d?.updatedAt || null,
         })

@@ -6,6 +6,7 @@ import {
   CROSSWALK_BUCKET_MS,
   aggregateLeaderboard,
   aggregateRideLeaderboard,
+  attachAllTime,
   formatReporterName,
 } from '../functions/lib/leaderboard-score.js'
 
@@ -376,5 +377,31 @@ describe('formatReporterName', () => {
     assert.equal(formatReporterName('  Jane  Q  Doe '), 'Jane D.')
     assert.equal(formatReporterName(''), 'Anonymous')
     assert.equal(formatReporterName(null), 'Anonymous')
+  })
+})
+
+describe('attachAllTime', () => {
+  it('annotates windowed entries with all-time credits without re-ranking', () => {
+    const board = [
+      { userUid: 'A', credits: 3 },
+      { userUid: 'B', credits: 2 },
+    ]
+    const allTime = [
+      { userUid: 'B', credits: 40 },
+      { userUid: 'C', credits: 20 },
+      { userUid: 'A', credits: 5 },
+    ]
+    const out = attachAllTime(board, allTime)
+    assert.deepEqual(
+      out.map((e) => [e.userUid, e.credits, e.allTimeCredits]),
+      [
+        ['A', 3, 5],
+        ['B', 2, 40],
+      ],
+    )
+  })
+
+  it('falls back to windowed credits when missing from the all-time board', () => {
+    assert.equal(attachAllTime([{ userUid: 'A', credits: 1.5 }], [])[0].allTimeCredits, 1.5)
   })
 })

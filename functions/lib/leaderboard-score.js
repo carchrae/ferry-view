@@ -210,6 +210,14 @@ function finalizeBoard(totals) {
     )
 }
 
+// Annotate each entry of a windowed board with the user's all-time credits
+// (display only — the windowed board keeps its own ranking). Falls back to the
+// windowed credits if the user is somehow missing from the all-time board.
+export function attachAllTime(board, allTimeBoard) {
+  const allTime = new Map((allTimeBoard || []).map((e) => [e.userUid, e.credits]))
+  return (board || []).map((e) => ({ ...e, allTimeCredits: allTime.get(e.userUid) ?? e.credits }))
+}
+
 // Round to 1 decimal, avoiding floating-point noise like 0.30000000000000004.
 export function round1(n) {
   return Math.round(n * 10) / 10
