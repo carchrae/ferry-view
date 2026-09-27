@@ -118,7 +118,7 @@
         <clipPath id="goat-above-water">
           <rect x="-50" y="-60" width="100" height="62" />
         </clipPath>
-        <g v-if="scene.whale" :transform="`translate(${scene.whale.x.toFixed(1)} 205)`">
+        <g v-if="scene.whale" :transform="`translate(${scene.whale.x.toFixed(1)} ${WHALE_Y})`">
           <g clip-path="url(#goat-above-water)">
             <!-- tail flukes -->
             <path
@@ -142,7 +142,7 @@
             v-for="d in scene.whale.spray"
             :key="`sp${d.id}`"
             :cx="(d.x - scene.whale.x).toFixed(1)"
-            :cy="(d.y - 205).toFixed(1)"
+            :cy="(d.y - WHALE_Y).toFixed(1)"
             :r="d.r.toFixed(2)"
             :opacity="d.opacity.toFixed(2)"
             fill="#e3f2fd"
@@ -361,6 +361,7 @@ import {
   WORLD_W,
   RAMP_PIVOT,
   RAMP_LENGTH,
+  WHALE_Y,
 } from './goat-scene.js'
 import { useHistoricalStats } from 'src/composables/useHistoricalStats'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'

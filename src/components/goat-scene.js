@@ -120,6 +120,7 @@ const dockDelay = (h) => (h >= 0 && rampJams(h) ? DOCK_BREAKDOWN_S + SMOKE_CLEAR
 // just short of it and waits until the whale has gone back under (about one
 // crossing in five, never on a breakdown crossing; the first comes early).
 const WHALE_S = 3.4
+export const WHALE_Y = 198 // the whale breaks the surface right at the horizon line
 const FIRST_WHALE = 1
 export const whaleCrossing = (h) =>
   h >= 0 && !breaksDown(h) && (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h, 13) < 0.2))
@@ -613,7 +614,7 @@ function whaleAt(t, W) {
       spray.push({
         id: k,
         x: x + vx * a,
-        y: 205 - 7 + vy * a + 70 * a * a,
+        y: WHALE_Y - 7 + vy * a + 70 * a * a,
         r: 1.2 + a * 1.4,
         opacity: Math.max(0, 1 - a / 1.3) * 0.9,
       })
