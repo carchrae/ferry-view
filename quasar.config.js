@@ -106,6 +106,14 @@ export default defineConfig((ctx) => {
       },
       port: 9000,
       open: false,
+      client: {
+        overlay: {
+          // "ResizeObserver loop …" is a benign browser warning (layout settled
+          // a frame late), not an app error — keep it out of the dev overlay.
+          // Serialized to the browser, so it must be self-contained.
+          runtimeErrors: (error) => !/ResizeObserver loop/.test(error?.message || ''),
+        },
+      },
       proxy: [
         {
           context: ['/api'],
