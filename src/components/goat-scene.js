@@ -299,12 +299,28 @@ function queued(item, s, mirror, bounce = 0) {
   return car(item, 'in', p.x, p.y + LANE.in - bounce, -p.tx, -p.ty, mirror, bounce > 0)
 }
 
-// Everything at one dock (side 0 = Bowen, 1 = mainland) at time t.
-// A confused little hop, out of step person to person.
-const puzzledHop = (t, id) =>
-  Math.abs(Math.sin(t * 9 + id.length * 1.3 + id.charCodeAt(id.length - 1))) * 4
+// Confused, during a breakdown: a little hop, out of step person to person…
+const seedOf = (id) => id.length * 1.3 + id.charCodeAt(id.length - 1)
+const puzzledHop = (t, id) => Math.abs(Math.sin(t * 9 + seedOf(id))) * 4
+// …while wandering back and forth. `off` is how far they've strayed (units),
+// `dir` which way they're heading (+1 = toward larger off).
+function puzzledWander(t, id) {
+  const k = seedOf(id)
+  const off = 7 * Math.sin(t * 1.1 + k) + 3 * Math.sin(t * 2.3 + k * 1.7)
+  const vel = 7.7 * Math.cos(t * 1.1 + k) + 6.9 * Math.cos(t * 2.3 + k * 1.7)
+  return { off, dir: vel >= 0 ? 1 : -1 }
+}
+// A confused walk-on standing at road position s: wandering along the road
+// around it, facing the way they're going, legs going, hopping.
+function lostPed(item, t, s, mirror) {
+  const w = puzzledWander(t, item.id)
+  const p = roadAt(Math.max(2, s + w.off))
+  const dx = w.dir > 0 ? p.tx : -p.tx
+  return ped(item, p.x, p.y + LANE.walk - puzzledHop(t, item.id), dx, t * 25, 1, mirror, 'confused')
+}
 
-// `puzzled`: a breakdown is on, so anyone standing around hops, confused.
+// Everything at one dock (side 0 = Bowen, 1 = mainland) at time t.
+// `puzzled`: a breakdown is on, so anyone standing around is confused.
 function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const mirror = side === 1 ? W : 0
   const { h } = halfAt(t)
@@ -349,13 +365,13 @@ function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
       // Move up with the boarding crowd to the front of the loading dock,
       // then hop there, furious, as the ferry leaves without them.
       const mad = sigma >= HOP[0] && sigma < HOP[1]
-      const hop = mad
-        ? Math.abs(Math.sin(sigma * 11 + j * 1.7)) * 7
-        : puzzled
-          ? puzzledHop(t, item.id)
-          : 0
+      const hop = mad ? Math.abs(Math.sin(sigma * 11 + j * 1.7)) * 7 : 0
       const e = Math.max(0, sigma - PED_LOAD(j)) * PED_V
       const s = Math.max(WAIT_S(j - nWalk), WAIT_S(j) - e)
+      if (puzzled && !mad) {
+        peds.push(lostPed(item, t, s, mirror))
+        return
+      }
       const p = roadAt(s)
       peds.push(
         ped(
@@ -366,13 +382,16 @@ function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
           s < WAIT_S(j) && s > WAIT_S(j - nWalk) ? e : 0,
           1,
           mirror,
-          mad ? 'mad' : puzzled ? 'confused' : null,
+          mad ? 'mad' : null,
         ),
       )
     } else if (sigma < PED_LOAD(j)) {
+      if (puzzled) {
+        peds.push(lostPed(item, t, WAIT_S(j), mirror))
+        return
+      }
       const p = roadAt(WAIT_S(j))
-      const hop = puzzled ? puzzledHop(t, item.id) : 0
-      peds.push(ped(item, p.x, p.y + LANE.walk - hop, 1, 0, 1, mirror, puzzled ? 'confused' : null))
+      peds.push(ped(item, p.x, p.y + LANE.walk, 1, 0, 1, mirror))
     } else {
       const e = (sigma - PED_LOAD(j)) * PED_V
       if (e < WAIT_S(j)) {
@@ -393,20 +412,11 @@ function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
     const slot = WAIT_S(leftPeds + i)
     const p = roadAt(Math.max(slot, PED_START_S - e))
     const walking = PED_START_S - e > slot
-    const lost = puzzled && !walking
-    const hop = lost ? puzzledHop(t, item.id) : 0
-    peds.push(
-      ped(
-        item,
-        p.x,
-        p.y + LANE.walk - hop,
-        1,
-        walking ? e : 0,
-        Math.min(1, e / 20),
-        mirror,
-        lost ? 'confused' : null,
-      ),
-    )
+    if (puzzled && !walking) {
+      peds.push(lostPed(item, t, slot, mirror))
+      return
+    }
+    peds.push(ped(item, p.x, p.y + LANE.walk, 1, walking ? e : 0, Math.min(1, e / 20), mirror))
   })
 
   if (!ferryHere) return
@@ -626,17 +636,14 @@ function sceneFrame(S, t, W) {
   const side = mod(h, 2)
   const { x: ferryX, moving, stalled, jammed, troubled } = ferryAt(t, W)
   const puzzled = stalled || jammed
-  const riderAt = (item, x) =>
-    ped(
-      item,
-      x,
-      -45 - (puzzled ? puzzledHop(t, item.id) : 0),
-      1,
-      0,
-      1,
-      false,
-      puzzled ? 'confused' : null,
-    )
+  // Riders up top; confused ones pace the roof near their spot as they hop.
+  const riderAt = (item, x) => {
+    if (!puzzled) return ped(item, x, -45, 1, 0, 1, false)
+    const w = puzzledWander(t, item.id)
+    const hop = puzzledHop(t, item.id)
+    const roofX = Math.max(-36, Math.min(36, x + w.off * 0.6)) // inside the railings
+    return ped(item, roofX, -45 - hop, w.dir, t * 25, 1, false, 'confused')
+  }
 
   // Aboard: last visit's riders until they get off, then this visit's once
   // they've boarded. Offsets are physical (ferry frame); the far dock's
