@@ -120,12 +120,33 @@
         </clipPath>
         <g v-if="scene.whale" :transform="`translate(${scene.whale.x.toFixed(1)} 205)`">
           <g clip-path="url(#goat-above-water)">
+            <!-- tail flukes -->
             <path
+              v-if="scene.whale.kind === 'tail'"
               :transform="`translate(0 ${((1 - scene.whale.rise) * 26).toFixed(1)}) rotate(${scene.whale.tilt.toFixed(1)}) scale(${scene.whale.flip ? -1 : 1} 1)`"
               d="M-2 4 C -2 -6 -4 -12 -6 -16 C -12 -18 -20 -18 -26 -24 C -18 -24 -10 -22 -4 -20 C -2 -22 0 -23 0 -23 C 0 -23 2 -22 4 -20 C 10 -22 18 -24 26 -24 C 20 -18 12 -18 6 -16 C 4 -12 2 -6 2 4 Z"
-              fill="#263845"
+              fill="#7d8f9c"
+            />
+            <!-- or its back, breaking the surface -->
+            <ellipse
+              v-else
+              cx="0"
+              :cy="(9 - scene.whale.rise * 6).toFixed(1)"
+              rx="26"
+              ry="9"
+              fill="#7d8f9c"
             />
           </g>
+          <!-- …and the spout -->
+          <circle
+            v-for="d in scene.whale.spray"
+            :key="`sp${d.id}`"
+            :cx="(d.x - scene.whale.x).toFixed(1)"
+            :cy="(d.y - 205).toFixed(1)"
+            :r="d.r.toFixed(2)"
+            :opacity="d.opacity.toFixed(2)"
+            fill="#e3f2fd"
+          />
           <g v-if="scene.whale.splash" fill="#e3f2fd">
             <circle
               v-for="k in 6"
@@ -524,11 +545,26 @@ const sceneViewBox = computed(() => {
   const u = Math.min(1, Math.max(0, (scene.value.ferryX - BERTHS[0]) / (BERTHS[1] - BERTHS[0])))
   return `${(u * (WORLD_W - PHONE_VIEW_W)).toFixed(1)} 85 ${PHONE_VIEW_W} 175`
 })
+// Sound cues from the scene: a breakdown (at sea or a jammed ramp) stops the
+// anthem for a sad trombone; a whale surfacing gets a surprised jingle.
+let lastTrouble = false
+let lastWhale = null
+function cueSounds(s) {
+  const trouble = s.stalled || s.jammed
+  if (trouble !== lastTrouble) stopParty?.setTrouble?.(trouble)
+  lastTrouble = trouble
+  const whale = s.whale?.id ?? null
+  if (whale && whale !== lastWhale) stopParty?.cue?.('whale')
+  lastWhale = whale
+}
 function animateScene() {
+  lastTrouble = false
+  lastWhale = null
   const t0 = performance.now()
   const frame = (now) => {
     sceneT.value = (now - t0) / 1000
     scene.value = sceneAt(sceneT.value, worldW.value)
+    cueSounds(scene.value)
     raf = requestAnimationFrame(frame)
   }
   if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)

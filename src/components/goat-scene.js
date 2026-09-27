@@ -570,17 +570,40 @@ function wakeAt(t, W) {
   return out
 }
 
-// The whale on a whale crossing: its tail surfaces just ahead of the stopped
-// ferry's bow, hangs there, and slips back under with a splash.
+// The whale on a whale crossing, just ahead of the stopped ferry's bow: either
+// its tail surfaces, hangs there and slips back under with a splash, or its
+// back breaks the surface and it blows a spout of spray.
 function whaleAt(t, W) {
   const f = ferryAt(t, W)
   if (f.whaleStop == null) return null
   const age = f.whaleStop
   // rise (0→1) over the first fifth, hold, sink over the last third
   const rise = age < 0.2 ? age / 0.2 : age > 0.67 ? Math.max(0, (1 - age) / 0.33) : 1
+  const x = f.x + f.dir * (66 + 34 + rnd(f.h, 15) * 20) // bow + a respectful gap
+  const kind = rnd(f.h, 17) < 0.45 ? 'spout' : 'tail'
+  // Spout spray: droplets fanning up from the blowhole while the back is up.
+  const spray = []
+  const sprayT = (age - 0.22) * WHALE_S
+  if (kind === 'spout' && sprayT > 0 && age < 0.8) {
+    for (let k = 0; k < 14; k++) {
+      const a = sprayT - (k % 4) * 0.12 // a few waves of droplets
+      if (a <= 0 || a > 1.3) continue
+      const vx = (rnd(f.h * 31 + k, 18) - 0.5) * 34
+      const vy = -58 - rnd(f.h * 31 + k, 19) * 26
+      spray.push({
+        id: k,
+        x: x + vx * a,
+        y: 205 - 7 + vy * a + 70 * a * a,
+        r: 1.2 + a * 1.4,
+        opacity: Math.max(0, 1 - a / 1.3) * 0.9,
+      })
+    }
+  }
   return {
     id: `whale${f.h}`,
-    x: f.x + f.dir * (66 + 34 + rnd(f.h, 15) * 20), // bow + a respectful gap
+    kind,
+    spray,
+    x,
     rise,
     tilt: (rnd(f.h, 52) - 0.5) * 16 + (age > 0.67 ? (age - 0.67) * 40 : 0),
     flip: rnd(f.h, 53) < 0.5,
@@ -645,6 +668,7 @@ function sceneFrame(S, t, W) {
     flames: flamesAt(t, W),
     whale: whaleAt(t, W),
     stalled,
+    jammed,
     // The real sailing being replayed right now (season sampler), if any.
     sailing: S.sampler?.sailing(h) ?? null,
     ramps,

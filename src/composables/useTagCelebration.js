@@ -372,6 +372,98 @@ function scheduleAnthem(ctx, out, t0) {
   return t - t0 // loop length in seconds
 }
 
+// --- Scene sound effects (same 8-bit voice as the anthem) ----------------
+
+// One square/triangle voice: frequency follows `path` ([seconds, Hz] points,
+// exponential between them), with an optional vibrato and a doubled,
+// slightly detuned copy for the General MIDI wobble.
+function voice(
+  ctx,
+  out,
+  { at, d, g, type = 'square', path, vibrato = 0, rate = 5.5, attack = 0.03 },
+) {
+  for (const [detune, gain] of [
+    [0, g],
+    [9, g * 0.55],
+  ]) {
+    const osc = ctx.createOscillator()
+    const env = ctx.createGain()
+    osc.type = type
+    osc.detune.value = detune
+    osc.frequency.setValueAtTime(path[0][1], at)
+    for (const [dt, f] of path.slice(1)) osc.frequency.exponentialRampToValueAtTime(f, at + dt)
+    if (vibrato) {
+      const lfo = ctx.createOscillator()
+      const depth = ctx.createGain()
+      lfo.frequency.value = rate
+      depth.gain.value = vibrato // cents
+      lfo.connect(depth).connect(osc.detune)
+      lfo.start(at)
+      lfo.stop(at + d + 0.05)
+    }
+    env.gain.setValueAtTime(0.0001, at)
+    env.gain.exponentialRampToValueAtTime(gain, at + attack)
+    env.gain.setValueAtTime(gain, at + Math.max(attack + 0.01, d - 0.12))
+    env.gain.exponentialRampToValueAtTime(0.0001, at + d)
+    osc.connect(env).connect(out)
+    osc.start(at)
+    osc.stop(at + d + 0.05)
+  }
+}
+
+// "Wah wah wah waaah": four notes stepping down a semitone, each sagging
+// flat as it goes, the last one long and wobbling.
+function sadTrombone(ctx, out, t0) {
+  const notes = [233.08, 220, 207.65, 196] // B♭3 A3 A♭3 G3
+  notes.forEach((f, i) => {
+    const last = i === notes.length - 1
+    const d = last ? 1.6 : 0.46
+    voice(ctx, out, {
+      at: t0 + i * 0.5,
+      d,
+      g: 0.07,
+      attack: 0.07,
+      path: [
+        [0, f * 1.02],
+        [d * 0.85, f * (last ? 0.97 : 0.985)],
+      ],
+      vibrato: last ? 35 : 0,
+      rate: 6,
+    })
+  })
+}
+
+// A surprised "whoa!" (a quick upward swoop and a sparkle), then a low,
+// wobbly whale-song sweep.
+function surprisedWhale(ctx, out, t0) {
+  voice(ctx, out, {
+    at: t0,
+    d: 0.26,
+    g: 0.045,
+    path: [
+      [0, 300],
+      [0.24, 1250],
+    ],
+  })
+  ;[1046.5, 1318.51, 1567.98].forEach((f, i) =>
+    voice(ctx, out, { at: t0 + 0.28 + i * 0.07, d: 0.09, g: 0.035, path: [[0, f]] }),
+  )
+  voice(ctx, out, {
+    at: t0 + 0.6,
+    d: 1.7,
+    g: 0.13,
+    type: 'triangle',
+    attack: 0.15,
+    path: [
+      [0, 140],
+      [0.55, 270],
+      [1.5, 105],
+    ],
+    vibrato: 30,
+    rate: 4,
+  })
+}
+
 export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
   if (typeof window === 'undefined' || !effectsEnabled()) return () => {}
   const timers = []
@@ -381,13 +473,18 @@ export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
   // Music: schedule one loop at a time, queueing the next just before the end.
   const ctx = getCtx()
   let master = null
+  let anthem = null
   if (ctx) {
     master = ctx.createGain()
     master.gain.value = muted ? 0 : 1
     master.connect(ctx.destination)
+    // The anthem runs through its own bus so scene events can fade it out
+    // (breakdown) or dip it (whale) while their jingles play on top.
+    anthem = ctx.createGain()
+    anthem.connect(master)
     const loop = (at) => {
       if (stopped) return
-      const len = scheduleAnthem(ctx, master, at)
+      const len = scheduleAnthem(ctx, anthem, at)
       timers.push(setTimeout(() => loop(at + len), (at + len - ctx.currentTime - 0.3) * 1000))
     }
     // Only start the anthem once audio actually runs (see above).
@@ -440,6 +537,28 @@ export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
     if (layer) setTimeout(() => layer.remove(), 1600) // let the last sparks fall
   }
   stop.unlockSound = () => ctx?.resume()
+
+  // Scene events. A breakdown silences the anthem and plays a sad trombone
+  // until it's over; a whale dips the anthem under a surprised jingle.
+  const playing = () => !stopped && master && ctx.state === 'running'
+  let trouble = false
+  stop.setTrouble = (on) => {
+    if (!master || on === trouble) return
+    trouble = on
+    anthem.gain.cancelScheduledValues(ctx.currentTime)
+    anthem.gain.setTargetAtTime(on ? 0 : 1, ctx.currentTime, on ? 0.12 : 0.4)
+    if (on && playing()) sadTrombone(ctx, master, ctx.currentTime + 0.15)
+  }
+  stop.cue = (name) => {
+    if (name !== 'whale' || !playing()) return
+    const now = ctx.currentTime
+    if (!trouble) {
+      anthem.gain.cancelScheduledValues(now)
+      anthem.gain.setTargetAtTime(0.25, now, 0.1)
+      anthem.gain.setTargetAtTime(1, now + 2.3, 0.4)
+    }
+    surprisedWhale(ctx, master, now + 0.05)
+  }
   stop.setMuted = (m) => {
     if (master && !stopped) master.gain.setTargetAtTime(m ? 0 : 1, ctx.currentTime, 0.05)
   }
