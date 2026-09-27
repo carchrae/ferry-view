@@ -100,9 +100,9 @@ const mod = (a, n) => ((a % n) + n) % n
 // --- Timeline -------------------------------------------------------------
 // Halves are H long, plus any breakdown time:
 //  - at sea: the ferry stalls mid-channel, smoking, for BREAKDOWN_S (about
-//    one crossing in seven);
+//    one crossing in fifteen);
 //  - at the dock: on arrival the ramp jams, flapping up and down, for
-//    DOCK_BREAKDOWN_S before anyone can get off (about one in ten) — the
+//    DOCK_BREAKDOWN_S before anyone can get off (about one in twenty) — the
 //    whole dock schedule for that visit runs that much later.
 // Each gets a guaranteed early occurrence so a short visit still sees one.
 const BREAKDOWN_S = 3.5
@@ -112,9 +112,9 @@ const DOCK_BREAKDOWN_S = 3
 const SMOKE_CLEAR_S = 2.4
 const FIRST_BREAKDOWN = 3
 const FIRST_DOCK_BREAKDOWN = 6
-export const breaksDown = (h) => h === FIRST_BREAKDOWN || (h > FIRST_BREAKDOWN && rnd(h, 7) < 0.15)
+export const breaksDown = (h) => h === FIRST_BREAKDOWN || (h > FIRST_BREAKDOWN && rnd(h, 7) < 0.08)
 export const rampJams = (h) =>
-  h === FIRST_DOCK_BREAKDOWN || (h > FIRST_DOCK_BREAKDOWN && rnd(h, 9) < 0.1)
+  h === FIRST_DOCK_BREAKDOWN || (h > FIRST_DOCK_BREAKDOWN && rnd(h, 9) < 0.05)
 const dockDelay = (h) => (h >= 0 && rampJams(h) ? DOCK_BREAKDOWN_S + SMOKE_CLEAR_S : 0)
 // Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
 // just short of it and waits until the whale has gone back under (about one
