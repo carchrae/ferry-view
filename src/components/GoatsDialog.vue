@@ -6,14 +6,10 @@
     transition-hide="fade"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <!-- Tap anywhere to close -->
-    <div
-      class="goats-stage column no-wrap cursor-pointer"
-      :style="skyStyle"
-      @click="$emit('update:modelValue', false)"
-    >
+    <!-- Tap anywhere to close (the first tap turns sound on, if it's locked) -->
+    <div class="goats-stage column no-wrap cursor-pointer" :style="skyStyle" @click="onStageTap">
       <!-- Title bar -->
-      <div class="row items-start q-pa-md">
+      <div class="row items-start no-wrap q-pa-md">
         <div>
           <div class="text-h5 text-weight-bold">🐐 Bowen GOATs</div>
           <div class="text-subtitle2 goats-dim">Greatest of all time — top contributors</div>
@@ -22,7 +18,7 @@
         <!-- Sound on/off. Opened from a link, audio starts locked until a tap,
              so the "on" state is spelled out until then. -->
         <q-btn
-          v-if="soundBlocked && !muted"
+          v-if="offerSound && !$q.screen.lt.sm"
           rounded
           unelevated
           no-caps
@@ -34,7 +30,7 @@
           @click.stop="toggleSound"
         />
         <q-btn
-          v-else
+          v-else-if="!offerSound"
           round
           flat
           dense
@@ -45,6 +41,19 @@
           @click.stop="toggleSound"
         />
         <q-btn round flat dense icon="close" color="white" aria-label="Close" v-close-popup />
+      </div>
+      <!-- Phones: the sound offer gets its own centred row under the title -->
+      <div v-if="offerSound && $q.screen.lt.sm" class="row justify-center q-mt-n-sm">
+        <q-btn
+          rounded
+          unelevated
+          no-caps
+          color="amber-8"
+          text-color="black"
+          icon="volume_up"
+          label="Tap for sound"
+          @click.stop="toggleSound"
+        />
       </div>
 
       <!-- Spotlight: one champion at a time, zooming in -->
@@ -372,7 +381,7 @@ const props = defineProps({
   // { reporters: [...], riders: [...] } — all-time top entries, best first.
   goats: { type: Object, default: () => ({ reporters: [], riders: [] }) },
 })
-defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue'])
 
 const $q = useQuasar()
 
@@ -415,6 +424,12 @@ try {
   muted.value = localStorage.getItem(SOUND_KEY) === '1'
 } catch {
   /* storage blocked — default to sound on */
+}
+// Sound is locked and wanted: offer it (button, and the next tap anywhere).
+const offerSound = computed(() => soundBlocked.value && !muted.value)
+function onStageTap() {
+  if (offerSound.value) toggleSound()
+  else emit('update:modelValue', false)
 }
 function toggleSound() {
   // Locked (opened from a link) and not muted: this tap just unlocks audio.
