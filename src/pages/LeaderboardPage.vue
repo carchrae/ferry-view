@@ -49,9 +49,6 @@
               </span>
             </q-item-label>
           </q-item-section>
-          <q-item-section side>
-            <q-icon name="celebration" color="amber-8" size="28px" />
-          </q-item-section>
         </q-item>
       </div>
     </div>
