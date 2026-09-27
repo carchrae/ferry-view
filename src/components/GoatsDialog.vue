@@ -38,8 +38,8 @@
               </q-avatar>
               <div class="goat-name q-mt-md">{{ displayName(current) }}</div>
               <div class="text-subtitle1 goats-dim">{{ current.category }}</div>
-              <div class="goat-credits q-mt-xs">
-                {{ current.credits.toFixed(1) }} <span class="goats-dim">credits all time</span>
+              <div class="goat-score q-mt-xs">
+                {{ Math.round(current.credits) }} <span class="goats-dim">all-time score</span>
               </div>
             </div>
           </div>
@@ -369,7 +369,7 @@ function initial(e) {
   font-weight: 800;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
-.goat-credits {
+.goat-score {
   font-size: 22px;
   font-weight: 700;
   color: #ffd54f;
