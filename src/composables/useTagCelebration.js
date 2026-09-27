@@ -314,6 +314,11 @@ function rand(min, max) {
 // original tune, not a cover) while the leaderboard's "Bowen GOATs" panel is
 // open. Returns a stop() that silences and clears everything. Honours the
 // effects preference; fireworks also skip under prefers-reduced-motion.
+//
+// Browsers keep audio locked until the user interacts with the page — e.g.
+// when the party opens straight from a link. The anthem then waits for the
+// AudioContext to run; onSoundBlocked(true/false) reports the lock, and
+// stop.unlockSound() (call it from a click) lifts it.
 
 const NOTE = { A2: 110, C3: 130.81, F2: 87.31, G2: 98, E4: 329.63, F4: 349.23, G4: 392 }
 Object.assign(NOTE, { A4: 440, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46 })
@@ -366,10 +371,11 @@ function scheduleAnthem(ctx, out, t0) {
   return t - t0 // loop length in seconds
 }
 
-export function startGoatParty() {
+export function startGoatParty({ onSoundBlocked } = {}) {
   if (typeof window === 'undefined' || !effectsEnabled()) return () => {}
   const timers = []
   let stopped = false
+  let onState = null
 
   // Music: schedule one loop at a time, queueing the next just before the end.
   const ctx = getCtx()
@@ -383,7 +389,18 @@ export function startGoatParty() {
       const len = scheduleAnthem(ctx, master, at)
       timers.push(setTimeout(() => loop(at + len), (at + len - ctx.currentTime - 0.3) * 1000))
     }
-    loop(ctx.currentTime + 0.05)
+    // Only start the anthem once audio actually runs (see above).
+    let started = false
+    onState = () => {
+      const running = ctx.state === 'running'
+      onSoundBlocked?.(!running)
+      if (running && !started && !stopped) {
+        started = true
+        loop(ctx.currentTime + 0.05)
+      }
+    }
+    ctx.addEventListener('statechange', onState)
+    onState()
   }
 
   // Fireworks: a random shell over the upper screen every ~0.6 s.
@@ -409,10 +426,11 @@ export function startGoatParty() {
     shell()
   }
 
-  return function stop() {
+  function stop() {
     if (stopped) return
     stopped = true
     timers.forEach(clearTimeout)
+    if (onState) ctx.removeEventListener('statechange', onState)
     if (master && ctx) {
       // Quick fade so already-scheduled notes don't cut off with a click.
       master.gain.setTargetAtTime(0, ctx.currentTime, 0.05)
@@ -420,4 +438,6 @@ export function startGoatParty() {
     }
     if (layer) setTimeout(() => layer.remove(), 1600) // let the last sparks fall
   }
+  stop.unlockSound = () => ctx?.resume()
+  return stop
 }

@@ -18,6 +18,18 @@
           <div class="text-subtitle2 goats-dim">Greatest of all time — top contributors</div>
         </div>
         <q-space />
+        <q-btn
+          v-if="soundBlocked"
+          rounded
+          unelevated
+          no-caps
+          color="amber-8"
+          text-color="black"
+          icon="volume_up"
+          label="Tap for sound"
+          class="q-mr-sm"
+          @click.stop="unlockSound"
+        />
         <q-btn round flat dense icon="close" color="white" aria-label="Close" v-close-popup />
       </div>
 
@@ -280,6 +292,12 @@ const index = ref(0)
 const current = computed(() => champions.value[index.value] || null)
 let timer = null
 let stopParty = null
+// Opened straight from a link, the browser won't play sound until a tap —
+// and a tap anywhere else closes the dialog — so offer a button.
+const soundBlocked = ref(false)
+function unlockSound() {
+  stopParty?.unlockSound?.()
+}
 
 function tick() {
   if (champions.value.length) index.value = (index.value + 1) % champions.value.length
@@ -316,6 +334,7 @@ function stop() {
   raf = null
   stopParty?.()
   stopParty = null
+  soundBlocked.value = false
 }
 watch(
   () => props.modelValue,
@@ -324,7 +343,7 @@ watch(
     if (!open) return
     index.value = 0
     timer = setInterval(tick, SPOTLIGHT_MS)
-    stopParty = startGoatParty()
+    stopParty = startGoatParty({ onSoundBlocked: (b) => (soundBlocked.value = b) })
     animateScene()
   },
   { immediate: true },
