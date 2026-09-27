@@ -3,6 +3,7 @@ import {
   aggregateLeaderboard,
   aggregateRideLeaderboard,
   attachAllTime,
+  combineBoards,
 } from './leaderboard-score.js'
 import { isValidLineupReport } from './lineup-labels.js'
 
@@ -87,6 +88,8 @@ export async function recomputeLeaderboard(db) {
   const goats = {
     reporters: allTimeReporters.slice(0, GOAT_COUNT),
     riders: allTimeRiders.slice(0, GOAT_COUNT),
+    // Top all-time points across both boards combined.
+    overall: combineBoards(allTimeReporters, allTimeRiders).slice(0, GOAT_COUNT),
   }
 
   await db

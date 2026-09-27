@@ -7,6 +7,7 @@ import {
   aggregateLeaderboard,
   aggregateRideLeaderboard,
   attachAllTime,
+  combineBoards,
   formatReporterName,
 } from '../functions/lib/leaderboard-score.js'
 
@@ -403,5 +404,30 @@ describe('attachAllTime', () => {
 
   it('falls back to windowed credits when missing from the all-time board', () => {
     assert.equal(attachAllTime([{ userUid: 'A', credits: 1.5 }], [])[0].allTimeCredits, 1.5)
+  })
+})
+
+describe('combineBoards', () => {
+  it('ranks by total points across boards, whatever board they came from', () => {
+    const reporters = [
+      { userUid: 'A', userName: 'Ann', credits: 30, reportCount: 30, lastAt: 5 },
+      { userUid: 'B', userName: 'Bo', credits: 20, reportCount: 20, lastAt: 1 },
+      { userUid: 'C', userName: 'Cy', credits: 8, reportCount: 8, lastAt: 2 },
+    ]
+    const riders = [
+      { userUid: 'C', userName: 'Cy R.', credits: 25, reportCount: 3, lastAt: 9 },
+      { userUid: 'D', userName: 'Di', credits: 10, reportCount: 1, lastAt: 3 },
+    ]
+    const out = combineBoards(reporters, riders)
+    assert.deepEqual(
+      out.map((e) => [e.userUid, e.credits, e.reportCount]),
+      [
+        ['C', 33, 11],
+        ['A', 30, 30],
+        ['B', 20, 20],
+        ['D', 10, 1],
+      ],
+    )
+    assert.equal(out[0].userName, 'Cy R.') // identity from the most recent activity
   })
 })

@@ -74,5 +74,10 @@ describe('recomputeLeaderboard', () => {
       ['driver', 20],
       ['asker', 5],
     ])
+    expect(data.goats.overall.map((e) => [e.userUid, e.credits])).toEqual([
+      ['driver', 20],
+      ['asker', 5],
+      ['vet', 3],
+    ])
   })
 })

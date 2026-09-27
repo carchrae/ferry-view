@@ -43,8 +43,9 @@
             <q-item-label class="text-subtitle1 text-weight-medium">Bowen GOATs</q-item-label>
             <q-item-label caption>Greatest of all time — top contributors</q-item-label>
             <q-item-label caption class="text-grey-9 q-mt-xs">
-              <span v-for="e in goatLeaders" :key="e.userUid" class="q-mr-md">
-                🥇 {{ e.anonymous ? 'Anonymous' : formatReporterName(e.userName) }}
+              <span v-for="(e, i) in goatLeaders" :key="e.userUid" class="q-mr-md no-wrap">
+                {{ GOAT_MEDALS[i] }}
+                {{ e.anonymous ? 'Anonymous' : formatReporterName(e.userName) }}
               </span>
             </q-item-label>
           </q-item-section>
@@ -151,7 +152,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
-import { round1 } from '../../functions/lib/leaderboard-score.js'
+import { round1, combineBoards } from '../../functions/lib/leaderboard-score.js'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { useAuth } from 'src/composables/useAuth'
 import LeaderboardList from 'src/components/LeaderboardList.vue'
@@ -180,9 +181,13 @@ const goatsOpen = computed({
     else router.replace('/leaderboard')
   },
 })
-// The #1 of each board, teased on the launch row.
+// Top 3 by all-time points, whichever board they earned them on. Before the
+// server stores `overall`, approximate it from the per-board top 3s.
+const GOAT_MEDALS = ['🥇', '🥈', '🥉']
 const goatLeaders = computed(() =>
-  [goats.value.reporters[0], goats.value.riders[0]].filter(Boolean),
+  (
+    goats.value.overall || combineBoards(goats.value.reporters, goats.value.riders)
+  ).slice(0, 3),
 )
 let unsubscribe = null
 

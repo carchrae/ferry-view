@@ -218,6 +218,31 @@ export function attachAllTime(board, allTimeBoard) {
   return (board || []).map((e) => ({ ...e, allTimeCredits: allTime.get(e.userUid) ?? e.credits }))
 }
 
+// Merge boards into one ranking by total points per user, whatever board they
+// earned them on. Identity (name/photo/anonymous) follows the user's most
+// recent activity across the boards.
+export function combineBoards(...boards) {
+  const totals = new Map()
+  for (const e of boards.flat()) {
+    if (!e?.userUid) continue
+    const t = totals.get(e.userUid)
+    if (!t) {
+      totals.set(e.userUid, { ...e })
+      continue
+    }
+    const newer = (e.lastAt ?? -1) > (t.lastAt ?? -1)
+    totals.set(e.userUid, {
+      ...(newer ? e : t),
+      credits: t.credits + e.credits,
+      reportCount: (t.reportCount || 0) + (e.reportCount || 0),
+      lastAt: Math.max(t.lastAt ?? -1, e.lastAt ?? -1),
+    })
+  }
+  return [...totals.values()]
+    .map((e) => ({ ...e, credits: round1(e.credits) }))
+    .sort((a, b) => b.credits - a.credits || b.lastAt - a.lastAt)
+}
+
 // Round to 1 decimal, avoiding floating-point noise like 0.30000000000000004.
 export function round1(n) {
   return Math.round(n * 10) / 10
