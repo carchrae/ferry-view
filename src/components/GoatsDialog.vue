@@ -8,6 +8,22 @@
   >
     <!-- Tap anywhere to close (the first tap turns sound on, if it's locked) -->
     <div class="goats-stage column no-wrap cursor-pointer" :style="skyStyle" @click="onStageTap">
+      <!-- Overnight between replayed days: the sky fades to black and the
+           stars come out, twinkling -->
+      <div v-if="nightFade" class="goats-night" :style="{ opacity: nightFade }">
+        <span
+          v-for="st in STARS"
+          :key="st.id"
+          class="goats-star"
+          :style="{
+            left: `${st.x}%`,
+            top: `${st.y}%`,
+            width: `${st.size}px`,
+            height: `${st.size}px`,
+            opacity: 0.25 + 0.75 * Math.abs(Math.sin(sceneT * st.rate + st.phase)),
+          }"
+        />
+      </div>
       <!-- Title bar -->
       <div class="row items-start no-wrap q-pa-md">
         <div>
@@ -40,7 +56,6 @@
           class="q-mr-sm"
           @click.stop="toggleSound"
         />
-        <q-btn round flat dense icon="close" color="white" aria-label="Close" v-close-popup />
       </div>
       <!-- Phones: the sound offer gets its own centred row under the title -->
       <div v-if="offerSound && $q.screen.lt.sm" class="row justify-center q-mt-n-sm">
@@ -98,6 +113,7 @@
       <svg
         ref="sceneEl"
         class="goats-scene"
+        :style="nightFade ? { filter: `brightness(${1 - 0.45 * nightFade})` } : null"
         :viewBox="sceneViewBox"
         :preserveAspectRatio="$q.screen.lt.sm ? 'xMidYMax meet' : 'xMidYMax slice'"
       >
@@ -185,8 +201,8 @@
           <g
             :transform="`translate(${RAMP_PIVOT.x} ${RAMP_PIVOT.y}) rotate(${scene.ramps[side].toFixed(1)})`"
           >
-            <rect x="0" y="-1.5" :width="RAMP_LENGTH" height="3" fill="#b0bec5" />
-            <path :d="`M2 -1.5 L${RAMP_LENGTH - 2} -1.5`" stroke="#eceff1" stroke-width="0.8" />
+            <rect x="0" y="-1.5" :width="RAMP_LENGTH" height="3" fill="#546e7a" />
+            <path :d="`M2 -1.5 L${RAMP_LENGTH - 2} -1.5`" stroke="#78909c" stroke-width="0.8" />
           </g>
         </g>
 
@@ -328,6 +344,19 @@
             {{ p.mad ? '!' : '?' }}
           </text>
         </g>
+        <!-- Asleep overnight: Zs drifting up off the ferry -->
+        <text
+          v-for="z in scene.zs"
+          :key="`z${z.id}`"
+          :x="z.x.toFixed(1)"
+          :y="z.y.toFixed(1)"
+          :font-size="z.size.toFixed(1)"
+          :opacity="z.opacity.toFixed(2)"
+          font-weight="800"
+          fill="#e3f2fd"
+        >
+          Z
+        </text>
         <!-- Breakdown flames and sparks -->
         <path v-for="f in scene.flames" :key="f.id" :d="f.d" :fill="f.color" opacity="0.9" />
         <circle
@@ -351,7 +380,7 @@
         />
       </svg>
       <!-- Season sampler: which real sailing the scene is replaying -->
-      <div v-if="scene.sailing" class="goats-replay">Replaying {{ replayLabel }}</div>
+      <div v-if="scene.sailing" class="goats-replay">{{ replayLabel }}</div>
     </div>
   </q-dialog>
 </template>
@@ -502,13 +531,36 @@ const skyStyle = computed(() => {
   return { background: `linear-gradient(180deg, ${top} 0%, ${mid} 55%, ${bottom} 100%)` }
 })
 
+// Overnight: fade to black over the first and last moments of the night.
+const nightFade = computed(() => {
+  const u = scene.value.night
+  return u == null ? 0 : Math.max(0, Math.min(1, u / 0.12, (1 - u) / 0.12))
+})
+// A fixed scatter of stars over the upper sky.
+const STARS = Array.from({ length: 60 }, (_, i) => {
+  const r = (k) => {
+    const x = Math.sin(i * 91.7 + k * 37.3) * 43758.5453
+    return x - Math.floor(x)
+  }
+  return {
+    id: i,
+    x: r(1) * 100,
+    y: r(2) * 62,
+    size: 1 + r(3) * 2.2,
+    rate: 1 + r(4) * 3,
+    phase: r(5) * 6,
+  }
+})
+
 const replayLabel = computed(() => {
   const s = scene.value.sailing
   if (!s) return ''
+  if (scene.value.night != null)
+    return `Overnight · next up ${dayjs(s.dateIso).format('ddd, MMM D')}`
   const route = s.direction === 'To HSB' ? 'Bowen → Mainland' : 'Mainland → Bowen'
   const how = capacityFullLabel(s.capacity)
   const when = `${dayjs(s.dateIso).format('ddd, MMM D')} · ${formatTime12h(s.time)} ${route}`
-  return how ? `${when} · ${how}` : when
+  return `Replaying ${how ? `${when} · ${how}` : when}`
 })
 let raf = null
 
@@ -675,8 +727,27 @@ function initial(e) {
   opacity: 1;
   transform: scale(1.3);
 }
+/* Content sits above the night overlay. */
+.goats-stage > :not(.goats-night):not(.goats-replay) {
+  position: relative;
+  z-index: 1;
+}
+.goats-night {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #02030a;
+  pointer-events: none;
+}
+.goats-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fffde7;
+  box-shadow: 0 0 4px 1px rgba(255, 253, 231, 0.6);
+}
 .goats-replay {
   position: absolute;
+  z-index: 2;
   left: 12px;
   bottom: 8px;
   font-size: 11px;

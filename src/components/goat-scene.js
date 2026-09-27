@@ -115,7 +115,13 @@ const FIRST_DOCK_BREAKDOWN = 6
 export const breaksDown = (h) => h === FIRST_BREAKDOWN || (h > FIRST_BREAKDOWN && rnd(h, 7) < 0.08)
 export const rampJams = (h) =>
   h === FIRST_DOCK_BREAKDOWN || (h > FIRST_DOCK_BREAKDOWN && rnd(h, 9) < 0.05)
-const dockDelay = (h) => (h >= 0 && rampJams(h) ? DOCK_BREAKDOWN_S + SMOKE_CLEAR_S : 0)
+const jamDelay = (h) => (h >= 0 && rampJams(h) ? DOCK_BREAKDOWN_S + SMOKE_CLEAR_S : 0)
+// Replaying real days: after a day's last sailing the ferry ties up at Bowen
+// for the night — NIGHT_S of sleep before the next day's first sailing.
+const NIGHT_S = 10
+const nightDelay = (S, h) => (S.sampler?.isDayStart(h) ? NIGHT_S : 0)
+// Held at the dock on arrival: overnight first, then any ramp jam.
+const dockDelay = (S, h) => nightDelay(S, h) + jamDelay(h)
 // Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
 // just short of it and waits until the whale has gone back under (about one
 // crossing in five, never on a breakdown crossing; the first comes early).
@@ -124,24 +130,27 @@ export const WHALE_Y = 198 // the whale breaks the surface right at the horizon 
 const FIRST_WHALE = 1
 export const whaleCrossing = (h) =>
   h >= 0 && !breaksDown(h) && (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h, 13) < 0.2))
-const halfLen = (h) =>
+const halfLen = (S, h) =>
   H +
   (h >= 0 && breaksDown(h) ? BREAKDOWN_S + SMOKE_CLEAR_S : 0) +
-  dockDelay(h) +
+  dockDelay(S, h) +
   (whaleCrossing(h) ? WHALE_S : 0)
-const STARTS = [0] // STARTS[h] = when half h begins (h >= 0)
-export function halfStart(h) {
+// When half h begins; S.starts caches it per scene (nights make it
+// scene-specific).
+function halfStartOf(S, h) {
   if (h <= 0) return h * H
-  while (STARTS.length <= h) STARTS.push(STARTS[STARTS.length - 1] + halfLen(STARTS.length - 1))
-  return STARTS[h]
+  const st = S.starts
+  while (st.length <= h) st.push(st[st.length - 1] + halfLen(S, st.length - 1))
+  return st[h]
 }
-// Which half t falls in, how far into it (tau), and how far into its dock
-// schedule (tauE — negative while a jammed ramp holds everything up).
-function halfAt(t) {
+// Which half t falls in, how far into it (tau), how far past any overnight
+// (tauN — negative while asleep), and how far into its dock schedule (tauE —
+// negative while asleep or while a jammed ramp holds everything up).
+function halfAt(S, t) {
   let h = Math.floor(t / H) // upper bound: halves are never shorter than H
-  while (halfStart(h) > t) h--
-  const tau = t - halfStart(h)
-  return { h, tau, tauE: tau - dockDelay(h) }
+  while (halfStartOf(S, h) > t) h--
+  const tau = t - halfStartOf(S, h)
+  return { h, tau, tauN: tau - nightDelay(S, h), tauE: tau - dockDelay(S, h) }
 }
 const ease = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2)
 
@@ -324,9 +333,9 @@ function lostPed(item, t, s, mirror) {
 // `puzzled`: a breakdown is on, so anyone standing around is confused.
 function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const mirror = side === 1 ? W : 0
-  const { h } = halfAt(t)
+  const { h } = halfAt(S, t)
   const v = h - mod(h - side, 2) // this dock's latest visit (half index)
-  const sigma = t - halfStart(v) - dockDelay(v) // this visit's dock schedule clock
+  const sigma = t - halfStartOf(S, v) - dockDelay(S, v) // this visit's dock schedule clock
 
   // --- cars: board up to capacity; the rest roll forward with the line and
   // stop at the front of the dock, still there as the ferry pulls away ---
@@ -451,8 +460,8 @@ function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
 
 // The whole scene at time t (seconds): ferry position, the cars and walk-ons
 // riding it (offsets relative to the ferry), and everyone ashore.
-function ferryAt(t, W) {
-  const { h, tauE: tau } = halfAt(t)
+function ferryAt(S, t, W) {
+  const { h, tauN, tauE: tau } = halfAt(S, t)
   const b = berths(W)
   const from = b[mod(h, 2)]
   const to = b[1 - mod(h, 2)]
@@ -484,8 +493,9 @@ function ferryAt(t, W) {
     stalled: stop?.kind === 'breakdown' && stop.u * (BREAKDOWN_S + SMOKE_CLEAR_S) < BREAKDOWN_S,
     whaleStop: stop?.kind === 'whale' ? stop.u : null,
     // Ramp stuck on arrival (then held up while the smoke clears).
-    jammed: !underway && tau < -SMOKE_CLEAR_S,
-    troubled: stop?.kind === 'breakdown' || (!underway && tau < 0),
+    jammed: !underway && tauN >= 0 && tau < -SMOKE_CLEAR_S,
+    troubled: stop?.kind === 'breakdown' || (!underway && tauN >= 0 && tau < 0),
+    sleeping: tauN < 0, // tied up overnight
     h,
   }
 }
@@ -501,12 +511,12 @@ function troubleSpot(f, W) {
 // Sparks: a few fly out every SPARK_DT, arc under gravity and wink out.
 const SPARK_DT = 0.05
 const SPARK_LIFE = 0.7
-function sparksAt(t, W) {
+function sparksAt(S, t, W) {
   const out = []
   const newest = Math.floor(t / SPARK_DT)
   for (let n = newest; n > newest - SPARK_LIFE / SPARK_DT; n--) {
     const born = n * SPARK_DT
-    const src = troubleSpot(ferryAt(born, W), W)
+    const src = troubleSpot(ferryAt(S, born, W), W)
     if (!src || rnd(n, 40) < 0.35) continue
     const age = t - born
     const vx = (rnd(n, 41) - 0.5) * 90
@@ -523,8 +533,8 @@ function sparksAt(t, W) {
 }
 
 // Flames: three flickering tongues licking up from the trouble spot.
-function flamesAt(t, W) {
-  const src = troubleSpot(ferryAt(t, W), W)
+function flamesAt(S, t, W) {
+  const src = troubleSpot(ferryAt(S, t, W), W)
   if (!src) return []
   return [-6, 0, 6].map((dx, k) => {
     const flick = 0.6 + 0.4 * Math.abs(Math.sin(t * (17 + k * 5) + k * 2))
@@ -543,12 +553,12 @@ function flamesAt(t, W) {
 // rises, drifts downwind, swells and fades.
 const SMOKE_DT = 0.12
 const SMOKE_LIFE = 2.4
-function smokeAt(t, W) {
+function smokeAt(S, t, W) {
   const out = []
   const newest = Math.floor(t / SMOKE_DT)
   for (let n = newest; n > newest - SMOKE_LIFE / SMOKE_DT; n--) {
     const born = n * SMOKE_DT
-    const src = troubleSpot(ferryAt(born, W), W)
+    const src = troubleSpot(ferryAt(S, born, W), W)
     if (!src) continue
     const age = (t - born) / SMOKE_LIFE
     const [sx, sy] = src
@@ -568,12 +578,12 @@ function smokeAt(t, W) {
 // stays where it landed in the water, drifts apart and fades out.
 const WAKE_DT = 0.05
 const WAKE_LIFE = 1.4
-function wakeAt(t, W) {
+function wakeAt(S, t, W) {
   const out = []
   const newest = Math.floor(t / WAKE_DT)
   for (let n = newest; n > newest - WAKE_LIFE / WAKE_DT; n--) {
     const born = n * WAKE_DT
-    const f = ferryAt(born, W)
+    const f = ferryAt(S, born, W)
     if (!f.moving) continue
     const age = (t - born) / WAKE_LIFE
     for (let k = 0; k < 2; k++) {
@@ -594,12 +604,14 @@ function wakeAt(t, W) {
 // The whale on a whale crossing, just ahead of the stopped ferry's bow: either
 // its tail surfaces, hangs there and slips back under with a splash, or its
 // back breaks the surface and it blows a spout of spray.
-function whaleAt(t, W) {
-  const f = ferryAt(t, W)
+function whaleAt(S, t, W) {
+  const f = ferryAt(S, t, W)
   if (f.whaleStop == null) return null
   const age = f.whaleStop
   // rise (0→1) over the first fifth, hold, sink over the last third
-  const rise = age < 0.2 ? age / 0.2 : age > 0.67 ? Math.max(0, (1 - age) / 0.33) : 1
+  // Always moving: up quickly, then slower and slower through the middle
+  // (never quite frozen), then back down.
+  const rise = Math.sin(Math.PI * age) ** 0.45
   const x = f.x + f.dir * (66 + 34 + rnd(f.h, 15) * 20) // bow + a respectful gap
   const kind = rnd(f.h, 17) < 0.45 ? 'spout' : 'tail'
   // Spout spray: droplets fanning up from the blowhole while the back is up.
@@ -626,16 +638,17 @@ function whaleAt(t, W) {
     spray,
     x,
     rise,
-    tilt: (rnd(f.h, 52) - 0.5) * 16 + (age > 0.67 ? (age - 0.67) * 40 : 0),
+    // A slow, steady sweep of the flukes the whole time it's up.
+    tilt: (rnd(f.h, 52) - 0.5) * 12 + (age - 0.35) * 30,
     flip: rnd(f.h, 53) < 0.5,
-    splash: age > 0.67 ? (age - 0.67) / 0.33 : 0, // 0..1 once it's going under
+    splash: age > 0.72 ? (age - 0.72) / 0.28 : 0, // 0..1 once it's going under
   }
 }
 
 function sceneFrame(S, t, W) {
-  const { h, tau: tauRaw, tauE: tau } = halfAt(t)
+  const { h, tau: tauRaw, tauN, tauE: tau } = halfAt(S, t)
   const side = mod(h, 2)
-  const { x: ferryX, moving, stalled, jammed, troubled } = ferryAt(t, W)
+  const { x: ferryX, moving, stalled, jammed, troubled, sleeping } = ferryAt(S, t, W)
   const puzzled = stalled || jammed
   // Riders up top; confused ones pace the roof near their spot as they hop.
   const riderAt = (item, x) => {
@@ -671,7 +684,7 @@ function sceneFrame(S, t, W) {
     let down = d === side && !moving ? Math.min(1, tau / 0.15, (DEPART - tau) / 0.25) : 0
     // Jammed: the ramp flips up and down, never quite seating; then it's held
     // up until the smoke has cleared.
-    if (d === side && tau < 0) down = tau < -SMOKE_CLEAR_S ? 0.5 + 0.5 * Math.sin(tauRaw * 7) : 0
+    if (d === side && tau < 0) down = jammed ? 0.5 + 0.5 * Math.sin(tauRaw * 7) : 0 // (raised overnight too)
     return RAMP_UP + (RAMP_DOWN - RAMP_UP) * Math.max(0, down)
   })
 
@@ -681,11 +694,15 @@ function sceneFrame(S, t, W) {
   dockItems(S, t, 1, cars, peds, side === 1, W, puzzled)
   return {
     ferryX,
-    wake: wakeAt(t, W),
-    smoke: smokeAt(t, W),
-    sparks: sparksAt(t, W),
-    flames: flamesAt(t, W),
-    whale: whaleAt(t, W),
+    wake: wakeAt(S, t, W),
+    smoke: smokeAt(S, t, W),
+    sparks: sparksAt(S, t, W),
+    flames: flamesAt(S, t, W),
+    whale: whaleAt(S, t, W),
+    // Overnight between replayed days: how far through the night (0..1),
+    // and the sleepy Zs drifting up off the ferry.
+    night: sleeping ? 1 + tauN / NIGHT_S : null,
+    zs: sleeping ? sleepyZs(tauRaw, ferryX) : [],
     stalled,
     jammed,
     troubled,
@@ -700,22 +717,41 @@ function sceneFrame(S, t, W) {
   }
 }
 
-// A scene instance: its own lines memo, optionally replaying a real day
-// (see seasonSampler). Returns (t, W) => frame.
+// Three Zs rising off the sleeping ferry's tower, one after another.
+function sleepyZs(time, ferryX) {
+  return [0, 1, 2].map((k) => {
+    const u = (time * 0.45 + k / 3) % 1
+    return {
+      id: k,
+      x: ferryX + 8 + u * 16 + Math.sin(u * 6) * 3,
+      y: 198 - 70 - u * 34,
+      size: 11 + u * 9,
+      opacity: Math.sin(Math.PI * u),
+    }
+  })
+}
+
+// A scene instance: its own lines and timeline caches, optionally replaying
+// real days (see seasonSampler). Returns (t, W) => frame, with .halfStart(h).
 export function createGoatScene({ sampler = null } = {}) {
-  const S = { lines: { car: new Map(), ped: new Map() }, sampler }
-  return (t, W = WORLD_W) => sceneFrame(S, t, W)
+  const S = { lines: { car: new Map(), ped: new Map() }, starts: [0], sampler }
+  const frame = (t, W = WORLD_W) => sceneFrame(S, t, W)
+  frame.halfStart = (h) => halfStartOf(S, h)
+  return frame
 }
 const randomScene = createGoatScene()
 export const goatScene = (t, W) => randomScene(t, W)
+export const halfStart = randomScene.halfStart
 
 // --- Season sampler ----------------------------------------------------------
-// Replays how full the ferry really was on one day, from the history page's
-// sailing records ({ dateIso, sailingTime, direction, lastCapacity }). Bowen
-// visits (even halves) take that day's "To HSB" sailings in order, mainland
-// visits (odd halves) its "To Bowen" ones. lastCapacity is "Full",
-// "Not Full" or "NN%" = space *left*. Returns null when no day has enough
-// data. `pick` chooses the day (0..1, injectable for tests).
+// Replays how full the ferry really was, day after real day, from the history
+// page's sailing records ({ dateIso, sailingTime, direction, lastCapacity }).
+// Within a day, Bowen visits (even halves) take its "To HSB" sailings in
+// order and mainland visits (odd halves) its "To Bowen" ones; after the last,
+// the scene sleeps a night and moves on to the next recorded day. It starts
+// on a random day at a random point. lastCapacity is "Full", "Not Full" or
+// "NN%" = space *left*. Returns null when no day has enough data. `pick`
+// supplies the randomness (0..1, injectable for tests).
 export function seasonSampler(docs, pick = Math.random) {
   const byDay = new Map()
   for (const d of docs || []) {
@@ -723,27 +759,52 @@ export function seasonSampler(docs, pick = Math.random) {
     if (!byDay.has(d.dateIso)) byDay.set(d.dateIso, [])
     byDay.get(d.dateIso).push(d)
   }
-  const usable = [...byDay.entries()].filter(([, list]) => {
-    const known = list.filter((d) => d.lastCapacity).length
-    return known >= 6 && known >= list.length * 0.6
-  })
-  if (!usable.length) return null
-  usable.sort(([a], [b]) => (a < b ? -1 : 1))
-  const [dateIso, list] = usable[Math.min(usable.length - 1, Math.floor(pick() * usable.length))]
-  const bySide = [0, 1].map((side) =>
-    list
-      .filter((d) => d.direction === (side === 0 ? 'To HSB' : 'To Bowen'))
-      .sort((a, b) => (a.sailingTime < b.sailingTime ? -1 : 1)),
-  )
-  // Start somewhere in the day rather than always at the quiet first sailing.
-  const offset = Math.floor(pick() * Math.max(...bySide.map((l) => l.length), 1))
+  const days = [...byDay.entries()]
+    .filter(([, list]) => {
+      const known = list.filter((d) => d.lastCapacity).length
+      return known >= 6 && known >= list.length * 0.6
+    })
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([dateIso, list]) => {
+      const sides = [0, 1].map((side) =>
+        list
+          .filter((d) => d.direction === (side === 0 ? 'To HSB' : 'To Bowen'))
+          .sort((a, b) => (a.sailingTime < b.sailingTime ? -1 : 1)),
+      )
+      // Halves in the day: one per sailing, alternating sides (even count, so
+      // every day starts at Bowen, where the ferry spends the night).
+      return { dateIso, sides, halves: 2 * Math.max(1, Math.min(...sides.map((l) => l.length))) }
+    })
+  if (!days.length) return null
+
+  // Day k (k >= k0) starts at half starts[k - k0]; the first day is joined
+  // part-way through.
+  const k0 = Math.min(days.length - 1, Math.floor(pick() * days.length))
+  const dayOf = (k) => days[mod(k, days.length)]
+  const starts = [-2 * Math.floor(pick() * (dayOf(k0).halves / 2))]
+  function dayAt(h) {
+    if (h < starts[0]) return { k: k0, i: mod(h - starts[0], dayOf(k0).halves), start: null }
+    let n = 0
+    for (;;) {
+      if (starts.length <= n + 1) starts.push(starts[n] + dayOf(k0 + n).halves)
+      if (h < starts[n + 1]) return { k: k0 + n, i: h - starts[n], start: starts[n] }
+      n++
+    }
+  }
   const sailingFor = (v) => {
-    const l = bySide[mod(v, 2)]
-    return l.length ? l[mod(Math.floor(v / 2) + offset, l.length)] : null
+    const { k, i } = dayAt(v)
+    const l = dayOf(k).sides[mod(v, 2)]
+    return l.length ? l[Math.min(l.length - 1, Math.floor(i / 2))] : null
   }
   return {
-    key: dateIso,
-    dateIso,
+    key: dayOf(k0).dateIso,
+    dateIso: dayOf(k0).dateIso,
+    // Half h is the first of a new day (so the night before it is slept).
+    isDayStart(h) {
+      if (h <= 0) return false
+      const { i, start } = dayAt(h)
+      return i === 0 && start !== null
+    },
     load(v) {
       const cap = sailingFor(v)?.lastCapacity
       if (!cap) return null
@@ -754,7 +815,14 @@ export function seasonSampler(docs, pick = Math.random) {
     },
     sailing(v) {
       const d = sailingFor(v)
-      return d && { dateIso, time: d.sailingTime, direction: d.direction, capacity: d.lastCapacity }
+      return (
+        d && {
+          dateIso: d.dateIso,
+          time: d.sailingTime,
+          direction: d.direction,
+          capacity: d.lastCapacity,
+        }
+      )
     },
   }
 }

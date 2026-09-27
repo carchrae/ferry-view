@@ -148,4 +148,28 @@ describe('goatScene', () => {
     }
     assert.equal(goatScene(halfStart(h + 1) + 0.5).ferryX, BERTHS[(h + 1) % 2])
   })
+
+  it('after the last sailing of a replayed day, the ferry sleeps at Bowen, then the next day starts', () => {
+    const docs = []
+    for (const dateIso of ['2026-08-02', '2026-08-03']) {
+      for (let i = 0; i < 8; i++) {
+        const sailingTime = `${String(7 + i).padStart(2, '0')}:00`
+        docs.push({ dateIso, sailingTime, direction: 'To HSB', lastCapacity: '50%' })
+        docs.push({ dateIso, sailingTime, direction: 'To Bowen', lastCapacity: '50%' })
+      }
+    }
+    const sampler = seasonSampler(docs, () => 0)
+    const scene = createGoatScene({ sampler })
+    assert.equal(sampler.isDayStart(16), true) // 8 sailings each way = 16 halves
+    assert.equal(sampler.isDayStart(15), false)
+    const asleep = scene(scene.halfStart(16) + 5)
+    assert.ok(asleep.night > 0 && asleep.night < 1)
+    assert.equal(asleep.ferryX, BERTHS[0])
+    assert.equal(asleep.zs.length, 3)
+    assert.equal(asleep.sailing.dateIso, '2026-08-03')
+    assert.equal(asleep.carsOut.length, 0) // nobody drives off in the night
+    const morning = scene(scene.halfStart(16) + 10.5)
+    assert.equal(morning.night, null)
+    assert.equal(morning.sailing.time, '07:00')
+  })
 })
