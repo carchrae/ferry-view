@@ -107,12 +107,15 @@ const mod = (a, n) => ((a % n) + n) % n
 // Each gets a guaranteed early occurrence so a short visit still sees one.
 const BREAKDOWN_S = 3.5
 const DOCK_BREAKDOWN_S = 3
+// After either kind, everything waits for the smoke to clear (a puff's
+// lifetime, SMOKE_LIFE below).
+const SMOKE_CLEAR_S = 2.4
 const FIRST_BREAKDOWN = 3
 const FIRST_DOCK_BREAKDOWN = 6
 export const breaksDown = (h) => h === FIRST_BREAKDOWN || (h > FIRST_BREAKDOWN && rnd(h, 7) < 0.15)
 export const rampJams = (h) =>
   h === FIRST_DOCK_BREAKDOWN || (h > FIRST_DOCK_BREAKDOWN && rnd(h, 9) < 0.1)
-const dockDelay = (h) => (h >= 0 && rampJams(h) ? DOCK_BREAKDOWN_S : 0)
+const dockDelay = (h) => (h >= 0 && rampJams(h) ? DOCK_BREAKDOWN_S + SMOKE_CLEAR_S : 0)
 // Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
 // just short of it and waits until the whale has gone back under (about one
 // crossing in five, never on a breakdown crossing; the first comes early).
@@ -121,7 +124,10 @@ const FIRST_WHALE = 1
 export const whaleCrossing = (h) =>
   h >= 0 && !breaksDown(h) && (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h, 13) < 0.2))
 const halfLen = (h) =>
-  H + (h >= 0 && breaksDown(h) ? BREAKDOWN_S : 0) + dockDelay(h) + (whaleCrossing(h) ? WHALE_S : 0)
+  H +
+  (h >= 0 && breaksDown(h) ? BREAKDOWN_S + SMOKE_CLEAR_S : 0) +
+  dockDelay(h) +
+  (whaleCrossing(h) ? WHALE_S : 0)
 const STARTS = [0] // STARTS[h] = when half h begins (h >= 0)
 export function halfStart(h) {
   if (h <= 0) return h * H
@@ -450,7 +456,7 @@ function ferryAt(t, W) {
     // the way. A whale gets a gentle slow-down; a breakdown dies suddenly,
     // still at speed. The second leg eases back up either way.
     const qs = brk ? 0.2 + rnd(h, 16) * 0.6 : 0.3 + rnd(h, 14) * 0.3
-    const pause = brk ? BREAKDOWN_S : WHALE_S
+    const pause = brk ? BREAKDOWN_S + SMOKE_CLEAR_S : WHALE_S
     const [t1, t2] = [cross * qs, cross * (1 - qs)]
     if (c < t1) p = qs * (brk ? 1 - (1 - c / t1) ** 2 : ease(c / t1))
     else if (c < t1 + pause) {
@@ -462,9 +468,13 @@ function ferryAt(t, W) {
     x: from + (to - from) * p,
     dir: Math.sign(to - from),
     moving: underway && !stop,
-    stalled: stop?.kind === 'breakdown',
+    // Broken down: smoking/sparking for BREAKDOWN_S, then still stopped while
+    // the smoke clears (`troubled` covers both, for the sound cue).
+    stalled: stop?.kind === 'breakdown' && stop.u * (BREAKDOWN_S + SMOKE_CLEAR_S) < BREAKDOWN_S,
     whaleStop: stop?.kind === 'whale' ? stop.u : null,
-    jammed: !underway && tau < 0, // ramp stuck on arrival
+    // Ramp stuck on arrival (then held up while the smoke clears).
+    jammed: !underway && tau < -SMOKE_CLEAR_S,
+    troubled: stop?.kind === 'breakdown' || (!underway && tau < 0),
     h,
   }
 }
@@ -614,7 +624,7 @@ function whaleAt(t, W) {
 function sceneFrame(S, t, W) {
   const { h, tau: tauRaw, tauE: tau } = halfAt(t)
   const side = mod(h, 2)
-  const { x: ferryX, moving, stalled, jammed } = ferryAt(t, W)
+  const { x: ferryX, moving, stalled, jammed, troubled } = ferryAt(t, W)
   const puzzled = stalled || jammed
   const riderAt = (item, x) =>
     ped(
@@ -651,8 +661,9 @@ function sceneFrame(S, t, W) {
   // raised a moment before it leaves and while it's away.
   const ramps = [0, 1].map((d) => {
     let down = d === side && !moving ? Math.min(1, tau / 0.15, (DEPART - tau) / 0.25) : 0
-    // Jammed: the ramp flips up and down, never quite seating.
-    if (d === side && tau < 0) down = 0.5 + 0.5 * Math.sin(tauRaw * 7)
+    // Jammed: the ramp flips up and down, never quite seating; then it's held
+    // up until the smoke has cleared.
+    if (d === side && tau < 0) down = tau < -SMOKE_CLEAR_S ? 0.5 + 0.5 * Math.sin(tauRaw * 7) : 0
     return RAMP_UP + (RAMP_DOWN - RAMP_UP) * Math.max(0, down)
   })
 
@@ -669,6 +680,7 @@ function sceneFrame(S, t, W) {
     whale: whaleAt(t, W),
     stalled,
     jammed,
+    troubled,
     // The real sailing being replayed right now (season sampler), if any.
     sailing: S.sampler?.sailing(h) ?? null,
     ramps,

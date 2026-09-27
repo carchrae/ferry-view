@@ -357,7 +357,7 @@ import {
   createGoatScene,
   seasonSampler,
   ROAD_D,
-  BERTHS,
+  berths,
   WORLD_W,
   RAMP_PIVOT,
   RAMP_LENGTH,
@@ -513,9 +513,13 @@ watch(sceneEl, (el) => {
   if (el) resizeObs?.observe(el)
 })
 onUnmounted(() => resizeObs?.disconnect())
+// Phones pan a close-up window across a world with as much water as a
+// typical desktop shows.
+const PHONE_WORLD_W = 1600
 const worldW = computed(() => {
   const { w, h } = sceneSize.value
-  if ($q.screen.lt.sm || !w || !h) return WORLD_W
+  if ($q.screen.lt.sm) return PHONE_WORLD_W
+  if (!w || !h) return WORLD_W
   return Math.max(WORLD_W, Math.round((w * 260) / h))
 })
 // Water: a few sine lines at different depths, each drifting slowly at its
@@ -542,15 +546,16 @@ const waves = computed(() =>
 const PHONE_VIEW_W = 560
 const sceneViewBox = computed(() => {
   if (!$q.screen.lt.sm) return `0 0 ${worldW.value} 260`
-  const u = Math.min(1, Math.max(0, (scene.value.ferryX - BERTHS[0]) / (BERTHS[1] - BERTHS[0])))
-  return `${(u * (WORLD_W - PHONE_VIEW_W)).toFixed(1)} 85 ${PHONE_VIEW_W} 175`
+  const [b0, b1] = berths(worldW.value)
+  const u = Math.min(1, Math.max(0, (scene.value.ferryX - b0) / (b1 - b0)))
+  return `${(u * (worldW.value - PHONE_VIEW_W)).toFixed(1)} 85 ${PHONE_VIEW_W} 175`
 })
 // Sound cues from the scene: a breakdown (at sea or a jammed ramp) stops the
 // anthem for a sad trombone; a whale surfacing gets a surprised jingle.
 let lastTrouble = false
 let lastWhale = null
 function cueSounds(s) {
-  const trouble = s.stalled || s.jammed
+  const trouble = s.troubled // until it's moving again, smoke cleared
   if (trouble !== lastTrouble) stopParty?.setTrouble?.(trouble)
   lastTrouble = trouble
   const whale = s.whale?.id ?? null
