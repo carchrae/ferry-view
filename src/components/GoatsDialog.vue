@@ -45,6 +45,29 @@
           class="q-mr-sm"
           @click.stop="toggleSound"
         />
+        <!-- Replay a particular day (from those with history) -->
+        <q-btn
+          v-if="replayDays.length"
+          round
+          flat
+          dense
+          color="white"
+          icon="event"
+          aria-label="Replay a day"
+          @click.stop
+        >
+          <q-popup-proxy v-model="showDatePicker" transition-show="scale" transition-hide="scale">
+            <q-date
+              :model-value="replayDate"
+              mask="YYYY-MM-DD"
+              minimal
+              :options="(d) => replayDaySet.has(d.replace(/\//g, '-'))"
+              :navigation-min-year-month="replayDays[0]?.slice(0, 7).replace('-', '/')"
+              :navigation-max-year-month="replayDays.at(-1)?.slice(0, 7).replace('-', '/')"
+              @update:model-value="replayFrom"
+            />
+          </q-popup-proxy>
+        </q-btn>
         <!-- Theme music on/off (sound effects keep playing) -->
         <q-btn
           v-if="!offerSound"
@@ -684,17 +707,34 @@ let sceneAt = createGoatScene()
 const scene = ref(sceneAt(0.5))
 const sceneT = ref(0)
 const { docs: historyDocs, fetchStats } = useHistoricalStats()
+// Dates the replay can show (for the date picker), and the one it started on.
+const replayDays = ref([])
+const replayDate = ref(null)
 async function loadSampler() {
   try {
     await fetchStats()
-    // Local dev: always a school day from 6am, to test the school runs.
-    const devStart = process.env.DEV ? { schoolDay: true, startAt: '06:00' } : {}
-    const sampler = seasonSampler(historyDocs.value, Math.random, devStart)
-    if (sampler) sceneAt = createGoatScene({ sampler, seed: sceneSeed })
+    const sampler = seasonSampler(historyDocs.value)
+    if (!sampler) return
+    sceneAt = createGoatScene({ sampler, seed: sceneSeed })
+    replayDays.value = sampler.days
+    replayDate.value = sampler.dateIso
   } catch {
     /* no history — random traffic it is */
   }
 }
+// Picked a date: replay it from first thing that morning.
+const showDatePicker = ref(false)
+function replayFrom(date) {
+  if (!date) return
+  const sampler = seasonSampler(historyDocs.value, Math.random, { date })
+  if (!sampler) return
+  replayDate.value = date
+  showDatePicker.value = false
+  sceneAt = createGoatScene({ sampler, seed: sceneSeed })
+  cancelAnimationFrame(raf)
+  animateScene()
+}
+const replayDaySet = computed(() => new Set(replayDays.value))
 // Sky: tinted for the time of the sailing being replayed (or right now, with
 // no replay) — night, dawn, bright day, sunset — blending between keyframes.
 const SKY = [

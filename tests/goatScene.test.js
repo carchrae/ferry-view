@@ -343,4 +343,26 @@ describe('goatScene', () => {
     }
     assert.ok(count(busy) > count(quiet), `tourists: ${count(quiet)} vs ${count(busy)}`)
   })
+
+  it('a picked date replays from its first sailing that morning, no night first', () => {
+    const docs = []
+    for (const dateIso of ['2026-08-02', '2026-08-03', '2026-08-04']) {
+      const times = {
+        'To HSB': ['05:15', '06:15', '07:30', '08:45'],
+        'To Bowen': ['04:40', '05:45', '06:50', '08:05'],
+      }
+      for (const [direction, list] of Object.entries(times))
+        for (const sailingTime of list)
+          docs.push({ dateIso, sailingTime, direction, lastCapacity: '50%' })
+    }
+    const sampler = seasonSampler(docs, () => 0.9, { date: '2026-08-03' })
+    assert.deepEqual(sampler.days, ['2026-08-02', '2026-08-03', '2026-08-04'])
+    assert.equal(sampler.sailing(0).dateIso, '2026-08-03')
+    assert.equal(sampler.sailing(0).time, '05:15')
+    assert.equal(sampler.sailing(0).direction, 'To HSB')
+    assert.equal(sampler.sailing(1).time, '05:45')
+    const scene = createGoatScene({ sampler })
+    for (let t = 0; t < scene.halfStart(3); t += 0.5)
+      assert.equal(scene(t).night, null, `no night at t=${t}`)
+  })
 })

@@ -1276,15 +1276,17 @@ function minutesLate(d) {
 // those being that empty run). The day ends with the last sailing arriving
 // at Horseshoe Bay, where the ferry unloads and sleeps the night before the
 // next recorded day. It starts on a random day at a random point — or, with
-// { schoolDay: true }, on a school day (a weekday, September–June), and with
-// { startAt: 'HH:MM' }, at the day's first sailing from then on (both handy
-// for testing). lastCapacity is "Full", "Not Full" or "NN%" = space *left*.
+// { date: 'YYYY-MM-DD' }, on that day first thing in the morning (its first
+// sailing from Bowen); { schoolDay: true } limits the random pick to school
+// days (a weekday, September–June) and { startAt: 'HH:MM' } joins at the
+// first sailing from then on. `days` lists the dates it can replay.
+// lastCapacity is "Full", "Not Full" or "NN%" = space *left*.
 // Returns null when no day has enough data. `pick` supplies the randomness
 // (0..1, injectable for tests).
 export function seasonSampler(
   docs,
   pick = Math.random,
-  { schoolDay = false, startAt = null } = {},
+  { schoolDay = false, startAt = null, date = null } = {},
 ) {
   const byDay = new Map()
   for (const d of docs || []) {
@@ -1319,7 +1321,9 @@ export function seasonSampler(
     return month !== 7 && month !== 8 && weekday !== 0 && weekday !== 6
   }
   const choices = schoolDay && days.some(isSchoolDay) ? days.filter(isSchoolDay) : days
-  const chosen = choices[Math.min(choices.length - 1, Math.floor(pick() * choices.length))]
+  const chosen =
+    days.find((d) => d.dateIso === date) ??
+    choices[Math.min(choices.length - 1, Math.floor(pick() * choices.length))]
   const k0 = days.indexOf(chosen)
   const dayOf = (k) => days[mod(k, days.length)]
   // Local index i within a day: even → its (i/2)th "To Bowen", odd → its
@@ -1334,6 +1338,9 @@ export function seasonSampler(
     // or half 1 (mainland).
     if (i != null) firstI = i % 2 ? i + 1 : i
   }
+  // A picked date starts first thing: its first sailing from Bowen (local
+  // index 1) at half 0 — the empty run before it is never shown.
+  if (date && chosen.dateIso === date) firstI = 2
   const starts = [1 - firstI]
   function dayAt(h) {
     if (h < starts[0]) return { k: k0, i: mod(h - starts[0], dayOf(k0).halves), start: null }
@@ -1351,6 +1358,7 @@ export function seasonSampler(
   }
   return {
     key: dayOf(k0).dateIso,
+    days: days.map((d) => d.dateIso),
     dateIso: dayOf(k0).dateIso,
     // First half of the day containing h (null before the first full day).
     dayStart: (h) => dayAt(h).start,
@@ -1397,7 +1405,8 @@ export function seasonSampler(
     isDayStart(h) {
       if (h <= 0) return false
       const { i, start } = dayAt(h)
-      return i === 0 && start !== null
+      // (not the day we join at — no night before the replay even starts)
+      return i === 0 && start !== null && start !== starts[0]
     },
     load(v) {
       const cap = sailingFor(v)?.lastCapacity
