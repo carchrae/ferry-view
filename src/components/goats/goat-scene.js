@@ -426,10 +426,14 @@ function roadAt(s) {
 // sits about 80% of a full load up the line — once the queue reaches past
 // it, the sailing's nearly full. Between the 8th and 9th car in line.
 const CROSSWALK_K = Math.round(0.8 * CAR_CAPACITY) // cars in line below it
-export const CROSSWALK = (() => {
-  const p = roadAt((QUEUE_S(CROSSWALK_K - 1) + QUEUE_S(CROSSWALK_K)) / 2)
+// Where a crosswalk k cars up the line sits (between the kth and next car).
+function crosswalkAfter(k) {
+  const p = roadAt((QUEUE_S(k - 1) + QUEUE_S(k)) / 2)
   return { x: p.x, y: p.y, deg: (Math.atan2(p.ty, p.tx) * 180) / Math.PI }
-})()
+}
+export const CROSSWALK = crosswalkAfter(CROSSWALK_K)
+// …and a second one higher up the hill: a line past it fills the ferry.
+export const FULL_CROSSWALK = crosswalkAfter(CAR_CAPACITY)
 
 const mod = (a, n) => ((a % n) + n) % n
 

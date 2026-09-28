@@ -470,10 +470,12 @@
           </template>
           <path :d="ROAD_D" stroke="#555" stroke-width="15" fill="none" />
           <path :d="ROAD_D" stroke="#9e9e9e" stroke-width="1" stroke-dasharray="6 6" fill="none" />
-          <!-- Bowen's crosswalk, part way up the hill: zebra bars across the road -->
+          <!-- Bowen's crosswalks: part way up the hill (a line past it: ~80% full)
+               and higher up (past it: full) — zebra bars across the road -->
           <g
-            v-if="side === 0"
-            :transform="`translate(${CROSSWALK.x.toFixed(1)} ${CROSSWALK.y.toFixed(1)}) rotate(${CROSSWALK.deg.toFixed(1)})`"
+            v-for="cw in side === 0 ? [CROSSWALK, FULL_CROSSWALK] : []"
+            :key="cw.x"
+            :transform="`translate(${cw.x.toFixed(1)} ${cw.y.toFixed(1)}) rotate(${cw.deg.toFixed(1)})`"
           >
             <rect x="-4.5" y="-7" width="9" height="14" fill="#555" />
             <rect
@@ -816,6 +818,7 @@ import {
   seasonSampler,
   ROAD_D,
   CROSSWALK,
+  FULL_CROSSWALK,
   berths,
   WORLD_W,
   RAMP_PIVOT,
