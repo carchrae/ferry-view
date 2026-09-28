@@ -1265,10 +1265,17 @@ function minutesLate(d) {
 // order and mainland visits (odd halves) its "To Bowen" ones (the first of
 // those being that empty run). The day ends with the last sailing arriving
 // at Horseshoe Bay, where the ferry unloads and sleeps the night before the
-// next recorded day. It starts on a random day at a random point. lastCapacity is "Full", "Not Full" or
-// "NN%" = space *left*. Returns null when no day has enough data. `pick`
-// supplies the randomness (0..1, injectable for tests).
-export function seasonSampler(docs, pick = Math.random) {
+// next recorded day. It starts on a random day at a random point — or, with
+// { schoolDay: true }, on a school day (a weekday, September–June), and with
+// { startAt: 'HH:MM' }, at the day's first sailing from then on (both handy
+// for testing). lastCapacity is "Full", "Not Full" or "NN%" = space *left*.
+// Returns null when no day has enough data. `pick` supplies the randomness
+// (0..1, injectable for tests).
+export function seasonSampler(
+  docs,
+  pick = Math.random,
+  { schoolDay = false, startAt = null } = {},
+) {
   const byDay = new Map()
   for (const d of docs || []) {
     if (!d?.dateIso || !d.sailingTime || !d.direction) continue
@@ -1295,9 +1302,29 @@ export function seasonSampler(docs, pick = Math.random) {
 
   // Day k (k >= k0) starts at half starts[k - k0]; the first day is joined
   // part-way through.
-  const k0 = Math.min(days.length - 1, Math.floor(pick() * days.length))
+  const isSchoolDay = ({ dateIso }) => {
+    const date = new Date(`${dateIso}T12:00:00Z`)
+    const month = date.getUTCMonth() + 1
+    const weekday = date.getUTCDay()
+    return month !== 7 && month !== 8 && weekday !== 0 && weekday !== 6
+  }
+  const choices = schoolDay && days.some(isSchoolDay) ? days.filter(isSchoolDay) : days
+  const chosen = choices[Math.min(choices.length - 1, Math.floor(pick() * choices.length))]
+  const k0 = days.indexOf(chosen)
   const dayOf = (k) => days[mod(k, days.length)]
-  const starts = [1 - 2 * Math.floor(pick() * (dayOf(k0).halves / 2))]
+  // Local index i within a day: even → its (i/2)th "To Bowen", odd → its
+  // ((i-1)/2)th "To HSB". Half 0 is always a Bowen visit, so the first
+  // day's start (starts[0]) must be odd.
+  let firstI = 2 * Math.floor(pick() * (dayOf(k0).halves / 2))
+  if (startAt) {
+    const { sides, halves } = dayOf(k0)
+    const timeOf = (i) => sides[i % 2 ? 0 : 1][Math.floor(i / 2)]?.sailingTime ?? ''
+    const i = [...Array(halves).keys()].find((j) => timeOf(j) >= startAt)
+    // Line the first sailing at/after startAt up with half 0 (a Bowen visit)
+    // or half 1 (mainland).
+    if (i != null) firstI = i % 2 ? i + 1 : i
+  }
+  const starts = [1 - firstI]
   function dayAt(h) {
     if (h < starts[0]) return { k: k0, i: mod(h - starts[0], dayOf(k0).halves), start: null }
     let n = 0

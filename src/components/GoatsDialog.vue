@@ -686,7 +686,9 @@ const { docs: historyDocs, fetchStats } = useHistoricalStats()
 async function loadSampler() {
   try {
     await fetchStats()
-    const sampler = seasonSampler(historyDocs.value)
+    // Local dev: always a school day from 6am, to test the school runs.
+    const devStart = process.env.DEV ? { schoolDay: true, startAt: '06:00' } : {}
+    const sampler = seasonSampler(historyDocs.value, Math.random, devStart)
     if (sampler) sceneAt = createGoatScene({ sampler, seed: sceneSeed })
   } catch {
     /* no history — random traffic it is */
