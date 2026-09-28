@@ -504,13 +504,18 @@ describe('goatScene', () => {
     const sampler = seasonSampler(docs, () => 0, { date: '2026-09-15' })
     const sc = createGoatScene({ sampler })
     let checked = 0
+    const backlog = [] // cars left waiting after each Full sailing
     for (let v = 0; v < 16; v += 2) {
       const load = sampler.load(v)
-      if (load == null || load === 'full') continue
-      checked++
+      if (load == null) continue
       // just after it's gone: any of its line (or older) still at the dock?
       const after = sc(sc.halfStart(v + 1) - 0.2)
       const left = after.carsIn.filter((c) => Number(c.id.match(/^car(-?\d+)\./)?.[1]) <= v)
+      if (load === 'full') {
+        backlog.push(left.length)
+        continue
+      }
+      checked++
       assert.equal(
         left.length,
         0,
@@ -518,6 +523,9 @@ describe('goatScene', () => {
       )
     }
     assert.ok(checked >= 2, `not-full sailings checked: ${checked}`)
+    // …while the run of Full sailings built up a backlog, growing as it went
+    assert.ok(backlog.length >= 3 && backlog.every((n) => n > 0), `backlog: ${backlog}`)
+    assert.ok(backlog.at(-1) > backlog[0], `backlog grows: ${backlog}`)
     // (the school run was in there)
     const run = [...Array(12).keys()].find((h) => sampler.sailing(h)?.time === '07:30')
     assert.equal(sampler.extraCrowd(run), 'kids')

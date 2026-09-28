@@ -35,6 +35,11 @@ const RAMP_UP = -80 // degrees, raised while the ferry is away
 // Deck spot per boarding car k, farthest from the dock first. Cars overlap.
 const FAR_SLOTS = Array.from({ length: 10 }, (_, k) => 54 - 12 * k) // 54 … -54
 export const CAR_CAPACITY = FAR_SLOTS.length
+// Car k's deck spot: the usual ten, then (clearing a backlog on a sailing
+// that wasn't really full) squeezed in between them.
+const farSlot = (k) => (k < CAR_CAPACITY ? FAR_SLOTS[k] : 48 - 12 * ((k - CAR_CAPACITY) % 9))
+// The longest line the hill holds (the back of it at the top of the road).
+const MAX_LINE = 19
 // Walk-ons ride on the passenger deck roof, either side of the tower.
 const RIDER_SPOTS = [-34, -27, 25, 32]
 export const PED_CAPACITY = RIDER_SPOTS.length
@@ -128,7 +133,7 @@ function busLeaves(S, h) {
 function carsClearU(S, h, at = schoolFarthest(h)) {
   const n = boarders(S, 'car', h - 1).length
   if (!n) return 0
-  const route = pathLength(deckPath(BERTH - FAR_SLOTS[n - 1]))
+  const route = pathLength(deckPath(BERTH - farSlot(n - 1)))
   // (+70: the last car well clear ahead, since a bus is long)
   return touristHold(S, h) + CAR_UNLOAD(n - 1) + (route + at + 70) / CAR_V
 }
@@ -584,11 +589,11 @@ const MIN_CARS = 6
 const LATE_FUMING = 20 // minutes late before the waiting cars lose patience
 function capOf(S, kind, v) {
   if (kind !== 'car') return Infinity
-  // Replaying a sailing that wasn't full: everyone in line got on (a big
-  // crowd of foot passengers or not — see newcomers, which keeps the line
-  // within the deck).
+  // Replaying a sailing that wasn't full: everyone in line got on — a big
+  // crowd of foot passengers or not, a backlog from full sailings or not (it
+  // clears, squeezed in; see farSlot).
   const load = S.sampler?.load(v)
-  if (load != null && load !== 'full') return CAR_CAPACITY
+  if (load != null && load !== 'full') return Infinity
   const people = lineAt(S, 'ped', v).length + lineAt(S, 'kid', v).length
   return Math.max(MIN_CARS, CAR_CAPACITY - Math.max(0, Math.floor((people - 12) / 3)))
 }
@@ -628,9 +633,9 @@ function newcomers(S, kind, v, carried = 0) {
   let n =
     kind === 'car'
       ? rush
-        ? // (a line a few longer than the deck, counting any still waiting
-          // from last time — not a fresh overflow on top of theirs)
-          Math.max(1, CAR_CAPACITY + 1 + Math.floor(r * 4) - carried)
+        ? // (more than fit: a backlog builds over full sailings, as far up
+          // the hill as the road goes)
+          Math.max(0, Math.min(CAR_CAPACITY + 1 + Math.floor(r * 4), MAX_LINE - carried))
         : typeof load === 'number'
           ? Math.max(1, Math.round(load * CAR_CAPACITY))
           : 3 + Math.floor(r * 6)
@@ -640,10 +645,10 @@ function newcomers(S, kind, v, carried = 0) {
   // Seen reaching the crosswalk: at least that long a line.
   const seen = kind === 'car' && S.sampler?.sailing(v)?.crosswalkAt != null
   if (seen) n = Math.max(n, CROSSWALK_K + 1 - carried)
-  // Replaying a sailing that wasn't full: everyone waiting got on, so the
-  // line never outgrows the ferry.
-  const fits =
-    S.sampler && load !== 'full' ? Math.max(carried ? 0 : 1, capOf(S, kind, v) - carried) : n
+  // Replaying a sailing that wasn't full: everyone waiting got on — any
+  // backlog, plus newcomers up to how full it was.
+  const room = typeof load === 'number' && kind === 'car' ? CAR_CAPACITY : capOf(S, kind, v)
+  const fits = S.sampler && load !== 'full' ? Math.max(carried ? 0 : 1, room - carried) : n
   return Array.from({ length: Math.min(n, fits) }, (_, i) => ({
     id: `${kind}${v}.${i}`,
     color:
@@ -849,10 +854,10 @@ function carsWaitToBoard(S, v) {
 const carLoad = (S, v, k) => CAR_LOAD(k) + carsWaitToBoard(S, v)
 // …and when it's parked on the deck.
 const carAboard = (S, v, k) =>
-  carLoad(S, v, k) + (QUEUE_S(k) + pathLength(deckPath(BERTH + FAR_SLOTS[k]))) / CAR_V
+  carLoad(S, v, k) + (QUEUE_S(k) + pathLength(deckPath(BERTH + farSlot(k)))) / CAR_V
 const carBoarded = (S, v, sigma, k) => {
   const e = (sigma - carLoad(S, v, k)) * CAR_V
-  return e > 0 && !toDeck(e, QUEUE_S(k), BERTH + FAR_SLOTS[k])
+  return e > 0 && !toDeck(e, QUEUE_S(k), BERTH + farSlot(k))
 }
 const pedBoarded = (sigma, j) => sigma >= PED_LOAD(j) + (WAIT_S(j) + WALK_ON_LENGTH) / PED_V
 
@@ -1021,7 +1026,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       }
       cars.push(queued(item, QUEUE_S(k), mirror, fuming(v, t, k)))
     } else {
-      const at = toDeck((sigma - carLoad(S, v, k)) * CAR_V, QUEUE_S(k), BERTH + FAR_SLOTS[k])
+      const at = toDeck((sigma - carLoad(S, v, k)) * CAR_V, QUEUE_S(k), BERTH + farSlot(k))
       // On the ramp it's drawn with the far lane, i.e. behind the ferry's wall.
       if (at) cars.push(car(item, at.onRamp ? 'out' : 'in', at.x, at.y, at.dx, at.dy, mirror))
     }
@@ -1559,7 +1564,7 @@ function unloadAt(S, t, side, cars, peds, W) {
   boarders(S, 'car', v - 1).forEach((item, i) => {
     const start = CAR_UNLOAD(i)
     if (tauC < start) return // (still waiting for the tourists to clear)
-    const route = deckPath(BERTH - FAR_SLOTS[i]).reverse()
+    const route = deckPath(BERTH - farSlot(i)).reverse()
     const e = (tauC - start) * CAR_V
     const at = along(route, e)
     if (at) {
@@ -1801,12 +1806,11 @@ function sceneFrame(S, t, W) {
   const sign = side === 0 ? 1 : -1
   const deck = []
   boarders(S, 'car', h - 1).forEach((item, i) => {
-    if (tauC < CAR_UNLOAD(i))
-      deck.push({ id: item.id, dx: -sign * FAR_SLOTS[i], color: item.color })
+    if (tauC < CAR_UNLOAD(i)) deck.push({ id: item.id, dx: -sign * farSlot(i), color: item.color })
   })
   boarders(S, 'car', h).forEach((item, k) => {
     if (carBoarded(S, h, tau, k))
-      deck.push({ id: item.id, dx: sign * FAR_SLOTS[k], color: item.color })
+      deck.push({ id: item.id, dx: sign * farSlot(k), color: item.color })
   })
   const riders = []
   boarders(S, 'ped', h - 1).forEach((item, j) => {
