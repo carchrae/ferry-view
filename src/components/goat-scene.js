@@ -38,7 +38,7 @@ export const CAR_CAPACITY = FAR_SLOTS.length
 // Walk-ons ride on the passenger deck roof, either side of the tower.
 const RIDER_SPOTS = [-34, -27, 25, 32]
 export const PED_CAPACITY = RIDER_SPOTS.length
-const QUEUE_S = (k) => 50 + 22 * k // car k's spot in line (0 = front, at the dock)
+const QUEUE_S = (k) => 78 + 22 * k // car k's spot in line (0 = front, past the school-bus spot)
 // Walk-on j's spot on the dock (a big crowd packs in tighter).
 const WAIT_S = (j) => 14 + 6 * Math.min(j, 4) + 3 * Math.max(0, j - 4)
 // The line moves off together, like real traffic, keeping its spacing.
@@ -77,14 +77,18 @@ const KID_UNLOAD = (k) => 0.5 + 0.07 * k
 // The school bus never boards: it drops the kids at their dock (parking on
 // the shoulder by the dock, BUS_S up the road) and another meets them off
 // the ferry at the other end.
-// Where the bus parks: nose down at the front of the dock, clear of the first
-// queued car (a bus is ~32 long, so it spans ~2–34; the first car, ~39–61).
-const BUS_S = 18
-const BUS_V = 200
-const LANE_SWAP = 6 // road length over which it changes lanes
+// Buses are drawn at BUS_SCALE (the shapes are laid out at half size).
+const BUS_SCALE = 2
+const scaled = (c) => ({ ...c, transform: `${c.transform} scale(${BUS_SCALE})` })
+// Where the school bus parks: nose down at the front of the dock, clear of
+// the first queued car (the bus is ~64 long, so it spans ~2–66; the first
+// car, ~67–89).
+const BUS_S = 34
+const BUS_V = 320 // as quick as the cars, so nothing catches it up the hill
+const LANE_SWAP = 10 // road length over which it changes lanes
 // Coming down, it cuts back into the downhill lane only once its tail is past
 // the first queued car.
-const BUS_CUT_IN = QUEUE_S(0) - 11 - 16
+const BUS_CUT_IN = QUEUE_S(0) - 11 - 32
 // Both buses pull in just as the ferry leaves the other dock: the drop-off
 // bus as it sets off to fetch the kids, the pick-up bus as it sets off with
 // them. busDriveS() is the drive down the hill.
@@ -98,7 +102,7 @@ const isSchool = (crowd) => crowd.length > 0 && !!crowd[0].kid
 function bus(id, s, uphill, mirror, lane) {
   const p = roadAt(s)
   const [dx, dy] = uphill ? [p.tx, p.ty] : [-p.tx, -p.ty]
-  return car({ id, color: '#fbc02d' }, 'bus', p.x, p.y + lane, dx, dy, mirror)
+  return scaled(car({ id, color: '#fbc02d' }, 'bus', p.x, p.y + lane, dx, dy, mirror))
 }
 const mixLane = (a, b, u) => a + (b - a) * Math.max(0, Math.min(1, u))
 // Driving down from the top of the road to park at BUS_S from time `from`,
@@ -121,7 +125,26 @@ function busTrip(id, clock, from, leave, mirror) {
 function busLeaves(S, h) {
   const kids = boarders(S, 'kid', h - 1)
   if (!isSchool(kids)) return 0
-  return KID_UNLOAD(kids.length - 1) + (WALK_ON_LENGTH + BUS_S) / KID_V + 0.5
+  const kidsOn = KID_UNLOAD(kids.length - 1) + (WALK_ON_LENGTH + BUS_S) / KID_V + 0.5
+  return Math.max(kidsOn, carsClearU(S, h))
+}
+// When visit h's cars have all driven off the ferry and on past the school
+// bus's spot (unload clock) — a bus pulling out waits for that traffic
+// rather than cut in among it.
+function carsClearU(S, h, at = BUS_S) {
+  const n = boarders(S, 'car', h - 1).length
+  if (!n) return 0
+  const route = pathLength(deckPath(BERTH - FAR_SLOTS[n - 1]))
+  // (+70: the last car well clear ahead, since a bus is long)
+  return touristHold(S, h) + CAR_UNLOAD(n - 1) + (route + at + 70) / CAR_V
+}
+// When the drop-off bus that brought visit w's kids leaves (scene time):
+// once they're all out — and if the ferry's in by then, once its cars have
+// gone by.
+function dropOffLeaves(S, w, kids) {
+  const kidsOut = departsAt(S, w - 1) + kidOutAt(kids.length - 1, kids.length) + 0.8
+  const arrived = halfStartOf(S, w) + jamDelay(S, w)
+  return arrived < kidsOut ? Math.max(kidsOut, arrived + carsClearU(S, w)) : kidsOut
 }
 // The pick-up bus is parked across the boarding path: the new line can't
 // start down to the ferry until it's gone (and clear of the dock).
@@ -150,38 +173,62 @@ const WANTS_BUS = 0.6 // share of local walk-offs who take the bus
 const MAD_WAIT = 1.2 // fuming before the rescue car sets off
 const PICKUP_V = 320
 const LOVE_S = 0.8 // the ❤ moment before they hop in
+// The Bowen shuttle's last run meets the sailing that left Horseshoe Bay at
+// 8:10pm (in by ~8:30). After that it's a ride or a walk home up the hill
+// in the dark, by flashlight.
+const LAST_SHUTTLE = '20:10'
+const GETS_A_RIDE = 0.45
+// Is there a shuttle for Bowen visit v (the sailing that brought them in)?
+const shuttleRuns = (S, v) => {
+  const time = S.sampler?.sailing(v - 1)?.time
+  return !time || time <= LAST_SHUTTLE
+}
 // Transit bus parts along the road (front first): offsets behind the front,
 // and each part's length.
 const SHUTTLE_PARTS = [0]
-const ARTIC_PARTS = [0, 24]
+const ARTIC_PARTS = [0, 24 * BUS_SCALE]
 const transitDriveS = () => (ROAD.length - STOP_S) / BUS_V
 // The articulated bus, cycle n: parked from park to leave (scene time).
 const articPark = (n) => n * ARTIC_EVERY + 3 + rnd(n, 111) * 2
-const articLeave = (n) => articPark(n) + 3.5 + rnd(n, 112) * 2.5
+const articDue = (n) => articPark(n) + 3.5 + rnd(n, 112) * 2.5
+// When it actually pulls out: on time, unless the ferry's unloading at that
+// moment — then it waits for the cars to go by.
+function articLeave(S, n) {
+  const due = articDue(n)
+  const { h } = halfAt(S, due)
+  const v = h - mod(h - 1, 2) // Horseshoe Bay's latest visit
+  if (v < 0) return due
+  const base = halfStartOf(S, v) + jamDelay(S, v)
+  const clear = base + carsClearU(S, v, STOP_S)
+  return due >= base && due < clear ? clear : due
+}
 // First articulated bus someone reaching the stop at `at` can catch.
-function articBoard(at) {
+function articBoard(S, at) {
   for (let n = Math.floor(at / ARTIC_EVERY) - 1; ; n++)
-    if (articLeave(n) >= at) return Math.max(at, articPark(n))
+    if (articLeave(S, n) >= at) return Math.max(at, articPark(n))
 }
 // Did one pull away between `from` (off the ferry) and `at` (at the stop)?
-function articMissed(from, at) {
+function articMissed(S, from, at) {
   for (let n = Math.floor(from / ARTIC_EVERY) - 1; articPark(n) < at; n++) {
-    const l = articLeave(n)
+    const l = articLeave(S, n)
     if (l >= from && l < at) return true
   }
   return false
 }
 // A transit bus (its parts) at road position s — the front — driving
 // downhill (arriving) or uphill (leaving), on the roadside.
+// Arriving it pulls in along the roadside; leaving, it swings out into the
+// uphill lane with the departing cars.
 function transitBus(id, kind, s, uphill, mirror, parts) {
   return parts.flatMap((off, k) => {
     const sp = s + (uphill ? -off : off) // later parts trail behind
     if (sp < 0 || sp > ROAD.length + 30) return []
     const p = roadAt(sp)
     const [dx, dy] = uphill ? [p.tx, p.ty] : [-p.tx, -p.ty]
+    const lane = uphill ? mixLane(stopLane(), LANE.out, (sp - STOP_S) / LANE_SWAP) : stopLane()
     return [
       {
-        ...car({ id: `${id}.${k}`, color: '' }, 'transit', p.x, p.y + stopLane(), dx, dy, mirror),
+        ...scaled(car({ id: `${id}.${k}`, color: '' }, 'transit', p.x, p.y + lane, dx, dy, mirror)),
         kind,
         part: k,
         last: k === parts.length - 1,
@@ -867,7 +914,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const busParks = departsAt(S, v + 1)
   if (schoolDrop) {
     // The drop-off bus: down to the dock, kids pour out, back up the hill.
-    const leave = busParks + kidOutAt(nextKids.length - 1, nextKids.length) + 0.8
+    const leave = dropOffLeaves(S, v + 2, nextKids)
     const b = busTrip(`busD${v + 2}`, t, busParks - busDriveS(), leave, mirror)
     if (b) cars.push(b)
   }
@@ -877,8 +924,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const ownKids = lineAt(S, 'kid', v)
   if (isSchool(ownKids)) {
     const parked = departsAt(S, v - 1)
-    const leave = parked + kidOutAt(ownKids.length - 1, ownKids.length) + 0.8
-    const b = busTrip(`busD${v}`, t, parked - busDriveS(), leave, mirror)
+    const b = busTrip(`busD${v}`, t, parked - busDriveS(), dropOffLeaves(S, v, ownKids), mirror)
     if (b) cars.push(b)
   }
   // The ferry's setting off for here with school kids aboard: a bus comes
@@ -954,7 +1000,20 @@ function walkOffPlan(S, v, side) {
   })
   const base = halfStartOf(S, v) + jamDelay(S, v)
   let leave = null
-  if (side === 0) {
+  if (side === 0 && !shuttleRuns(S, v)) {
+    // After the last shuttle: some locals get a ride (waiting calmly for the
+    // car); everyone else walks home, all the way up the hill, by torchlight.
+    for (const r of riders) {
+      if (r.local && rnd(seedOf(r.item.id), 103) < GETS_A_RIDE) {
+        r.wants = true
+        r.ride = true
+        r.strandedAt = r.arrive
+      } else {
+        r.wants = false
+        r.torch = true
+      }
+    }
+  } else if (side === 0) {
     // Bowen shuttle: tourists take the seats first, then locals; it goes once
     // everyone with a seat is aboard.
     const byArrival = (a, b) => a.arrive - b.arrive
@@ -967,14 +1026,15 @@ function walkOffPlan(S, v, side) {
     })
     const seated = queue.filter((r) => r.board != null)
     leave = seated.length ? Math.max(...seated.map((r) => r.arrive)) + 0.6 : 2.5
+    leave = Math.max(leave, carsClearU(S, v, STOP_S)) // (and the cars have gone by)
     for (const r of queue) if (r.board == null) r.strandedAt = Math.max(r.arrive, leave)
   } else {
     // Horseshoe Bay: whichever articulated bus is there when they get there.
     for (const r of riders) {
       if (!r.wants) continue
       const at = base + r.arrive
-      if (articMissed(base + r.start, at) && r.local) r.strandedAt = r.arrive
-      else r.board = articBoard(at) - base
+      if (articMissed(S, base + r.start, at) && r.local) r.strandedAt = r.arrive
+      else r.board = articBoard(S, at) - base
     }
   }
   // Stranded locals get fetched: a car sets off down after a moment's fuming
@@ -982,7 +1042,7 @@ function walkOffPlan(S, v, side) {
   let n = 0
   for (const r of riders) {
     if (r.strandedAt == null || !r.local) continue
-    r.carFrom = r.strandedAt + MAD_WAIT + n * 1.1
+    r.carFrom = r.strandedAt + (r.ride ? 0.4 : MAD_WAIT) + n * 1.1
     r.carAt = r.carFrom + (ROAD.length - STOP_S) / PICKUP_V
     r.board = r.carAt + LOVE_S
     n++
@@ -1021,11 +1081,13 @@ function walkOff(r, u, t, mirror) {
   }
   const from = r.local ? 0 : 10
   const s = from + d * pace
-  const gone = r.local ? PED_GONE_S : TOURIST_GONE_S
+  // Walking home in the dark goes all the way up the hill.
+  const gone = r.torch ? ROAD.length : r.local ? PED_GONE_S : TOURIST_GONE_S
   if (!r.wants || s < STOP_S) {
     if (s > gone) return null
     const p = roadAt(s)
-    return ped(item, p.x, p.y + LANE.walk, p.tx, e * 12, Math.min(1, (gone - s) / 40), mirror)
+    const q = ped(item, p.x, p.y + LANE.walk, p.tx, e * 12, Math.min(1, (gone - s) / 40), mirror)
+    return r.torch ? { ...q, torch: true } : q
   }
   // At the bus stop.
   if (r.board != null && u >= r.board) return null // on the bus / in the car
@@ -1046,6 +1108,8 @@ function walkOff(r, u, t, mirror) {
       return ped(item, p.x, p.y + LANE.walk, facing, w.moving ? t * 12 : 0, 1, mirror)
     }
     if (u >= r.carAt) return ped(item, p.x, p.y + LANE.walk, 1, 0, 1, mirror, 'love')
+    // (a ride they'd arranged: just waiting)
+    if (r.ride) return ped(item, p.x, p.y + LANE.walk, facing, 0, 1, mirror)
     const hop = Math.abs(Math.sin(u * 11 + seedOf(item.id))) * 6
     return ped(item, p.x, p.y + LANE.walk - hop, facing, 0, 1, mirror, 'mad')
   }
@@ -1087,6 +1151,7 @@ function walkOffs(S, t, side, v, peds, cars, W) {
   if (side === 0) {
     // The Bowen shuttle for this arrival, and the one coming for the next.
     for (const w of [v, v + 2]) {
+      if (!shuttleRuns(S, w)) continue // (after the last one of the day)
       const pw = w === v ? plan : walkOffPlan(S, w, 0)
       const prevLeave = w === v ? -Infinity : plan.base + plan.leave
       const park = Math.max(departsAt(S, w - 1), prevLeave + 2 * transitDriveS() + 0.3)
@@ -1107,7 +1172,15 @@ function walkOffs(S, t, side, v, peds, cars, W) {
     const n = Math.floor(t / ARTIC_EVERY)
     for (const k of [n - 1, n, n + 1])
       cars.push(
-        ...transitTrip(`artic${k}`, 'artic', t, articPark(k), articLeave(k), mirror, ARTIC_PARTS),
+        ...transitTrip(
+          `artic${k}`,
+          'artic',
+          t,
+          articPark(k),
+          articLeave(S, k),
+          mirror,
+          ARTIC_PARTS,
+        ),
       )
   }
 }

@@ -562,6 +562,8 @@
         />
         <!-- Foot passengers (the ones who missed the boat are fuming) -->
         <g v-for="p in scene.peds" :key="p.id" :transform="p.transform" :opacity="p.opacity">
+          <!-- walking home in the dark: a flashlight beam ahead -->
+          <path v-if="p.torch" d="M1.6 -8 L22 -1.5 L22 -13 Z" fill="#fff59d" opacity="0.4" />
           <path :d="p.legs" stroke="#eceff1" stroke-width="1.4" stroke-linecap="round" />
           <rect v-if="p.kid" x="-3.6" y="-10.5" width="2.2" height="5" rx="0.8" :fill="p.pack" />
           <rect x="-1.6" y="-11" width="3.2" height="7" rx="1.2" :fill="p.shirt" />
