@@ -3,6 +3,12 @@
        scene. `b` comes from goat-scene.js: its transform places it on the
        road, front at +x. -->
   <g :transform="b.transform">
+    <!-- After dark: a headlight beam (from the front section only), under the bus -->
+    <path
+      v-if="lit && (b.kind !== 'artic' || b.front)"
+      :d="`M${front} -6 L${front + 26} -1 L${front + 26} -11 Z`"
+      fill="url(#goat-beam)"
+    />
     <template v-if="b.kind === 'school'">
       <rect x="-16" y="-14" width="32" height="11" rx="2" fill="#fbc02d" />
       <rect x="-14" y="-12.4" width="23" height="3.6" fill="#37474f" />
@@ -46,13 +52,8 @@
       <circle cx="-6" cy="-3" r="2.6" fill="#111" />
       <circle cx="6" cy="-3" r="2.6" fill="#111" />
     </template>
-    <!-- After dark: headlights (from the front section only) and tail lights -->
+    <!-- After dark: tail lights (on the back section only) -->
     <template v-if="lit">
-      <path
-        v-if="b.kind !== 'artic' || b.front"
-        :d="`M${front} -6 L${front + 26} -1 L${front + 26} -11 Z`"
-        fill="url(#goat-beam)"
-      />
       <rect
         v-if="b.kind !== 'artic' || b.trailing"
         :x="rear - 0.9"

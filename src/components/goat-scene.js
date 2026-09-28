@@ -74,25 +74,18 @@ const crowdSpot = (item, k) => (item.kid ? KID_WAIT_S(k) : TOURIST_WAIT_S(k))
 const KID_WAIT_S = (k) => 6 + 2.2 * k // a packed crowd
 const KID_LOAD = (k) => 1.7 + 0.035 * k // …streaming aboard
 const KID_UNLOAD = (k) => 0.5 + 0.07 * k
-// The school bus never boards: it drops the kids at their dock (parking on
-// the shoulder by the dock, BUS_S up the road) and another meets them off
-// the ferry at the other end.
+// The school bus never boards: it drops the kids at their dock (parking at
+// the front of the bus stop, SCHOOL_S) and another meets them off the ferry at the
+// other end.
 // Buses are drawn at BUS_SCALE (the shapes are laid out at half size).
 const BUS_SCALE = 2
 const scaled = (c, k = BUS_SCALE) => ({ ...c, transform: `${c.transform} scale(${k})` })
-// Where the school bus parks: nose down at the front of the dock, clear of
-// the first queued car (the bus is ~64 long, so it spans ~2–66; the first
-// car, ~67–89).
-const BUS_S = 34
 const BUS_V = 320 // as quick as the cars, so nothing catches it up the hill
 const LANE_SWAP = 10 // road length over which it changes lanes
-// Coming down, it cuts back into the downhill lane only once its tail is past
-// the first queued car.
-const BUS_CUT_IN = QUEUE_S(0) - 11 - 32
 // Both buses pull in just as the ferry leaves the other dock: the drop-off
 // bus as it sets off to fetch the kids, the pick-up bus as it sets off with
 // them. busDriveS() is the drive down the hill.
-const busDriveS = () => (ROAD.length - BUS_S) / BUS_V
+const busDriveS = () => (ROAD.length - SCHOOL_S) / BUS_V
 // When kid i (of n) steps out of the drop-off bus, after it parks.
 const kidOutAt = (i, n) => 0.3 + i * Math.min(0.15, 3 / n)
 const isSchool = (crowd) => crowd.length > 0 && !!crowd[0].kid
@@ -106,33 +99,33 @@ function bus(id, s, uphill, mirror, lane) {
   return { ...c, kind: 'school', leaving: uphill }
 }
 const mixLane = (a, b, u) => a + (b - a) * Math.max(0, Math.min(1, u))
-// Driving down from the top of the road to park at BUS_S from time `from`,
-// then (from `leave`) back up and away; null once gone (or not yet come).
-// Coming down it overtakes any queued cars in the uphill lane, cutting in at
-// the front of the line to park; leaving, it pulls into the uphill lane
-// behind anything already going up (cars are faster, so it never catches
-// them).
+// Driving down from the top of the road to park at the front of the bus stop
+// (SCHOOL_S) from time `from`, then (from `leave`) back up and away; null once
+// gone (or not yet come). Coming down it overtakes the queue — and any
+// transit bus at the stop — in the uphill lane, cutting in to the roadside at
+// the front; leaving, it pulls into the uphill lane behind anything already
+// going up (cars are faster, so it never catches them).
 function busTrip(id, clock, from, leave, mirror) {
   if (clock < from) return null
   if (clock < leave) {
-    const s = Math.max(BUS_S, ROAD.length - (clock - from) * BUS_V)
-    return bus(id, s, false, mirror, mixLane(LANE.in, LANE.out, (s - BUS_CUT_IN) / LANE_SWAP))
+    const s = Math.max(SCHOOL_S, ROAD.length - (clock - from) * BUS_V)
+    return bus(id, s, false, mirror, mixLane(stopLane(), LANE.out, (s - SCHOOL_S) / LANE_SWAP))
   }
-  const s = BUS_S + (clock - leave) * BUS_V
+  const s = SCHOOL_S + (clock - leave) * BUS_V
   if (s >= ROAD.length) return null
-  return bus(id, s, true, mirror, mixLane(LANE.in, LANE.out, (s - BUS_S) / LANE_SWAP))
+  return bus(id, s, true, mirror, mixLane(stopLane(), LANE.out, (s - SCHOOL_S) / LANE_SWAP))
 }
 // When the pick-up bus at visit h's dock leaves (unload clock), or 0 if none.
 function busLeaves(S, h) {
   const kids = boarders(S, 'kid', h - 1)
   if (!isSchool(kids)) return 0
-  const kidsOn = KID_UNLOAD(kids.length - 1) + (WALK_ON_LENGTH + BUS_S) / KID_V + 0.5
+  const kidsOn = KID_UNLOAD(kids.length - 1) + (WALK_ON_LENGTH + SCHOOL_S) / KID_V + 0.5
   return Math.max(kidsOn, carsClearU(S, h))
 }
-// When visit h's cars have all driven off the ferry and on past the school
-// bus's spot (unload clock) — a bus pulling out waits for that traffic
+// When visit h's cars have all driven off the ferry and on past road
+// position `at` (unload clock) — a bus pulling out waits for that traffic
 // rather than cut in among it.
-function carsClearU(S, h, at = BUS_S) {
+function carsClearU(S, h, at = SCHOOL_S) {
   const n = boarders(S, 'car', h - 1).length
   if (!n) return 0
   const route = pathLength(deckPath(BERTH - FAR_SLOTS[n - 1]))
@@ -147,7 +140,7 @@ function dropOffLeaves(S, w, kids) {
   const arrived = halfStartOf(S, w) + jamDelay(S, w)
   return arrived < kidsOut ? Math.max(kidsOut, arrived + carsClearU(S, w)) : kidsOut
 }
-// The pick-up bus is parked across the boarding path: the new line can't
+// The pick-up bus pulls out across the boarding path: the new line can't
 // start down to the ferry until it's gone (and clear of the dock).
 const busHold = (S, h) => {
   const leaves = busLeaves(S, h)
@@ -166,7 +159,11 @@ const busHold = (S, h) => {
 // A local who misses their bus hops mad until someone drives back down to
 // pick them up (a ❤ as the car pulls in). Tourists just wander about and
 // catch the next one (or wander off); school kids always get their bus.
-const STOP_S = 62
+// The bus stop: the school bus pulls in at its front, nose to the dock
+// (SCHOOL_S — the bus is ~64 long, so it spans ~2–66), and the transit bus
+// stops right behind it (the shuttle's nose ~70, the articulated bus's ~64).
+const SCHOOL_S = 34
+const STOP_S = 98
 const stopLane = () => LANE.walk + 7 // the roadside, in front of the lanes
 const SHUTTLE_SEATS = 8
 const ARTIC_EVERY = 10
@@ -323,6 +320,14 @@ function roadAt(s) {
   const len = Math.hypot(x1 - x0, y1 - y0) || 1
   return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, tx: (x1 - x0) / len, ty: (y1 - y0) / len }
 }
+// The crosswalk up the hill on Bowen (where the crosswalk camera looks): it
+// sits about 80% of a full load up the line — once the queue reaches past
+// it, the sailing's nearly full. Between the 8th and 9th car in line.
+export const CROSSWALK = (() => {
+  const k = Math.round(0.8 * CAR_CAPACITY)
+  const p = roadAt((QUEUE_S(k - 1) + QUEUE_S(k)) / 2)
+  return { x: p.x, y: p.y, deg: (Math.atan2(p.ty, p.tx) * 180) / Math.PI }
+})()
 
 const mod = (a, n) => ((a % n) + n) % n
 
@@ -974,7 +979,8 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const ownKids = lineAt(S, 'kid', v)
   if (isSchool(ownKids)) {
     const parked = departsAt(S, v - 1)
-    const b = busTrip(`busD${v}`, t, parked - busDriveS(), dropOffLeaves(S, v, ownKids), mirror)
+    const leave = dropOffLeaves(S, v, ownKids)
+    const b = busTrip(`busD${v}`, t, parked - busDriveS(), leave, mirror)
     if (b) cars.push(b)
   }
   // The ferry's setting off for here with school kids aboard: a bus comes
@@ -993,7 +999,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     const slot = crowdSpot(item, i)
     // School kids pile out of the bus; tourists amble down the road.
     const s = schoolDrop
-      ? BUS_S + Math.sign(slot - BUS_S) * Math.min(e, Math.abs(slot - BUS_S))
+      ? SCHOOL_S + Math.sign(slot - SCHOOL_S) * Math.min(e, Math.abs(slot - SCHOOL_S))
       : Math.max(slot, TOURIST_START_S - e)
     if (puzzled && s === slot) return peds.push(lostPed(item, t, slot, mirror))
     if (s === slot) return peds.push(strollPed(item, t, slot, mirror, (i % 2) * 2))
@@ -1304,7 +1310,7 @@ function unloadAt(S, t, side, cars, peds, W) {
     const off = along([...WALK_ON].reverse(), e)
     if (off) return peds.push(ped(item, off.x, off.y, -1, e, 1, mirror))
     const s = e - WALK_ON_LENGTH
-    if (school && s >= BUS_S) return // on the bus
+    if (school && s >= SCHOOL_S) return // on the bus
     const p = roadAt(s)
     peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (gone - s) / 40), mirror))
   })

@@ -202,12 +202,18 @@
             <circle cx="6" cy="-3" r="3" fill="#111" />
             <circle cx="11" cy="-10" r="2" fill="#ffe082" />
           </g>
-          <!-- After dark: a headlight beam ahead and red tail lights (drawn
-               over a car, in its frame: front at +x) -->
-          <g id="goat-car-lights">
-            <path d="M11 -10 L46 -2 L46 -16 Z" fill="url(#goat-beam)" />
-            <rect x="-11.8" y="-11.5" width="1.8" height="3" rx="0.6" fill="#ff1744" />
-          </g>
+          <!-- After dark: a headlight beam ahead (drawn under the cars) and
+               red tail lights (on the car), in a car's frame: front at +x -->
+          <path id="goat-car-beam" d="M11 -10 L46 -2 L46 -16 Z" fill="url(#goat-beam)" />
+          <rect
+            id="goat-car-tail"
+            x="-11.8"
+            y="-11.5"
+            width="1.8"
+            height="3"
+            rx="0.6"
+            fill="#ff1744"
+          />
           <!-- Beams fade away at their far end -->
           <linearGradient id="goat-beam" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0" stop-color="#fff59d" stop-opacity="0.6" />
@@ -410,6 +416,22 @@
           </template>
           <path :d="ROAD_D" stroke="#555" stroke-width="15" fill="none" />
           <path :d="ROAD_D" stroke="#9e9e9e" stroke-width="1" stroke-dasharray="6 6" fill="none" />
+          <!-- Bowen's crosswalk, part way up the hill: zebra bars across the road -->
+          <g
+            v-if="side === 0"
+            :transform="`translate(${CROSSWALK.x.toFixed(1)} ${CROSSWALK.y.toFixed(1)}) rotate(${CROSSWALK.deg.toFixed(1)})`"
+          >
+            <rect x="-4.5" y="-7" width="9" height="14" fill="#555" />
+            <rect
+              v-for="k in 5"
+              :key="k"
+              x="-4"
+              :y="-7.2 + (k - 1) * 3"
+              width="8"
+              height="1.6"
+              fill="#eceff1"
+            />
+          </g>
           <rect x="350" y="196" width="48" height="8" fill="#8d6e63" />
           <!-- hinged ramp: lowered onto the ferry's car deck while it's berthed -->
           <g
@@ -421,9 +443,17 @@
         </g>
 
         <!-- Behind the ferry: arrivals driving off up the far lane, and ramp traffic -->
+        <template v-if="dark">
+          <use
+            v-for="c in scene.carsOut"
+            :key="`${c.id}~beam`"
+            href="#goat-car-beam"
+            :transform="c.transform"
+          />
+        </template>
         <g v-for="c in scene.carsOut" :key="c.id" :transform="c.transform">
           <use href="#goat-car" :fill="c.color" />
-          <use v-if="dark" href="#goat-car-lights" />
+          <use v-if="dark" href="#goat-car-tail" />
         </g>
 
         <!-- Wake: foam particles left in the water behind the stern -->
@@ -524,9 +554,17 @@
              line of cars -->
         <GoatBus v-for="b in scene.busesLeaving" :key="b.id" :b="b" :lit="dark" />
         <!-- Near lane: the line waiting to board, and boarders -->
+        <template v-if="dark">
+          <use
+            v-for="c in scene.carsIn"
+            :key="`${c.id}~beam`"
+            href="#goat-car-beam"
+            :transform="c.transform"
+          />
+        </template>
         <g v-for="c in scene.carsIn" :key="c.id" :transform="c.transform">
           <use href="#goat-car" :fill="c.color" />
-          <use v-if="dark" href="#goat-car-lights" />
+          <use v-if="dark" href="#goat-car-tail" />
         </g>
         <!-- …and the ones that didn't fit, fuming -->
         <text
@@ -547,9 +585,17 @@
              two-section bus -->
         <GoatBus v-for="b in scene.transit" :key="b.id" :b="b" :lit="dark" />
         <!-- Rescue cars fetching locals who missed their bus -->
+        <template v-if="dark">
+          <use
+            v-for="c in scene.rescues"
+            :key="`${c.id}~beam`"
+            href="#goat-car-beam"
+            :transform="c.transform"
+          />
+        </template>
         <g v-for="c in scene.rescues" :key="c.id" :transform="c.transform">
           <use href="#goat-car" :fill="c.color" />
-          <use v-if="dark" href="#goat-car-lights" />
+          <use v-if="dark" href="#goat-car-tail" />
         </g>
         <!-- Foot passengers (the ones who missed the boat are fuming) -->
         <g v-for="p in scene.peds" :key="p.id" :transform="p.transform" :opacity="p.opacity">
@@ -639,6 +685,7 @@ import {
   createGoatScene,
   seasonSampler,
   ROAD_D,
+  CROSSWALK,
   berths,
   WORLD_W,
   RAMP_PIVOT,
