@@ -75,7 +75,7 @@ const KID_WAIT_S = (k) => 6 + 2.2 * k // a packed crowd
 const KID_LOAD = (k) => 1.7 + 0.035 * k // …streaming aboard
 const KID_UNLOAD = (k) => 0.5 + 0.07 * k
 // The school bus never boards: it drops the kids at their dock (parking at
-// the front of the bus stop, SCHOOL_S) and another meets them off the ferry at the
+// the bus stop, see stopSpot) and another meets them off the ferry at the
 // other end.
 // Buses are drawn at BUS_SCALE (the shapes are laid out at half size).
 const BUS_SCALE = 2
@@ -84,8 +84,8 @@ const BUS_V = 320 // as quick as the cars, so nothing catches it up the hill
 const LANE_SWAP = 10 // road length over which it changes lanes
 // Both buses pull in just as the ferry leaves the other dock: the drop-off
 // bus as it sets off to fetch the kids, the pick-up bus as it sets off with
-// them. busDriveS() is the drive down the hill.
-const busDriveS = () => (ROAD.length - SCHOOL_S) / BUS_V
+// them. busDriveS(spot) is the drive down the hill to its spot.
+const busDriveS = (spot) => (ROAD.length - spot) / BUS_V
 // When kid i (of n) steps out of the drop-off bus, after it parks.
 const kidOutAt = (i, n) => 0.3 + i * Math.min(0.15, 3 / n)
 const isSchool = (crowd) => crowd.length > 0 && !!crowd[0].kid
@@ -99,33 +99,33 @@ function bus(id, s, uphill, mirror, lane) {
   return { ...c, kind: 'school', leaving: uphill }
 }
 const mixLane = (a, b, u) => a + (b - a) * Math.max(0, Math.min(1, u))
-// Driving down from the top of the road to park at the front of the bus stop
-// (SCHOOL_S) from time `from`, then (from `leave`) back up and away; null once
-// gone (or not yet come). Coming down it overtakes the queue — and any
-// transit bus at the stop — in the uphill lane, cutting in to the roadside at
-// the front; leaving, it pulls into the uphill lane behind anything already
-// going up (cars are faster, so it never catches them).
-function busTrip(id, clock, from, leave, mirror) {
+// Driving down from the top of the road to park at the bus stop (road
+// position `spot`) from time `from`, then (from `leave`) back up and away;
+// null once gone (or not yet come). It comes down the roadside, like the
+// transit buses; leaving, it pulls into the uphill lane behind anything
+// already going up (cars are faster, so it never catches them).
+function busTrip(id, clock, from, leave, mirror, spot) {
   if (clock < from) return null
   if (clock < leave) {
-    const s = Math.max(SCHOOL_S, ROAD.length - (clock - from) * BUS_V)
-    return bus(id, s, false, mirror, mixLane(stopLane(), LANE.out, (s - SCHOOL_S) / LANE_SWAP))
+    const s = Math.max(spot, ROAD.length - (clock - from) * BUS_V)
+    return bus(id, s, false, mirror, stopLane())
   }
-  const s = SCHOOL_S + (clock - leave) * BUS_V
+  const s = spot + (clock - leave) * BUS_V
   if (s >= ROAD.length) return null
-  return bus(id, s, true, mirror, mixLane(stopLane(), LANE.out, (s - SCHOOL_S) / LANE_SWAP))
+  return bus(id, s, true, mirror, mixLane(stopLane(), LANE.out, (s - spot) / LANE_SWAP))
 }
 // When the pick-up bus at visit h's dock leaves (unload clock), or 0 if none.
 function busLeaves(S, h) {
   const kids = boarders(S, 'kid', h - 1)
   if (!isSchool(kids)) return 0
-  const kidsOn = KID_UNLOAD(kids.length - 1) + (WALK_ON_LENGTH + SCHOOL_S) / KID_V + 0.5
+  const kidsOn = KID_UNLOAD(kids.length - 1) + (WALK_ON_LENGTH + schoolFarthest(h)) / KID_V + 0.5
   return Math.max(kidsOn, carsClearU(S, h))
 }
 // When visit h's cars have all driven off the ferry and on past road
 // position `at` (unload clock) — a bus pulling out waits for that traffic
-// rather than cut in among it.
-function carsClearU(S, h, at = SCHOOL_S) {
+// rather than cut in among it. (School buses go by the farthest spot they
+// might have parked at, so their timing needn't know which.)
+function carsClearU(S, h, at = schoolFarthest(h)) {
   const n = boarders(S, 'car', h - 1).length
   if (!n) return 0
   const route = pathLength(deckPath(BERTH - FAR_SLOTS[n - 1]))
@@ -159,11 +159,11 @@ const busHold = (S, h) => {
 // A local who misses their bus hops mad until someone drives back down to
 // pick them up (a ❤ as the car pulls in). Tourists just wander about and
 // catch the next one (or wander off); school kids always get their bus.
-// The bus stop: the school bus pulls in at its front, nose to the dock
-// (SCHOOL_S — the bus is ~64 long, so it spans ~2–66), and the transit bus
-// stops right behind it (the shuttle's nose ~70, the articulated bus's ~64).
-const SCHOOL_S = 34
-const STOP_S = 98
+// The bus stop, on the roadside STOP_S up from the dock: the transit bus and
+// the school bus both use it. First there takes the front; a bus turning up
+// while another's parked pulls in right behind it (see stopSpot). (Far
+// enough up that a bus at the front has its nose off the dock.)
+const STOP_S = 84
 const stopLane = () => LANE.walk + 7 // the roadside, in front of the lanes
 const SHUTTLE_SEATS = 8
 const ARTIC_EVERY = 10
@@ -214,10 +214,11 @@ function articRuns(S, n) {
   const sameDay = Math.floor(from.minutes / 1440) === Math.floor(to.minutes / 1440)
   return sameDay && mod(from.minutes, 1440) >= ARTIC_FROM
 }
-// First articulated bus someone reaching the stop at `at` can catch.
+// First articulated bus (its cycle n) someone reaching the stop at `at` can
+// catch.
 function articBoard(S, at) {
   for (let n = Math.floor(at / ARTIC_EVERY) - 1; n < Math.floor(at / ARTIC_EVERY) + 60; n++)
-    if (articRuns(S, n) && articLeave(S, n) >= at) return Math.max(at, articPark(n))
+    if (articRuns(S, n) && articLeave(S, n) >= at) return n
 }
 // Did one pull away between `from` (off the ferry) and `at` (at the stop)?
 function articMissed(S, from, at) {
@@ -234,14 +235,14 @@ function articMissed(S, from, at) {
 // uphill lane with the departing cars.
 // `s` is where the downhill end is: arriving that's its front; leaving (it's
 // turned round) its back — so each section stays where it physically is.
-function transitBus(id, kind, s, uphill, mirror, parts) {
+function transitBus(id, kind, s, uphill, mirror, parts, spot) {
   const last = parts.length - 1
   return parts.flatMap((off, k) => {
     const sp = s + off
     if (sp < 0 || sp > ROAD.length + 30) return []
     const p = roadAt(sp)
     const [dx, dy] = uphill ? [p.tx, p.ty] : [-p.tx, -p.ty]
-    const lane = uphill ? mixLane(stopLane(), LANE.out, (sp - STOP_S) / LANE_SWAP) : stopLane()
+    const lane = uphill ? mixLane(stopLane(), LANE.out, (sp - spot) / LANE_SWAP) : stopLane()
     return [
       {
         ...scaled(
@@ -257,14 +258,91 @@ function transitBus(id, kind, s, uphill, mirror, parts) {
     ]
   })
 }
-// Down the hill to park at the stop by `park`, then away from `leave`.
-function transitTrip(id, kind, t, park, leave, mirror, parts) {
+// Down the hill to park at the stop (at road position `spot`) by `park`,
+// then away from `leave`.
+function transitTrip(id, kind, t, park, leave, mirror, parts, spot) {
   const drive = transitDriveS()
   if (t < park - drive || t > leave + drive + 1) return []
-  const s =
-    t < park ? STOP_S + (park - t) * BUS_V : t < leave ? STOP_S : STOP_S + (t - leave) * BUS_V
-  return transitBus(id, kind, s, t >= leave, mirror, parts)
+  const s = t < park ? spot + (park - t) * BUS_V : t < leave ? spot : spot + (t - leave) * BUS_V
+  return transitBus(id, kind, s, t >= leave, mirror, parts, spot)
 }
+
+// --- Who's where at the bus stop ---------------------------------------------
+// How far each kind of bus reaches (road units) from its position: [nose,
+// downhill; tail, uphill].
+const reach = (kind) =>
+  kind === 'artic' ? [28, ARTIC_PARTS[1] + 28] : kind === 'shuttle' ? [29, 26] : [32, 32]
+const STOP_GAP = 4
+// Where people get on (road position, with the bus parked at `spot`): the
+// door just past the front wheel — and on the articulated bus, the one just
+// past the second section's front wheel too.
+const busDoors = (kind, spot) =>
+  kind === 'artic' ? [spot - 9, spot + ARTIC_PARTS[1] - 9] : [spot - 12] // (school bus and shuttle: front wheel ~18 ahead of centre)
+// The farthest up a school bus parks at visit h's dock: behind that side's
+// transit bus.
+const schoolFarthest = (h) =>
+  STOP_S + reach(mod(h, 2) === 0 ? 'shuttle' : 'artic')[1] + STOP_GAP + reach('school')[0]
+// Every bus stopping at `side`'s stop around scene time `at`, with when it
+// parks and leaves: school buses (dropping off for visit w, or meeting the
+// kids in at w), the Bowen shuttle, the articulated bus.
+function stopVisitors(S, side, at) {
+  const list = []
+  const { h } = halfAt(S, at)
+  for (let w = h - 3; w <= h + 2; w++) {
+    if (w < 1 || mod(w, 2) !== side) continue
+    const park = departsAt(S, w - 1)
+    const out = lineAt(S, 'kid', w)
+    if (isSchool(out))
+      list.push({ id: `busD${w}`, kind: 'school', park, leave: dropOffLeaves(S, w, out) })
+    if (isSchool(boarders(S, 'kid', w - 1)))
+      list.push({ id: `busP${w - 1}`, kind: 'school', park, leave: pickUpLeaves(S, w) })
+    if (side === 0 && shuttleRuns(S, w)) {
+      const plan = walkOffPlan(S, w, 0)
+      list.push({
+        id: `shuttle${w}`,
+        kind: 'shuttle',
+        park: shuttlePark(S, w),
+        leave: plan.base + plan.leave,
+      })
+    }
+  }
+  if (side === 1) {
+    const n = Math.floor(at / ARTIC_EVERY)
+    for (let k = n - 2; k <= n + 1; k++)
+      if (articRuns(S, k))
+        list.push({ id: `artic${k}`, kind: 'artic', park: articPark(k), leave: articLeave(S, k) })
+  }
+  return list
+}
+// Where bus `id` (a `kind`, parking at scene time `park`) stops: the front of
+// the stop, or — if others are parked there as it pulls in — right behind
+// the last of them to arrive. (Transit buses win a dead heat: it's their
+// stop.) Nobody ever has to drive through a parked bus.
+function stopSpot(S, side, id, kind, park) {
+  const key = `${side}:${id}`
+  if (S.spots.has(key)) return S.spots.get(key)
+  const me = { id, kind, park }
+  const rank = (b) => (b.kind === 'school' ? 1 : 0)
+  const before = (a, b) =>
+    a.park < b.park ||
+    (a.park === b.park && (rank(a) < rank(b) || (rank(a) === rank(b) && a.id < b.id)))
+  const ahead = stopVisitors(S, side, park).filter(
+    (b) => b.id !== id && before(b, me) && b.leave > park,
+  )
+  let spot = STOP_S
+  if (ahead.length) {
+    const last = ahead.reduce((a, b) => (before(a, b) ? b : a))
+    spot =
+      stopSpot(S, side, last.id, last.kind, last.park) +
+      reach(last.kind)[1] +
+      STOP_GAP +
+      reach(kind)[0]
+  }
+  S.spots.set(key, spot)
+  return spot
+}
+// When the pick-up bus meeting visit w's kids leaves (scene time).
+const pickUpLeaves = (S, w) => halfStartOf(S, w) + jamDelay(S, w) + busLeaves(S, w)
 
 // They start gathering as soon as the previous sailing has left.
 const KID_ARRIVE = (i, n) => 4.4 + i * Math.min(0.35, 6.5 / n)
@@ -323,9 +401,9 @@ function roadAt(s) {
 // The crosswalk up the hill on Bowen (where the crosswalk camera looks): it
 // sits about 80% of a full load up the line — once the queue reaches past
 // it, the sailing's nearly full. Between the 8th and 9th car in line.
+const CROSSWALK_K = Math.round(0.8 * CAR_CAPACITY) // cars in line below it
 export const CROSSWALK = (() => {
-  const k = Math.round(0.8 * CAR_CAPACITY)
-  const p = roadAt((QUEUE_S(k - 1) + QUEUE_S(k)) / 2)
+  const p = roadAt((QUEUE_S(CROSSWALK_K - 1) + QUEUE_S(CROSSWALK_K)) / 2)
   return { x: p.x, y: p.y, deg: (Math.atan2(p.ty, p.tx) * 180) / Math.PI }
 })()
 
@@ -512,7 +590,7 @@ function newcomers(S, kind, v, carried = 0) {
   const load = S.sampler?.load(v) // 0..1 how full, or 'full', or null
   const rush = load === 'full' || (load == null && rnd(v, 3) < 0.2)
   const r = rnd(v, kind === 'car' ? 1 : 2)
-  const n =
+  let n =
     kind === 'car'
       ? rush
         ? CAR_CAPACITY + 1 + Math.floor(r * 4)
@@ -522,6 +600,9 @@ function newcomers(S, kind, v, carried = 0) {
       : rush
         ? 5 + Math.floor(r * 2)
         : 1 + Math.floor(r * 3)
+  // Seen reaching the crosswalk: at least that long a line.
+  const seen = kind === 'car' && S.sampler?.sailing(v)?.crosswalkAt != null
+  if (seen) n = Math.max(n, CROSSWALK_K + 1 - carried)
   // Replaying a sailing that wasn't full: everyone waiting got on, so the
   // line never outgrows the ferry.
   const fits =
@@ -566,6 +647,41 @@ function carArrivals(v, n) {
   const scale = Math.min(1, (ARRIVE_WINDOW[1] - ARRIVE_WINDOW[0]) / total)
   let at = ARRIVE_WINDOW[0]
   return gaps.map((g) => (at += g * scale))
+}
+// Replaying a Bowen sailing whose line was seen reaching the crosswalk (by
+// the crosswalk camera, or a rider): the car taking the first spot past it
+// pulls in right then by the simulated clock, the cars before and after it
+// spaced out around that. `a`: visit v + 2's newcomer arrivals (on v's load
+// clock), `left` cars already in line ahead of them.
+function crosswalkTimed(S, v, side, left, a) {
+  const at = side === 0 ? S.sampler?.sailing(v + 2)?.crosswalkAt : null
+  const j = CROSSWALK_K - left
+  if (at == null || j < 0 || j >= a.length) return a
+  const base = halfStartOf(S, v) + dockDelay(S, v)
+  const drive = (ROAD.length - QUEUE_S(CROSSWALK_K)) / CAR_V // down to its spot
+  // (all in line before boarding starts — even if, as a real line sometimes
+  // does, it only gets that long while the ferry's in unloading)
+  const boarding = halfStartOf(S, v + 2) + dockDelay(S, v + 2) + CAR_LOAD(0)
+  const until = boarding - 0.4 - ROAD.length / CAR_V - base
+  const when = whenClockReads(S, at, halfStartOf(S, v), departsAt(S, v + 2))
+  const target = Math.min(until, Math.max(ARRIVE_WINDOW[0], when - base - drive))
+  const [w0, A, last] = [ARRIVE_WINDOW[0], a[j], a[a.length - 1]]
+  const early = (target - w0) / (A - w0)
+  const late = last > A ? Math.min(1, (until - target) / (last - A)) : 1
+  return a.map((x, i) => (i <= j ? w0 + (x - w0) * early : target + (x - A) * late))
+}
+// Crosswalk-timed cars in visit v's line that only turn up once the ferry's
+// back in (while it unloads): when car k does (scene time), else null.
+function lateArrival(S, v, side, k) {
+  if (side !== 0 || S.sampler?.sailing(v)?.crosswalkAt == null || firstOfDay(S, v)) return null
+  const prev = lineAt(S, 'car', v - 2)
+  const left = prev.length - Math.min(prev.length, capOf(S, 'car', v - 2))
+  const i = k - left
+  if (i < 0) return null
+  const n = lineAt(S, 'car', v).length - left
+  const a = crosswalkTimed(S, v - 2, side, left, carArrivals(v, n))
+  const at = halfStartOf(S, v - 2) + dockDelay(S, v - 2) + a[i]
+  return at > halfStartOf(S, v) ? at : null
 }
 const boarders = (S, kind, v) => lineAt(S, kind, v).slice(0, capOf(S, kind, v))
 const kidBoarded = (sigma, k, item) =>
@@ -832,6 +948,13 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
         cars.push(queued(item, Math.max(QUEUE_S(k), ROAD.length - (t - start) * CAR_V), mirror))
         return
       }
+      const late = lateArrival(S, v, side, k)
+      if (late != null) {
+        // (still on its way down: the line reached the crosswalk late)
+        if (t < late) return
+        const s = Math.max(QUEUE_S(k), ROAD.length - (t - late) * CAR_V)
+        if (s > QUEUE_S(k)) return cars.push(queued(item, s, mirror))
+      }
       cars.push(queued(item, QUEUE_S(k), mirror, fuming(v, t, k)))
     } else {
       const at = toDeck((sigma - CAR_LOAD(k)) * CAR_V, QUEUE_S(k), BERTH + FAR_SLOTS[k])
@@ -841,7 +964,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   })
   const leftCars = dayBreak ? 0 : line.length - nBoard
   const nextCars = quietEvening ? none : lineAt(S, 'car', v + 2).slice(leftCars)
-  const arrivals = carArrivals(v + 2, nextCars.length)
+  const arrivals = crosswalkTimed(S, v, side, leftCars, carArrivals(v + 2, nextCars.length))
   nextCars.forEach((item, i) => {
     const start = dawn != null ? dawn + 0.1 + i * 0.25 : arrivals[i]
     if (sigma < start) return
@@ -967,10 +1090,13 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   // When the ferry next leaves the other dock (coming here): the moment the
   // school buses pull in at this end.
   const busParks = departsAt(S, v + 1)
+  const dropSpot = schoolDrop ? stopSpot(S, side, `busD${v + 2}`, 'school', busParks) : STOP_S
+  const [dropDoor] = busDoors('school', dropSpot)
   if (schoolDrop) {
     // The drop-off bus: down to the dock, kids pour out, back up the hill.
     const leave = dropOffLeaves(S, v + 2, nextKids)
-    const b = busTrip(`busD${v + 2}`, t, busParks - busDriveS(), leave, mirror)
+    const from = busParks - busDriveS(dropSpot)
+    const b = busTrip(`busD${v + 2}`, t, from, leave, mirror, dropSpot)
     if (b) cars.push(b)
   }
   // The drop-off bus that brought this sailing's kids may still be parked or
@@ -980,13 +1106,15 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   if (isSchool(ownKids)) {
     const parked = departsAt(S, v - 1)
     const leave = dropOffLeaves(S, v, ownKids)
-    const b = busTrip(`busD${v}`, t, parked - busDriveS(), leave, mirror)
+    const spot = stopSpot(S, side, `busD${v}`, 'school', parked)
+    const b = busTrip(`busD${v}`, t, parked - busDriveS(spot), leave, mirror, spot)
     if (b) cars.push(b)
   }
   // The ferry's setting off for here with school kids aboard: a bus comes
   // down to meet them (it leaves once they're all on — see unloadAt).
   if (isSchool(boarders(S, 'kid', v + 1))) {
-    const b = busTrip(`busP${v + 1}`, t, busParks - busDriveS(), Infinity, mirror)
+    const spot = stopSpot(S, side, `busP${v + 1}`, 'school', busParks)
+    const b = busTrip(`busP${v + 1}`, t, busParks - busDriveS(spot), Infinity, mirror, spot)
     if (b) cars.push(b)
   }
   nextKids.forEach((item, i) => {
@@ -999,7 +1127,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     const slot = crowdSpot(item, i)
     // School kids pile out of the bus; tourists amble down the road.
     const s = schoolDrop
-      ? SCHOOL_S + Math.sign(slot - SCHOOL_S) * Math.min(e, Math.abs(slot - SCHOOL_S))
+      ? dropDoor + Math.sign(slot - dropDoor) * Math.min(e, Math.abs(slot - dropDoor))
       : Math.max(slot, TOURIST_START_S - e)
     if (puzzled && s === slot) return peds.push(lostPed(item, t, slot, mirror))
     if (s === slot) return peds.push(strollPed(item, t, slot, mirror, (i % 2) * 2))
@@ -1081,7 +1209,8 @@ function walkOffPlan(S, v, side) {
       r.board = i < SHUTTLE_SEATS ? r.arrive : null
     })
     const seated = queue.filter((r) => r.board != null)
-    leave = seated.length ? Math.max(...seated.map((r) => r.arrive)) + 0.6 : 2.5
+    // (+1.4: along to the door and aboard)
+    leave = seated.length ? Math.max(...seated.map((r) => r.arrive)) + 1.4 : 2.5
     leave = Math.max(leave, carsClearU(S, v, STOP_S)) // (and the cars have gone by)
     for (const r of queue) if (r.board == null) r.strandedAt = Math.max(r.arrive, leave)
   } else {
@@ -1089,15 +1218,18 @@ function walkOffPlan(S, v, side) {
     for (const r of riders) {
       if (!r.wants) continue
       const at = base + r.arrive
-      const next = articBoard(S, at)
-      if (next == null && r.local) {
+      const n = articBoard(S, at)
+      if (n == null && r.local) {
         // no bus till morning: someone comes to fetch them
         r.ride = true
         r.strandedAt = r.arrive
-      } else if (next == null)
+      } else if (n == null)
         r.wants = false // (a tourist just wanders off)
       else if (articMissed(S, base + r.start, at) && r.local) r.strandedAt = r.arrive
-      else r.board = next - base
+      else {
+        r.board = Math.max(at, articPark(n)) - base
+        r.artic = n
+      }
     }
   }
   // Stranded locals get fetched: a car sets off down after a moment's fuming
@@ -1114,7 +1246,9 @@ function walkOffPlan(S, v, side) {
 }
 
 // One walk-off at unload-clock time u.
-function walkOff(r, u, t, mirror) {
+// `bus`: the door they're boarding by and when that bus goes (both on v's
+// unload clock), if they're catching one.
+function walkOff(r, u, t, mirror, bus) {
   const e = u - r.start
   if (e < 0) return null
   const { item, pace } = r
@@ -1154,9 +1288,17 @@ function walkOff(r, u, t, mirror) {
     return r.torch ? { ...q, torch: true, torchTilt: Math.sin(e * 6) * 7 } : q
   }
   // At the bus stop.
-  if (r.board != null && u >= r.board) return null // on the bus / in the car
   const w = touristWander(t * (r.local ? 0.5 : 1), item.id)
   const spot = STOP_S + 4 + w.off * (r.local ? 0.15 : 0.5)
+  if (r.board != null && u >= r.board) {
+    // Boarding: along to the door and in. (In the car: just gone.)
+    if (!bus || u >= bus.gone) return null
+    const gap = bus.door - spot
+    const walked = (u - r.board) * PED_V
+    if (walked >= Math.abs(gap)) return null
+    const q = roadAt(spot + Math.sign(gap) * walked)
+    return ped(item, q.x, q.y + LANE.walk, gap > 0 ? q.tx : -q.tx, t * 12, 1, mirror)
+  }
   const p = roadAt(spot)
   const facing = w.dir > 0 ? p.tx : -p.tx
   if (r.strandedAt != null && u >= r.strandedAt) {
@@ -1215,9 +1357,21 @@ function walkOffs(S, t, side, v, peds, cars, W) {
   const mirror = side === 1 ? W : 0
   const plan = walkOffPlan(S, v, side)
   const u = t - plan.base
+  // The bus each rider's catching: its door (a second section's for some, on
+  // the articulated bus) and when it goes.
+  const busFor = (r) => {
+    if (r.board == null || r.carFrom != null) return null
+    const [id, kind, park, leave] =
+      side === 0
+        ? [`shuttle${v}`, 'shuttle', shuttlePark(S, v), plan.base + plan.leave]
+        : [`artic${r.artic}`, 'artic', articPark(r.artic), articLeave(S, r.artic)]
+    const doors = busDoors(kind, stopSpot(S, side, id, kind, park))
+    const door = doors[Math.floor(rnd(seedOf(r.item.id), 107) * doors.length)]
+    return { door, gone: leave - plan.base }
+  }
   if (u >= 0) {
     for (const r of plan.riders) {
-      const q = walkOff(r, u, t, mirror)
+      const q = walkOff(r, u, t, mirror, busFor(r))
       if (q) peds.push(q)
       if (r.carFrom != null && u >= r.carFrom) {
         // The rescue car: down the roadside, pause, back up the hill.
@@ -1251,6 +1405,7 @@ function walkOffs(S, t, side, v, peds, cars, W) {
       if (!shuttleRuns(S, w)) continue // (after the last one of the day)
       const pw = w === v ? plan : walkOffPlan(S, w, 0)
       const park = shuttlePark(S, w)
+      const spot = stopSpot(S, side, `shuttle${w}`, 'shuttle', park)
       cars.push(
         ...transitTrip(
           `shuttle${w}`,
@@ -1260,6 +1415,7 @@ function walkOffs(S, t, side, v, peds, cars, W) {
           pw.base + pw.leave,
           mirror,
           SHUTTLE_PARTS,
+          spot,
         ),
       )
     }
@@ -1276,6 +1432,7 @@ function walkOffs(S, t, side, v, peds, cars, W) {
           articLeave(S, k),
           mirror,
           ARTIC_PARTS,
+          stopSpot(S, side, `artic${k}`, 'artic', articPark(k)),
         ),
       )
   }
@@ -1302,6 +1459,7 @@ function unloadAt(S, t, side, cars, peds, W) {
   // (walk-on locals and tourists: see walkOffs — they may wait for a bus)
   const arriving = boarders(S, 'kid', v - 1)
   const school = isSchool(arriving)
+  const spot = school ? stopSpot(S, side, `busP${v - 1}`, 'school', departsAt(S, v - 1)) : STOP_S
   arriving.forEach((item, k) => {
     if (!item.kid) return
     const e = (sigma - KID_UNLOAD(k)) * crowdV(item)
@@ -1310,13 +1468,13 @@ function unloadAt(S, t, side, cars, peds, W) {
     const off = along([...WALK_ON].reverse(), e)
     if (off) return peds.push(ped(item, off.x, off.y, -1, e, 1, mirror))
     const s = e - WALK_ON_LENGTH
-    if (school && s >= SCHOOL_S) return // on the bus
+    if (school && s >= busDoors('school', spot)[0]) return // on the bus
     const p = roadAt(s)
     peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (gone - s) / 40), mirror))
   })
   if (school) {
     // The bus that met them waits until the last kid's aboard, then goes.
-    const b = busTrip(`busP${v - 1}`, sigma, -Infinity, busLeaves(S, v), mirror)
+    const b = busTrip(`busP${v - 1}`, sigma, -Infinity, busLeaves(S, v), mirror, spot)
     if (b) cars.push(b)
   }
 }
@@ -1669,6 +1827,7 @@ export function createGoatScene({ sampler = null, seed = 0 } = {}) {
   const S = {
     seed,
     lines: { car: new Map(), ped: new Map(), kid: new Map() },
+    spots: new Map(), // where each bus stops at the bus stop (stopSpot)
     starts: [0],
     trouble: new Map(),
     sampler,
@@ -1715,6 +1874,23 @@ function minutesLate(d) {
 // lastCapacity is "Full", "Not Full" or "NN%" = space *left*.
 // Returns null when no day has enough data. `pick` supplies the randomness
 // (0..1, injectable for tests).
+// Wall-clock minutes at the terminal for a timestamp, counted like the
+// simulated clock: days since the epoch × 1440 + minutes into the day.
+const VANCOUVER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Vancouver',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+function terminalMinutes(ms) {
+  const f = Object.fromEntries(VANCOUVER.formatToParts(new Date(ms)).map((p) => [p.type, p.value]))
+  const day = Date.UTC(+f.year, +f.month - 1, +f.day) / 86400000
+  return day * 1440 + +f.hour * 60 + +f.minute + (ms % 60000) / 60000
+}
+
 export function seasonSampler(
   docs,
   pick = Math.random,
@@ -1863,6 +2039,8 @@ export function seasonSampler(
           capacity: d.lastCapacity,
           empty: dayAt(v).i === 0,
           lateMin: minutesLate(d),
+          // when its line reached the crosswalk (simulated-clock minutes)
+          crosswalkAt: d.crosswalkFullAt ? terminalMinutes(Number(d.crosswalkFullAt)) : null,
         }
       )
     },

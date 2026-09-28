@@ -220,6 +220,11 @@
             <stop offset="0.6" stop-color="#fff59d" stop-opacity="0.25" />
             <stop offset="1" stop-color="#fff59d" stop-opacity="0" />
           </linearGradient>
+          <!-- Dry land: headlight beams stop at the water's edge (either dock) -->
+          <clipPath id="goat-dry">
+            <rect x="-100" y="-100" width="500" height="500" />
+            <rect :x="worldW - 400" y="-100" width="500" height="500" />
+          </clipPath>
         </defs>
         <rect x="0" y="196" :width="worldW" height="64" fill="#1d3f6e" />
         <!-- Gently rolling swell: a few sine lines at different depths -->
@@ -443,14 +448,14 @@
         </g>
 
         <!-- Behind the ferry: arrivals driving off up the far lane, and ramp traffic -->
-        <template v-if="dark">
+        <g v-if="dark" clip-path="url(#goat-dry)">
           <use
             v-for="c in scene.carsOut"
             :key="`${c.id}~beam`"
             href="#goat-car-beam"
             :transform="c.transform"
           />
-        </template>
+        </g>
         <g v-for="c in scene.carsOut" :key="c.id" :transform="c.transform">
           <use href="#goat-car" :fill="c.color" />
           <use v-if="dark" href="#goat-car-tail" />
@@ -552,16 +557,18 @@
 
         <!-- Buses pulling away, in the far (uphill) lane: behind the waiting
              line of cars -->
-        <GoatBus v-for="b in scene.busesLeaving" :key="b.id" :b="b" :lit="dark" />
+        <g clip-path="url(#goat-dry)">
+          <GoatBus v-for="b in scene.busesLeaving" :key="b.id" :b="b" :lit="dark" />
+        </g>
         <!-- Near lane: the line waiting to board, and boarders -->
-        <template v-if="dark">
+        <g v-if="dark" clip-path="url(#goat-dry)">
           <use
             v-for="c in scene.carsIn"
             :key="`${c.id}~beam`"
             href="#goat-car-beam"
             :transform="c.transform"
           />
-        </template>
+        </g>
         <g v-for="c in scene.carsIn" :key="c.id" :transform="c.transform">
           <use href="#goat-car" :fill="c.color" />
           <use v-if="dark" href="#goat-car-tail" />
@@ -583,16 +590,18 @@
         <!-- Transit buses arriving or at the stops (over the car lanes, under
              the school bus): Bowen's blue shuttle, Horseshoe Bay's
              two-section bus -->
-        <GoatBus v-for="b in scene.transit" :key="b.id" :b="b" :lit="dark" />
+        <g clip-path="url(#goat-dry)">
+          <GoatBus v-for="b in scene.transit" :key="b.id" :b="b" :lit="dark" />
+        </g>
         <!-- Rescue cars fetching locals who missed their bus -->
-        <template v-if="dark">
+        <g v-if="dark" clip-path="url(#goat-dry)">
           <use
             v-for="c in scene.rescues"
             :key="`${c.id}~beam`"
             href="#goat-car-beam"
             :transform="c.transform"
           />
-        </template>
+        </g>
         <g v-for="c in scene.rescues" :key="c.id" :transform="c.transform">
           <use href="#goat-car" :fill="c.color" />
           <use v-if="dark" href="#goat-car-tail" />
@@ -629,7 +638,9 @@
         </g>
         <!-- School buses arriving or parked (never board; they meet the kids at
              each end) — in front of the people, who get on and off behind -->
-        <GoatBus v-for="b in scene.buses" :key="b.id" :b="b" :lit="dark" />
+        <g clip-path="url(#goat-dry)">
+          <GoatBus v-for="b in scene.buses" :key="b.id" :b="b" :lit="dark" />
+        </g>
         <!-- Asleep overnight: Zs drifting up off the ferry -->
         <text
           v-for="z in scene.zs"

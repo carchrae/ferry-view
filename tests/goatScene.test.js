@@ -11,6 +11,7 @@ import {
   H,
   BERTHS,
   CAR_CAPACITY,
+  CROSSWALK,
 } from '../src/components/goat-scene.js'
 
 const ids = (list) =>
@@ -143,6 +144,7 @@ describe('goatScene', () => {
       capacity: '90%',
       empty: true,
       lateMin: null,
+      crosswalkAt: null,
     })
     // …then Bowen's first sailing, and the next mainland one.
     assert.equal(sampler.sailing(2).direction, 'To HSB')
@@ -358,6 +360,50 @@ describe('goatScene', () => {
       return sc(sc.halfStart(5) - 0.5).riders.filter((r) => r.hat).length
     }
     assert.ok(count(busy) > count(quiet), `tourists: ${count(quiet)} vs ${count(busy)}`)
+  })
+
+  it("the line reaches Bowen's crosswalk when it really did", () => {
+    const docs = []
+    for (let i = 0; i < 8; i++) {
+      const hh = String(7 + i).padStart(2, '0')
+      docs.push({
+        dateIso: '2026-09-15',
+        sailingTime: `${hh}:00`,
+        direction: 'To HSB',
+        lastCapacity: '30%',
+      })
+      docs.push({
+        dateIso: '2026-09-15',
+        sailingTime: `${hh}:30`,
+        direction: 'To Bowen',
+        lastCapacity: '50%',
+      })
+    }
+    // The 10:00 from Bowen (70% full): its line was at the crosswalk at 9:35
+    const ten = docs.find((d) => d.sailingTime === '10:00')
+    ten.crosswalkFullAt = String(Date.parse('2026-09-15T09:35:00-07:00'))
+    const sampler = seasonSampler(docs, () => 0, { date: '2026-09-15' })
+    const sc = createGoatScene({ sampler })
+    // scene time when the simulated clock reads 9:35
+    const target = Date.parse('2026-09-15T09:35:00Z') / 60000
+    let [lo, hi] = [0, 400]
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2
+      if ((sc.clock(mid)?.minutes ?? Infinity) < target) lo = mid
+      else hi = mid
+    }
+    // queued (standing) cars up the hill past the crosswalk (Bowen: up = left)
+    const past = (t) => {
+      const [now, before] = [sc(t), sc(t - 0.02)]
+      const still = new Set(before.carsIn.map((c) => c.transform))
+      return now.carsIn.filter(
+        (c) =>
+          still.has(c.transform) &&
+          Number(c.transform.match(/translate\(([-\d.]+)/)[1]) < CROSSWALK.x,
+      ).length
+    }
+    assert.equal(past(hi - 0.4), 0, 'nobody past it just before')
+    assert.ok(past(hi + 0.1) >= 1, 'the 9th car in line past it right then')
   })
 
   it('nobody walks off the end of the dock while the ferry is away', () => {
