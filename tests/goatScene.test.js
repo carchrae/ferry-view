@@ -46,7 +46,9 @@ describe('goatScene', () => {
       loads.add(s.deck.length)
       if (s.deck.length === CAR_CAPACITY) full++
       const ashore = goatScene(halfStart(h) + 4)
-      assert.ok(!ashore.peds.some((p) => p.mad), 'walk-ons always get on')
+      // (walk-offs who missed a bus may fume — but nobody's left by the ferry)
+      const leftBehind = ashore.peds.filter((p) => p.mad && p.id.startsWith(`ped${h}.`))
+      assert.equal(leftBehind.length, 0, 'walk-ons always get on')
       if (ashore.carsIn.some((c) => c.mad)) madCars++
     }
     assert.ok(loads.size >= 4, `loads seen: ${[...loads]}`)

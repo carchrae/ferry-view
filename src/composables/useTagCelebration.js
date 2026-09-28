@@ -552,7 +552,12 @@ function surprisedWhale(ctx, out, t0) {
   })
 }
 
-export function startGoatParty({ onSoundBlocked, muted = false, music = true } = {}) {
+export function startGoatParty({
+  onSoundBlocked,
+  muted = false,
+  music = true,
+  fireworks = true,
+} = {}) {
   if (typeof window === 'undefined' || !effectsEnabled()) return () => {}
   const timers = []
   let stopped = false
@@ -590,7 +595,8 @@ export function startGoatParty({ onSoundBlocked, muted = false, music = true } =
     onState()
   }
 
-  // Fireworks: a random shell over the upper screen every ~0.8 s.
+  // Fireworks: a random shell over the upper screen every ~0.8 s, while on.
+  let fireworksOn = fireworks
   let layer = null
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (!reduced && typeof document !== 'undefined') {
@@ -599,13 +605,15 @@ export function startGoatParty({ onSoundBlocked, muted = false, music = true } =
     document.body.appendChild(layer)
     const shell = () => {
       if (stopped) return
-      burst(
-        layer,
-        rand(0.1, 0.9) * window.innerWidth,
-        rand(0.1, 0.6) * window.innerHeight,
-        22,
-        rand(120, 220),
-      )
+      // (only while stop.setFireworks has them on)
+      if (fireworksOn)
+        burst(
+          layer,
+          rand(0.1, 0.9) * window.innerWidth,
+          rand(0.1, 0.6) * window.innerHeight,
+          22,
+          rand(120, 220),
+        )
       // Spent sparks are invisible (fill: forwards) — prune them.
       while (layer.childElementCount > 200) layer.firstChild.remove()
       timers.push(setTimeout(shell, rand(500, 1100)))
@@ -627,6 +635,9 @@ export function startGoatParty({ onSoundBlocked, muted = false, music = true } =
     if (layer) setTimeout(() => layer.remove(), 1600) // let the last sparks fall
   }
   stop.unlockSound = () => ctx?.resume()
+  stop.setFireworks = (on) => {
+    fireworksOn = on
+  }
 
   // Scene events. A breakdown silences the anthem and plays a sad trombone
   // until it's over; a whale dips the anthem under a surprised jingle.

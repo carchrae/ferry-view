@@ -510,6 +510,56 @@
           !
         </text>
 
+        <!-- Transit buses at the stops (over the car lanes, under the school
+             bus): Bowen's blue shuttle, Horseshoe Bay's two-section bus -->
+        <g v-for="b in scene.transit" :key="b.id" :transform="b.transform">
+          <!-- TransLink livery: blue over grey, a yellow pinstripe, dark
+               glass, amber destination sign; front at +x -->
+          <template v-if="b.kind === 'shuttle'">
+            <!-- Bowen community shuttle: a short cutaway minibus -->
+            <path d="M-13 -14 L8 -14 L8 -3 L-13 -3 Z" fill="#1565c0" />
+            <path d="M-13 -6.8 Q -5 -8.5 1 -3 L-13 -3 Z" fill="#9ea7ad" />
+            <rect x="-11.5" y="-12.6" width="17" height="3.6" rx="0.6" fill="#263238" />
+            <rect x="-13" y="-8.4" width="21" height="0.7" fill="#fbc02d" />
+            <path d="M8 -14 L11 -14 L12.5 -9 L14.5 -8.4 L14.5 -3 L8 -3 Z" fill="#37474f" />
+            <path d="M8.6 -13.2 L10.6 -13.2 L11.8 -9.3 L8.6 -9.3 Z" fill="#78909c" />
+            <rect x="6.5" y="-15.4" width="5" height="1.4" rx="0.4" fill="#ffb300" />
+            <circle cx="14.1" cy="-6.2" r="0.8" fill="#fff59d" />
+            <circle cx="-8" cy="-3" r="2.8" fill="#111" />
+            <circle cx="9" cy="-3" r="2.8" fill="#111" />
+          </template>
+          <template v-else>
+            <!-- Horseshoe Bay articulated bus: two sections and a bellows -->
+            <rect x="-11.5" y="-13" width="23" height="10" rx="1.2" fill="#9ea7ad" />
+            <rect x="-11.5" y="-13" width="23" height="5.6" rx="1.2" fill="#1565c0" />
+            <rect x="-10.5" y="-11.8" width="19.5" height="3.4" fill="#263238" />
+            <rect x="-11.5" y="-7.6" width="23" height="0.8" fill="#fbc02d" />
+            <template v-if="b.part === 0">
+              <path d="M1 -6.8 Q 6 -6.8 11.5 -4.5 L11.5 -3 L1 -3 Z" fill="#1565c0" />
+              <rect x="9.5" y="-12" width="2.4" height="9" rx="0.6" fill="#37474f" />
+              <rect x="8.4" y="-12.9" width="3.4" height="1.1" rx="0.3" fill="#ffb300" />
+              <circle cx="11.4" cy="-4.6" r="0.7" fill="#fff59d" />
+            </template>
+            <g v-if="!b.last">
+              <rect x="-14" y="-12.6" width="2.5" height="9.2" fill="#cfd8dc" />
+              <path
+                d="M-13.4 -12.6 V -3.4 M-12.2 -12.6 V -3.4"
+                stroke="#90a4ae"
+                stroke-width="0.4"
+              />
+            </g>
+            <circle cx="-6" cy="-3" r="2.6" fill="#111" />
+            <circle cx="6" cy="-3" r="2.6" fill="#111" />
+          </template>
+        </g>
+        <!-- Rescue cars fetching locals who missed their bus -->
+        <use
+          v-for="c in scene.rescues"
+          :key="c.id"
+          href="#goat-car"
+          :fill="c.color"
+          :transform="c.transform"
+        />
         <!-- Foot passengers (the ones who missed the boat are fuming) -->
         <g v-for="p in scene.peds" :key="p.id" :transform="p.transform" :opacity="p.opacity">
           <path :d="p.legs" stroke="#eceff1" stroke-width="1.4" stroke-linecap="round" />
@@ -521,16 +571,16 @@
             <rect x="-1.8" y="-17.2" width="3.6" height="1.8" rx="0.7" :fill="p.hat" />
           </template>
           <text
-            v-if="p.mad || p.confused"
+            v-if="p.mad || p.confused || p.love"
             :transform="p.flip ? 'scale(-1 1)' : ''"
             x="0"
             y="-18"
             text-anchor="middle"
             font-size="8"
             font-weight="900"
-            :fill="p.mad ? '#ff1744' : '#fff176'"
+            :fill="p.mad ? '#ff1744' : p.love ? '#ff4081' : '#fff176'"
           >
-            {{ p.mad ? '!' : '?' }}
+            {{ p.mad ? '!' : p.love ? '❤' : '?' }}
           </text>
         </g>
         <!-- School buses (never board; they meet the kids at each end) — in front
@@ -950,10 +1000,21 @@ const plane = computed(() => {
   const text = champ ? `🥇 ${displayName(champ)} · ${slogan} · ${Math.round(champ.credits)}` : ''
   const banner = bannerShape(t, dir, bannerWidth(text))
   const span = banner.w + PLANE_SPAN_EXTRA // so it starts and ends fully offscreen
+  // Is it the champion's big moment? Desktop: the plane's round the middle
+  // of the screen. Phone (the banner can be wider than the screen): at least
+  // half of the banner — the name — is in view.
+  const vw = typeof window === 'undefined' ? 1280 : window.innerWidth
+  const left = x * (vw + span) - span
+  const bannerLeft = dir > 0 ? left : left + PLANE_SPAN_EXTRA
+  const inView = Math.max(0, Math.min(vw, bannerLeft + banner.w) - Math.max(0, bannerLeft))
+  const showtime =
+    !!champ &&
+    (vw >= 600 ? Math.abs(left + span / 2 - vw / 2) < vw * 0.18 : inView >= banner.w * 0.5)
   return {
     dir,
     champ,
     slogan,
+    showtime,
     left: `calc(${x.toFixed(4)} * (100% + ${span}px) - ${span}px)`,
     top: `calc(22% + ${(Math.sin(t * 1.3) * 6).toFixed(1)}px)`,
     banner,
@@ -989,6 +1050,11 @@ const sceneViewBox = computed(() => {
   const u = Math.min(1, Math.max(0, (scene.value.ferryX - b0) / (b1 - b0)))
   return `${(u * (worldW.value - PHONE_VIEW_W)).toFixed(1)} 85 ${PHONE_VIEW_W} 175`
 })
+// Fireworks only while the plane's showing off the champion.
+watch(
+  () => plane.value.showtime,
+  (on) => stopParty?.setFireworks?.(on),
+)
 // Sound cues from the scene: a breakdown (at sea or a jammed ramp) stops the
 // anthem for a sad trombone; a whale surfacing gets a surprised jingle.
 let lastTrouble = false
@@ -1043,6 +1109,7 @@ watch(
     stopParty = startGoatParty({
       muted: muted.value,
       music: musicOn.value,
+      fireworks: false, // until the plane's showing someone off (see below)
       onSoundBlocked: (b) => (soundBlocked.value = b),
     })
     sceneSeed = Math.floor(Math.random() * 100000)
