@@ -677,7 +677,10 @@ function lineAt(S, kind, v) {
 // nose to tail, sometimes a long lull — squeezed into the window before the
 // next boarding if they'd overrun it.
 const ARRIVE_WINDOW = [4.8, 11.5]
-function carArrivals(v, n) {
+// Held at the dock (boardHold), the ferry leaves late: the window moves up
+// by as much, so the next line only starts once it's really gone.
+const arrivalsFrom = (S, v) => ARRIVE_WINDOW[0] + boardHold(S, v)
+function carArrivals(v, n, shift = 0) {
   const gaps = Array.from({ length: n }, (_, i) => {
     const kind = rnd(v, 40 + i)
     const m = rnd(v, 60 + i)
@@ -687,7 +690,7 @@ function carArrivals(v, n) {
   })
   const total = gaps.reduce((a, b) => a + b, 0)
   const scale = Math.min(1, (ARRIVE_WINDOW[1] - ARRIVE_WINDOW[0]) / total)
-  let at = ARRIVE_WINDOW[0]
+  let at = ARRIVE_WINDOW[0] + shift
   return gaps.map((g) => (at += g * scale))
 }
 // Replaying a Bowen sailing whose line was seen reaching the crosswalk (by
@@ -706,8 +709,9 @@ function crosswalkTimed(S, v, side, left, a) {
   const boarding = halfStartOf(S, v + 2) + dockDelay(S, v + 2) + carLoad(S, v + 2, 0)
   const until = boarding - 0.4 - ROAD.length / CAR_V - base
   const when = whenClockReads(S, at, halfStartOf(S, v), departsAt(S, v + 2))
-  const target = Math.min(until, Math.max(ARRIVE_WINDOW[0], when - base - drive))
-  const [w0, A, last] = [ARRIVE_WINDOW[0], a[j], a[a.length - 1]]
+  const w0 = arrivalsFrom(S, v) // (not before the ferry's gone)
+  const target = Math.min(until, Math.max(w0, when - base - drive))
+  const [A, last] = [a[j], a[a.length - 1]]
   const early = (target - w0) / (A - w0)
   const late = last > A ? Math.min(1, (until - target) / (last - A)) : 1
   return a.map((x, i) => (i <= j ? w0 + (x - w0) * early : target + (x - A) * late))
@@ -721,7 +725,7 @@ function lateArrival(S, v, side, k) {
   const i = k - left
   if (i < 0) return null
   const n = lineAt(S, 'car', v).length - left
-  const a = crosswalkTimed(S, v - 2, side, left, carArrivals(v, n))
+  const a = crosswalkTimed(S, v - 2, side, left, carArrivals(v, n, boardHold(S, v - 2)))
   const at = halfStartOf(S, v - 2) + dockDelay(S, v - 2) + a[i]
   return at > halfStartOf(S, v) ? at : null
 }
@@ -1033,7 +1037,13 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   })
   const leftCars = dayBreak ? 0 : line.length - nBoard
   const nextCars = quietEvening ? none : lineAt(S, 'car', v + 2).slice(leftCars)
-  const arrivals = crosswalkTimed(S, v, side, leftCars, carArrivals(v + 2, nextCars.length))
+  const arrivals = crosswalkTimed(
+    S,
+    v,
+    side,
+    leftCars,
+    carArrivals(v + 2, nextCars.length, boardHold(S, v)),
+  )
   nextCars.forEach((item, i) => {
     const start = dawn != null ? dawn + 0.1 + i * 0.25 : arrivals[i]
     if (sigma < start) return
