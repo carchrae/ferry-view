@@ -164,8 +164,8 @@
           <svg
             ref="planeEl"
             class="goats-plane-body"
-            width="96"
-            height="48"
+            width="67"
+            height="34"
             viewBox="0 0 96 48"
             aria-hidden="true"
           >

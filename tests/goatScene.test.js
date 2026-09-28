@@ -438,6 +438,40 @@ describe('goatScene', () => {
     assert.ok(nights > 0, 'the replay reached a night')
   })
 
+  it('replays break down only where the ferry suddenly ran late, on the crossing before', () => {
+    // Every sailing 3 min late, until the 10:00 from Bowen jumps to 25 late;
+    // the ones after stay late (no fresh jump)
+    const lateness = { '10:00': 25, '10:30': 27, '11:00': 26 }
+    const docs = []
+    for (let i = 0; i < 8; i++) {
+      for (const [direction, time] of [
+        ['To Bowen', `${String(6 + i).padStart(2, '0')}:30`],
+        ['To HSB', `${String(7 + i).padStart(2, '0')}:00`],
+      ]) {
+        const late = lateness[time] ?? 3
+        const [hh, mm] = time.split(':').map(Number)
+        const at = hh * 60 + mm + late
+        docs.push({
+          dateIso: '2026-09-15',
+          sailingTime: time,
+          actualDepartureTime: `${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}`,
+          direction,
+          lastCapacity: '50%',
+        })
+      }
+    }
+    const sampler = seasonSampler(docs, () => 0, { date: '2026-09-15' })
+    const sc = createGoatScene({ sampler })
+    const v = [...Array(20).keys()].find((h) => sampler.sailing(h)?.time === '10:00')
+    // the jump: a jam as that sailing's ferry arrived, or a breakdown on its way in
+    assert.ok(sc.rampJams(v) || sc.breaksDown(v - 1), 'broke down just before the jump')
+    // …and nowhere else
+    for (let h = 0; h < 20; h++) {
+      if (h === v || h === v - 1) continue
+      assert.ok(!sc.rampJams(h) && !sc.breaksDown(h), `no breakdown at half ${h}`)
+    }
+  })
+
   it('nobody walks off the end of the dock while the ferry is away', () => {
     // A big summer crowd: August, every sailing 40 min late
     const docs = []

@@ -431,10 +431,12 @@ const DOCK_BREAKDOWN_S = 3
 const SMOKE_CLEAR_S = 2.4
 const MAX_BREAKDOWNS = 3
 const DAY_HALVES = 32
-// Rolled per half, mixed with the scene's seed — otherwise every opening of
-// the dialog (which restarts at half 0) would replay the same failures.
-const seaRoll = (S, h) => h > 0 && rnd(h + S.seed, 7) < 0.01
-const jamRoll = (S, h) => h > 0 && rnd(h + S.seed, 9) < 0.01
+// Random traffic: rolled per half, mixed with the scene's seed — otherwise
+// every opening of the dialog (which restarts at half 0) would replay the
+// same failures. (Replays only break down where the real ferry suddenly ran
+// late — see lateCause.)
+const seaRoll = (S, h) => !S.sampler && h > 0 && rnd(h + S.seed, 7) < 0.01
+const jamRoll = (S, h) => !S.sampler && h > 0 && rnd(h + S.seed, 9) < 0.01
 // What goes wrong in half h ({ jam, sea }), after the daily cap: earlier
 // halves of the same day use up the allowance first (a jam on arrival comes
 // before a breakdown at sea). Cached per scene in S.trouble.
@@ -448,9 +450,10 @@ function troubleAt(S, h) {
     const r = troubleAt(S, k)
     used += r.jam + r.sea
   }
-  // Replaying real days, a sailing that really ran late may owe it to a
-  // breakdown: its ramp jammed (at h), or the ferry broke down on the way in
-  // (the crossing before, h - 1). Otherwise it's the odd random failure.
+  // Replaying real days, a sailing that suddenly ran late owes it to a
+  // breakdown on the crossing just before: the ferry broke down on the way
+  // in (h - 1), or the ramp jammed as it arrived (at h). Random traffic has
+  // the odd random failure instead.
   const jam = (jamRoll(S, h) || S.sampler?.lateCause(h) === 'jam') && used < MAX_BREAKDOWNS
   const sea =
     (seaRoll(S, h) || S.sampler?.lateCause(h + 1) === 'sea') && used + jam < MAX_BREAKDOWNS
@@ -1911,6 +1914,8 @@ export const { halfStart, breaksDown, rampJams, whaleCrossing } = randomScene
 
 // How late a sailing really left (actual departure vs schedule, "HH:MM"),
 // in minutes; null when unknown.
+// How much later than the sailing before counts as a sudden jump.
+const LATE_JUMP = 12
 function minutesLate(d) {
   if (!d?.actualDepartureTime || !d.sailingTime) return null
   const mins = (hhmm) => {
@@ -2066,17 +2071,16 @@ export function seasonSampler(
       if (d.direction === 'To Bowen' && d.sailingTime === '15:55') return 'kids'
       return null
     },
-    // Why sailing v really ran late, if a breakdown's the story: outside
-    // summer anything over 20 minutes late; in summer (tourists explain most
-    // of it) only over 35. Half the time the ramp jammed ('jam'), else the
-    // ferry broke down on its way in ('sea').
+    // Why sailing v ran late, if a breakdown's the story: a sudden jump —
+    // LATE_JUMP minutes or more later than the sailing before it (the
+    // other way). Half the time its ramp jammed as it arrived ('jam'), else
+    // it broke down at sea on the way in ('sea').
     lateCause(v) {
       const d = sailingFor(v)
       if (!d || dayAt(v).i === 0) return null
       const late = minutesLate(d) ?? 0
-      const month = new Date(`${d.dateIso}T12:00:00Z`).getUTCMonth() + 1
-      const summer = month === 7 || month === 8
-      if (late <= (summer ? 35 : 20)) return null
+      const before = Math.max(0, dayAt(v).i > 1 ? (minutesLate(sailingFor(v - 1)) ?? 0) : 0)
+      if (late - before < LATE_JUMP) return null
       return rnd(v, 81) < 0.5 ? 'jam' : 'sea'
     },
     // Visit v's position in its day (0 = the empty first run, 1 = the first
