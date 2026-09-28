@@ -589,18 +589,23 @@
               <rect x="-1.8" y="-17.2" width="3.6" height="1.8" rx="0.7" :fill="p.hat" />
             </template>
             <path :d="p.legs" stroke="#eceff1" stroke-width="1.4" stroke-linecap="round" />
-            <text
+            <g
               v-if="p.mad || p.confused"
-              :transform="p.flip ? 'scale(-1 1)' : ''"
-              x="0"
-              y="-18"
-              text-anchor="middle"
-              font-size="8"
-              font-weight="900"
-              :fill="p.mad ? '#ff1744' : '#fff176'"
+              class="goats-emote"
+              :style="{ animationDelay: `${-p.phase}s` }"
             >
-              {{ p.mad ? '!' : '?' }}
-            </text>
+              <text
+                :transform="p.flip ? 'scale(-1 1)' : ''"
+                x="0"
+                y="-18"
+                text-anchor="middle"
+                font-size="8"
+                font-weight="900"
+                :fill="p.mad ? '#ff1744' : '#fff176'"
+              >
+                {{ p.mad ? '!' : '?' }}
+              </text>
+            </g>
           </g>
         </g>
 
@@ -672,18 +677,24 @@
             <rect x="-3.2" y="-15.6" width="6.4" height="1.1" rx="0.5" :fill="p.hat" />
             <rect x="-1.8" y="-17.2" width="3.6" height="1.8" rx="0.7" :fill="p.hat" />
           </template>
-          <text
+          <!-- (each ! ? ❤ swells a little as it fades, over and over) -->
+          <g
             v-if="p.mad || p.confused || p.love"
-            :transform="p.flip ? 'scale(-1 1)' : ''"
-            x="0"
-            y="-18"
-            text-anchor="middle"
-            font-size="8"
-            font-weight="900"
-            :fill="p.mad ? '#ff1744' : p.love ? '#ff4081' : '#fff176'"
+            class="goats-emote"
+            :style="{ animationDelay: `${-p.phase}s` }"
           >
-            {{ p.mad ? '!' : p.love ? '❤' : '?' }}
-          </text>
+            <text
+              :transform="p.flip ? 'scale(-1 1)' : ''"
+              x="0"
+              y="-18"
+              text-anchor="middle"
+              font-size="8"
+              font-weight="900"
+              :fill="p.mad ? '#ff1744' : p.love ? '#ff4081' : '#fff176'"
+            >
+              {{ p.mad ? '!' : p.love ? '❤' : '?' }}
+            </text>
+          </g>
         </g>
         <!-- School buses arriving or parked (never board; they meet the kids at
              each end) — in front of the people, who get on and off behind -->
@@ -1287,6 +1298,26 @@ function displayName(e) {
   fill: #b71c1c;
   font-weight: 800;
   font-size: 18px;
+}
+.goats-emote {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: goats-emote 1.1s ease-out infinite;
+}
+@keyframes goats-emote {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .goats-emote {
+    animation: none;
+  }
 }
 .goats-rope {
   width: 28px;

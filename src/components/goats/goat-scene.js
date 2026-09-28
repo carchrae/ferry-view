@@ -793,6 +793,7 @@ function ped(item, x, y, dx, stride, opacity, mirror, mood = null, s = null) {
     confused: mood === 'confused',
     love: mood === 'love',
     flip: dx < 0, // mirrored figure — its ?/! marker counter-flips to stay readable
+    phase: rnd(seedOf(item.id), 131), // (so their ?/!/❤ don't all pulse together)
     transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})${dx < 0 ? ' scale(-1 1)' : ''}${item.kid ? ' scale(0.72)' : ''}`,
     legs: `M0 -4 L${swing.toFixed(1)} 0 M0 -4 L${(-swing).toFixed(1)} 0`,
     opacity,
