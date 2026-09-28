@@ -163,7 +163,10 @@ const busHold = (S, h) => {
 // the school bus both use it. First there takes the front; a bus turning up
 // while another's parked pulls in right behind it (see stopSpot). (Far
 // enough up that a bus at the front has its nose off the dock.)
-const STOP_S = 84
+const STOP_S = 106
+// Waiting for the bus: on the roadside just short of the front bus's door
+// (just past its front wheel, see busDoors), so they walk up to it, not back.
+const STOP_WAIT = STOP_S - 20
 const stopLane = () => LANE.walk + 7 // the roadside, in front of the lanes
 const SHUTTLE_SEATS = 8
 const ARTIC_EVERY = 10
@@ -326,8 +329,11 @@ function stopSpot(S, side, id, kind, park) {
   const before = (a, b) =>
     a.park < b.park ||
     (a.park === b.park && (rank(a) < rank(b) || (rank(a) === rank(b) && a.id < b.id)))
+  // (anyone still parked as it comes down the roadside, not just when it
+  // pulls in — it mustn't drive through them)
+  const comingDown = (ROAD.length - STOP_S) / BUS_V
   const ahead = stopVisitors(S, side, park).filter(
-    (b) => b.id !== id && before(b, me) && b.leave > park,
+    (b) => b.id !== id && before(b, me) && b.leave + 0.2 > park - comingDown,
   )
   let spot = STOP_S
   if (ahead.length) {
@@ -1040,7 +1046,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     if (dropped != null) {
       if (t < dropped) return
       e = (t - dropped) * PED_V
-      s = Math.max(slot, STOP_S - e)
+      s = Math.max(slot, STOP_S - 12 - e) // (from the front bus's door)
     } else {
       const start = dawn != null ? dawn + 0.6 + i * 0.3 : PED_ARRIVE(i, nextPeds.length)
       if (sigma < start) return
@@ -1164,7 +1170,7 @@ function walkOffPlan(S, v, side) {
       start,
       pace: PED_V,
       wants: takesBus(item, side, 101),
-      arrive: start + (WALK_ON_LENGTH + STOP_S) / PED_V,
+      arrive: start + (WALK_ON_LENGTH + STOP_WAIT) / PED_V,
     })
   })
   boarders(S, 'kid', v - 1).forEach((item, k) => {
@@ -1179,7 +1185,7 @@ function walkOffPlan(S, v, side) {
       pace,
       dawdle,
       wants: true,
-      arrive: start + WALK_ON_LENGTH / pace + dawdle + (STOP_S - 10) / pace,
+      arrive: start + WALK_ON_LENGTH / pace + dawdle + (STOP_WAIT - 10) / pace,
     })
   })
   const base = halfStartOf(S, v) + jamDelay(S, v)
@@ -1218,7 +1224,11 @@ function walkOffPlan(S, v, side) {
     for (const r of riders) {
       if (!r.wants) continue
       const at = base + r.arrive
-      const n = articBoard(S, at)
+      let n = articBoard(S, at)
+      // (none till the morning — the buses stop at midnight, and the ferry's
+      // asleep — is no bus at all)
+      if (n != null && (articPark(n) - at > 2 * ARTIC_EVERY || halfAt(S, articPark(n)).overnight))
+        n = null
       if (n == null && r.local) {
         // no bus till morning: someone comes to fetch them
         r.ride = true
@@ -1238,7 +1248,7 @@ function walkOffPlan(S, v, side) {
   for (const r of riders) {
     if (r.strandedAt == null || !r.local) continue
     r.carFrom = r.strandedAt + (r.ride ? 0.4 : MAD_WAIT) + n * 1.1
-    r.carAt = r.carFrom + (ROAD.length - STOP_S) / PICKUP_V
+    r.carAt = r.carFrom + (ROAD.length - STOP_WAIT) / PICKUP_V
     r.board = r.carAt + LOVE_S
     n++
   }
@@ -1280,7 +1290,7 @@ function walkOff(r, u, t, mirror, bus) {
   const s = from + d * pace
   // Walking home in the dark goes all the way up the hill.
   const gone = r.torch ? ROAD.length : r.local ? PED_GONE_S : TOURIST_GONE_S
-  if (!r.wants || s < STOP_S) {
+  if (!r.wants || s < STOP_WAIT) {
     if (s > gone) return null
     const p = roadAt(s)
     const q = ped(item, p.x, p.y + LANE.walk, p.tx, e * 12, Math.min(1, (gone - s) / 40), mirror)
@@ -1289,7 +1299,7 @@ function walkOff(r, u, t, mirror, bus) {
   }
   // At the bus stop.
   const w = touristWander(t * (r.local ? 0.5 : 1), item.id)
-  const spot = STOP_S + 4 + w.off * (r.local ? 0.15 : 0.5)
+  const spot = STOP_WAIT + w.off * (r.local ? 0.15 : 0.5)
   if (r.board != null && u >= r.board) {
     // Boarding: along to the door and in. (In the car: just gone.)
     if (!bus || u >= bus.gone) return null
@@ -1306,7 +1316,7 @@ function walkOff(r, u, t, mirror, bus) {
       // A tourist who couldn't get on just wanders about, then off up the road.
       const on = u - r.strandedAt - 4
       if (on > 0) {
-        const s2 = STOP_S + on * pace
+        const s2 = STOP_WAIT + on * pace
         if (s2 > gone) return null
         const q = roadAt(s2)
         return ped(item, q.x, q.y + LANE.walk, q.tx, t * 12, Math.min(1, (gone - s2) / 40), mirror)
@@ -1377,7 +1387,7 @@ function walkOffs(S, t, side, v, peds, cars, W) {
         // The rescue car: down the roadside, pause, back up the hill.
         const id = `rescue-${r.item.id}`
         const color = CAR_COLORS[Math.floor(rnd(seedOf(r.item.id), 102) * CAR_COLORS.length)]
-        const spot = STOP_S + 14
+        const spot = STOP_WAIT + 14 // (pulling up beside them)
         const drive = (ROAD.length - spot) / PICKUP_V
         let sPos
         let uphill = false

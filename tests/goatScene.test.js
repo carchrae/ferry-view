@@ -406,6 +406,38 @@ describe('goatScene', () => {
     assert.ok(past(hi + 0.1) >= 1, 'the 9th car in line past it right then')
   })
 
+  it('nobody is left waiting for a bus at Horseshoe Bay overnight', () => {
+    const docs = []
+    for (const dateIso of ['2026-09-15', '2026-09-16'])
+      for (let hh = 18; hh <= 23; hh++)
+        for (const [direction, mm] of [
+          ['To HSB', '00'],
+          ['To Bowen', '30'],
+        ])
+          docs.push({
+            dateIso,
+            sailingTime: `${hh}:${mm}`,
+            direction,
+            lastCapacity: '50%',
+          })
+    const sc = createGoatScene({ sampler: seasonSampler(docs, () => 0, { date: '2026-09-15' }) })
+    let nights = 0
+    for (let t = 0; t < 400; t += 0.1) {
+      const f = sc(t)
+      if (f.night == null || f.night < 0.5) continue
+      nights++
+      const mainland = f.peds.filter(
+        (p) => Number(p.transform.match(/translate\(([-\d.]+)/)[1]) > BERTHS[1],
+      )
+      assert.equal(
+        mainland.length,
+        0,
+        `at night ${f.night.toFixed(2)}: ${mainland.map((p) => p.id)}`,
+      )
+    }
+    assert.ok(nights > 0, 'the replay reached a night')
+  })
+
   it('nobody walks off the end of the dock while the ferry is away', () => {
     // A big summer crowd: August, every sailing 40 min late
     const docs = []
