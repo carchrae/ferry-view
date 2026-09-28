@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { skyAt, skyColors, wallMinutesToMs } from '../src/components/goat-sky.js'
-import { isDarkAt } from '../functions/lib/daylight.js'
+import { skyAt, skyColors, wallMinutesToMs } from '../../src/components/goats/goat-sky.js'
+import { isDarkAt } from '../../functions/lib/daylight.js'
 
 // Simulated-clock minutes for a wall time at the terminal (see simClock).
 const wall = (dateIso, hh, mm = 0) =>

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { wildlifeAt, cycleKind } from '../src/components/goat-wildlife.js'
+import { wildlifeAt, cycleKind } from '../../src/components/goats/goat-wildlife.js'
 
 const hillY = () => 90
 const x = (transform) => +transform.match(/translate\(([-\d.]+)/)[1]

@@ -154,7 +154,7 @@ import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisp
 import { useAuth } from 'src/composables/useAuth'
 import LeaderboardList from 'src/components/LeaderboardList.vue'
 import ScoringExplainDialog from 'src/components/ScoringExplainDialog.vue'
-import GoatsDialog from 'src/components/GoatsDialog.vue'
+import GoatsDialog from 'src/components/goats/GoatsDialog.vue'
 import { dayjs, formatTime12h, TZ } from '../../functions/lib/time.js'
 
 const $q = useQuasar()

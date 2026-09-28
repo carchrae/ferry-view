@@ -740,7 +740,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { formatReporterName } from 'src/composables/useLeaderboard'
-import { startGoatParty } from 'src/composables/useTagCelebration'
+import { startGoatParty } from './goat-party.js'
 import {
   createGoatScene,
   seasonSampler,
@@ -758,7 +758,7 @@ import { skyAt, wallMinutesToMs } from './goat-sky.js'
 import { useHistoricalStats } from 'src/composables/useHistoricalStats'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
-import { dayjs, formatTime12h } from '../../functions/lib/time.js'
+import { dayjs, formatTime12h } from '../../../functions/lib/time.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },

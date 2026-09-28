@@ -11,7 +11,7 @@ import {
   BERTHS,
   CAR_CAPACITY,
   CROSSWALK,
-} from '../src/components/goat-scene.js'
+} from '../../src/components/goats/goat-scene.js'
 
 const ids = (list) =>
   list

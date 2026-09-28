@@ -1,8 +1,8 @@
 // The GOATs scene's sky, by the real sun: the same solar elevation (and the
 // same "dark" line, lib/daylight.js) the crosswalk camera goes by, at the
 // scene's simulated time on the day being replayed.
-import { solarElevation, isDarkAt } from '../../functions/lib/daylight.js'
-import { dayjs } from '../../functions/lib/time.js'
+import { solarElevation, isDarkAt } from '../../../functions/lib/daylight.js'
+import { dayjs } from '../../../functions/lib/time.js'
 
 // Gradient stops (top, middle, horizon) by solar elevation in degrees: deep
 // night, twilight, dawn pink or sunset orange at the horizon, low sun, day.
