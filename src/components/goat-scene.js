@@ -167,6 +167,10 @@ const STOP_S = 100
 // Waiting for the bus: on the roadside just short of the front bus's door
 // (just past its front wheel, see busDoors), so they walk up to it, not back.
 const STOP_WAIT = STOP_S - 20
+// …the rest lining up behind, back towards the dock, LINE_GAP apart — closer
+// only if there isn't room.
+const LINE_GAP = 5
+const LINE_END = 14 // (not onto the dock)
 const stopLane = () => LANE.walk + 7 // the roadside, in front of the lanes
 const SHUTTLE_SEATS = 8
 const ARTIC_EVERY = 10
@@ -175,6 +179,7 @@ const ARTIC_EVERY = 10
 const BUS_SHARE = [0.5, 0.9] // [Bowen, Horseshoe Bay]
 const takesBus = (item, side, salt) => rnd(seedOf(item.id), salt) < BUS_SHARE[side]
 const MAD_WAIT = 1.2 // fuming before the rescue car sets off
+const CAR_SEATS = 3 // a rescue car takes up to three
 const PICKUP_V = 320
 const LOVE_S = 0.8 // the ❤ moment before they hop in
 // The Bowen shuttle's last run meets the sailing that left Horseshoe Bay at
@@ -1290,22 +1295,28 @@ function walkOffPlan(S, v, side) {
     }
   }
   // Stranded locals get fetched: a car sets off down after a moment's fuming
-  // (staggered, one each), pulls up beside them, and they hop in.
-  let n = 0
-  for (const r of riders) {
-    if (r.strandedAt == null || !r.local) continue
-    r.carFrom = r.strandedAt + (r.ride ? 0.4 : MAD_WAIT) + n * 1.1
-    r.carAt = r.carFrom + (ROAD.length - STOP_WAIT) / PICKUP_V
-    r.board = r.carAt + LOVE_S
-    n++
+  // (staggered), pulls up beside them, and they hop in — up to CAR_SEATS to a
+  // car, in the order they were stranded.
+  const stranded = riders
+    .filter((r) => r.strandedAt != null && r.local)
+    .sort((a, b) => a.strandedAt - b.strandedAt)
+  for (let g = 0; g * CAR_SEATS < stranded.length; g++) {
+    const group = stranded.slice(g * CAR_SEATS, (g + 1) * CAR_SEATS)
+    const wait = Math.max(...group.map((r) => r.strandedAt + (r.ride ? 0.4 : MAD_WAIT)))
+    const carFrom = wait + g * 1.1
+    const carAt = carFrom + (ROAD.length - STOP_WAIT) / PICKUP_V
+    group.forEach((r, i) => {
+      Object.assign(r, { carFrom, carAt, board: carAt + LOVE_S, bringsCar: i === 0 })
+    })
   }
   return { riders, base, leave }
 }
 
 // One walk-off at unload-clock time u.
 // `bus`: the door they're boarding by and when that bus goes (both on v's
-// unload clock), if they're catching one.
-function walkOff(r, u, t, mirror, bus) {
+// unload clock), if they're catching one. `slot`: their place in the line at
+// the stop.
+function walkOff(r, u, t, mirror, bus, slot = STOP_WAIT) {
   const e = u - r.start
   if (e < 0) return null
   const { item, pace } = r
@@ -1337,16 +1348,16 @@ function walkOff(r, u, t, mirror, bus) {
   const s = from + d * pace
   // Walking home in the dark goes all the way up the hill.
   const gone = r.torch ? ROAD.length : r.local ? PED_GONE_S : TOURIST_GONE_S
-  if (!r.wants || s < STOP_WAIT) {
+  if (!r.wants || s < slot) {
     if (s > gone) return null
     const p = roadAt(s)
     const q = ped(item, p.x, p.y + LANE.walk, p.tx, e * 12, Math.min(1, (gone - s) / 40), mirror)
     // (the flashlight bobs up and down with their stride)
     return r.torch ? { ...q, torch: true, torchTilt: Math.sin(e * 6) * 7 } : q
   }
-  // At the bus stop.
+  // In line at the bus stop (shifting from foot to foot).
   const w = touristWander(t * (r.local ? 0.5 : 1), item.id)
-  const spot = STOP_WAIT + w.off * (r.local ? 0.15 : 0.5)
+  const spot = slot + w.off * 0.12
   if (r.board != null && u >= r.board) {
     // Boarding: along to the door and in. (In the car: just gone.)
     if (!bus || u >= bus.gone) return null
@@ -1363,7 +1374,7 @@ function walkOff(r, u, t, mirror, bus) {
       // A tourist who couldn't get on just wanders about, then off up the road.
       const on = u - r.strandedAt - 4
       if (on > 0) {
-        const s2 = STOP_WAIT + on * pace
+        const s2 = spot + on * pace
         if (s2 > gone) return null
         const q = roadAt(s2)
         return ped(item, q.x, q.y + LANE.walk, q.tx, t * 12, Math.min(1, (gone - s2) / 40), mirror)
@@ -1426,11 +1437,25 @@ function walkOffs(S, t, side, v, peds, cars, W) {
     const door = doors[Math.floor(rnd(seedOf(r.item.id), 107) * doors.length)]
     return { door, gone: leave - plan.base }
   }
+  // The line at the stop, in the order they got there: each one's place is
+  // behind everyone ahead who's still waiting.
+  const inLine = plan.riders
+    .filter((r) => r.wants)
+    .sort((a, b) => a.arrive - b.arrive || (a.item.id < b.item.id ? -1 : 1))
+  const leavesLine = (r) =>
+    r.board != null ? r.board : r.strandedAt != null ? r.strandedAt + 4 : Infinity
+  // (as of `at`; someone who's left the line to board keeps the place they
+  // left it from)
+  const slotOf = (r, at = Math.min(u, leavesLine(r) - 1e-6)) => {
+    const waiting = inLine.filter((q) => at < leavesLine(q))
+    const gap = Math.min(LINE_GAP, (STOP_WAIT - LINE_END) / Math.max(1, waiting.length - 1))
+    return STOP_WAIT - Math.max(0, waiting.indexOf(r)) * gap
+  }
   if (u >= 0) {
     for (const r of plan.riders) {
-      const q = walkOff(r, u, t, mirror, busFor(r))
+      const q = walkOff(r, u, t, mirror, busFor(r), slotOf(r))
       if (q) peds.push(q)
-      if (r.carFrom != null && u >= r.carFrom) {
+      if (r.bringsCar && u >= r.carFrom) {
         // The rescue car: down the roadside, pause, back up the hill.
         const id = `rescue-${r.item.id}`
         const color = CAR_COLORS[Math.floor(rnd(seedOf(r.item.id), 102) * CAR_COLORS.length)]
