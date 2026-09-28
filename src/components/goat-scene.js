@@ -50,10 +50,11 @@ const PED_UNLOAD = (j) => 0.4 + 0.3 * j
 // in summer (the 'kid' line): bunched up on the dock, never left behind,
 // dashing aboard and off in a stream, crowding the passenger deck.
 const KID_V = 85
-const KID_WAIT_S = (k) => 6 + 3.2 * k
-const KID_LOAD = (k) => 1.7 + 0.05 * k
+const KID_WAIT_S = (k) => 6 + 2.2 * k // a packed crowd
+const KID_LOAD = (k) => 1.7 + 0.035 * k // …streaming aboard
 const KID_UNLOAD = (k) => 0.5 + 0.07 * k
-const KID_ARRIVE = (i, n) => 6.4 + i * Math.min(0.45, 5 / n)
+// They start gathering as soon as the previous sailing has left.
+const KID_ARRIVE = (i, n) => 4.4 + i * Math.min(0.35, 6.5 / n)
 const kidSpot = (k, n) => -33 + (66 * (k + 0.5)) / n // on the roof, ferry frame
 const PACKS = ['#e53935', '#1e88e5', '#fdd835', '#8e24aa', '#43a047', '#fb8c00']
 const HATS = ['#fff176', '#ff8a65', '#f48fb1', '#80deea', '#ffffff']
@@ -243,7 +244,7 @@ function newcomers(S, kind, v, carried = 0) {
     const crowd = S.sampler?.extraCrowd(v)
     if (!crowd) return []
     const kids = crowd === 'kids'
-    const n = kids ? 10 + Math.floor(rnd(v, 4) * 7) : 5 + Math.floor(rnd(v, 4) * 6)
+    const n = kids ? 20 + Math.floor(rnd(v, 4) * 11) : 5 + Math.floor(rnd(v, 4) * 6)
     return Array.from({ length: n }, (_, i) => ({
       id: `kid${v}.${i}`,
       color: SHIRTS[mod(v * 7 + i * 3, SHIRTS.length)],
