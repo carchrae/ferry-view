@@ -50,12 +50,27 @@ const PED_UNLOAD = (j) => 0.4 + 0.3 * j
 // in summer (the 'kid' line): bunched up on the dock, never left behind,
 // dashing aboard and off in a stream, crowding the passenger deck.
 const KID_V = 85
-// Summer tourists (the hats) amble: slow walkers, drifting back and forth
-// while they wait, arriving from nearer and fading out sooner on their way.
+// Summer tourists (the hats) amble and wander erratically: slow walkers,
+// spread out rather than clumped, drifting about while they wait. Off the
+// ferry they dawdle at the foot of the ramp — and the cars have to wait for
+// them to clear (see touristHold).
 const TOURIST_V = 30
+const TOURIST_BOARD_V = 45 // shuffling aboard once it's loading
 const TOURIST_START_S = 95
 const TOURIST_GONE_S = 120
+// Each tourist gets off in their own time, dawdles their own while and
+// ambles off at their own pace — so they straggle rather than march.
+const TOURIST_UNLOAD = (k) => 0.5 + 0.25 * k
+const touristDawdle = (item) => 1.5 + 2 * rnd(seedOf(item.id), 71)
+const touristPace = (item) => TOURIST_V * (0.75 + 0.5 * rnd(seedOf(item.id), 72))
+const TOURIST_WAIT_S = (i) => 12 + 8 * i + 3 * Math.sin(i * 2.7)
+// They start shuffling aboard a little early (getting in the way of the
+// last cars off).
+const TOURIST_LOAD = (k) => 1.2 + 0.03 * k
+const crowdLoad = (item, k) => (item.kid ? KID_LOAD(k) : TOURIST_LOAD(k))
 const crowdV = (item) => (item.kid ? KID_V : TOURIST_V)
+const boardV = (item) => (item.kid ? KID_V : TOURIST_BOARD_V)
+const crowdSpot = (item, k) => (item.kid ? KID_WAIT_S(k) : TOURIST_WAIT_S(k))
 const KID_WAIT_S = (k) => 6 + 2.2 * k // a packed crowd
 const KID_LOAD = (k) => 1.7 + 0.035 * k // …streaming aboard
 const KID_UNLOAD = (k) => 0.5 + 0.07 * k
@@ -192,9 +207,10 @@ export const MORNING_S = 10
 const LOAD_START = 1.6 // = PED_LOAD(0): when boarding begins on the load clock
 const nightDelay = (S, h) =>
   S.sampler?.isDayStart(h) ? UNLOAD_END + NIGHT_S + MORNING_S - LOAD_START : 0
-// Two dock clocks per visit: unloading waits only for a jammed ramp;
-// loading (and departure) also waits out any night.
-const dockDelay = (S, h) => jamDelay(S, h) + nightDelay(S, h)
+// Dock clocks per visit: walk-offs wait only for a jammed ramp; cars also
+// wait for dawdling tourists; loading (and departure) waits for all that
+// and any night.
+const dockDelay = (S, h) => jamDelay(S, h) + touristHold(S, h) + nightDelay(S, h)
 // Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
 // just short of it and waits until the whale has gone back under (about one
 // crossing in thirty-odd, never on a breakdown crossing; the first comes early).
@@ -225,21 +241,22 @@ function halfAt(S, t) {
   while (halfStartOf(S, h) > t) h--
   const tau = t - halfStartOf(S, h)
   const tauU = tau - jamDelay(S, h)
+  const tauC = tauU - touristHold(S, h) // cars' unload clock
   let overnight = null
   if (nightDelay(S, h)) {
-    const rel = tauU - UNLOAD_END
+    const rel = tauC - UNLOAD_END
     if (rel >= 0 && rel < NIGHT_S) overnight = { phase: 'night', u: rel / NIGHT_S }
     else if (rel >= NIGHT_S && rel < NIGHT_S + MORNING_S)
       overnight = { phase: 'morning', u: (rel - NIGHT_S) / MORNING_S }
   }
-  return { h, tau, tauU, tauE: tau - dockDelay(S, h), overnight }
+  return { h, tau, tauU, tauC, tauE: tau - dockDelay(S, h), overnight }
 }
 // When the ferry leaves the dock of half h (scene time).
 const departsAt = (S, h) => halfStartOf(S, h) + dockDelay(S, h) + DEPART
 
 // The overnight window before day-start half h0, in scene time.
 function overnightWindow(S, h0) {
-  const N0 = halfStartOf(S, h0) + jamDelay(S, h0) + UNLOAD_END
+  const N0 = halfStartOf(S, h0) + jamDelay(S, h0) + touristHold(S, h0) + UNLOAD_END
   return { N0, M0: N0 + NIGHT_S }
 }
 const ease = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2)
@@ -351,7 +368,20 @@ function carArrivals(v, n) {
 }
 const boarders = (S, kind, v) => lineAt(S, kind, v).slice(0, capOf(S, kind, v))
 const kidBoarded = (sigma, k, item) =>
-  sigma >= KID_LOAD(k) + (KID_WAIT_S(k) + WALK_ON_LENGTH) / crowdV(item)
+  sigma >= crowdLoad(item, k) + (crowdSpot(item, k) + WALK_ON_LENGTH) / boardV(item)
+// Tourists coming off at visit h hold the cars up until they've wandered
+// clear of the ramp: how long the cars wait (on the unload clock).
+function touristHold(S, h) {
+  let clear = 0
+  boarders(S, 'kid', h - 1).forEach((x, k) => {
+    if (!x.kid)
+      clear = Math.max(
+        clear,
+        TOURIST_UNLOAD(k) + WALK_ON_LENGTH / touristPace(x) + touristDawdle(x),
+      )
+  })
+  return clear ? clear + 0.4 : 0
+}
 
 // A car at (x, y) heading along (dx, dy): its transform keeps it upright with
 // the headlights (drawn at +x) leading.
@@ -486,13 +516,64 @@ function lostPed(item, t, s, mirror) {
   )
 }
 
-// A tourist waiting at road position s: ambling back and forth around it,
-// facing the way they're drifting, no hurry at all.
+// A tourist's erratic drift: three out-of-step sways, so they dither, double
+// back and wander off at their own pace. `off` is how far they've strayed.
+function touristWander(t, id) {
+  const k = seedOf(id)
+  const [a, b, c] = [0.7 + (k % 0.3), 1.9 + (k % 0.5), 4.1]
+  const off =
+    9 * Math.sin(a * t + k) + 5 * Math.sin(b * t + 1.3 * k) + 2.5 * Math.sin(c * t + 2.1 * k)
+  const vel =
+    9 * a * Math.cos(a * t + k) +
+    5 * b * Math.cos(b * t + 1.3 * k) +
+    2.5 * c * Math.cos(c * t + 2.1 * k)
+  return { off, dir: vel >= 0 ? 1 : -1, moving: Math.abs(vel) > 6 }
+}
+// A tourist waiting around road position s, wandering about erratically.
 function strollPed(item, t, s, mirror, dy = 0) {
-  const w = puzzledWander(t * 0.6, item.id)
-  const p = roadAt(s + 11 + w.off) // drifting up and down the dock around their spot
+  const w = touristWander(t, item.id)
+  const p = roadAt(Math.max(2, s + 4 + w.off * 0.55))
   const dx = w.dir > 0 ? p.tx : -p.tx
-  return ped(item, p.x, p.y + LANE.walk + dy, dx, t * 10, 1, mirror, null, s)
+  return ped(item, p.x, p.y + LANE.walk + dy, dx, w.moving ? t * 12 : 0, 1, mirror, null, s)
+}
+// A tourist getting off, `since` seconds after their turn: ambling down the
+// ramp, dawdling about at the foot of it (right where the cars need to go),
+// then wandering off up the road.
+function touristOff(item, t, since, mirror) {
+  if (since < 0) return null
+  const pace = touristPace(item)
+  const ramp = WALK_ON_LENGTH / pace
+  if (since < ramp) {
+    const off = along([...WALK_ON].reverse(), since * pace)
+    return off && ped(item, off.x, off.y, -1, since * 12, 1, mirror)
+  }
+  const d = since - ramp
+  const dawdle = touristDawdle(item)
+  if (d < dawdle) {
+    const w = touristWander(t, item.id)
+    const p = roadAt(Math.max(1, 10 + w.off * 0.8))
+    return ped(
+      item,
+      p.x,
+      p.y + LANE.walk,
+      w.dir > 0 ? p.tx : -p.tx,
+      w.moving ? t * 12 : 0,
+      1,
+      mirror,
+    )
+  }
+  const s = 10 + (d - dawdle) * pace
+  if (s > TOURIST_GONE_S) return null
+  const p = roadAt(s)
+  return ped(
+    item,
+    p.x,
+    p.y + LANE.walk,
+    p.tx,
+    t * 12,
+    Math.min(1, (TOURIST_GONE_S - s) / 40),
+    mirror,
+  )
 }
 
 // Everything at one dock (side 0 = Bowen, 1 = mainland) at time t.
@@ -691,15 +772,15 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
 
   // --- school kids: bunched on the dock (a little staggered), all board ---
   lineAt(S, 'kid', v).forEach((item, k) => {
-    const s0 = KID_WAIT_S(k)
+    const s0 = crowdSpot(item, k)
     const dy = (k % 2) * 2
-    if (sigma < KID_LOAD(k)) {
+    if (sigma < crowdLoad(item, k)) {
       if (puzzled) return peds.push(lostPed(item, t, s0, mirror))
       if (!item.kid) return peds.push(strollPed(item, t, s0, mirror, dy))
       const p = roadAt(s0)
       return peds.push(ped(item, p.x, p.y + LANE.walk + dy, 1, 0, 1, mirror, null, s0))
     }
-    const e = (sigma - KID_LOAD(k)) * crowdV(item)
+    const e = (sigma - crowdLoad(item, k)) * boardV(item)
     if (e < s0) {
       const p = roadAt(s0 - e)
       peds.push(ped(item, p.x, p.y + LANE.walk + dy, 1, e, 1, mirror))
@@ -732,7 +813,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       : sigma - KID_ARRIVE(i, nextKids.length)
     if (since < 0) return
     const e = since * crowdV(item)
-    const slot = KID_WAIT_S(i)
+    const slot = crowdSpot(item, i)
     // School kids pile out of the bus; tourists amble down the road.
     const s = schoolDrop
       ? BUS_S + Math.sign(slot - BUS_S) * Math.min(e, Math.abs(slot - BUS_S))
@@ -763,12 +844,12 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
 // first, then the walk-offs, all heading up the road.
 function unloadAt(S, t, side, cars, peds, W) {
   const mirror = side === 1 ? W : 0
-  const { h: v, tauU: sigma } = halfAt(S, t)
+  const { h: v, tauU: sigma, tauC } = halfAt(S, t)
   boarders(S, 'car', v - 1).forEach((item, i) => {
     const start = CAR_UNLOAD(i)
-    if (sigma < start) return
+    if (tauC < start) return // (still waiting for the tourists to clear)
     const route = deckPath(BERTH - FAR_SLOTS[i]).reverse()
-    const e = (sigma - start) * CAR_V
+    const e = (tauC - start) * CAR_V
     const at = along(route, e)
     if (at) {
       cars.push(car(item, 'out', at.x, at.y, at.dx, at.dy, mirror))
@@ -792,6 +873,11 @@ function unloadAt(S, t, side, cars, peds, W) {
   const arriving = boarders(S, 'kid', v - 1)
   const school = isSchool(arriving)
   arriving.forEach((item, k) => {
+    if (!item.kid) {
+      const q = touristOff(item, t, sigma - TOURIST_UNLOAD(k), mirror)
+      if (q) peds.push(q)
+      return
+    }
     const e = (sigma - KID_UNLOAD(k)) * crowdV(item)
     const gone = item.kid ? PED_GONE_S : TOURIST_GONE_S
     if (e < 0 || e > gone + WALK_ON_LENGTH) return
@@ -1000,7 +1086,7 @@ function whaleAt(S, t, W) {
 
 function sceneFrame(S, t, W) {
   frameT = t
-  const { h, tau: tauRaw, tauU, tauE: tau, overnight } = halfAt(S, t)
+  const { h, tau: tauRaw, tauU, tauC, tauE: tau, overnight } = halfAt(S, t)
   const side = mod(h, 2)
   const { x: ferryX, moving, stalled, jammed, troubled } = ferryAt(S, t, W)
   const sleeping = overnight?.phase === 'night'
@@ -1020,7 +1106,7 @@ function sceneFrame(S, t, W) {
   const sign = side === 0 ? 1 : -1
   const deck = []
   boarders(S, 'car', h - 1).forEach((item, i) => {
-    if (tauU < CAR_UNLOAD(i))
+    if (tauC < CAR_UNLOAD(i))
       deck.push({ id: item.id, dx: -sign * FAR_SLOTS[i], color: item.color })
   })
   boarders(S, 'car', h).forEach((item, k) => {
