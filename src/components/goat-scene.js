@@ -337,12 +337,18 @@ function car(item, lane, x, y, dx, dy, mirror, mad = false) {
 
 // mood: 'mad' (missed the boat — red face, "!") or 'confused' (breakdown —
 // "?"); either way they hop, which callers bake into y.
+// The time of the frame being built (set by sceneFrame) — lets ped() keep
+// school kids bouncing wherever they are.
+let frameT = 0
+
 // `s`: road position of someone standing in line (so they can be sent home).
 function ped(item, x, y, dx, stride, opacity, mirror, mood = null, s = null) {
   if (mirror) {
     x = mirror - x
     dx = -dx
   }
+  // School kids never stop bouncing, each to their own rhythm.
+  if (item.kid) y -= Math.abs(Math.sin(frameT * 8 + seedOf(item.id) * 1.9)) * 3
   const swing = Math.sin(stride / 3) * 2.2
   return {
     id: item.id,
@@ -905,6 +911,7 @@ function whaleAt(S, t, W) {
 }
 
 function sceneFrame(S, t, W) {
+  frameT = t
   const { h, tau: tauRaw, tauU, tauE: tau, overnight } = halfAt(S, t)
   const side = mod(h, 2)
   const { x: ferryX, moving, stalled, jammed, troubled } = ferryAt(S, t, W)
