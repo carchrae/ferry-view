@@ -552,7 +552,7 @@ function surprisedWhale(ctx, out, t0) {
   })
 }
 
-export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
+export function startGoatParty({ onSoundBlocked, muted = false, music = true } = {}) {
   if (typeof window === 'undefined' || !effectsEnabled()) return () => {}
   const timers = []
   let stopped = false
@@ -569,6 +569,7 @@ export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
     // The anthem runs through its own bus so scene events can fade it out
     // (breakdown) or dip it (whale) while their jingles play on top.
     anthem = ctx.createGain()
+    anthem.gain.value = music ? 1 : 0
     anthem.connect(master)
     const loop = (at) => {
       if (stopped) return
@@ -630,10 +631,16 @@ export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
   // Scene events. A breakdown silences the anthem and plays a sad trombone
   // until it's over; a whale dips the anthem under a surprised jingle.
   const playing = () => !stopped && master && ctx.state === 'running'
-  // The anthem is silenced while there's trouble or it's night/morning.
+  // The anthem is silenced while there's trouble or it's night/morning — or
+  // for good, if the theme music's been switched off (stop.setMusic).
   let trouble = false
   let phase = 'day'
-  const anthemOn = () => !trouble && phase === 'day'
+  let musicOn = music
+  const anthemOn = () => musicOn && !trouble && phase === 'day'
+  stop.setMusic = (on) => {
+    musicOn = on
+    if (master) applyAnthem(false)
+  }
   const applyAnthem = (fast) => {
     anthem.gain.cancelScheduledValues(ctx.currentTime)
     anthem.gain.setTargetAtTime(anthemOn() ? 1 : 0, ctx.currentTime, fast ? 0.12 : 0.4)

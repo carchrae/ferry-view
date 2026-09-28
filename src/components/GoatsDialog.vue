@@ -45,8 +45,19 @@
           class="q-mr-sm"
           @click.stop="toggleSound"
         />
+        <!-- Theme music on/off (sound effects keep playing) -->
         <q-btn
-          v-else-if="!offerSound"
+          v-if="!offerSound"
+          round
+          flat
+          dense
+          color="white"
+          :icon="musicOn ? 'music_note' : 'music_off'"
+          :aria-label="musicOn ? 'Turn theme music off' : 'Turn theme music on'"
+          @click.stop="toggleMusic"
+        />
+        <q-btn
+          v-if="!offerSound"
           round
           flat
           dense
@@ -585,6 +596,24 @@ try {
 } catch {
   /* storage blocked — default to sound on */
 }
+// Theme music on/off (just the anthem — effects and jingles still play),
+// remembered like the mute.
+const MUSIC_KEY = 'goatsMusicOff'
+const musicOn = ref(true)
+try {
+  musicOn.value = localStorage.getItem(MUSIC_KEY) !== '1'
+} catch {
+  /* storage blocked — music on */
+}
+function toggleMusic() {
+  musicOn.value = !musicOn.value
+  try {
+    localStorage.setItem(MUSIC_KEY, musicOn.value ? '0' : '1')
+  } catch {
+    /* ignore */
+  }
+  stopParty?.setMusic?.(musicOn.value)
+}
 // Sound is locked and wanted: offer it (button, and the next tap anywhere).
 const offerSound = computed(() => soundBlocked.value && !muted.value)
 // A tap on the stage only ever turns locked sound on (✕, Esc or Back close).
@@ -996,6 +1025,7 @@ watch(
     if (!open) return
     stopParty = startGoatParty({
       muted: muted.value,
+      music: musicOn.value,
       onSoundBlocked: (b) => (soundBlocked.value = b),
     })
     animateScene()
