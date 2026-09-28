@@ -361,7 +361,15 @@ function stopSpot(S, side, id, kind, park) {
 const pickUpLeaves = (S, w) => halfStartOf(S, w) + jamDelay(S, w) + busLeaves(S, w)
 
 // They start gathering as soon as the previous sailing has left.
-const KID_ARRIVE = (i, n) => 4.4 + i * Math.min(0.35, 6.5 / n)
+// Tourists for visit v + 2 turn up one by one over the wait (on v's load
+// clock): from once the ferry's really gone until early enough to amble down
+// before the next boarding.
+function touristArrives(S, v, i, n) {
+  const from = arrivalsFrom(S, v)
+  const until = halfStartOf(S, v + 2) - halfStartOf(S, v) - dockDelay(S, v) - 3.5
+  const span = Math.max(0.5, until - from)
+  return from + (span * (i + 0.2 + 0.6 * rnd(v + 2, 140 + i))) / n
+}
 const kidSpot = (k, n) => -33 + (66 * (k + 0.5)) / n // on the roof, ferry frame
 const PACKS = ['#e53935', '#1e88e5', '#fdd835', '#8e24aa', '#43a047', '#fb8c00']
 const HATS = ['#fff176', '#ff8a65', '#f48fb1', '#80deea', '#ffffff']
@@ -612,12 +620,8 @@ function newcomers(S, kind, v, carried = 0) {
     const crowd = S.sampler?.extraCrowd(v)
     if (!crowd) return []
     const kids = crowd === 'kids'
-    // Kids: a busload. Tourists: the later the sailing really ran, the more
-    // of them there were to blame.
-    const late = Math.max(0, S.sampler.sailing(v)?.lateMin ?? 0)
-    const n = kids
-      ? 20 + Math.floor(rnd(v, 4) * 11)
-      : Math.min(16, 3 + Math.round(late / 2.5) + Math.floor(rnd(v, 4) * 2))
+    // Kids: a busload. Tourists: see the sampler's tourists.
+    const n = kids ? 20 + Math.floor(rnd(v, 4) * 11) : S.sampler.tourists(v)
     return Array.from({ length: n }, (_, i) => ({
       id: `kid${v}.${i}`,
       color: SHIRTS[mod(v * 7 + i * 3, SHIRTS.length)],
@@ -1200,7 +1204,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     // School kids come out of the bus; tourists turn up on their own.
     const since = schoolDrop
       ? t - (busParks + kidOutAt(i, nextKids.length))
-      : sigma - KID_ARRIVE(i, nextKids.length)
+      : sigma - touristArrives(S, v, i, nextKids.length)
     if (since < 0) return
     const e = since * crowdV(item)
     const slot = crowdSpot(item, i)
@@ -1986,7 +1990,9 @@ export const { halfStart, breaksDown, rampJams, whaleCrossing } = randomScene
 // How late a sailing really left (actual departure vs schedule, "HH:MM"),
 // in minutes; null when unknown.
 // How much later than the sailing before counts as a sudden jump.
-const LATE_JUMP = 12
+const LATE_JUMP = 30
+const TOURIST_MAX = 16 // after a run of Full sailings…
+const TOURIST_CRUSH = Math.round(TOURIST_MAX * 1.5) // …or when they made it late
 function minutesLate(d) {
   if (!d?.actualDepartureTime || !d.sailingTime) return null
   const mins = (hhmm) => {
@@ -2102,6 +2108,28 @@ export function seasonSampler(
       n++
     }
   }
+  const summer = (v) => {
+    const d = sailingFor(v)
+    const month = d && new Date(`${d.dateIso}T12:00:00Z`).getUTCMonth() + 1
+    return month === 7 || month === 8
+  }
+  // Did sailing v suddenly run late: LATE_JUMP minutes or more later than
+  // the sailing before it (the other way)?
+  const lateJump = (v) => {
+    const d = sailingFor(v)
+    if (!d || dayAt(v).i === 0) return false
+    const late = minutesLate(d) ?? 0
+    const before = Math.max(0, dayAt(v).i > 1 ? (minutesLate(sailingFor(v - 1)) ?? 0) : 0)
+    return late - before >= LATE_JUMP
+  }
+  const loadOf = (v) => {
+    const cap = sailingFor(v)?.lastCapacity
+    if (!cap) return null
+    if (cap === 'Full') return 'full'
+    if (cap === 'Not Full') return 0.35 + rnd(v, 5) * 0.45
+    const left = parseInt(cap)
+    return Number.isNaN(left) ? null : Math.min(1, Math.max(0, 1 - left / 100))
+  }
   const sailingFor = (v) => {
     const { k, i } = dayAt(v)
     const l = dayOf(k).sides[mod(v, 2)]
@@ -2120,22 +2148,13 @@ export function seasonSampler(
     dayStart: (h) => dayAt(h).start,
     // Who else rides visit v's sailing: 'kids' on school runs (the 7:30am
     // from Bowen and the 3:55pm back, weekdays, September–June), 'tourists'
-    // in summer (July–August: over from the mainland in the morning, back in
-    // the mid/late afternoon), else null.
+    // in summer (see tourists), else null.
     extraCrowd(v) {
       const d = sailingFor(v)
       if (!d || dayAt(v).i === 0) return null
       const date = new Date(`${d.dateIso}T12:00:00Z`)
       const month = date.getUTCMonth() + 1
-      const hour = parseInt(d.sailingTime)
-      if (month === 7 || month === 8) {
-        // Tourists over in the morning, home in the afternoon — and on any
-        // summer sailing that ran noticeably late (they were the hold-up).
-        if (d.direction === 'To Bowen' && hour >= 7 && hour < 12) return 'tourists'
-        if (d.direction === 'To HSB' && hour >= 13 && hour < 19) return 'tourists'
-        if ((minutesLate(d) ?? 0) >= 8) return 'tourists'
-        return null
-      }
+      if (month === 7 || month === 8) return this.tourists(v) ? 'tourists' : null
       const weekday = date.getUTCDay()
       if (weekday === 0 || weekday === 6) return null
       if (d.direction === 'To HSB' && d.sailingTime === '07:30') return 'kids'
@@ -2144,14 +2163,13 @@ export function seasonSampler(
     },
     // Why sailing v ran late, if a breakdown's the story: a sudden jump —
     // LATE_JUMP minutes or more later than the sailing before it (the
-    // other way). Half the time its ramp jammed as it arrived ('jam'), else
-    // it broke down at sea on the way in ('sea').
+    // other way) — outside summer, or when it wasn't full. Half the time its
+    // ramp jammed as it arrived ('jam'), else it broke down at sea on the
+    // way in ('sea').
+    // (A Full summer sailing that suddenly ran late was a tourist crush —
+    // see tourists — not a breakdown.)
     lateCause(v) {
-      const d = sailingFor(v)
-      if (!d || dayAt(v).i === 0) return null
-      const late = minutesLate(d) ?? 0
-      const before = Math.max(0, dayAt(v).i > 1 ? (minutesLate(sailingFor(v - 1)) ?? 0) : 0)
-      if (late - before < LATE_JUMP) return null
+      if (!lateJump(v) || (summer(v) && loadOf(v) === 'full')) return null
       return rnd(v, 81) < 0.5 ? 'jam' : 'sea'
     },
     // Visit v's position in its day (0 = the empty first run, 1 = the first
@@ -2166,13 +2184,31 @@ export function seasonSampler(
       // (not the day we join at — no night before the replay even starts)
       return i === 0 && start !== null && start !== starts[0]
     },
-    load(v) {
-      const cap = sailingFor(v)?.lastCapacity
-      if (!cap) return null
-      if (cap === 'Full') return 'full'
-      if (cap === 'Not Full') return 0.35 + rnd(v, 5) * 0.45
-      const left = parseInt(cap)
-      return Number.isNaN(left) ? null : Math.min(1, Math.max(0, 1 - left / 100))
+    load: loadOf,
+    // Summer tourists lining up for visit v's sailing (0 = none). Over to
+    // Bowen from Horseshoe Bay they build up 10am–1pm; home from Bowen, from
+    // 3pm until the evening sailings stop being full — a lighter trickle in
+    // the two hours either side. Only a few for a sailing that wasn't full;
+    // the most once it's been full several sailings running from that side
+    // — and half as many again when a Full one suddenly ran late (they were
+    // the hold-up).
+    tourists(v) {
+      const d = sailingFor(v)
+      if (!d || dayAt(v).i === 0 || !summer(v)) return 0
+      const load = loadOf(v)
+      if (load === 'full' && lateJump(v)) return TOURIST_CRUSH
+      const [hh, mm] = d.sailingTime.split(':').map(Number)
+      const m = hh * 60 + mm
+      const [from, to] = d.direction === 'To Bowen' ? [10 * 60, 13 * 60] : [15 * 60, 24 * 60]
+      const weight = m >= from && m < to ? 1 : m >= from - 120 && m < to + 120 ? 0.4 : 0
+      if (!weight) return 0
+      // (the evening rush home is over once sailings leave Bowen not full)
+      if (d.direction === 'To HSB' && m >= 17 * 60 && load !== 'full') return 0
+      let streak = 0 // Full sailings running, from this side, up to this one
+      for (let u = v; streak < 4 && loadOf(u) === 'full' && dayAt(u).k === dayAt(v).k; u -= 2)
+        streak++
+      const crowd = streak ? 5 + 3 * (streak - 1) : typeof load === 'number' ? 1 + 2 * load : 2
+      return Math.min(TOURIST_MAX, Math.round(weight * crowd + rnd(v, 4) * 2))
     },
     sailing(v) {
       const d = sailingFor(v)

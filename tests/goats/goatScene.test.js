@@ -322,7 +322,7 @@ describe('goatScene', () => {
     assert.ok(!earlier.carsIn.some((c) => c.mad))
   })
 
-  it('a badly late sailing out of summer gets a breakdown; in summer, tourists scale with lateness', () => {
+  it('a sailing that suddenly ran late gets a breakdown', () => {
     const day = (dateIso, lateHalf4) => {
       const docs = []
       for (let i = 0; i < 8; i++) {
@@ -351,14 +351,82 @@ describe('goatScene', () => {
     assert.equal(sept.sailing(4).lateMin, 30)
     const scene = createGoatScene({ sampler: sept })
     assert.ok(scene.rampJams(4) || scene.breaksDown(3), 'late sailing explained by a breakdown')
-    // August: late sailings bring tourists, more the later it ran
-    const quiet = day('2026-08-04', 9)
-    const busy = day('2026-08-04', 35)
-    const count = (sampler) => {
-      const sc = createGoatScene({ sampler })
-      return sc(sc.halfStart(5) - 0.5).riders.filter((r) => r.hat).length
+  })
+
+  it('summer tourists: over mid-morning, home late afternoon; most after a run of Full sailings', () => {
+    // An August day, a sailing each way every hour; the From-Bowen ones Full
+    // from 3pm on, everything else half full
+    const docs = []
+    for (let hh = 6; hh <= 21; hh++)
+      for (const [direction, mm] of [
+        ['To Bowen', '00'],
+        ['To HSB', '30'],
+      ])
+        docs.push({
+          dateIso: '2026-08-04',
+          sailingTime: `${String(hh).padStart(2, '0')}:${mm}`,
+          direction,
+          lastCapacity: direction === 'To HSB' && hh >= 15 ? 'Full' : '50%',
+        })
+    const sampler = seasonSampler(docs, () => 0, { date: '2026-08-04' })
+    const at = (direction, time) => {
+      const v = [...Array(40).keys()].find(
+        (h) => sampler.sailing(h)?.time === time && sampler.sailing(h).direction === direction,
+      )
+      return sampler.tourists(v)
     }
-    assert.ok(count(busy) > count(quiet), `tourists: ${count(quiet)} vs ${count(busy)}`)
+    // none over to Bowen early, or home from Bowen in the morning
+    assert.equal(at('To Bowen', '06:00'), 0)
+    assert.equal(at('To HSB', '09:30'), 0)
+    // over to Bowen: a trickle before 10, more 10–1 (neither sailing full)
+    assert.ok(at('To Bowen', '11:00') >= at('To Bowen', '08:00'))
+    assert.ok(at('To Bowen', '11:00') <= 4, 'few when the sailing was not full')
+    // home from Bowen: builds as the Full sailings run on, to the most
+    const home = ['15:30', '16:30', '17:30', '18:30'].map((t) => at('To HSB', t))
+    assert.ok(home[3] > home[0], `builds: ${home}`)
+    assert.ok(home[3] >= 14, `the most after a run of Full sailings: ${home}`)
+    // the rush home is over once sailings leave Bowen not full in the evening
+    const lateDocs = docs.map((d) =>
+      d.direction === 'To HSB' && d.sailingTime >= '19:30' ? { ...d, lastCapacity: '50%' } : d,
+    )
+    const evening = seasonSampler(lateDocs, () => 0, { date: '2026-08-04' })
+    const v2030 = [...Array(40).keys()].find(
+      (h) => evening.sailing(h)?.time === '20:30' && evening.sailing(h).direction === 'To HSB',
+    )
+    assert.equal(evening.tourists(v2030), 0)
+  })
+
+  it('in summer a Full sailing that suddenly ran late was a tourist crush, not a breakdown', () => {
+    const docs = []
+    for (let hh = 6; hh <= 14; hh++)
+      for (const [direction, mm] of [
+        ['To Bowen', '00'],
+        ['To HSB', '30'],
+      ]) {
+        const time = `${String(hh).padStart(2, '0')}:${mm}`
+        // the 11:00 over to Bowen, Full, left 35 minutes late
+        const crush = time === '11:00'
+        docs.push({
+          dateIso: '2026-08-04',
+          sailingTime: time,
+          actualDepartureTime: crush ? '11:35' : time,
+          direction,
+          lastCapacity: crush ? 'Full' : '50%',
+        })
+      }
+    const sampler = seasonSampler(docs, () => 0, { date: '2026-08-04' })
+    const sc = createGoatScene({ sampler })
+    const v = [...Array(30).keys()].find((h) => sampler.sailing(h)?.time === '11:00')
+    assert.equal(sampler.tourists(v), 24) // half as many again as the usual most
+    assert.ok(!sc.rampJams(v) && !sc.breaksDown(v - 1), 'no breakdown')
+    // …but not Full, it was a breakdown
+    const notFull = seasonSampler(
+      docs.map((d) => (d.sailingTime === '11:00' ? { ...d, lastCapacity: '50%' } : d)),
+      () => 0,
+      { date: '2026-08-04' },
+    )
+    const sc2 = createGoatScene({ sampler: notFull })
+    assert.ok(sc2.rampJams(v) || sc2.breaksDown(v - 1), 'a breakdown')
   })
 
   it("the line reaches Bowen's crosswalk when it really did", () => {
@@ -439,9 +507,9 @@ describe('goatScene', () => {
   })
 
   it('replays break down only where the ferry suddenly ran late, on the crossing before', () => {
-    // Every sailing 3 min late, until the 10:00 from Bowen jumps to 25 late;
+    // Every sailing 3 min late, until the 10:00 from Bowen jumps to 35 late;
     // the ones after stay late (no fresh jump)
-    const lateness = { '10:00': 25, '10:30': 27, '11:00': 26 }
+    const lateness = { '10:00': 35, '10:30': 37, '11:00': 36 }
     const docs = []
     for (let i = 0; i < 8; i++) {
       for (const [direction, time] of [
