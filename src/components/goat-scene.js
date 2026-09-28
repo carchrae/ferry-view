@@ -584,6 +584,11 @@ const MIN_CARS = 6
 const LATE_FUMING = 20 // minutes late before the waiting cars lose patience
 function capOf(S, kind, v) {
   if (kind !== 'car') return Infinity
+  // Replaying a sailing that wasn't full: everyone in line got on (a big
+  // crowd of foot passengers or not — see newcomers, which keeps the line
+  // within the deck).
+  const load = S.sampler?.load(v)
+  if (load != null && load !== 'full') return CAR_CAPACITY
   const people = lineAt(S, 'ped', v).length + lineAt(S, 'kid', v).length
   return Math.max(MIN_CARS, CAR_CAPACITY - Math.max(0, Math.floor((people - 12) / 3)))
 }
@@ -623,7 +628,9 @@ function newcomers(S, kind, v, carried = 0) {
   let n =
     kind === 'car'
       ? rush
-        ? CAR_CAPACITY + 1 + Math.floor(r * 4)
+        ? // (a line a few longer than the deck, counting any still waiting
+          // from last time — not a fresh overflow on top of theirs)
+          Math.max(1, CAR_CAPACITY + 1 + Math.floor(r * 4) - carried)
         : typeof load === 'number'
           ? Math.max(1, Math.round(load * CAR_CAPACITY))
           : 3 + Math.floor(r * 6)

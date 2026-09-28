@@ -472,6 +472,57 @@ describe('goatScene', () => {
     }
   })
 
+  it("a sailing that wasn't full leaves nobody behind, crowd or no crowd", () => {
+    // A run of Full sailings from Bowen (cars left over each time; the 7:30
+    // school run's busload of kids among them), then the 10:30 with 80%
+    // space left and a Not Full 11:30
+    const cap = {
+      '06:30': 'Full',
+      '07:30': 'Full',
+      '08:30': 'Full',
+      '09:30': 'Full',
+      '10:30': '80%',
+      '11:30': 'Not Full',
+    }
+    const docs = []
+    for (let i = 0; i < 8; i++) {
+      const out = `${String(6 + i).padStart(2, '0')}:30`
+      const back = `${String(6 + i).padStart(2, '0')}:00`
+      docs.push({
+        dateIso: '2026-09-15',
+        sailingTime: back,
+        direction: 'To Bowen',
+        lastCapacity: '50%',
+      })
+      docs.push({
+        dateIso: '2026-09-15',
+        sailingTime: out,
+        direction: 'To HSB',
+        lastCapacity: cap[out] ?? '50%',
+      })
+    }
+    const sampler = seasonSampler(docs, () => 0, { date: '2026-09-15' })
+    const sc = createGoatScene({ sampler })
+    let checked = 0
+    for (let v = 0; v < 16; v += 2) {
+      const load = sampler.load(v)
+      if (load == null || load === 'full') continue
+      checked++
+      // just after it's gone: any of its line (or older) still at the dock?
+      const after = sc(sc.halfStart(v + 1) - 0.2)
+      const left = after.carsIn.filter((c) => Number(c.id.match(/^car(-?\d+)\./)?.[1]) <= v)
+      assert.equal(
+        left.length,
+        0,
+        `${sampler.sailing(v).time}: left behind ${left.map((c) => c.id)}`,
+      )
+    }
+    assert.ok(checked >= 2, `not-full sailings checked: ${checked}`)
+    // (the school run was in there)
+    const run = [...Array(12).keys()].find((h) => sampler.sailing(h)?.time === '07:30')
+    assert.equal(sampler.extraCrowd(run), 'kids')
+  })
+
   it('nobody walks off the end of the dock while the ferry is away', () => {
     // A big summer crowd: August, every sailing 40 min late
     const docs = []
