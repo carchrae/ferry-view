@@ -360,6 +360,36 @@ describe('goatScene', () => {
     assert.ok(count(busy) > count(quiet), `tourists: ${count(quiet)} vs ${count(busy)}`)
   })
 
+  it('nobody walks off the end of the dock while the ferry is away', () => {
+    // A big summer crowd: August, every sailing 40 min late
+    const docs = []
+    for (let i = 0; i < 8; i++) {
+      const sailingTime = `${String(7 + i).padStart(2, '0')}:00`
+      for (const direction of ['To HSB', 'To Bowen'])
+        docs.push({
+          dateIso: '2026-08-04',
+          sailingTime,
+          actualDepartureTime: `${String(7 + i).padStart(2, '0')}:40`,
+          direction,
+          lastCapacity: '50%',
+        })
+    }
+    const sc = createGoatScene({ sampler: seasonSampler(docs, () => 0) })
+    const [bowen, hsb] = BERTHS
+    const dockEdge = 403 // past here (mirrored at Horseshoe Bay) is the ramp, over the water
+    for (let t = 0; t < sc.halfStart(16); t += 0.05) {
+      const f = sc(t)
+      for (const p of f.peds) {
+        const x = Number(p.transform.match(/translate\(([-\d.]+)/)[1])
+        const bowenSide = x < (bowen + hsb) / 2
+        const overWater = bowenSide ? x > dockEdge : x < bowen + hsb - dockEdge
+        if (!overWater) continue
+        const berthed = !f.moving && f.ferryX === (bowenSide ? bowen : hsb)
+        assert.ok(berthed, `${p.id} over the water at t=${t.toFixed(2)} (ferry at ${f.ferryX})`)
+      }
+    }
+  })
+
   it('a picked date replays from its first sailing that morning, no night first', () => {
     const docs = []
     for (const dateIso of ['2026-08-02', '2026-08-03', '2026-08-04']) {

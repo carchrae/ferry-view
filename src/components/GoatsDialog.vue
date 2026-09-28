@@ -202,6 +202,18 @@
             <circle cx="6" cy="-3" r="3" fill="#111" />
             <circle cx="11" cy="-10" r="2" fill="#ffe082" />
           </g>
+          <!-- After dark: a headlight beam ahead and red tail lights (drawn
+               over a car, in its frame: front at +x) -->
+          <g id="goat-car-lights">
+            <path d="M11 -10 L46 -2 L46 -16 Z" fill="url(#goat-beam)" />
+            <rect x="-11.8" y="-11.5" width="1.8" height="3" rx="0.6" fill="#ff1744" />
+          </g>
+          <!-- Beams fade away at their far end -->
+          <linearGradient id="goat-beam" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stop-color="#fff59d" stop-opacity="0.6" />
+            <stop offset="0.6" stop-color="#fff59d" stop-opacity="0.25" />
+            <stop offset="1" stop-color="#fff59d" stop-opacity="0" />
+          </linearGradient>
         </defs>
         <rect x="0" y="196" :width="worldW" height="64" fill="#1d3f6e" />
         <!-- Gently rolling swell: a few sine lines at different depths -->
@@ -409,13 +421,10 @@
         </g>
 
         <!-- Behind the ferry: arrivals driving off up the far lane, and ramp traffic -->
-        <use
-          v-for="c in scene.carsOut"
-          :key="c.id"
-          href="#goat-car"
-          :fill="c.color"
-          :transform="c.transform"
-        />
+        <g v-for="c in scene.carsOut" :key="c.id" :transform="c.transform">
+          <use href="#goat-car" :fill="c.color" />
+          <use v-if="dark" href="#goat-car-lights" />
+        </g>
 
         <!-- Wake: foam particles left in the water behind the stern -->
         <circle
@@ -513,15 +522,12 @@
 
         <!-- Buses pulling away, in the far (uphill) lane: behind the waiting
              line of cars -->
-        <GoatBus v-for="b in scene.busesLeaving" :key="b.id" :b="b" />
+        <GoatBus v-for="b in scene.busesLeaving" :key="b.id" :b="b" :lit="dark" />
         <!-- Near lane: the line waiting to board, and boarders -->
-        <use
-          v-for="c in scene.carsIn"
-          :key="c.id"
-          href="#goat-car"
-          :fill="c.color"
-          :transform="c.transform"
-        />
+        <g v-for="c in scene.carsIn" :key="c.id" :transform="c.transform">
+          <use href="#goat-car" :fill="c.color" />
+          <use v-if="dark" href="#goat-car-lights" />
+        </g>
         <!-- …and the ones that didn't fit, fuming -->
         <text
           v-for="c in scene.carsIn.filter((c) => c.mad)"
@@ -539,15 +545,12 @@
         <!-- Transit buses arriving or at the stops (over the car lanes, under
              the school bus): Bowen's blue shuttle, Horseshoe Bay's
              two-section bus -->
-        <GoatBus v-for="b in scene.transit" :key="b.id" :b="b" />
+        <GoatBus v-for="b in scene.transit" :key="b.id" :b="b" :lit="dark" />
         <!-- Rescue cars fetching locals who missed their bus -->
-        <use
-          v-for="c in scene.rescues"
-          :key="c.id"
-          href="#goat-car"
-          :fill="c.color"
-          :transform="c.transform"
-        />
+        <g v-for="c in scene.rescues" :key="c.id" :transform="c.transform">
+          <use href="#goat-car" :fill="c.color" />
+          <use v-if="dark" href="#goat-car-lights" />
+        </g>
         <!-- Foot passengers (the ones who missed the boat are fuming) -->
         <g v-for="p in scene.peds" :key="p.id" :transform="p.transform" :opacity="p.opacity">
           <!-- walking home in the dark: a flashlight beam ahead -->
@@ -555,8 +558,7 @@
             v-if="p.torch"
             :transform="`rotate(${p.torchTilt.toFixed(1)} 1.6 -8)`"
             d="M1.6 -8 L22 -1.5 L22 -13 Z"
-            fill="#fff59d"
-            opacity="0.4"
+            fill="url(#goat-beam)"
           />
           <path :d="p.legs" stroke="#eceff1" stroke-width="1.4" stroke-linecap="round" />
           <rect v-if="p.kid" x="-3.6" y="-10.5" width="2.2" height="5" rx="0.8" :fill="p.pack" />
@@ -581,7 +583,7 @@
         </g>
         <!-- School buses arriving or parked (never board; they meet the kids at
              each end) — in front of the people, who get on and off behind -->
-        <GoatBus v-for="b in scene.buses" :key="b.id" :b="b" />
+        <GoatBus v-for="b in scene.buses" :key="b.id" :b="b" :lit="dark" />
         <!-- Asleep overnight: Zs drifting up off the ferry -->
         <text
           v-for="z in scene.zs"
@@ -829,6 +831,11 @@ const nightFade = computed(() => {
   if (night != null) return Math.min(1, night / 0.12)
   if (morning != null) return 1 - morning
   return 0
+})
+// Dark enough for headlights: late evening to dawn, and overnight.
+const dark = computed(() => {
+  const hr = skyHour.value
+  return hr < 6.5 || hr >= 20.25 || nightFade.value > 0.2
 })
 // A fixed scatter of stars over the upper sky.
 const STARS = Array.from({ length: 60 }, (_, i) => {

@@ -383,7 +383,9 @@ const nightDelay = (S, h) =>
 // Dock clocks per visit: walk-offs wait only for a jammed ramp; cars also
 // wait for dawdling tourists; loading (and departure) waits for all that
 // and any night.
-const dockDelay = (S, h) => jamDelay(S, h) + touristHold(S, h) + busHold(S, h) + nightDelay(S, h)
+// (Halves before the scene opens run on a fixed clock: no delays.)
+const dockDelay = (S, h) =>
+  h < 0 ? 0 : jamDelay(S, h) + touristHold(S, h) + busHold(S, h) + nightDelay(S, h)
 // Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
 // just short of it and waits until the whale has gone back under (about one
 // crossing in thirty-odd, never on a breakdown crossing; the first comes early).
@@ -394,8 +396,22 @@ const whaleStop = (S, h) =>
   h >= 0 &&
   !troubleAt(S, h).sea &&
   (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h + S.seed, 13) < 0.03))
+// A big crowd (a summer tour group) can take longer to shuffle aboard than
+// the usual turnaround: the ferry holds at the dock until the last of them is
+// on and the ramp's up — nobody steps off the end into the sea.
+function boardHold(S, h) {
+  if (h < 0) return 0 // (the scene opens mid-cycle, on a fixed clock)
+  let last = 0
+  lineAt(S, 'kid', h).forEach((item, k) => {
+    last = Math.max(last, crowdLoad(item, k) + (crowdSpot(item, k) + WALK_ON_LENGTH) / boardV(item))
+  })
+  return Math.max(0, last + 0.35 - DEPART)
+}
+// When the ferry casts off, on half h's load clock.
+const departAfter = (S, h) => DEPART + boardHold(S, h)
 const halfLen = (S, h) =>
   H +
+  boardHold(S, h) +
   (troubleAt(S, h).sea ? BREAKDOWN_S + SMOKE_CLEAR_S : 0) +
   dockDelay(S, h) +
   (whaleStop(S, h) ? WHALE_S : 0)
@@ -427,7 +443,7 @@ function halfAt(S, t) {
   return { h, tau, tauU, tauC, tauE: tau - dockDelay(S, h), overnight }
 }
 // When the ferry leaves the dock of half h (scene time).
-const departsAt = (S, h) => halfStartOf(S, h) + dockDelay(S, h) + DEPART
+const departsAt = (S, h) => halfStartOf(S, h) + dockDelay(S, h) + departAfter(S, h)
 
 // The overnight window before day-start half h0, in scene time.
 function overnightWindow(S, h0) {
@@ -1214,7 +1230,11 @@ function walkOffs(S, t, side, v, peds, cars, W) {
         if (sPos < ROAD.length) {
           const p = roadAt(sPos)
           const [dx, dy] = uphill ? [p.tx, p.ty] : [-p.tx, -p.ty]
-          cars.push({ ...car({ id, color }, 'rescue', p.x, p.y + stopLane(), dx, dy, mirror) })
+          // Home again in the uphill lane, like everyone else leaving.
+          const lane = uphill
+            ? mixLane(stopLane(), LANE.out, (sPos - spot) / LANE_SWAP)
+            : stopLane()
+          cars.push({ ...car({ id, color }, 'rescue', p.x, p.y + lane, dx, dy, mirror) })
         }
       }
     }
@@ -1303,8 +1323,8 @@ function ferryAt(S, t, W) {
   const from = b[mod(h, 2)]
   const to = b[1 - mod(h, 2)]
   const cross = H - DEPART
-  const underway = tau >= DEPART
-  const c = tau - DEPART
+  const underway = tau >= departAfter(S, h)
+  const c = tau - departAfter(S, h)
   let p = underway ? ease(Math.min(1, c / cross)) : 0
   let stop = null // { kind, u } while stopped mid-channel; u = 0..1 through it
   const brk = troubleAt(S, h).sea
@@ -1529,7 +1549,8 @@ function sceneFrame(S, t, W) {
   // Each dock's ramp: lowered onto the ferry while it's berthed there,
   // raised a moment before it leaves and while it's away.
   const ramps = [0, 1].map((d) => {
-    let down = d === side && !moving ? Math.min(1, tauU / 0.15, (DEPART - tau) / 0.25) : 0
+    let down =
+      d === side && !moving ? Math.min(1, tauU / 0.15, (departAfter(S, h) - tau) / 0.25) : 0
     // Jammed: the ramp flips up and down, never quite seating; then it's held
     // up until the smoke has cleared.
     if (d === side && tauU < 0) down = jammed ? 0.5 + 0.5 * Math.sin(tauRaw * 7) : 0

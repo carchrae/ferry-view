@@ -46,9 +46,33 @@
       <circle cx="-6" cy="-3" r="2.6" fill="#111" />
       <circle cx="6" cy="-3" r="2.6" fill="#111" />
     </template>
+    <!-- After dark: headlights (from the front section only) and tail lights -->
+    <template v-if="lit">
+      <path
+        v-if="b.kind !== 'artic' || b.front"
+        :d="`M${front} -6 L${front + 26} -1 L${front + 26} -11 Z`"
+        fill="url(#goat-beam)"
+      />
+      <rect
+        v-if="b.kind !== 'artic' || b.trailing"
+        :x="rear - 0.9"
+        y="-9"
+        width="1.2"
+        height="2.4"
+        rx="0.4"
+        fill="#ff1744"
+      />
+    </template>
   </g>
 </template>
 
 <script setup>
-defineProps({ b: { type: Object, required: true } })
+import { computed } from 'vue'
+
+const props = defineProps({ b: { type: Object, required: true }, lit: Boolean })
+// Where its nose and tail are, in its (half-size) frame.
+const front = computed(() => ({ school: 16, shuttle: 14.5 })[props.b.kind] ?? 11.5)
+const rear = computed(() =>
+  props.b.kind === 'artic' ? -11.5 : -13 - (props.b.kind === 'school') * 3,
+)
 </script>
