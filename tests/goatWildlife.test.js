@@ -51,7 +51,7 @@ describe('goat wildlife', () => {
 
   it('bear visit: the bear rears up and the herd keeps its distance', () => {
     const w = at('bear', 8)
-    assert.match(w.bear.body, /rotate\(-62/)
+    assert.ok(w.bear.standing)
     assert.ok(w.deer.every((d) => x(d.transform) > x(w.bear.transform) + 30))
   })
 })

@@ -542,10 +542,11 @@ function touristWander(t, id) {
     2.5 * c * Math.cos(c * t + 2.1 * k)
   return { off, dir: vel >= 0 ? 1 : -1, moving: Math.abs(vel) > 6 }
 }
-// A tourist waiting around road position s, wandering about erratically.
+// Someone in a crowd waiting around road position s: tourists wander about
+// erratically; students just fidget a little on the spot.
 function strollPed(item, t, s, mirror, dy = 0) {
-  const w = touristWander(t, item.id)
-  const p = roadAt(Math.max(2, s + 4 + w.off * 0.55))
+  const w = touristWander(item.kid ? t * 1.4 : t, item.id)
+  const p = roadAt(Math.max(2, s + (item.kid ? 1 + w.off * 0.18 : 4 + w.off * 0.55)))
   const dx = w.dir > 0 ? p.tx : -p.tx
   return ped(item, p.x, p.y + LANE.walk + dy, dx, w.moving ? t * 12 : 0, 1, mirror, null, s)
 }
@@ -789,9 +790,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     const dy = (k % 2) * 2
     if (sigma < crowdLoad(item, k)) {
       if (puzzled) return peds.push(lostPed(item, t, s0, mirror))
-      if (!item.kid) return peds.push(strollPed(item, t, s0, mirror, dy))
-      const p = roadAt(s0)
-      return peds.push(ped(item, p.x, p.y + LANE.walk + dy, 1, 0, 1, mirror, null, s0))
+      return peds.push(strollPed(item, t, s0, mirror, dy))
     }
     const e = (sigma - crowdLoad(item, k)) * boardV(item)
     if (e < s0) {
@@ -832,7 +831,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       ? BUS_S + Math.sign(slot - BUS_S) * Math.min(e, Math.abs(slot - BUS_S))
       : Math.max(slot, TOURIST_START_S - e)
     if (puzzled && s === slot) return peds.push(lostPed(item, t, slot, mirror))
-    if (!item.kid && s === slot) return peds.push(strollPed(item, t, slot, mirror, (i % 2) * 2))
+    if (s === slot) return peds.push(strollPed(item, t, slot, mirror, (i % 2) * 2))
     const p = roadAt(s)
     const here = s === slot
     peds.push(

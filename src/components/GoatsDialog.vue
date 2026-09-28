@@ -246,7 +246,26 @@
             <path v-for="tr in TREES" :key="`t${tr.x}`" :d="tr.d" :fill="tr.fill" />
             <!-- black bear: ambling, rearing up to sniff, sometimes visiting -->
             <g :transform="wildlife.bear.transform">
-              <g :transform="wildlife.bear.body">
+              <!-- up on its hind legs, feet planted, paws out, nose up -->
+              <g v-if="wildlife.bear.standing">
+                <path
+                  d="M-3 -5 L-3.4 0 M1.2 -5 L1.6 0"
+                  stroke="#111"
+                  stroke-width="2.6"
+                  stroke-linecap="round"
+                />
+                <ellipse cx="-0.8" cy="-11" rx="4.6" ry="7.4" fill="#1a1a1a" />
+                <path
+                  d="M1.5 -14.5 L5.5 -13 M1.5 -12 L5.2 -10"
+                  stroke="#111"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                />
+                <circle cx="0.4" cy="-19.8" r="3" fill="#1a1a1a" />
+                <circle cx="-1" cy="-22.6" r="1.1" fill="#1a1a1a" />
+                <ellipse cx="3.1" cy="-20.4" rx="1.4" ry="1" fill="#6d4c41" />
+              </g>
+              <g v-else :transform="wildlife.bear.body">
                 <path
                   :d="wildlife.bear.legs"
                   stroke="#111"

@@ -212,8 +212,10 @@ export function wildlifeAt(t, hillY) {
   const bs = br.step
   const bear = {
     transform: `${at(br.x)} scale(${br.face} 1)`,
-    // Standing: the whole bear rocks back onto its hind legs.
-    body: br.pose === 'stand' ? 'rotate(-62 -7 0)' : br.pose === 'sniff' ? 'rotate(-8 -7 0)' : '',
+    // Standing up on its hind legs (drawn as its own upright pose — hind
+    // feet planted); sniffing, it just lifts its nose a little.
+    standing: br.pose === 'stand',
+    body: br.pose === 'sniff' ? 'rotate(-8 -7 0)' : '',
     legs: `M-6 -4 L${(-6 + bs).toFixed(1)} 0 M-2 -4 L${(-2 - bs).toFixed(1)} 0 M4 -4 L${(4 - bs).toFixed(1)} 0 M7 -4 L${(7 + bs).toFixed(1)} 0`,
   }
 
