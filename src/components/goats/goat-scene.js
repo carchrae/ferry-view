@@ -432,8 +432,9 @@ function crosswalkAfter(k) {
   return { x: p.x, y: p.y, deg: (Math.atan2(p.ty, p.tx) * 180) / Math.PI }
 }
 export const CROSSWALK = crosswalkAfter(CROSSWALK_K)
-// …and a second one higher up the hill: a line past it fills the ferry.
-export const FULL_CROSSWALK = crosswalkAfter(CAR_CAPACITY)
+// …and a second one higher up the hill: a line past it roughly fills the
+// ferry (a car's length beyond the deck's worth, give or take).
+export const FULL_CROSSWALK = crosswalkAfter(CAR_CAPACITY + 1)
 
 const mod = (a, n) => ((a % n) + n) % n
 
