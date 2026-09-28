@@ -210,7 +210,8 @@ describe('goatScene', () => {
       'docks empty',
     )
     assert.equal(asleep.sailing.dateIso, '2026-08-03')
-    // Morning: the sky brightens and Bowen's line turns up
+    // Morning: the sky brightens — but Bowen stays empty until 5am, then its
+    // line turns up for the first sailing (5:15… here 07:00)
     let morning = null
     for (; t < scene.halfStart(18); t += 0.1) {
       const f = scene(t)
@@ -219,7 +220,20 @@ describe('goatScene', () => {
         break
       }
     }
-    assert.ok(morning && morning.carsIn.length > 0, "Bowen's morning line arriving")
+    assert.ok(morning, 'morning comes')
+    const bowenCars = (f) =>
+      f.carsIn.filter((c) => +c.transform.match(/translate\(([-\d.]+)/)[1] < 600)
+    assert.equal(bowenCars(morning).length, 0, 'nobody at Bowen before 5am')
+    let arrived = false
+    for (let u = scene.halfStart(17); u < scene.halfStart(18) + 3; u += 0.1) {
+      const f = scene(u)
+      const minutes = scene.clock(u)?.minutes % 1440
+      if (bowenCars(f).length) {
+        assert.ok(minutes >= 300, `Bowen car before 5am (clock ${minutes})`)
+        arrived = true
+      }
+    }
+    assert.ok(arrived, "Bowen's first line arrives")
     // Nobody for tomorrow's first sailing (Bowen, half 18) turns up in the
     // evening after the day's last departure — only in the morning.
     for (let e = scene.halfStart(16) + 5; e < scene.halfStart(17) + 8; e += 0.25) {

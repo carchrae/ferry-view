@@ -207,14 +207,25 @@ function articLeave(S, n) {
   const clear = base + carsClearU(S, v, STOP_S)
   return due >= base && due < clear ? clear : due
 }
+// The articulated bus runs from 4am until midnight (by the simulated clock).
+const ARTIC_FROM = 4 * 60
+function articRuns(S, n) {
+  const drive = transitDriveS()
+  const from = simClock(S, articPark(n) - drive)
+  const to = simClock(S, articLeave(S, n) + drive)
+  if (!from || !to) return true // (no replay: it just runs)
+  const sameDay = Math.floor(from.minutes / 1440) === Math.floor(to.minutes / 1440)
+  return sameDay && mod(from.minutes, 1440) >= ARTIC_FROM
+}
 // First articulated bus someone reaching the stop at `at` can catch.
 function articBoard(S, at) {
-  for (let n = Math.floor(at / ARTIC_EVERY) - 1; ; n++)
-    if (articLeave(S, n) >= at) return Math.max(at, articPark(n))
+  for (let n = Math.floor(at / ARTIC_EVERY) - 1; n < Math.floor(at / ARTIC_EVERY) + 60; n++)
+    if (articRuns(S, n) && articLeave(S, n) >= at) return Math.max(at, articPark(n))
 }
 // Did one pull away between `from` (off the ferry) and `at` (at the stop)?
 function articMissed(S, from, at) {
   for (let n = Math.floor(from / ARTIC_EVERY) - 1; articPark(n) < at; n++) {
+    if (!articRuns(S, n)) continue
     const l = articLeave(S, n)
     if (l >= from && l < at) return true
   }
@@ -723,7 +734,7 @@ function dockItems(S, t, side, cars, peds, ferryHere, W, puzzled) {
 const GO_HOME_V = { car: 140, ped: 40 }
 function overnightDock(S, t, side, cars, peds, ferryHere, W, h0) {
   const mirror = side === 1 ? W : 0
-  const { N0, M0 } = overnightWindow(S, h0)
+  const { N0 } = overnightWindow(S, h0)
   // Going home: the evening crowd as it stood at nightfall, heading uphill.
   const evening = { cars: [], peds: [] }
   dockDay(S, N0 - 1e-3, side, evening.cars, evening.peds, false, W, false)
@@ -744,28 +755,7 @@ function overnightDock(S, t, side, cars, peds, ferryHere, W, h0) {
       ped(q.item, p.x, p.y + LANE.walk, p.tx, s, Math.min(1, (PED_GONE_S - s) / 40), mirror),
     )
   }
-  // Morning: Bowen's line for the day's first sailing to the mainland turns
-  // up (nobody boards the empty first run at Horseshoe Bay).
-  if (t >= M0 && side === 0) {
-    const first = h0 + 1
-    const line = lineAt(S, 'car', first)
-    line.forEach((item, k) => {
-      const at = M0 + 0.3 + k * Math.min(0.9, (MORNING_S - 2) / line.length)
-      if (t < at) return
-      cars.push(queued(item, Math.max(QUEUE_S(k), ROAD.length - (t - at) * CAR_V), mirror))
-    })
-    const crowd = lineAt(S, 'ped', first)
-    crowd.forEach((item, j) => {
-      const at = M0 + 1 + j * Math.min(1.2, (MORNING_S - 3.5) / crowd.length)
-      if (t < at) return
-      const e = (t - at) * PED_V_ARRIVE
-      const s = Math.max(WAIT_S(j), PED_START_S - e)
-      const p = roadAt(s)
-      peds.push(
-        ped(item, p.x, p.y + LANE.walk, 1, s > WAIT_S(j) ? e : 0, Math.min(1, e / 20), mirror),
-      )
-    })
-  }
+  // (Bowen's line for the day's first sailing arrives from 5am — dockDay.)
   // The ferry's own arrivals keep unloading and heading home as normal.
   walkOffs(S, t, side, h0 - mod(h0 - side, 2), peds, cars, W)
   if (ferryHere) unloadAt(S, t, side, cars, peds, W)
@@ -794,6 +784,11 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   // there once the night's over.
   const quietEvening = dayBreak && t < homeTime
   const none = []
+  // The day's first line at Bowen turns up from 5am: the one this visit is
+  // about to load (opensNow, scene time), or the next one (dawn, load clock).
+  const opensNow = side === 0 ? bowenOpens(S, v) : null
+  const opens = side === 0 && dayBreak && !quietEvening ? bowenOpens(S, v + 2) : null
+  const dawn = opens == null ? null : opens - halfStartOf(S, v) - dockDelay(S, v)
 
   // --- cars: board up to capacity; the rest roll forward with the line and
   // stop at the front of the dock, still there as the ferry pulls away ---
@@ -809,6 +804,13 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       const bounce = mad ? 0.3 + Math.abs(Math.sin(sigma * 15 + k * 2.3)) * 3 : 0
       cars.push(queued(item, Math.max(QUEUE_S(k - nBoard), QUEUE_S(k) - moved), mirror, bounce))
     } else if (sigma < CAR_LOAD(k)) {
+      if (opensNow != null) {
+        // (the day's first line at Bowen: driving in from 5am)
+        const start = opensNow + 0.1 + k * 0.25
+        if (t < start) return
+        cars.push(queued(item, Math.max(QUEUE_S(k), ROAD.length - (t - start) * CAR_V), mirror))
+        return
+      }
       cars.push(queued(item, QUEUE_S(k), mirror, fuming(v, t, k)))
     } else {
       const at = toDeck((sigma - CAR_LOAD(k)) * CAR_V, QUEUE_S(k), BERTH + FAR_SLOTS[k])
@@ -820,7 +822,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const nextCars = quietEvening ? none : lineAt(S, 'car', v + 2).slice(leftCars)
   const arrivals = carArrivals(v + 2, nextCars.length)
   nextCars.forEach((item, i) => {
-    const start = arrivals[i]
+    const start = dawn != null ? dawn + 0.1 + i * 0.25 : arrivals[i]
     if (sigma < start) return
     const slot = QUEUE_S(leftCars + i)
     const s = Math.max(slot, ROAD.length - (sigma - start) * CAR_V)
@@ -858,6 +860,14 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
         ),
       )
     } else if (sigma < PED_LOAD(j)) {
+      if (opensNow != null) {
+        // (the day's first walk-ons at Bowen: down the hill from 5am)
+        const e = (t - (opensNow + 0.6 + j * 0.3)) * PED_V_ARRIVE
+        if (e < 0) return
+        const p = roadAt(Math.max(WAIT_S(j), PED_START_S - e))
+        peds.push(ped(item, p.x, p.y + LANE.walk, 1, e, Math.min(1, e / 20), mirror))
+        return
+      }
       if (puzzled) {
         peds.push(lostPed(item, t, WAIT_S(j), mirror))
         return
@@ -888,7 +898,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       e = (t - dropped) * PED_V
       s = Math.max(slot, STOP_S - e)
     } else {
-      const start = PED_ARRIVE(i, nextPeds.length)
+      const start = dawn != null ? dawn + 0.6 + i * 0.3 : PED_ARRIVE(i, nextPeds.length)
       if (sigma < start) return
       e = (sigma - start) * PED_V_ARRIVE
       s = Math.max(slot, PED_START_S - e)
@@ -1057,8 +1067,15 @@ function walkOffPlan(S, v, side) {
     for (const r of riders) {
       if (!r.wants) continue
       const at = base + r.arrive
-      if (articMissed(S, base + r.start, at) && r.local) r.strandedAt = r.arrive
-      else r.board = articBoard(S, at) - base
+      const next = articBoard(S, at)
+      if (next == null && r.local) {
+        // no bus till morning: someone comes to fetch them
+        r.ride = true
+        r.strandedAt = r.arrive
+      } else if (next == null)
+        r.wants = false // (a tourist just wanders off)
+      else if (articMissed(S, base + r.start, at) && r.local) r.strandedAt = r.arrive
+      else r.board = next - base
     }
   }
   // Stranded locals get fetched: a car sets off down after a moment's fuming
@@ -1148,7 +1165,8 @@ function shuttlePark(S, w) {
     const prev = walkOffPlan(S, w - 2, 0)
     prevLeave = prev.base + prev.leave
   }
-  return Math.max(departsAt(S, w - 1), prevLeave + 2 * transitDriveS() + 0.3)
+  const opens = bowenOpens(S, w) ?? -Infinity // (not before 5am)
+  return Math.max(departsAt(S, w - 1), prevLeave + 2 * transitDriveS() + 0.3, opens)
 }
 // If walk-on `item`, lining up for visit w on `side`, comes by bus: when they
 // step off it at the stop (scene time), else null (they walk down the hill).
@@ -1162,7 +1180,7 @@ function busDropOff(S, side, w, item) {
   const until = halfStartOf(S, w) + dockDelay(S, w) + PED_LOAD(0) - 2
   const buses = []
   for (let n = Math.floor(from / ARTIC_EVERY); articPark(n) < until; n++)
-    if (articPark(n) >= from) buses.push(n)
+    if (articPark(n) >= from && articRuns(S, n)) buses.push(n)
   if (!buses.length) return null
   const n = buses[Math.floor(rnd(seedOf(item.id), 106) * buses.length)]
   return articPark(n) + jitter
@@ -1221,7 +1239,7 @@ function walkOffs(S, t, side, v, peds, cars, W) {
   } else {
     // The articulated bus, on its own timetable.
     const n = Math.floor(t / ARTIC_EVERY)
-    for (const k of [n - 1, n, n + 1])
+    for (const k of [n - 1, n, n + 1].filter((k) => articRuns(S, k)))
       cars.push(
         ...transitTrip(
           `artic${k}`,
@@ -1553,6 +1571,54 @@ function sceneFrame(S, t, W) {
   }
 }
 
+// --- The simulated clock -----------------------------------------------------
+// Replaying real days, each departure happens at its real (actual) time, so
+// the clock at scene time t interpolates between the departures either side.
+// Returns { minutes (since the epoch, simulated), rate (scene seconds per
+// simulated second) }, or null without a replay.
+function sailingMinutes(S, h) {
+  const s = S.sampler?.sailing(h)
+  if (!s) return null
+  const [hh, mm] = s.time.split(':').map(Number)
+  const day = Math.round(Date.parse(`${s.dateIso}T00:00:00Z`) / 86400000)
+  return day * 1440 + hh * 60 + mm + Math.max(0, s.lateMin ?? 0)
+}
+function simClock(S, t) {
+  if (!S.sampler) return null
+  let { h } = halfAt(S, t)
+  if (departsAt(S, h) > t) h -= 1
+  const [t0, t1] = [departsAt(S, h), departsAt(S, h + 1)]
+  const m0 = sailingMinutes(S, h)
+  let m1 = sailingMinutes(S, h + 1)
+  if (m0 == null) return null
+  // (gappy data: if the next departure isn't later, assume a usual gap)
+  if (m1 == null || m1 <= m0) m1 = m0 + 35
+  const u = Math.max(0, Math.min(1, (t - t0) / (t1 - t0)))
+  return { minutes: m0 + (m1 - m0) * u, rate: (t1 - t0) / ((m1 - m0) * 60) }
+}
+
+// The scene time (between lo and hi) at which the simulated clock reaches
+// `minutes` — the clock only runs forwards between departures.
+function whenClockReads(S, minutes, lo, hi) {
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2
+    if ((simClock(S, mid)?.minutes ?? Infinity) < minutes) lo = mid
+    else hi = mid
+  }
+  return hi
+}
+// Bowen wakes up at 5am: nobody (cars, the shuttle, walk-ons) turns up for
+// the day's first sailing from Bowen (visit v) before then. Scene time of
+// 5:00 that morning, or null if v isn't a day's first Bowen visit.
+const BOWEN_OPENS = 5 * 60
+function bowenOpens(S, v) {
+  if (S.sampler?.dayIndex(v) !== 1) return null
+  const s = S.sampler.sailing(v)
+  if (!s) return null
+  const day = Math.round(Date.parse(`${s.dateIso}T00:00:00Z`) / 86400000)
+  return whenClockReads(S, day * 1440 + BOWEN_OPENS, halfStartOf(S, v - 2), departsAt(S, v))
+}
+
 // Three Zs rising off the sleeping ferry's tower, one after another.
 function sleepyZs(time, ferryX) {
   return [0, 1, 2].map((k) => {
@@ -1581,6 +1647,7 @@ export function createGoatScene({ sampler = null, seed = 0 } = {}) {
   }
   const frame = (t, W = WORLD_W) => sceneFrame(S, t, W)
   frame.halfStart = (h) => halfStartOf(S, h)
+  frame.clock = (t) => simClock(S, t)
   frame.breaksDown = (h) => troubleAt(S, h).sea
   frame.rampJams = (h) => troubleAt(S, h).jam
   frame.whaleCrossing = (h) => whaleStop(S, h)
@@ -1680,7 +1747,9 @@ export function seasonSampler(
   if (date && chosen.dateIso === date) firstI = 2
   const starts = [1 - firstI]
   function dayAt(h) {
-    if (h < starts[0]) return { k: k0, i: mod(h - starts[0], dayOf(k0).halves), start: null }
+    // Before the day we join: the previous recorded day's last sailings.
+    if (h < starts[0])
+      return { k: k0 - 1, i: mod(h - starts[0], dayOf(k0 - 1).halves), start: null }
     let n = 0
     for (;;) {
       if (starts.length <= n + 1) starts.push(starts[n] + dayOf(k0 + n).halves)
@@ -1736,6 +1805,9 @@ export function seasonSampler(
       if (late <= (summer ? 35 : 20)) return null
       return rnd(v, 81) < 0.5 ? 'jam' : 'sea'
     },
+    // Visit v's position in its day (0 = the empty first run, 1 = the first
+    // sailing from Bowen, …).
+    dayIndex: (v) => dayAt(v).i,
     // Visit v is a day's empty first run (Horseshoe Bay → Bowen).
     emptyRun: (v) => dayAt(v).i === 0,
     // Half h is the first of a new day (so the night before it is slept).

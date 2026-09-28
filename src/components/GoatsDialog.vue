@@ -20,7 +20,7 @@
             top: `${st.y}%`,
             width: `${st.size}px`,
             height: `${st.size}px`,
-            opacity: 0.25 + 0.75 * Math.abs(Math.sin(sceneT * st.rate + st.phase)),
+            opacity: 0.25 + 0.75 * Math.abs(Math.sin(animT * st.rate + st.phase)),
           }"
         />
       </div>
@@ -45,6 +45,21 @@
           class="q-mr-sm"
           @click.stop="toggleSound"
         />
+        <!-- Fast-forward ⇄ realtime (1 simulated minute per real minute) -->
+        <q-btn
+          v-if="clock"
+          round
+          flat
+          dense
+          color="white"
+          :icon="realtime ? 'schedule' : 'fast_forward'"
+          :aria-label="realtime ? 'Play fast-forward' : 'Play in real time'"
+          @click.stop="realtime = !realtime"
+        >
+          <q-tooltip>{{
+            realtime ? 'Real time — tap for fast-forward' : 'Fast-forward — tap for real time'
+          }}</q-tooltip>
+        </q-btn>
         <!-- Replay a particular day (from those with history) -->
         <q-btn
           v-if="replayDays.length"
@@ -715,7 +730,11 @@ function toggleSound() {
 let sceneSeed = 0
 let sceneAt = createGoatScene()
 const scene = ref(sceneAt(0.5))
-const sceneT = ref(0)
+const sceneT = ref(0) // story time: the ferry, traffic, people (can run at realtime)
+const animT = ref(0) // real time since opening: waves, animals, plane, stars
+// Fast-forward (default) or realtime (1 simulated minute per real minute).
+const realtime = ref(false)
+const clock = ref(null) // the simulated clock, when replaying real days
 const { docs: historyDocs, fetchStats } = useHistoricalStats()
 // Dates the replay can show (for the date picker), and the one it started on.
 const replayDays = ref([])
@@ -802,14 +821,22 @@ const STARS = Array.from({ length: 60 }, (_, i) => {
   }
 })
 
+// The simulated date and time, e.g. "Tue, Aug 4, 10:41am".
+const clockLabel = computed(() => {
+  const m = clock.value?.minutes
+  if (m == null) return ''
+  const day = Math.floor(m / 1440)
+  const at = dayjs.utc(day * 86400000).add(Math.floor(m - day * 1440), 'minute')
+  return at.format('ddd, MMM D, h:mma')
+})
 const replayLabel = computed(() => {
   const s = scene.value.sailing
   if (!s) return ''
-  if (scene.value.night != null)
-    return `Overnight · next up ${dayjs(s.dateIso).format('ddd, MMM D')}`
+  const date = clockLabel.value || dayjs(s.dateIso).format('ddd, MMM D')
+  if (scene.value.night != null) return `Overnight · ${date}`
   const route = s.direction === 'To HSB' ? 'Bowen → Mainland' : 'Mainland → Bowen'
   const how = s.empty ? 'empty run' : capacityFullLabel(s.capacity)
-  const when = `${dayjs(s.dateIso).format('ddd, MMM D')} · ${formatTime12h(s.time)} ${route}`
+  const when = `${date} · ${formatTime12h(s.time)} ${route}`
   return `Replaying ${how ? `${when} · ${how}` : when}`
 })
 // How late the replayed sailing really left (red once the line's fuming).
@@ -869,7 +896,7 @@ const TREES = [2, 13, 25, 36, 49, 61, 74, 86, 99, 111, 124, 205, 218].map((x, i)
 })
 // Hilltop wildlife (see goat-wildlife.js): a herd, a cougar and a bear, with
 // a different story each cycle.
-const wildlife = computed(() => wildlifeAt(sceneT.value, hillY))
+const wildlife = computed(() => wildlifeAt(animT.value, hillY))
 // Mainland: city blocks behind the ridge (their bases hidden by the hill),
 // windows lit at random; a highway following the ridge line.
 const BUILDINGS = Array.from({ length: 16 }, (_, i) => {
@@ -899,7 +926,7 @@ function highwayAt(x) {
 }
 const HWY_COLORS = ['#ef5350', '#fafafa', '#42a5f5', '#ffee58', '#9e9e9e', '#66bb6a']
 const highwayTraffic = computed(() => {
-  const t = sceneT.value
+  const t = animT.value
   const span = 300 // -70 … 230
   return Array.from({ length: 10 }, (_, i) => {
     const dir = i % 2 ? -1 : 1
@@ -947,7 +974,7 @@ const PLANE_SPAN_EXTRA = 120 // px beyond the banner: rope + plane
 const reducedMotion =
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 const plane = computed(() => {
-  const t = sceneT.value
+  const t = animT.value
   const n = Math.floor(t / PASS_S)
   const u = reducedMotion ? 0.5 : (t % PASS_S) / PASS_S
   const dir = n % 2 === 0 ? 1 : -1
@@ -993,7 +1020,7 @@ const WAVE_ROWS = [
 ]
 const waves = computed(() =>
   WAVE_ROWS.map((w) => {
-    const phase = sceneT.value * w.speed * 2 * Math.PI * 0.25
+    const phase = animT.value * w.speed * 2 * Math.PI * 0.25
     let d = ''
     for (let x = 0; x <= worldW.value + 12; x += 12) {
       const y = w.y + w.amp * Math.sin((2 * Math.PI * x) / w.len + phase)
@@ -1041,9 +1068,17 @@ function animateScene() {
   lastWhale = null
   lastPhase = 'day'
   lastKids = false
-  const t0 = performance.now()
+  let last = performance.now()
+  sceneT.value = 0
+  animT.value = 0
   const frame = (now) => {
-    sceneT.value = (now - t0) / 1000
+    const dt = Math.min(0.1, (now - last) / 1000) // (don't leap after a stall)
+    last = now
+    animT.value += dt
+    // Realtime: advance the story at 1 simulated second per real second.
+    const c = sceneAt.clock?.(sceneT.value)
+    sceneT.value += realtime.value && c ? dt * c.rate : dt
+    clock.value = sceneAt.clock?.(sceneT.value) ?? null
     scene.value = sceneAt(sceneT.value, worldW.value)
     cueSounds(scene.value)
     raf = requestAnimationFrame(frame)
