@@ -77,8 +77,14 @@ const KID_UNLOAD = (k) => 0.5 + 0.07 * k
 // The school bus never boards: it drops the kids at their dock (parking on
 // the shoulder by the dock, BUS_S up the road) and another meets them off
 // the ferry at the other end.
-const BUS_S = 36
+// Where the bus parks: nose down at the front of the dock, clear of the first
+// queued car (a bus is ~32 long, so it spans ~2–34; the first car, ~39–61).
+const BUS_S = 18
 const BUS_V = 200
+const LANE_SWAP = 6 // road length over which it changes lanes
+// Coming down, it cuts back into the downhill lane only once its tail is past
+// the first queued car.
+const BUS_CUT_IN = QUEUE_S(0) - 11 - 16
 // Both buses pull in just as the ferry leaves the other dock: the drop-off
 // bus as it sets off to fetch the kids, the pick-up bus as it sets off with
 // them. busDriveS() is the drive down the hill.
@@ -86,21 +92,42 @@ const busDriveS = () => (ROAD.length - BUS_S) / BUS_V
 // When kid i (of n) steps out of the drop-off bus, after it parks.
 const kidOutAt = (i, n) => 0.3 + i * Math.min(0.15, 3 / n)
 const isSchool = (crowd) => crowd.length > 0 && !!crowd[0].kid
-// The bus at road position s, facing downhill (arriving) or uphill (leaving),
-// on the shoulder in front of the lanes.
-function bus(id, s, uphill, mirror) {
+// The bus at road position s, facing downhill (arriving) or uphill
+// (leaving), `lane` (a LANE offset) across the road — it drives in the cars'
+// lanes.
+function bus(id, s, uphill, mirror, lane) {
   const p = roadAt(s)
   const [dx, dy] = uphill ? [p.tx, p.ty] : [-p.tx, -p.ty]
-  return car({ id, color: '#fbc02d' }, 'bus', p.x, p.y + LANE.walk + 7, dx, dy, mirror)
+  return car({ id, color: '#fbc02d' }, 'bus', p.x, p.y + lane, dx, dy, mirror)
 }
+const mixLane = (a, b, u) => a + (b - a) * Math.max(0, Math.min(1, u))
 // Driving down from the top of the road to park at BUS_S from time `from`,
 // then (from `leave`) back up and away; null once gone (or not yet come).
+// Coming down it overtakes any queued cars in the uphill lane, cutting in at
+// the front of the line to park; leaving, it pulls into the uphill lane
+// behind anything already going up (cars are faster, so it never catches
+// them).
 function busTrip(id, clock, from, leave, mirror) {
   if (clock < from) return null
-  if (clock < leave)
-    return bus(id, Math.max(BUS_S, ROAD.length - (clock - from) * BUS_V), false, mirror)
+  if (clock < leave) {
+    const s = Math.max(BUS_S, ROAD.length - (clock - from) * BUS_V)
+    return bus(id, s, false, mirror, mixLane(LANE.in, LANE.out, (s - BUS_CUT_IN) / LANE_SWAP))
+  }
   const s = BUS_S + (clock - leave) * BUS_V
-  return s < ROAD.length ? bus(id, s, true, mirror) : null
+  if (s >= ROAD.length) return null
+  return bus(id, s, true, mirror, mixLane(LANE.in, LANE.out, (s - BUS_S) / LANE_SWAP))
+}
+// When the pick-up bus at visit h's dock leaves (unload clock), or 0 if none.
+function busLeaves(S, h) {
+  const kids = boarders(S, 'kid', h - 1)
+  if (!isSchool(kids)) return 0
+  return KID_UNLOAD(kids.length - 1) + (WALK_ON_LENGTH + BUS_S) / KID_V + 0.5
+}
+// The pick-up bus is parked across the boarding path: the new line can't
+// start down to the ferry until it's gone (and clear of the dock).
+const busHold = (S, h) => {
+  const leaves = busLeaves(S, h)
+  return leaves ? Math.max(0, leaves + (LANE_SWAP + 40) / BUS_V - LOAD_START) : 0
 }
 // They start gathering as soon as the previous sailing has left.
 const KID_ARRIVE = (i, n) => 4.4 + i * Math.min(0.35, 6.5 / n)
@@ -216,7 +243,7 @@ const nightDelay = (S, h) =>
 // Dock clocks per visit: walk-offs wait only for a jammed ramp; cars also
 // wait for dawdling tourists; loading (and departure) waits for all that
 // and any night.
-const dockDelay = (S, h) => jamDelay(S, h) + touristHold(S, h) + nightDelay(S, h)
+const dockDelay = (S, h) => jamDelay(S, h) + touristHold(S, h) + busHold(S, h) + nightDelay(S, h)
 // Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
 // just short of it and waits until the whale has gone back under (about one
 // crossing in thirty-odd, never on a breakdown crossing; the first comes early).
@@ -902,9 +929,7 @@ function unloadAt(S, t, side, cars, peds, W) {
   })
   if (school) {
     // The bus that met them waits until the last kid's aboard, then goes.
-    const last = arriving.length - 1
-    const leave = KID_UNLOAD(last) + (WALK_ON_LENGTH + BUS_S) / KID_V + 0.5
-    const b = busTrip(`busP${v - 1}`, sigma, -Infinity, leave, mirror)
+    const b = busTrip(`busP${v - 1}`, sigma, -Infinity, busLeaves(S, v), mirror)
     if (b) cars.push(b)
   }
 }
