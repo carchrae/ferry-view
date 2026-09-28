@@ -921,6 +921,7 @@ import { useWebcamHealth } from 'src/composables/useWebcamHealth'
 import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
+import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 
 const $q = useQuasar()
 const { ferryData, error } = useFirestoreFerryListener()
@@ -974,30 +975,9 @@ function pick(arr) {
 }
 
 // Cheeky titles for the reigning capacity-tagging champ; one picked per load.
-const CHAMPION_SLOGANS = [
-  'Spots a Full Ferry from Space',
-  'Certified Overload Whisperer',
-  'Knows Full When They See It',
-  'Sharpest Eyes on the Sound',
-  'Deck-Space Detective',
-  'Reads a Ferry Like a Book',
-  'Sees the Overload Coming',
-  'Ferry Capacity Clairvoyant',
-  'Counts Cars in Their Sleep',
-  'Never Misses a Sailing',
-]
 const championSlogan = ref(pick(CHAMPION_SLOGANS))
 
 // Cheeky titles for the top ride sharer.
-const RIDE_CHAMPION_SLOGANS = [
-  'Ride Share Hero',
-  'Always Has a Seat Spare',
-  'Never Leaves Anyone at the Dock',
-  'Carpool Kingpin',
-  'Turns Strangers into Carpools',
-  'Wheels for the People',
-  'The Dock Pickup Legend',
-]
 const rideChampionSlogan = ref(pick(RIDE_CHAMPION_SLOGANS))
 
 // Client-side fallback used only until the server seeds aggregates/leaderboard.

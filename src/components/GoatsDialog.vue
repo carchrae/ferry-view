@@ -96,7 +96,7 @@
             <text class="goats-banner-text" text-anchor="middle">
               <textPath href="#goat-banner-line" startOffset="50%">
                 {{ GOAT_MEDALS[plane.champ.rank] }} {{ displayName(plane.champ) }} ·
-                {{ Math.round(plane.champ.credits) }}
+                {{ plane.slogan }} · {{ Math.round(plane.champ.credits) }}
               </textPath>
             </text>
           </svg>
@@ -536,6 +536,7 @@ import {
   WHALE_Y,
 } from './goat-scene.js'
 import { useHistoricalStats } from 'src/composables/useHistoricalStats'
+import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { dayjs, formatTime12h, nowInVancouver } from '../../functions/lib/time.js'
 
@@ -861,7 +862,7 @@ const highwayTraffic = computed(() => {
 // The banner as a flag: top/bottom edges follow a travelling wave that grows
 // from the rope end (still) to the free end. Flying right, the banner trails
 // on the left (rope at its right end); flying left, the other way round.
-const BANNER_W = 320
+const BANNER_W = 540
 function bannerShape(t, dir) {
   const off = (x) => {
     const fromRope = dir > 0 ? BANNER_W - x : x // distance from the tow rope
@@ -880,7 +881,7 @@ function bannerShape(t, dir) {
 // The banner plane: each PASS_S it crosses the sky, turning round at the end
 // with the next champion's name on the banner.
 const PASS_S = 9
-const PLANE_SPAN = 440 // px: plane + rope + banner, so it starts/ends offscreen
+const PLANE_SPAN = 660 // px: plane + rope + banner, so it starts/ends offscreen
 const reducedMotion =
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 const plane = computed(() => {
@@ -890,9 +891,13 @@ const plane = computed(() => {
   const dir = n % 2 === 0 ? 1 : -1
   const list = champions.value
   const x = dir > 0 ? u : 1 - u // 0 = just off the left edge, 1 = just off the right
+  const champ = list.length ? list[n % list.length] : null
+  // One of the home page's cheeky titles for their award, a new one each pass.
+  const slogans = champ?.category === 'Ride Sharer' ? RIDE_CHAMPION_SLOGANS : CHAMPION_SLOGANS
   return {
     dir,
-    champ: list.length ? list[n % list.length] : null,
+    champ,
+    slogan: slogans[Math.floor(n / Math.max(1, list.length)) % slogans.length],
     left: `calc(${x.toFixed(4)} * (100% + ${PLANE_SPAN}px) - ${PLANE_SPAN}px)`,
     top: `calc(22% + ${(Math.sin(t * 1.3) * 6).toFixed(1)}px)`,
     banner: bannerShape(t, dir),
