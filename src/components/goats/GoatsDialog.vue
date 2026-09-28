@@ -1269,9 +1269,14 @@ function animateScene() {
   lastWhale = null
   lastPhase = 'day'
   lastKids = false
-  let last = performance.now()
   sceneT.value = 0
   animT.value = 0
+  runFrames()
+}
+// The frame loop, carrying on from wherever the scene is.
+function runFrames() {
+  cancelAnimationFrame(raf)
+  let last = performance.now()
   const frame = (now) => {
     const dt = Math.min(0.1, (now - last) / 1000) // (don't leap after a stall)
     last = now
@@ -1288,6 +1293,19 @@ function animateScene() {
   if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
     raf = requestAnimationFrame(frame)
 }
+// Switched to another tab or window: the whole show pauses — scene, music,
+// fireworks — and carries on from the same moment on coming back.
+function onVisibility() {
+  if (!props.modelValue || !stopParty) return
+  const hidden = document.visibilityState === 'hidden'
+  stopParty.setPaused?.(hidden)
+  if (hidden) {
+    cancelAnimationFrame(raf)
+    raf = null
+  } else if (raf == null) runFrames()
+}
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility)
+onUnmounted(() => document.removeEventListener('visibilitychange', onVisibility))
 
 // Party (fireworks + anthem) and the spotlight rotation run while open. Opening
 // comes from a click, so the AudioContext is allowed to start.

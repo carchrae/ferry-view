@@ -254,6 +254,7 @@ export function startGoatParty({
   if (typeof window === 'undefined' || !effectsEnabled()) return () => {}
   const timers = []
   let stopped = false
+  let paused = false // (the page is hidden — see stop.setPaused)
   let onState = null
 
   // Music: schedule one loop at a time, queueing the next just before the end.
@@ -271,6 +272,8 @@ export function startGoatParty({
     anthem.connect(master)
     const loop = (at) => {
       if (stopped) return
+      // (paused — the page is hidden: check back rather than queue up notes)
+      if (paused) return timers.push(setTimeout(() => loop(ctx.currentTime + 0.05), 500))
       const len = scheduleAnthem(ctx, anthem, at)
       timers.push(setTimeout(() => loop(at + len), (at + len - ctx.currentTime - 0.3) * 1000))
     }
@@ -278,6 +281,7 @@ export function startGoatParty({
     let started = false
     onState = () => {
       const running = ctx.state === 'running'
+      if (paused) return // (suspended on purpose, not blocked)
       onSoundBlocked?.(!running)
       if (running && !started && !stopped) {
         started = true
@@ -301,7 +305,7 @@ export function startGoatParty({
     const shell = () => {
       if (stopped) return
       // (only while stop.setFireworks has them on)
-      if (fireworksOn) {
+      if (fireworksOn && !paused) {
         const floor = ceiling ?? 0.6 * window.innerHeight
         // (a shell's sparks spread ~its distance, and fall a little)
         const distance = Math.min(rand(120, 220), Math.max(50, floor * 0.55))
@@ -330,6 +334,14 @@ export function startGoatParty({
     if (layer) setTimeout(() => layer.remove(), 1600) // let the last sparks fall
   }
   stop.unlockSound = () => ctx?.resume()
+  // While the page is hidden: everything holds — the audio suspended, no
+  // music queued, no shells or chatter — and picks up again on return.
+  stop.setPaused = (p) => {
+    if (paused === p || stopped) return
+    paused = p
+    if (p) ctx?.suspend()
+    else ctx?.resume()
+  }
   stop.setFireworks = (on, below = null) => {
     fireworksOn = on
     ceiling = below
@@ -383,7 +395,9 @@ export function startGoatParty({
   let chatterTimer = null
   const VOICES = [150, 185, 220, 260, 300]
   const babble = () => {
-    if (!playing()) return
+    if (stopped) return
+    // (sound paused or locked: check back, so it carries on afterwards)
+    if (!playing()) return (chatterTimer = setTimeout(babble, 300))
     const at = ctx.currentTime + 0.02
     const base = VOICES[Math.floor(Math.random() * VOICES.length)]
     const d = 0.07 + Math.random() * 0.12
