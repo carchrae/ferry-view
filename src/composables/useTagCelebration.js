@@ -616,6 +616,7 @@ export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
     if (stopped) return
     stopped = true
     timers.forEach(clearTimeout)
+    clearTimeout(chatterTimer)
     if (onState) ctx.removeEventListener('statechange', onState)
     if (master && ctx) {
       // Quick fade so already-scheduled notes don't cut off with a click.
@@ -662,6 +663,36 @@ export function startGoatParty({ onSoundBlocked, muted = false } = {}) {
       anthem.gain.setTargetAtTime(1, now + 2.3, 0.4)
     }
     surprisedWhale(ctx, master, now + 0.05)
+  }
+  // Teen chatter: while school kids are around, a low babble of short
+  // syllables from a few voices, each with its own pitch, rising and falling.
+  let chatterTimer = null
+  const VOICES = [150, 185, 220, 260, 300]
+  const babble = () => {
+    if (!playing()) return
+    const at = ctx.currentTime + 0.02
+    const base = VOICES[Math.floor(Math.random() * VOICES.length)]
+    const d = 0.07 + Math.random() * 0.12
+    const f = base * (0.9 + Math.random() * 0.25)
+    voice(ctx, master, {
+      at,
+      d,
+      g: 0.018,
+      type: Math.random() < 0.5 ? 'triangle' : 'square',
+      attack: 0.015,
+      path: [
+        [0, f],
+        [d * 0.9, f * (0.8 + Math.random() * 0.45)],
+      ],
+    })
+    chatterTimer = setTimeout(babble, 70 + Math.random() * 160)
+  }
+  stop.setChatter = (on) => {
+    if (on && !chatterTimer) babble()
+    if (!on && chatterTimer) {
+      clearTimeout(chatterTimer)
+      chatterTimer = null
+    }
   }
   stop.setMuted = (m) => {
     if (master && !stopped) master.gain.setTargetAtTime(m ? 0 : 1, ctx.currentTime, 0.05)

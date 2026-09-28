@@ -64,7 +64,7 @@ describe('goatScene', () => {
   })
 
   it('a breakdown at sea stalls the ferry mid-channel, smoking, with confused riders', () => {
-    const h = [...Array(40).keys()].find((i) => breaksDown(i) && !rampJams(i))
+    const h = [...Array(2000).keys()].find((i) => breaksDown(i) && !rampJams(i))
     let stalled = null
     let stallT = null
     for (let t = halfStart(h); t < halfStart(h + 1); t += 0.05) {
@@ -86,7 +86,7 @@ describe('goatScene', () => {
   })
 
   it('a jammed ramp flaps and holds up unloading on arrival', () => {
-    const h = [...Array(40).keys()].find((i) => rampJams(i))
+    const h = [...Array(2000).keys()].find((i) => rampJams(i))
     const early = goatScene(halfStart(h) + 1)
     const later = goatScene(halfStart(h) + 1.2)
     const side = h % 2
@@ -139,7 +139,7 @@ describe('goatScene', () => {
   })
 
   it('on a whale crossing the ferry stops just short of the tail, then carries on', () => {
-    const h = [...Array(40).keys()].find((i) => whaleCrossing(i) && !breaksDown(i))
+    const h = [...Array(2000).keys()].find((i) => whaleCrossing(i) && !breaksDown(i))
     const seen = []
     for (let t = halfStart(h); t < halfStart(h + 1); t += 0.05) {
       const s = goatScene(t)

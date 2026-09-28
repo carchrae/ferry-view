@@ -6,8 +6,8 @@
     transition-hide="fade"
     @update:model-value="$emit('update:modelValue', $event)"
   >
-    <!-- Tap anywhere to close (the first tap turns sound on, if it's locked) -->
-    <div class="goats-stage column no-wrap cursor-pointer" :style="skyStyle" @click="onStageTap">
+    <!-- A tap anywhere turns locked sound on; ✕, Esc or Back close -->
+    <div class="goats-stage column no-wrap" :style="skyStyle" @click="onStageTap">
       <!-- Overnight between replayed days: the sky fades to black and the
            stars come out, twinkling -->
       <div v-if="nightFade" class="goats-night" :style="{ opacity: nightFade }">
@@ -56,6 +56,7 @@
           class="q-mr-sm"
           @click.stop="toggleSound"
         />
+        <q-btn round flat dense icon="close" color="white" aria-label="Close" v-close-popup />
       </div>
       <!-- Phones: the sound offer gets its own centred row under the title -->
       <div v-if="offerSound && $q.screen.lt.sm" class="row justify-center q-mt-n-sm">
@@ -71,40 +72,58 @@
         />
       </div>
 
-      <!-- Spotlight: one champion at a time, zooming in -->
-      <div class="col column flex-center goats-spotlight">
-        <Transition name="goat-zoom" mode="out-in">
-          <div v-if="current" :key="current.key" class="column items-center text-center">
-            <div class="goat-kenburns column items-center">
-              <div class="goat-medal">{{ GOAT_MEDALS[current.rank] }}</div>
-              <q-avatar size="140px" class="goat-avatar" color="amber-8" text-color="white">
-                <img
-                  v-if="current.anonymous || current.userPhoto"
-                  :src="current.anonymous ? anonymousIcon : current.userPhoto"
-                  referrerpolicy="no-referrer"
-                  alt=""
-                />
-                <template v-else>{{ initial(current) }}</template>
-              </q-avatar>
-              <div class="goat-name q-mt-md">{{ displayName(current) }}</div>
-              <div class="text-subtitle1 goats-dim">{{ current.category }}</div>
-              <div class="goat-score q-mt-xs">
-                {{ Math.round(current.credits) }} <span class="goats-dim">all-time score</span>
-              </div>
-            </div>
-          </div>
-        </Transition>
-
-        <!-- Everyone in the rotation -->
-        <div class="row justify-center q-gutter-sm q-mt-lg">
-          <span
-            v-for="(c, i) in champions"
-            :key="c.key"
-            :class="['goat-dot', { active: i === index }]"
-            :aria-label="displayName(c)"
+      <!-- Sky: a little plane tows a banner back and forth, a different
+           champion on it each pass -->
+      <div class="col goats-sky">
+        <div
+          v-if="plane.champ"
+          class="goats-plane"
+          :class="{ back: plane.dir < 0 }"
+          :style="{ left: plane.left, top: plane.top }"
+        >
+          <!-- the banner, flapping like a flag: its edges ripple in a wave that
+               runs back from the tow rope, the text riding along -->
+          <svg
+            class="goats-banner"
+            :width="BANNER_W"
+            height="44"
+            :viewBox="`0 0 ${BANNER_W} 44`"
+            aria-hidden="true"
           >
-            {{ GOAT_MEDALS[c.rank] }}
-          </span>
+            <path :d="plane.banner.shape" fill="#fffdf5" />
+            <path :d="plane.banner.shape" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="1" />
+            <path :id="`goat-banner-line`" :d="plane.banner.baseline" fill="none" />
+            <text class="goats-banner-text" text-anchor="middle">
+              <textPath href="#goat-banner-line" startOffset="50%">
+                {{ GOAT_MEDALS[plane.champ.rank] }} {{ displayName(plane.champ) }} ·
+                {{ Math.round(plane.champ.credits) }}
+              </textPath>
+            </text>
+          </svg>
+          <div class="goats-rope" />
+          <!-- a float plane: high wing, struts, pontoons -->
+          <svg
+            class="goats-plane-body"
+            width="74"
+            height="40"
+            viewBox="0 0 74 40"
+            aria-hidden="true"
+          >
+            <path d="M8 17 L4 6 L12 6 L18 15 Z" fill="#c62828" />
+            <path
+              d="M6 18 Q 22 12 48 13 Q 62 14 64 18 Q 62 22 48 22 Q 22 23 6 18 Z"
+              fill="#e53935"
+            />
+            <rect x="42" y="14.6" width="9" height="3.2" rx="1" fill="#bbdefb" />
+            <rect x="24" y="10" width="28" height="3" rx="1.3" fill="#b71c1c" />
+            <path
+              d="M38 13 L33 20 M29 22 L27 31 M49 22 L51 31"
+              stroke="#9e9e9e"
+              stroke-width="1.1"
+            />
+            <path d="M16 31 L58 31 Q 65 31 65 34.5 L 19 34.5 Q 16 34.5 16 31 Z" fill="#eceff1" />
+            <ellipse cx="65.5" cy="18" rx="1.2" :ry="plane.prop" fill="#eceff1" opacity="0.75" />
+          </svg>
         </div>
       </div>
 
@@ -190,10 +209,111 @@
           :key="side"
           :transform="side ? `translate(${worldW} 0) scale(-1 1)` : ''"
         >
+          <!-- Mainland: the city skyline rising behind the ridge -->
+          <g v-if="side === 1">
+            <g v-for="b in BUILDINGS" :key="`b${b.x}`">
+              <rect :x="b.x" :y="b.y" :width="b.w" :height="130 - b.y" fill="#37474f" />
+              <rect
+                v-for="w in b.windows"
+                :key="w.id"
+                :x="w.x"
+                :y="w.y"
+                width="1.6"
+                height="1.8"
+                fill="#ffe082"
+                :opacity="w.lit ? 0.9 : 0.15"
+              />
+            </g>
+          </g>
           <path
             d="M0 260 L0 96 Q 150 48 290 150 L360 204 L360 260 Z"
             :fill="side ? '#23402f' : '#1f3b2d'"
           />
+          <!-- Bowen: evergreens along the hilltop, a deer grazing on the open
+               slope, and a cougar prowling at the edge of the trees -->
+          <template v-if="side === 0">
+            <path v-for="tr in TREES" :key="`t${tr.x}`" :d="tr.d" :fill="tr.fill" />
+            <!-- black bear, ambling through the trees -->
+            <g :transform="wildlife.bear">
+              <path
+                :d="wildlife.bearLegs"
+                stroke="#111"
+                stroke-width="2.4"
+                stroke-linecap="round"
+              />
+              <path d="M-9 -4 Q -9 -12 -1 -12 Q 4 -13 7 -10 Q 10 -8 9 -4 Z" fill="#1a1a1a" />
+              <circle cx="10" cy="-8.2" r="3" fill="#1a1a1a" />
+              <circle cx="8.8" cy="-11" r="1.1" fill="#1a1a1a" />
+              <ellipse cx="12.6" cy="-7.6" rx="1.4" ry="1" fill="#6d4c41" />
+            </g>
+            <g :transform="wildlife.cougar">
+              <g :transform="wildlife.cougarBody">
+                <path
+                  d="M-9 -5 Q -15 -4 -17 -2 Q -19 -1 -19 -5"
+                  stroke="#b08a57"
+                  stroke-width="1.4"
+                  fill="none"
+                />
+                <ellipse cx="0" cy="-5" rx="9" ry="2.8" fill="#c8a26a" />
+                <path
+                  d="M-6 -3 L-7 0 M-3 -3 L-3.5 0 M4 -3 L4 0 M7 -3 L7.5 0"
+                  stroke="#a88455"
+                  stroke-width="1.3"
+                />
+                <circle cx="9.8" cy="-6.5" r="2.4" fill="#c8a26a" />
+                <path
+                  d="M8.8 -8.6 L9.2 -10 L10 -8.8 M10.6 -8.6 L11.2 -10 L11.6 -8.4"
+                  fill="#b08a57"
+                />
+              </g>
+            </g>
+            <g :transform="wildlife.deer">
+              <path :d="wildlife.deerLegs" stroke="#6d4c41" stroke-width="1.2" />
+              <ellipse cx="0" cy="-8.5" rx="7" ry="3.2" fill="#8d6e63" />
+              <path d="M-7 -9.5 L-8.6 -11" stroke="#efebe9" stroke-width="1.6" />
+              <path
+                :d="wildlife.deerNeck"
+                stroke="#8d6e63"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                fill="none"
+              />
+              <ellipse
+                :cx="wildlife.deerHead.x"
+                :cy="wildlife.deerHead.y"
+                rx="2.4"
+                ry="1.7"
+                fill="#8d6e63"
+              />
+              <path
+                :d="`M${wildlife.deerHead.x - 0.8} ${wildlife.deerHead.y - 1.4} l -1 -2.4`"
+                stroke="#6d4c41"
+                stroke-width="1"
+              />
+            </g>
+          </template>
+          <!-- Mainland: the highway along the ridge, traffic both ways -->
+          <template v-if="side === 1">
+            <path :d="HIGHWAY_D" stroke="#424242" stroke-width="11" fill="none" />
+            <path
+              :d="HIGHWAY_D"
+              stroke="#fafafa"
+              stroke-width="0.6"
+              stroke-dasharray="5 5"
+              fill="none"
+            />
+            <rect
+              v-for="c in highwayTraffic"
+              :key="c.id"
+              :transform="c.transform"
+              x="-3.5"
+              y="-1.2"
+              :width="c.truck ? 10 : 7"
+              height="2.4"
+              rx="0.8"
+              :fill="c.color"
+            />
+          </template>
           <path :d="ROAD_D" stroke="#555" stroke-width="15" fill="none" />
           <path :d="ROAD_D" stroke="#9e9e9e" stroke-width="1" stroke-dasharray="6 6" fill="none" />
           <rect x="350" y="196" width="48" height="8" fill="#8d6e63" />
@@ -400,7 +520,6 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { formatReporterName } from 'src/composables/useLeaderboard'
 import { startGoatParty } from 'src/composables/useTagCelebration'
-import anonymousIcon from 'src/assets/cat.svg'
 import {
   createGoatScene,
   seasonSampler,
@@ -420,12 +539,11 @@ const props = defineProps({
   // { reporters: [...], riders: [...] } — all-time top entries, best first.
   goats: { type: Object, default: () => ({ reporters: [], riders: [] }) },
 })
-const emit = defineEmits(['update:modelValue'])
+defineEmits(['update:modelValue'])
 
 const $q = useQuasar()
 
 const GOAT_MEDALS = ['🥇', '🥈', '🥉']
-const SPOTLIGHT_MS = 3500
 
 // Car-level centre wall: outline plus window holes (even-odd fill).
 const CENTRE_WINDOWS = Array.from({ length: 7 }, (_, w) => -29.5 + w * 8.5)
@@ -449,9 +567,6 @@ const champions = computed(() => {
   return out
 })
 
-const index = ref(0)
-const current = computed(() => champions.value[index.value] || null)
-let timer = null
 let stopParty = null
 // Opened straight from a link, the browser won't play sound until a tap —
 // and a tap anywhere else closes the dialog — so offer a button.
@@ -466,9 +581,9 @@ try {
 }
 // Sound is locked and wanted: offer it (button, and the next tap anywhere).
 const offerSound = computed(() => soundBlocked.value && !muted.value)
+// A tap on the stage only ever turns locked sound on (✕, Esc or Back close).
 function onStageTap() {
   if (offerSound.value) toggleSound()
-  else emit('update:modelValue', false)
 }
 function toggleSound() {
   // Locked (opened from a link) and not muted: this tap just unlocks audio.
@@ -484,10 +599,6 @@ function toggleSound() {
   }
   if (!muted.value) stopParty?.unlockSound?.()
   stopParty?.setMuted?.(muted.value)
-}
-
-function tick() {
-  if (champions.value.length) index.value = (index.value + 1) % champions.value.length
 }
 
 // Ferry scene: re-evaluated every animation frame while open (a still frame
@@ -603,6 +714,180 @@ const worldW = computed(() => {
   if (!w || !h) return WORLD_W
   return Math.max(WORLD_W, Math.round((w * 260) / h))
 })
+// Hilltop scenery, in the hill's own (Bowen-side) coordinates — the mainland
+// side draws the same frame mirrored. The hill's top edge is the quadratic
+// (0,96)–(150,48)–(290,150) from the path above; hillY(x) finds its height.
+function hillY(x) {
+  const u = (300 - Math.sqrt(Math.max(0, 90000 - 40 * x))) / 20
+  return 96 * (1 - u) ** 2 + 96 * (1 - u) * u + 150 * u * u
+}
+// Bowen's forest: a row of evergreens (two tiers each) along the ridge.
+const TREES = [2, 13, 25, 36, 49, 61, 74, 86, 99, 111, 124, 205, 218].map((x, i) => {
+  const hgt = 14 + ((i * 7) % 11)
+  const w = 5 + ((i * 3) % 3)
+  const y = hillY(x) + 3
+  return {
+    x,
+    fill: i % 3 === 0 ? '#1b3a26' : '#14301f',
+    d:
+      `M${x - w} ${y} L${x} ${y - hgt * 0.65} L${x + w} ${y} Z ` +
+      `M${x - w * 0.75} ${y - hgt * 0.4} L${x} ${y - hgt} L${x + w * 0.75} ${y - hgt * 0.4} Z`,
+  }
+})
+// The deer grazes out on the slope (lifting its head now and then); the
+// cougar creeps back and forth at the tree line, watching it.
+const wildlife = computed(() => {
+  const t = sceneT.value
+  // A 26-second hunt, on a loop:
+  //   0–10    the deer grazes on the open slope; the cougar creeps out of the
+  //           trees towards it
+  //   10–13.5 the deer bolts back over the ridge, the cougar sprinting after
+  //   13.5–20 the hilltop's quiet
+  //   20–26   the deer wanders back to graze; the cougar slinks back into
+  //           the trees
+  const c = t % 26
+  const GRAZE_X = 175
+  const HIDE_X = 95 // the cougar's spot at the edge of the trees
+  let deerX = GRAZE_X
+  let deerFace = 1
+  let deerHop = 0
+  let grazing = true
+  let running = false
+  let cougarX = HIDE_X
+  let cougarFace = 1
+  let crouch = 0
+  if (c < 10) {
+    cougarX = HIDE_X + (c / 10) * 55 // creeping up
+    crouch = 1
+  } else if (c < 13.5) {
+    const u = (c - 10) / 3.5
+    deerX = GRAZE_X - u * 230 // bolting off to the left, over the ridge
+    deerFace = -1
+    deerHop = Math.abs(Math.sin(c * 11)) * 5
+    grazing = false
+    running = true
+    cougarX = HIDE_X + 55 - Math.max(0, u - 0.08) * 250 // a beat behind
+    cougarFace = -1
+  } else if (c < 20) {
+    deerX = -80
+    cougarX = -80
+  } else {
+    const u = (c - 20) / 6
+    deerX = -40 + u * (GRAZE_X + 40) // strolling back
+    grazing = false
+    cougarX = -60 + Math.min(1, u * 1.6) * (HIDE_X + 60)
+    crouch = 1
+  }
+  const up = grazing ? Math.max(0, Math.sin(t * 0.7)) ** 3 : 1 // head up now and then
+  const head = { x: 8.5 + up * 1, y: -3 - up * 12 }
+  const stride = Math.sin(t * (running ? 22 : 8))
+  // The bear ambles back and forth through the forest, stopping to sniff.
+  const b = Math.sin(t * 0.12)
+  const bearX = 55 + 40 * b
+  const bearMoving = Math.abs(Math.cos(t * 0.12)) > 0.25
+  const bearStep = bearMoving ? Math.sin(t * 5) : 0
+  const at = (x, lift = 0) =>
+    `translate(${x.toFixed(1)} ${(hillY(Math.max(0, x)) - lift).toFixed(1)})`
+  return {
+    deer: `${at(deerX, deerHop)} scale(${deerFace} 1)`,
+    deerLegs: running
+      ? `M-5 -6 L${(-9 - stride * 2).toFixed(1)} -1 M-3 -6 L${(-6 - stride * 2).toFixed(1)} 0 M3.5 -6 L${(7 + stride * 2).toFixed(1)} -1 M5.5 -6 L${(9 + stride * 2).toFixed(1)} 0`
+      : `M-5 -6 L${(-5.5 + stride * 0.8 * !grazing).toFixed(1)} 0 M-3 -6 L-3 0 M3.5 -6 L3.5 0 M5.5 -6 L${(6 - stride * 0.8 * !grazing).toFixed(1)} 0`,
+    deerNeck: `M5 -9.5 L${(head.x - 1.2).toFixed(1)} ${(head.y + 0.6).toFixed(1)}`,
+    deerHead: head,
+    cougar: `${at(cougarX)} scale(${cougarFace} 1)`,
+    cougarBody: crouch ? 'scale(1 0.8)' : '',
+    bear: `${at(bearX)} scale(${Math.cos(t * 0.12) >= 0 ? 1 : -1} 1)`,
+    bearLegs: `M-6 -4 L${(-6 + bearStep).toFixed(1)} 0 M-2 -4 L${(-2 - bearStep).toFixed(1)} 0 M4 -4 L${(4 - bearStep).toFixed(1)} 0 M7 -4 L${(7 + bearStep).toFixed(1)} 0`,
+  }
+})
+// Mainland: city blocks behind the ridge (their bases hidden by the hill),
+// windows lit at random; a highway following the ridge line.
+const BUILDINGS = Array.from({ length: 16 }, (_, i) => {
+  const r = (k) => {
+    const v = Math.sin(i * 47.3 + k * 11.9) * 43758.5453
+    return v - Math.floor(v)
+  }
+  const x = -20 + i * 13 + r(1) * 4
+  const w = 8 + r(2) * 6
+  const y = 34 + r(3) * 36 + (i > 11 ? 18 : 0)
+  const windows = []
+  for (let wy = y + 3; wy < 100; wy += 4)
+    for (let wx = x + 1.5; wx < x + w - 2; wx += 3)
+      windows.push({ id: `${wx}-${wy}`, x: wx, y: wy, lit: r(wx * 0.37 + wy * 0.11) < 0.45 })
+  return { x, y, w, windows }
+})
+const HIGHWAY_PTS = Array.from({ length: 31 }, (_, i) => {
+  const x = -70 + i * 10
+  return [x, (x < 0 ? 96 : hillY(Math.min(x, 230))) + 5]
+})
+const HIGHWAY_D = HIGHWAY_PTS.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y.toFixed(1)}`).join(' ')
+function highwayAt(x) {
+  const i = Math.max(0, Math.min(HIGHWAY_PTS.length - 2, Math.floor((x + 70) / 10)))
+  const [[x0, y0], [x1, y1]] = [HIGHWAY_PTS[i], HIGHWAY_PTS[i + 1]]
+  const u = (x - x0) / (x1 - x0)
+  return { y: y0 + (y1 - y0) * u, deg: (Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI }
+}
+const HWY_COLORS = ['#ef5350', '#fafafa', '#42a5f5', '#ffee58', '#9e9e9e', '#66bb6a']
+const highwayTraffic = computed(() => {
+  const t = sceneT.value
+  const span = 300 // -70 … 230
+  return Array.from({ length: 10 }, (_, i) => {
+    const dir = i % 2 ? -1 : 1
+    const speed = 60 + ((i * 17) % 35)
+    const x = -70 + ((((dir * t * speed + i * 67) % span) + span) % span)
+    const { y, deg } = highwayAt(x)
+    return {
+      id: i,
+      truck: i % 4 === 3,
+      color: HWY_COLORS[i % HWY_COLORS.length],
+      transform: `translate(${x.toFixed(1)} ${(y + dir * 2.4).toFixed(1)}) rotate(${deg.toFixed(1)})`,
+    }
+  })
+})
+
+// The banner as a flag: top/bottom edges follow a travelling wave that grows
+// from the rope end (still) to the free end. Flying right, the banner trails
+// on the left (rope at its right end); flying left, the other way round.
+const BANNER_W = 320
+function bannerShape(t, dir) {
+  const off = (x) => {
+    const fromRope = dir > 0 ? BANNER_W - x : x // distance from the tow rope
+    const amp = 0.5 + (5.5 * fromRope) / BANNER_W
+    return amp * Math.sin(fromRope * 0.045 - t * 9)
+  }
+  const xs = Array.from({ length: 33 }, (_, i) => (i * BANNER_W) / 32)
+  const top = xs.map((x) => `${x.toFixed(1)} ${(8 + off(x)).toFixed(1)}`)
+  const bottom = xs.map((x) => `${x.toFixed(1)} ${(36 + off(x)).toFixed(1)}`).reverse()
+  return {
+    shape: `M${top.join(' L')} L${bottom.join(' L')} Z`,
+    baseline: `M${xs.map((x) => `${x.toFixed(1)} ${(28 + off(x)).toFixed(1)}`).join(' L')}`,
+  }
+}
+
+// The banner plane: each PASS_S it crosses the sky, turning round at the end
+// with the next champion's name on the banner.
+const PASS_S = 9
+const PLANE_SPAN = 440 // px: plane + rope + banner, so it starts/ends offscreen
+const reducedMotion =
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const plane = computed(() => {
+  const t = sceneT.value
+  const n = Math.floor(t / PASS_S)
+  const u = reducedMotion ? 0.5 : (t % PASS_S) / PASS_S
+  const dir = n % 2 === 0 ? 1 : -1
+  const list = champions.value
+  const x = dir > 0 ? u : 1 - u // 0 = just off the left edge, 1 = just off the right
+  return {
+    dir,
+    champ: list.length ? list[n % list.length] : null,
+    left: `calc(${x.toFixed(4)} * (100% + ${PLANE_SPAN}px) - ${PLANE_SPAN}px)`,
+    top: `calc(22% + ${(Math.sin(t * 1.3) * 6).toFixed(1)}px)`,
+    banner: bannerShape(t, dir),
+    prop: (2 + Math.abs(Math.sin(t * 40)) * 6).toFixed(1),
+  }
+})
+
 // Water: a few sine lines at different depths, each drifting slowly at its
 // own pace and direction.
 const WAVE_ROWS = [
@@ -636,6 +921,7 @@ const sceneViewBox = computed(() => {
 let lastTrouble = false
 let lastWhale = null
 let lastPhase = 'day'
+let lastKids = false
 function cueSounds(s) {
   const phase = s.night != null ? 'night' : s.morning != null ? 'morning' : 'day'
   if (phase !== lastPhase) stopParty?.setPhase?.(phase)
@@ -643,6 +929,10 @@ function cueSounds(s) {
   const trouble = s.troubled // until it's moving again, smoke cleared
   if (trouble !== lastTrouble) stopParty?.setTrouble?.(trouble)
   lastTrouble = trouble
+  // School kids on the dock or aboard: the teen babble.
+  const kids = s.peds.some((p) => p.kid) || s.riders.some((p) => p.kid)
+  if (kids !== lastKids) stopParty?.setChatter?.(kids)
+  lastKids = kids
   const whale = s.whale?.id ?? null
   if (whale && whale !== lastWhale) stopParty?.cue?.('whale')
   lastWhale = whale
@@ -651,6 +941,7 @@ function animateScene() {
   lastTrouble = false
   lastWhale = null
   lastPhase = 'day'
+  lastKids = false
   const t0 = performance.now()
   const frame = (now) => {
     sceneT.value = (now - t0) / 1000
@@ -665,8 +956,6 @@ function animateScene() {
 // Party (fireworks + anthem) and the spotlight rotation run while open. Opening
 // comes from a click, so the AudioContext is allowed to start.
 function stop() {
-  clearInterval(timer)
-  timer = null
   cancelAnimationFrame(raf)
   raf = null
   stopParty?.()
@@ -678,8 +967,6 @@ watch(
   (open) => {
     stop()
     if (!open) return
-    index.value = 0
-    timer = setInterval(tick, SPOTLIGHT_MS)
     stopParty = startGoatParty({
       muted: muted.value,
       onSoundBlocked: (b) => (soundBlocked.value = b),
@@ -693,9 +980,6 @@ onUnmounted(stop)
 
 function displayName(e) {
   return e.anonymous ? 'Anonymous' : formatReporterName(e.userName)
-}
-function initial(e) {
-  return displayName(e).charAt(0).toUpperCase()
 }
 </script>
 
@@ -711,39 +995,36 @@ function initial(e) {
 .goats-dim {
   color: rgba(255, 255, 255, 0.7);
 }
-.goats-spotlight {
+.goats-sky {
   min-height: 0;
+  overflow: hidden;
 }
-.goat-medal {
-  font-size: 56px;
-  line-height: 1;
-  margin-bottom: 8px;
+.goats-plane {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
 }
-.goat-avatar {
-  font-size: 56px;
-  box-shadow:
-    0 0 0 4px #ffca28,
-    0 0 40px 8px rgba(255, 202, 40, 0.45);
+.goats-plane.back {
+  flex-direction: row-reverse;
 }
-.goat-name {
-  font-size: clamp(28px, 6vw, 48px);
+.goats-plane.back .goats-plane-body {
+  transform: scaleX(-1);
+}
+.goats-banner {
+  overflow: visible;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+}
+.goats-banner-text {
+  fill: #b71c1c;
   font-weight: 800;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  font-size: 18px;
 }
-.goat-score {
-  font-size: 22px;
-  font-weight: 700;
-  color: #ffd54f;
-}
-.goat-dot {
-  opacity: 0.45;
-  transition:
-    opacity 0.2s,
-    transform 0.2s;
-}
-.goat-dot.active {
-  opacity: 1;
-  transform: scale(1.3);
+.goats-rope {
+  width: 28px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.8);
 }
 /* Content sits above the night overlay. */
 .goats-stage > :not(.goats-night):not(.goats-replay) {
@@ -778,51 +1059,5 @@ function initial(e) {
   width: 100%;
   height: clamp(140px, 26vh, 260px);
   flex: none;
-}
-
-/* Each champion zooms in from small, drifts closer while on stage, then zooms
-   past the camera on the way out. */
-.goat-kenburns {
-  animation: goat-drift 3.5s ease-out both;
-}
-@keyframes goat-drift {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(1.12);
-  }
-}
-.goat-zoom-enter-active {
-  transition:
-    transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2),
-    opacity 0.5s;
-}
-.goat-zoom-leave-active {
-  transition:
-    transform 0.35s ease-in,
-    opacity 0.35s ease-in;
-}
-.goat-zoom-enter-from {
-  transform: scale(0.2);
-  opacity: 0;
-}
-.goat-zoom-leave-to {
-  transform: scale(2.2);
-  opacity: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .goat-kenburns {
-    animation: none;
-  }
-  .goat-zoom-enter-active,
-  .goat-zoom-leave-active {
-    transition: opacity 0.3s;
-  }
-  .goat-zoom-enter-from,
-  .goat-zoom-leave-to {
-    transform: none;
-  }
 }
 </style>

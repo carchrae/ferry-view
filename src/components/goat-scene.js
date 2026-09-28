@@ -110,25 +110,22 @@ const mod = (a, n) => ((a % n) + n) % n
 
 // --- Timeline -------------------------------------------------------------
 // Halves are H long, plus any breakdown time:
-//  - at sea: the ferry stalls mid-channel, smoking, for BREAKDOWN_S (about
-//    one crossing in fifteen);
+//  - at sea: the ferry stalls mid-channel, smoking, for BREAKDOWN_S (one
+//    crossing in a hundred);
 //  - at the dock: on arrival the ramp jams, flapping up and down, for
-//    DOCK_BREAKDOWN_S before anyone can get off (about one in twenty) — the
-//    whole dock schedule for that visit runs that much later.
-// Each gets a guaranteed early occurrence so a short visit still sees one,
-// and there are never more than MAX_BREAKDOWNS (of either kind) in a day —
-// a replayed day, or every DAY_HALVES halves of random traffic.
+//    DOCK_BREAKDOWN_S before anyone can get off (one arrival in a hundred) —
+//    the whole dock schedule for that visit runs that much later.
+// Never more than MAX_BREAKDOWNS (of either kind) in a day — a replayed day,
+// or every DAY_HALVES halves of random traffic.
 const BREAKDOWN_S = 3.5
 const DOCK_BREAKDOWN_S = 3
 // After either kind, everything waits for the smoke to clear (a puff's
 // lifetime, SMOKE_LIFE below).
 const SMOKE_CLEAR_S = 2.4
-const FIRST_BREAKDOWN = 3
-const FIRST_DOCK_BREAKDOWN = 6
 const MAX_BREAKDOWNS = 3
 const DAY_HALVES = 32
-const seaRoll = (h) => h === FIRST_BREAKDOWN || (h > FIRST_BREAKDOWN && rnd(h, 7) < 0.08)
-const jamRoll = (h) => h === FIRST_DOCK_BREAKDOWN || (h > FIRST_DOCK_BREAKDOWN && rnd(h, 9) < 0.05)
+const seaRoll = (h) => h > 0 && rnd(h, 7) < 0.01
+const jamRoll = (h) => h > 0 && rnd(h, 9) < 0.01
 // What goes wrong in half h ({ jam, sea }), after the daily cap: earlier
 // halves of the same day use up the allowance first (a jam on arrival comes
 // before a breakdown at sea). Cached per scene in S.trouble.
