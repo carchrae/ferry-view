@@ -85,9 +85,9 @@
                runs back from the tow rope, the text riding along -->
           <svg
             class="goats-banner"
-            :width="BANNER_W"
+            :width="plane.banner.w"
             height="44"
-            :viewBox="`0 0 ${BANNER_W} 44`"
+            :viewBox="`0 0 ${plane.banner.w} 44`"
             aria-hidden="true"
           >
             <path :d="plane.banner.shape" fill="#fffdf5" />
@@ -862,8 +862,9 @@ const highwayTraffic = computed(() => {
 // The banner as a flag: top/bottom edges follow a travelling wave that grows
 // from the rope end (still) to the free end. Flying right, the banner trails
 // on the left (rope at its right end); flying left, the other way round.
-const BANNER_W = 540
-function bannerShape(t, dir) {
+// Sized to its message: roughly a character's width per character, plus hems.
+const bannerWidth = (text) => Math.round(Math.min(600, Math.max(180, text.length * 9.8 + 60)))
+function bannerShape(t, dir, BANNER_W) {
   const off = (x) => {
     const fromRope = dir > 0 ? BANNER_W - x : x // distance from the tow rope
     const amp = 0.5 + (5.5 * fromRope) / BANNER_W
@@ -874,6 +875,7 @@ function bannerShape(t, dir) {
   const bottom = xs.map((x) => `${x.toFixed(1)} ${(36 + off(x)).toFixed(1)}`).reverse()
   return {
     shape: `M${top.join(' L')} L${bottom.join(' L')} Z`,
+    w: BANNER_W,
     baseline: `M${xs.map((x) => `${x.toFixed(1)} ${(28 + off(x)).toFixed(1)}`).join(' L')}`,
   }
 }
@@ -881,7 +883,7 @@ function bannerShape(t, dir) {
 // The banner plane: each PASS_S it crosses the sky, turning round at the end
 // with the next champion's name on the banner.
 const PASS_S = 9
-const PLANE_SPAN = 660 // px: plane + rope + banner, so it starts/ends offscreen
+const PLANE_SPAN_EXTRA = 120 // px beyond the banner: rope + plane
 const reducedMotion =
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 const plane = computed(() => {
@@ -894,13 +896,17 @@ const plane = computed(() => {
   const champ = list.length ? list[n % list.length] : null
   // One of the home page's cheeky titles for their award, a new one each pass.
   const slogans = champ?.category === 'Ride Sharer' ? RIDE_CHAMPION_SLOGANS : CHAMPION_SLOGANS
+  const slogan = slogans[Math.floor(n / Math.max(1, list.length)) % slogans.length]
+  const text = champ ? `🥇 ${displayName(champ)} · ${slogan} · ${Math.round(champ.credits)}` : ''
+  const banner = bannerShape(t, dir, bannerWidth(text))
+  const span = banner.w + PLANE_SPAN_EXTRA // so it starts and ends fully offscreen
   return {
     dir,
     champ,
-    slogan: slogans[Math.floor(n / Math.max(1, list.length)) % slogans.length],
-    left: `calc(${x.toFixed(4)} * (100% + ${PLANE_SPAN}px) - ${PLANE_SPAN}px)`,
+    slogan,
+    left: `calc(${x.toFixed(4)} * (100% + ${span}px) - ${span}px)`,
     top: `calc(22% + ${(Math.sin(t * 1.3) * 6).toFixed(1)}px)`,
-    banner: bannerShape(t, dir),
+    banner,
     prop: (2 + Math.abs(Math.sin(t * 40)) * 6).toFixed(1),
   }
 })
