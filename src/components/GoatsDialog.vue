@@ -870,9 +870,13 @@ function bannerShape(t, dir, BANNER_W) {
     const amp = 0.5 + (5.5 * fromRope) / BANNER_W
     return amp * Math.sin(fromRope * 0.045 - t * 9)
   }
-  const xs = Array.from({ length: 33 }, (_, i) => (i * BANNER_W) / 32)
-  const top = xs.map((x) => `${x.toFixed(1)} ${(8 + off(x)).toFixed(1)}`)
-  const bottom = xs.map((x) => `${x.toFixed(1)} ${(36 + off(x)).toFixed(1)}`).reverse()
+  // Tapered: full height (±14) through the middle, pinching in to 60% over
+  // the last TAPER px at each end.
+  const TAPER = 40
+  const half = (x) => 14 * (0.6 + 0.4 * Math.min(1, x / TAPER, (BANNER_W - x) / TAPER))
+  const xs = Array.from({ length: 41 }, (_, i) => (i * BANNER_W) / 40)
+  const top = xs.map((x) => `${x.toFixed(1)} ${(22 - half(x) + off(x)).toFixed(1)}`)
+  const bottom = xs.map((x) => `${x.toFixed(1)} ${(22 + half(x) + off(x)).toFixed(1)}`).reverse()
   return {
     shape: `M${top.join(' L')} L${bottom.join(' L')} Z`,
     w: BANNER_W,
