@@ -647,10 +647,11 @@ import {
 } from './goat-scene.js'
 import { wildlifeAt } from './goat-wildlife.js'
 import GoatBus from './GoatBus.vue'
+import { skyAt, wallMinutesToMs } from './goat-sky.js'
 import { useHistoricalStats } from 'src/composables/useHistoricalStats'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
-import { dayjs, formatTime12h, nowInVancouver } from '../../functions/lib/time.js'
+import { dayjs, formatTime12h } from '../../functions/lib/time.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -791,36 +792,16 @@ function replayFrom(date) {
   animateScene()
 }
 const replayDaySet = computed(() => new Set(replayDays.value))
-// Sky: tinted for the time of the sailing being replayed (or right now, with
-// no replay) — night, dawn, bright day, sunset — blending between keyframes.
-const SKY = [
-  [0, ['#0b1026', '#2b1b4a', '#5a2d5c']],
-  [5, ['#141a3a', '#3a2a5c', '#6b3a5c']],
-  [6.5, ['#2e4a7a', '#c86b7a', '#f2a65a']],
-  [9, ['#3a78c2', '#79a9dd', '#b9d6ef']],
-  [13, ['#2f6fbf', '#62a0e0', '#a8d0f2']],
-  [17, ['#3a6cae', '#86a8d6', '#e7c49a']],
-  [19.5, ['#2a3566', '#a2507a', '#f08a4b']],
-  [21, ['#141a3a', '#3b2656', '#5a2d5c']],
-  [24, ['#0b1026', '#2b1b4a', '#5a2d5c']],
-]
-const hex = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16))
-const mix = (a, b, u) => `rgb(${hex(a).map((v, i) => Math.round(v + (hex(b)[i] - v) * u))})`
-const skyHour = computed(() => {
-  const time = scene.value.sailing?.time
-  if (time) {
-    const [hh, mm] = time.split(':').map(Number)
-    return hh + mm / 60
-  }
-  const now = nowInVancouver()
-  return now.hour() + now.minute() / 60
+// Sky: by the real sun at the simulated time on the day being replayed
+// (or right now, with no replay) — night, twilight, dawn, day, sunset — and
+// dark (headlights on) exactly when the crosswalk camera counts it dark.
+const sky = computed(() => {
+  const m = clock.value?.minutes
+  animT.value // (refresh live, without a replay)
+  return skyAt(m != null ? wallMinutesToMs(m) : Date.now())
 })
 const skyStyle = computed(() => {
-  const hr = skyHour.value
-  const i = Math.max(0, SKY.findIndex(([at]) => at > hr) - 1)
-  const [[a, ca], [b, cb]] = [SKY[i], SKY[i + 1]]
-  const u = (hr - a) / (b - a)
-  const [top, mid, bottom] = ca.map((c, k) => mix(c, cb[k], u))
+  const [top, mid, bottom] = sky.value.colors
   return { background: `linear-gradient(180deg, ${top} 0%, ${mid} 55%, ${bottom} 100%)` }
 })
 
@@ -832,11 +813,8 @@ const nightFade = computed(() => {
   if (morning != null) return 1 - morning
   return 0
 })
-// Dark enough for headlights: late evening to dawn, and overnight.
-const dark = computed(() => {
-  const hr = skyHour.value
-  return hr < 6.5 || hr >= 20.25 || nightFade.value > 0.2
-})
+// Dark enough for headlights: after dusk, before dawn, and overnight.
+const dark = computed(() => sky.value.dark || nightFade.value > 0.2)
 // A fixed scatter of stars over the upper sky.
 const STARS = Array.from({ length: 60 }, (_, i) => {
   const r = (k) => {
