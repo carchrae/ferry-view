@@ -244,21 +244,24 @@
                slope, and a cougar prowling at the edge of the trees -->
           <template v-if="side === 0">
             <path v-for="tr in TREES" :key="`t${tr.x}`" :d="tr.d" :fill="tr.fill" />
-            <!-- black bear, ambling through the trees -->
-            <g :transform="wildlife.bear">
-              <path
-                :d="wildlife.bearLegs"
-                stroke="#111"
-                stroke-width="2.4"
-                stroke-linecap="round"
-              />
-              <path d="M-9 -4 Q -9 -12 -1 -12 Q 4 -13 7 -10 Q 10 -8 9 -4 Z" fill="#1a1a1a" />
-              <circle cx="10" cy="-8.2" r="3" fill="#1a1a1a" />
-              <circle cx="8.8" cy="-11" r="1.1" fill="#1a1a1a" />
-              <ellipse cx="12.6" cy="-7.6" rx="1.4" ry="1" fill="#6d4c41" />
+            <!-- black bear: ambling, rearing up to sniff, sometimes visiting -->
+            <g :transform="wildlife.bear.transform">
+              <g :transform="wildlife.bear.body">
+                <path
+                  :d="wildlife.bear.legs"
+                  stroke="#111"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                />
+                <path d="M-9 -4 Q -9 -12 -1 -12 Q 4 -13 7 -10 Q 10 -8 9 -4 Z" fill="#1a1a1a" />
+                <circle cx="10" cy="-8.2" r="3" fill="#1a1a1a" />
+                <circle cx="8.8" cy="-11" r="1.1" fill="#1a1a1a" />
+                <ellipse cx="12.6" cy="-7.6" rx="1.4" ry="1" fill="#6d4c41" />
+              </g>
             </g>
-            <g :transform="wildlife.cougar">
-              <g :transform="wildlife.cougarBody">
+            <!-- cougar: stalking, sprinting, slinking off — or asleep -->
+            <g :transform="wildlife.cougar.transform" :opacity="wildlife.cougar.opacity">
+              <g :transform="wildlife.cougar.body">
                 <path
                   d="M-9 -5 Q -15 -4 -17 -2 Q -19 -1 -19 -5"
                   stroke="#b08a57"
@@ -267,6 +270,7 @@
                 />
                 <ellipse cx="0" cy="-5" rx="9" ry="2.8" fill="#c8a26a" />
                 <path
+                  v-if="!wildlife.cougar.asleep"
                   d="M-6 -3 L-7 0 M-3 -3 L-3.5 0 M4 -3 L4 0 M7 -3 L7.5 0"
                   stroke="#a88455"
                   stroke-width="1.3"
@@ -278,28 +282,30 @@
                 />
               </g>
             </g>
-            <g :transform="wildlife.deer">
-              <path :d="wildlife.deerLegs" stroke="#6d4c41" stroke-width="1.2" />
+            <!-- the herd: doe, buck (antlers) and fawn -->
+            <g v-for="d in wildlife.deer" :key="d.id" :transform="d.transform" :opacity="d.opacity">
+              <path :d="d.legs" stroke="#6d4c41" stroke-width="1.2" />
               <ellipse cx="0" cy="-8.5" rx="7" ry="3.2" fill="#8d6e63" />
               <path d="M-7 -9.5 L-8.6 -11" stroke="#efebe9" stroke-width="1.6" />
               <path
-                :d="wildlife.deerNeck"
+                :d="d.neck"
                 stroke="#8d6e63"
                 stroke-width="2.4"
                 stroke-linecap="round"
                 fill="none"
               />
-              <ellipse
-                :cx="wildlife.deerHead.x"
-                :cy="wildlife.deerHead.y"
-                rx="2.4"
-                ry="1.7"
-                fill="#8d6e63"
-              />
+              <ellipse :cx="d.head.x" :cy="d.head.y" rx="2.4" ry="1.7" fill="#8d6e63" />
               <path
-                :d="`M${wildlife.deerHead.x - 0.8} ${wildlife.deerHead.y - 1.4} l -1 -2.4`"
+                :d="`M${d.head.x - 0.8} ${d.head.y - 1.4} l -1 -2.4`"
                 stroke="#6d4c41"
                 stroke-width="1"
+              />
+              <path
+                v-if="d.antlers"
+                :d="d.antlers"
+                stroke="#d7ccc8"
+                stroke-width="0.8"
+                fill="none"
               />
             </g>
           </template>
@@ -556,6 +562,7 @@ import {
   RAMP_LENGTH,
   WHALE_Y,
 } from './goat-scene.js'
+import { wildlifeAt } from './goat-wildlife.js'
 import { useHistoricalStats } from 'src/composables/useHistoricalStats'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 import { capacityFullLabel } from 'src/composables/useCapacityDisplay'
@@ -788,73 +795,9 @@ const TREES = [2, 13, 25, 36, 49, 61, 74, 86, 99, 111, 124, 205, 218].map((x, i)
       `M${x - w * 0.75} ${y - hgt * 0.4} L${x} ${y - hgt} L${x + w * 0.75} ${y - hgt * 0.4} Z`,
   }
 })
-// The deer grazes out on the slope (lifting its head now and then); the
-// cougar creeps back and forth at the tree line, watching it.
-const wildlife = computed(() => {
-  const t = sceneT.value
-  // A 26-second hunt, on a loop:
-  //   0–10    the deer grazes on the open slope; the cougar creeps out of the
-  //           trees towards it
-  //   10–13.5 the deer bolts back over the ridge, the cougar sprinting after
-  //   13.5–20 the hilltop's quiet
-  //   20–26   the deer wanders back to graze; the cougar slinks back into
-  //           the trees
-  const c = t % 26
-  const GRAZE_X = 175
-  const HIDE_X = 95 // the cougar's spot at the edge of the trees
-  let deerX = GRAZE_X
-  let deerFace = 1
-  let deerHop = 0
-  let grazing = true
-  let running = false
-  let cougarX = HIDE_X
-  let cougarFace = 1
-  let crouch = 0
-  if (c < 10) {
-    cougarX = HIDE_X + (c / 10) * 55 // creeping up
-    crouch = 1
-  } else if (c < 13.5) {
-    const u = (c - 10) / 3.5
-    deerX = GRAZE_X - u * 230 // bolting off to the left, over the ridge
-    deerFace = -1
-    deerHop = Math.abs(Math.sin(c * 11)) * 5
-    grazing = false
-    running = true
-    cougarX = HIDE_X + 55 - Math.max(0, u - 0.08) * 250 // a beat behind
-    cougarFace = -1
-  } else if (c < 20) {
-    deerX = -80
-    cougarX = -80
-  } else {
-    const u = (c - 20) / 6
-    deerX = -40 + u * (GRAZE_X + 40) // strolling back
-    grazing = false
-    cougarX = -60 + Math.min(1, u * 1.6) * (HIDE_X + 60)
-    crouch = 1
-  }
-  const up = grazing ? Math.max(0, Math.sin(t * 0.7)) ** 3 : 1 // head up now and then
-  const head = { x: 8.5 + up * 1, y: -3 - up * 12 }
-  const stride = Math.sin(t * (running ? 22 : 8))
-  // The bear ambles back and forth through the forest, stopping to sniff.
-  const b = Math.sin(t * 0.12)
-  const bearX = 55 + 40 * b
-  const bearMoving = Math.abs(Math.cos(t * 0.12)) > 0.25
-  const bearStep = bearMoving ? Math.sin(t * 5) : 0
-  const at = (x, lift = 0) =>
-    `translate(${x.toFixed(1)} ${(hillY(Math.max(0, x)) - lift).toFixed(1)})`
-  return {
-    deer: `${at(deerX, deerHop)} scale(${deerFace} 1)`,
-    deerLegs: running
-      ? `M-5 -6 L${(-9 - stride * 2).toFixed(1)} -1 M-3 -6 L${(-6 - stride * 2).toFixed(1)} 0 M3.5 -6 L${(7 + stride * 2).toFixed(1)} -1 M5.5 -6 L${(9 + stride * 2).toFixed(1)} 0`
-      : `M-5 -6 L${(-5.5 + stride * 0.8 * !grazing).toFixed(1)} 0 M-3 -6 L-3 0 M3.5 -6 L3.5 0 M5.5 -6 L${(6 - stride * 0.8 * !grazing).toFixed(1)} 0`,
-    deerNeck: `M5 -9.5 L${(head.x - 1.2).toFixed(1)} ${(head.y + 0.6).toFixed(1)}`,
-    deerHead: head,
-    cougar: `${at(cougarX)} scale(${cougarFace} 1)`,
-    cougarBody: crouch ? 'scale(1 0.8)' : '',
-    bear: `${at(bearX)} scale(${Math.cos(t * 0.12) >= 0 ? 1 : -1} 1)`,
-    bearLegs: `M-6 -4 L${(-6 + bearStep).toFixed(1)} 0 M-2 -4 L${(-2 - bearStep).toFixed(1)} 0 M4 -4 L${(4 - bearStep).toFixed(1)} 0 M7 -4 L${(7 + bearStep).toFixed(1)} 0`,
-  }
-})
+// Hilltop wildlife (see goat-wildlife.js): a herd, a cougar and a bear, with
+// a different story each cycle.
+const wildlife = computed(() => wildlifeAt(sceneT.value, hillY))
 // Mainland: city blocks behind the ridge (their bases hidden by the hill),
 // windows lit at random; a highway following the ridge line.
 const BUILDINGS = Array.from({ length: 16 }, (_, i) => {
