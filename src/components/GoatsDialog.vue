@@ -651,6 +651,8 @@ function toggleSound() {
 // Random traffic until the season sampler is ready, then a replay of one
 // real day's sailings (from the history page's cached data — no extra
 // fetch if it's already loaded this session).
+// A fresh seed each time it opens: breakdowns and whales land somewhere new.
+let sceneSeed = 0
 let sceneAt = createGoatScene()
 const scene = ref(sceneAt(0.5))
 const sceneT = ref(0)
@@ -659,7 +661,7 @@ async function loadSampler() {
   try {
     await fetchStats()
     const sampler = seasonSampler(historyDocs.value)
-    if (sampler) sceneAt = createGoatScene({ sampler })
+    if (sampler) sceneAt = createGoatScene({ sampler, seed: sceneSeed })
   } catch {
     /* no history — random traffic it is */
   }
@@ -1038,6 +1040,8 @@ watch(
       music: musicOn.value,
       onSoundBlocked: (b) => (soundBlocked.value = b),
     })
+    sceneSeed = Math.floor(Math.random() * 100000)
+    sceneAt = createGoatScene({ seed: sceneSeed })
     animateScene()
     loadSampler()
   },

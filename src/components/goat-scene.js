@@ -175,8 +175,10 @@ const DOCK_BREAKDOWN_S = 3
 const SMOKE_CLEAR_S = 2.4
 const MAX_BREAKDOWNS = 3
 const DAY_HALVES = 32
-const seaRoll = (h) => h > 0 && rnd(h, 7) < 0.01
-const jamRoll = (h) => h > 0 && rnd(h, 9) < 0.01
+// Rolled per half, mixed with the scene's seed — otherwise every opening of
+// the dialog (which restarts at half 0) would replay the same failures.
+const seaRoll = (S, h) => h > 0 && rnd(h + S.seed, 7) < 0.01
+const jamRoll = (S, h) => h > 0 && rnd(h + S.seed, 9) < 0.01
 // What goes wrong in half h ({ jam, sea }), after the daily cap: earlier
 // halves of the same day use up the allowance first (a jam on arrival comes
 // before a breakdown at sea). Cached per scene in S.trouble.
@@ -193,8 +195,9 @@ function troubleAt(S, h) {
   // Replaying real days, a sailing that really ran late may owe it to a
   // breakdown: its ramp jammed (at h), or the ferry broke down on the way in
   // (the crossing before, h - 1). Otherwise it's the odd random failure.
-  const jam = (jamRoll(h) || S.sampler?.lateCause(h) === 'jam') && used < MAX_BREAKDOWNS
-  const sea = (seaRoll(h) || S.sampler?.lateCause(h + 1) === 'sea') && used + jam < MAX_BREAKDOWNS
+  const jam = (jamRoll(S, h) || S.sampler?.lateCause(h) === 'jam') && used < MAX_BREAKDOWNS
+  const sea =
+    (seaRoll(S, h) || S.sampler?.lateCause(h + 1) === 'sea') && used + jam < MAX_BREAKDOWNS
   const r = { jam, sea }
   memo.set(h, r)
   return r
@@ -221,7 +224,9 @@ const WHALE_S = 2.4 // as long as its surprised jingle
 export const WHALE_Y = 198 // the whale breaks the surface right at the horizon line
 const FIRST_WHALE = 1
 const whaleStop = (S, h) =>
-  h >= 0 && !troubleAt(S, h).sea && (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h, 13) < 0.03))
+  h >= 0 &&
+  !troubleAt(S, h).sea &&
+  (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h + S.seed, 13) < 0.03))
 const halfLen = (S, h) =>
   H +
   (troubleAt(S, h).sea ? BREAKDOWN_S + SMOKE_CLEAR_S : 0) +
@@ -1193,8 +1198,11 @@ function sleepyZs(time, ferryX) {
 
 // A scene instance: its own lines and timeline caches, optionally replaying
 // real days (see seasonSampler). Returns (t, W) => frame, with .halfStart(h).
-export function createGoatScene({ sampler = null } = {}) {
+// `seed` varies the random breakdowns and whales between openings (the tests
+// keep the default, 0, so they're repeatable).
+export function createGoatScene({ sampler = null, seed = 0 } = {}) {
   const S = {
+    seed,
     lines: { car: new Map(), ped: new Map(), kid: new Map() },
     starts: [0],
     trouble: new Map(),
