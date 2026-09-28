@@ -1201,17 +1201,23 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     if (b) cars.push(b)
   }
   nextKids.forEach((item, i) => {
-    // School kids come out of the bus; tourists turn up on their own.
+    // School kids come out of the bus; tourists turn up on their own — at
+    // Horseshoe Bay, off the articulated bus.
+    const bus = !schoolDrop && side === 1 ? touristBus(S, v, i, nextKids.length) : null
     const since = schoolDrop
       ? t - (busParks + kidOutAt(i, nextKids.length))
-      : sigma - touristArrives(S, v, i, nextKids.length)
+      : bus
+        ? t - bus.at
+        : sigma - touristArrives(S, v, i, nextKids.length)
     if (since < 0) return
     const e = since * crowdV(item)
     const slot = crowdSpot(item, i)
-    // School kids pile out of the bus; tourists amble down the road.
-    const s = schoolDrop
-      ? dropDoor + Math.sign(slot - dropDoor) * Math.min(e, Math.abs(slot - dropDoor))
-      : Math.max(slot, TOURIST_START_S - e)
+    // Off a bus, from its door to their spot; otherwise ambling down the road.
+    const door = schoolDrop ? dropDoor : bus?.door
+    const s =
+      door != null
+        ? door + Math.sign(slot - door) * Math.min(e, Math.abs(slot - door))
+        : Math.max(slot, TOURIST_START_S - e)
     if (puzzled && s === slot) return peds.push(lostPed(item, t, slot, mirror))
     if (s === slot) return peds.push(strollPed(item, t, slot, mirror, (i % 2) * 2))
     const p = roadAt(s)
@@ -1467,6 +1473,25 @@ function busDropOff(S, side, w, item) {
   if (!buses.length) return null
   const n = buses[Math.floor(rnd(seedOf(item.id), 106) * buses.length)]
   return articPark(n) + jitter
+}
+
+// At Horseshoe Bay the tourists for visit v + 2 come on the articulated
+// buses that stop during the wait, a busload at a time: tourist i of n's
+// bus — when they step off (scene time, one after another) and the door
+// they use — or null if no bus runs then (they walk down, as on Bowen).
+function touristBus(S, v, i, n) {
+  const base = halfStartOf(S, v) + dockDelay(S, v)
+  const from = base + arrivalsFrom(S, v)
+  const until = halfStartOf(S, v + 2) - 3.5
+  const buses = []
+  for (let k = Math.floor(from / ARTIC_EVERY) - 1; articPark(k) < until; k++)
+    if (articPark(k) >= from && articRuns(S, k)) buses.push(k)
+  if (!buses.length) return null
+  const b = Math.min(buses.length - 1, Math.floor((i * buses.length) / n))
+  const first = Math.ceil((b * n) / buses.length) // (first of this busload)
+  const k = buses[b]
+  const doors = busDoors('artic', stopSpot(S, 1, `artic${k}`, 'artic', articPark(k)))
+  return { at: articPark(k) + 0.3 + (i - first) * 0.15, door: doors[i % doors.length] }
 }
 
 // Visit v's walk-offs, the buses that take them, and any rescue cars.
