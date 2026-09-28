@@ -158,28 +158,77 @@
             </text>
           </svg>
           <div class="goats-rope" />
-          <!-- a float plane: high wing, struts, pontoons -->
+          <!-- a coastal float plane (a Beaver): white, navy belly and tail with
+               a yellow sweep, high wing, big grey floats with red stripes.
+               It pitches with its bobbing (nose up climbing, down sinking). -->
           <svg
+            ref="planeEl"
             class="goats-plane-body"
-            width="74"
-            height="40"
-            viewBox="0 0 74 40"
+            width="96"
+            height="48"
+            viewBox="0 0 96 48"
             aria-hidden="true"
           >
-            <path d="M8 17 L4 6 L12 6 L18 15 Z" fill="#c62828" />
-            <path
-              d="M6 18 Q 22 12 48 13 Q 62 14 64 18 Q 62 22 48 22 Q 22 23 6 18 Z"
-              fill="#e53935"
-            />
-            <rect x="42" y="14.6" width="9" height="3.2" rx="1" fill="#bbdefb" />
-            <rect x="24" y="10" width="28" height="3" rx="1.3" fill="#b71c1c" />
-            <path
-              d="M38 13 L33 20 M29 22 L27 31 M49 22 L51 31"
-              stroke="#9e9e9e"
-              stroke-width="1.1"
-            />
-            <path d="M16 31 L58 31 Q 65 31 65 34.5 L 19 34.5 Q 16 34.5 16 31 Z" fill="#eceff1" />
-            <ellipse cx="65.5" cy="18" rx="1.2" :ry="plane.prop" fill="#eceff1" opacity="0.75" />
+            <g :transform="`rotate(${plane.pitch} 50 24)`">
+              <!-- far float, then struts down to the floats -->
+              <path
+                d="M24 35 L76 35 Q 83 35 86 32.5 L 86 34.5 Q 83 38.5 76 38.5 L 28 38.5 Z"
+                fill="#b8c0c7"
+              />
+              <path
+                d="M42 27 L38 38 M66 27 L69 38 M45 27 L65 38"
+                stroke="#90a4ae"
+                stroke-width="1.1"
+              />
+              <!-- tail: fin and tailplane -->
+              <path d="M9 20 L5 6 Q 6 4 9 4 L 14 5 L 23 18 Z" fill="#1f3a93" />
+              <path d="M9 18 L 15 8 L 17 9.5 L 11.5 18.5 Z" fill="#fbc02d" />
+              <path d="M3 18.5 L 17 18 L 17 20.5 L 4 21 Z" fill="#eceff1" />
+              <!-- fuselage: white, navy belly, the yellow sweep -->
+              <path
+                d="M9 20 L 30 16.5 Q 50 13.5 66 13.5 L 78 14.5 Q 84 15.5 84 21 Q 84 26.5 78 27 L 60 29 Q 40 29 26 26 L 11 23 Z"
+                fill="#fafafa"
+              />
+              <path
+                d="M11 23 L 26 26 Q 40 29 60 29 L 72 28 Q 50 26.5 36 25 Q 22 23.4 10 21.2 Z"
+                fill="#1f3a93"
+              />
+              <path d="M13 21.4 Q 28 23.6 44 25.2 L 44 26.4 Q 28 25 13 22.8 Z" fill="#fbc02d" />
+              <!-- windscreen and cabin windows -->
+              <path d="M70 15 L 76 15.5 L 78.5 19.5 L 70 19.5 Z" fill="#263238" />
+              <rect x="56" y="16.3" width="5.5" height="3.4" rx="0.8" fill="#37474f" />
+              <rect x="63" y="16.3" width="5.5" height="3.4" rx="0.8" fill="#37474f" />
+              <!-- high wing (edge on), blue on top, and its strut -->
+              <path d="M40 11.6 L 75 11.6 Q 78 12.4 75 13.6 L 40 13.6 Z" fill="#eceff1" />
+              <rect x="40" y="10.6" width="35" height="1.5" rx="0.7" fill="#1f3a93" />
+              <path d="M50 25 L 61 13.6" stroke="#9e9e9e" stroke-width="1" />
+              <!-- round engine cowling, spinner and the propeller's blur -->
+              <ellipse
+                cx="81"
+                cy="21"
+                rx="4"
+                ry="5.6"
+                fill="#f5f5f5"
+                stroke="#cfd8dc"
+                stroke-width="0.6"
+              />
+              <circle cx="85.2" cy="21" r="1.3" fill="#b0bec5" />
+              <ellipse cx="85.8" cy="21" rx="1.2" :ry="plane.prop" fill="#eceff1" opacity="0.7" />
+              <!-- near float, with its red stripes and water rudder -->
+              <path
+                d="M20 38 L 74 38 Q 82 38 86 35 L 86 37.5 Q 82 42.5 74 42.5 L 27 42.5 L 20 40 Z"
+                fill="#9aa3ab"
+              />
+              <path
+                d="M27 41.6 L 74 41.6 Q 81 41.4 85 38.4"
+                stroke="#6d7680"
+                stroke-width="1"
+                fill="none"
+              />
+              <rect x="71" y="38.4" width="1.2" height="3.4" fill="#e53935" />
+              <rect x="75" y="38.2" width="1.2" height="3.2" fill="#e53935" />
+              <circle cx="20.5" cy="39.8" r="1.3" fill="#78909c" />
+            </g>
           </svg>
         </div>
       </div>
@@ -1065,13 +1114,22 @@ const plane = computed(() => {
   const showtime =
     !!champ &&
     (vw >= 600 ? Math.abs(left + span / 2 - vw / 2) < vw * 0.18 : inView >= banner.w * 0.5)
+  // Wavering on the air: a slow swell, a quicker bob and a little chop —
+  // and the nose follows, up as it climbs, down as it sinks.
+  const bob = reducedMotion
+    ? 0
+    : 9 * Math.sin(t * 0.47 + 1) + 6 * Math.sin(t * 1.3) + 2 * Math.sin(t * 2.9)
+  const sink = reducedMotion
+    ? 0
+    : 4.2 * Math.cos(t * 0.47 + 1) + 7.8 * Math.cos(t * 1.3) + 5.8 * Math.cos(t * 2.9)
   return {
     dir,
     champ,
     slogan,
     showtime,
     left: `calc(${x.toFixed(4)} * (100% + ${span}px) - ${span}px)`,
-    top: `calc(22% + ${(Math.sin(t * 1.3) * 6).toFixed(1)}px)`,
+    top: `calc(22% + ${bob.toFixed(1)}px)`,
+    pitch: Math.max(-7, Math.min(7, sink * 0.4)).toFixed(1),
     banner,
     prop: (2 + Math.abs(Math.sin(t * 40)) * 6).toFixed(1),
   }
@@ -1105,10 +1163,12 @@ const sceneViewBox = computed(() => {
   const u = Math.min(1, Math.max(0, (scene.value.ferryX - b0) / (b1 - b0)))
   return `${(u * (worldW.value - PHONE_VIEW_W)).toFixed(1)} 85 ${PHONE_VIEW_W} 175`
 })
-// Fireworks only while the plane's showing off the champion.
+// Fireworks only while the plane's showing off the champion — up in the sky
+// above it.
+const planeEl = ref(null)
 watch(
   () => plane.value.showtime,
-  (on) => stopParty?.setFireworks?.(on),
+  (on) => stopParty?.setFireworks?.(on, planeEl.value?.getBoundingClientRect().top),
 )
 // Sound cues from the scene: a breakdown (at sea or a jammed ramp) stops the
 // anthem for a sad trombone; a whale surfacing gets a surprised jingle.

@@ -595,8 +595,10 @@ export function startGoatParty({
     onState()
   }
 
-  // Fireworks: a random shell over the upper screen every ~0.8 s, while on.
+  // Fireworks: a random shell over the upper screen every ~0.8 s, while on —
+  // kept above `ceiling` (a viewport y, e.g. the banner plane) when given.
   let fireworksOn = fireworks
+  let ceiling = null
   let layer = null
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (!reduced && typeof document !== 'undefined') {
@@ -606,14 +608,14 @@ export function startGoatParty({
     const shell = () => {
       if (stopped) return
       // (only while stop.setFireworks has them on)
-      if (fireworksOn)
-        burst(
-          layer,
-          rand(0.1, 0.9) * window.innerWidth,
-          rand(0.1, 0.6) * window.innerHeight,
-          22,
-          rand(120, 220),
-        )
+      if (fireworksOn) {
+        const floor = ceiling ?? 0.6 * window.innerHeight
+        // (a shell's sparks spread ~its distance, and fall a little)
+        const distance = Math.min(rand(120, 220), Math.max(50, floor * 0.55))
+        const top = 0.06 * window.innerHeight
+        const y = rand(top, Math.max(top, floor - distance * 0.9))
+        burst(layer, rand(0.1, 0.9) * window.innerWidth, y, 22, distance)
+      }
       // Spent sparks are invisible (fill: forwards) — prune them.
       while (layer.childElementCount > 200) layer.firstChild.remove()
       timers.push(setTimeout(shell, rand(500, 1100)))
@@ -635,8 +637,9 @@ export function startGoatParty({
     if (layer) setTimeout(() => layer.remove(), 1600) // let the last sparks fall
   }
   stop.unlockSound = () => ctx?.resume()
-  stop.setFireworks = (on) => {
+  stop.setFireworks = (on, below = null) => {
     fireworksOn = on
+    ceiling = below
   }
 
   // Scene events. A breakdown silences the anthem and plays a sad trombone

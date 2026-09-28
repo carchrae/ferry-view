@@ -1826,6 +1826,16 @@ function sailingMinutes(S, h) {
 }
 function simClock(S, t) {
   if (!S.sampler) return null
+  // A picked date opens at 4am, running up to its first sailing from Bowen
+  // (half 0) — not on from the previous day's last sailing.
+  const dawn = S.sampler.opensAt
+  if (dawn != null && t < departsAt(S, 0)) {
+    const [t1, m1] = [departsAt(S, 0), sailingMinutes(S, 0)]
+    if (m1 != null && m1 > dawn) {
+      const u = Math.max(0, t) / t1
+      return { minutes: dawn + (m1 - dawn) * u, rate: t1 / ((m1 - dawn) * 60) }
+    }
+  }
   let { h } = halfAt(S, t)
   if (departsAt(S, h) > t) h -= 1
   const [t0, t1] = [departsAt(S, h), departsAt(S, h + 1)]
@@ -2023,6 +2033,11 @@ export function seasonSampler(
   }
   return {
     key: dayOf(k0).dateIso,
+    // A picked date's replay starts at 4am (simulated-clock minutes).
+    opensAt:
+      date && chosen.dateIso === date
+        ? (Date.parse(`${date}T00:00:00Z`) / 86400000) * 1440 + 4 * 60
+        : null,
     days: days.map((d) => d.dateIso),
     dateIso: dayOf(k0).dateIso,
     // First half of the day containing h (null before the first full day).
