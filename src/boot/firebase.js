@@ -5,7 +5,6 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore'
-import { getMessaging } from 'firebase/messaging'
 import { getAnalytics, isSupported, logEvent } from 'firebase/analytics'
 
 const stagingConfig = {
@@ -69,7 +68,6 @@ export const auth = getAuth(app)
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 })
-export const messaging = getMessaging(app)
 
 export let analytics = null
 let analyticsReady = Promise.resolve(null)
