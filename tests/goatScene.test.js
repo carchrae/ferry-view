@@ -211,4 +211,33 @@ describe('goatScene', () => {
       assert.ok(n <= 3, `day ${day}: ${n}`)
     }
   })
+
+  it('school runs carry a crowd of kids in the school year; summer brings tourists', () => {
+    const day = (dateIso) => {
+      const docs = []
+      const times = {
+        'To HSB': ['06:15', '07:30', '08:45', '10:00', '13:55', '15:15', '16:40', '18:00'],
+        'To Bowen': ['05:45', '06:50', '08:05', '09:20', '14:35', '15:55', '17:20', '18:35'],
+      }
+      for (const [direction, list] of Object.entries(times))
+        for (const sailingTime of list)
+          docs.push({ dateIso, sailingTime, direction, lastCapacity: '50%' })
+      return seasonSampler(docs, () => 0)
+    }
+    // Tuesday in September: kids on the 7:30 from Bowen (half 4) and 3:55 back (half 11)
+    const school = day('2026-09-15')
+    assert.equal(school.sailing(4).time, '07:30')
+    assert.equal(school.extraCrowd(4), 'kids')
+    assert.equal(school.sailing(11).time, '15:55')
+    assert.equal(school.extraCrowd(11), 'kids')
+    assert.equal(school.extraCrowd(6), null)
+    const scene = createGoatScene({ sampler: school })
+    const crossing = scene(scene.halfStart(5) - 0.5)
+    assert.ok(crossing.riders.filter((r) => r.kid).length >= 10, 'kids aboard the 7:30')
+    // Tuesday in August: no school run; tourists over in the morning, home in the afternoon
+    const summer = day('2026-08-04')
+    assert.equal(summer.extraCrowd(4), null)
+    assert.equal(summer.extraCrowd(5), 'tourists') // 08:05 to Bowen
+    assert.equal(summer.extraCrowd(12), 'tourists') // 15:15 to Horseshoe Bay
+  })
 })

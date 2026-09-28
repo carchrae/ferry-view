@@ -286,8 +286,13 @@
           <path d="M0 -63 L0 -70 M-5 -63 L-5 -68" stroke="#b0bec5" stroke-width="0.8" />
           <!-- walk-ons riding up top -->
           <g v-for="p in scene.riders" :key="p.id" :transform="p.transform">
+            <rect v-if="p.kid" x="-3.6" y="-10.5" width="2.2" height="5" rx="0.8" :fill="p.pack" />
             <rect x="-1.6" y="-11" width="3.2" height="7" rx="1.2" :fill="p.shirt" />
             <circle cx="0" cy="-13.3" r="2.2" fill="#ffcc80" />
+            <template v-if="p.hat">
+              <rect x="-3.2" y="-15.6" width="6.4" height="1.1" rx="0.5" :fill="p.hat" />
+              <rect x="-1.8" y="-17.2" width="3.6" height="1.8" rx="0.7" :fill="p.hat" />
+            </template>
             <path :d="p.legs" stroke="#eceff1" stroke-width="1.4" stroke-linecap="round" />
             <text
               v-if="p.mad || p.confused"
@@ -329,8 +334,13 @@
         <!-- Foot passengers (the ones who missed the boat are fuming) -->
         <g v-for="p in scene.peds" :key="p.id" :transform="p.transform" :opacity="p.opacity">
           <path :d="p.legs" stroke="#eceff1" stroke-width="1.4" stroke-linecap="round" />
+          <rect v-if="p.kid" x="-3.6" y="-10.5" width="2.2" height="5" rx="0.8" :fill="p.pack" />
           <rect x="-1.6" y="-11" width="3.2" height="7" rx="1.2" :fill="p.shirt" />
           <circle cx="0" cy="-13.3" r="2.2" :fill="p.mad ? '#ef5350' : '#ffcc80'" />
+          <template v-if="p.hat">
+            <rect x="-3.2" y="-15.6" width="6.4" height="1.1" rx="0.5" :fill="p.hat" />
+            <rect x="-1.8" y="-17.2" width="3.6" height="1.8" rx="0.7" :fill="p.hat" />
+          </template>
           <text
             v-if="p.mad || p.confused"
             :transform="p.flip ? 'scale(-1 1)' : ''"

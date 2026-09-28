@@ -45,6 +45,17 @@ const CAR_LOAD = (k) => 2.0 + 0.05 * k
 const PED_LOAD = (j) => 1.6 + 0.15 * j
 const CAR_UNLOAD = (i) => 0.15 + 0.12 * i
 const PED_UNLOAD = (j) => 0.4 + 0.3 * j
+// Extra crowds on particular sailings — school kids on school runs, tourists
+// in summer (the 'kid' line): bunched up on the dock, never left behind,
+// dashing aboard and off in a stream, crowding the passenger deck.
+const KID_V = 85
+const KID_WAIT_S = (k) => 6 + 3.2 * k
+const KID_LOAD = (k) => 1.7 + 0.05 * k
+const KID_UNLOAD = (k) => 0.5 + 0.07 * k
+const KID_ARRIVE = (i, n) => 6.4 + i * Math.min(0.45, 5 / n)
+const kidSpot = (k, n) => -33 + (66 * (k + 0.5)) / n // on the roof, ferry frame
+const PACKS = ['#e53935', '#1e88e5', '#fdd835', '#8e24aa', '#43a047', '#fb8c00']
+const HATS = ['#fff176', '#ff8a65', '#f48fb1', '#80deea', '#ffffff']
 const HOP = [3.2, 7.6] // left-behind walk-ons hop mad at the front of the dock
 // When the next line's i-th of n newcomers turns up (σ = time since the
 // ferry last arrived at this dock).
@@ -209,7 +220,7 @@ function rnd(v, salt) {
 // (3–8 cars and 1–3 walk-ons, or a rush of 11–14 and 5–6 — or, replaying a
 // real day, as many as that sailing actually carried). Memoized per scene
 // instance (S.lines) — each visit builds on the one before.
-const CAPACITY = { car: CAR_CAPACITY, ped: PED_CAPACITY }
+const CAPACITY = { car: CAR_CAPACITY, ped: PED_CAPACITY, kid: Infinity }
 // First visit of a replayed day at its dock (the previous day's stragglers
 // went home overnight, so nobody carries over).
 const firstOfDay = (S, v) => !!S.sampler && (S.sampler.isDayStart(v) || S.sampler.isDayStart(v - 1))
@@ -217,6 +228,21 @@ const firstOfDay = (S, v) => !!S.sampler && (S.sampler.isDayStart(v) || S.sample
 // `carried`: how many are already in line from the last sailing.
 function newcomers(S, kind, v, carried = 0) {
   if (S.sampler?.emptyRun(v)) return [] // the day's first crossing runs empty
+  if (kind === 'kid') {
+    // A school run brings a crowd of kids with backpacks; a summer tourist
+    // sailing, a gaggle in sun hats; otherwise nobody extra.
+    const crowd = S.sampler?.extraCrowd(v)
+    if (!crowd) return []
+    const kids = crowd === 'kids'
+    const n = kids ? 10 + Math.floor(rnd(v, 4) * 7) : 5 + Math.floor(rnd(v, 4) * 6)
+    return Array.from({ length: n }, (_, i) => ({
+      id: `kid${v}.${i}`,
+      color: SHIRTS[mod(v * 7 + i * 3, SHIRTS.length)],
+      ...(kids
+        ? { kid: true, pack: PACKS[mod(v + i * 5, PACKS.length)] }
+        : { hat: HATS[mod(v + i * 3, HATS.length)] }),
+    }))
+  }
   // Mostly quiet sailings; about one in five is a rush that won't all fit.
   const load = S.sampler?.load(v) // 0..1 how full, or 'full', or null
   const rush = load === 'full' || (load == null && rnd(v, 3) < 0.2)
@@ -276,6 +302,7 @@ function carArrivals(v, n) {
   return gaps.map((g) => (at += g * scale))
 }
 const boarders = (S, kind, v) => lineAt(S, kind, v).slice(0, CAPACITY[kind])
+const kidBoarded = (sigma, k) => sigma >= KID_LOAD(k) + (KID_WAIT_S(k) + WALK_ON_LENGTH) / KID_V
 
 // A car at (x, y) heading along (dx, dy): its transform keeps it upright with
 // the headlights (drawn at +x) leading.
@@ -300,7 +327,8 @@ function car(item, lane, x, y, dx, dy, mirror, mad = false) {
 
 // mood: 'mad' (missed the boat — red face, "!") or 'confused' (breakdown —
 // "?"); either way they hop, which callers bake into y.
-function ped(item, x, y, dx, stride, opacity, mirror, mood = null) {
+// `s`: road position of someone standing in line (so they can be sent home).
+function ped(item, x, y, dx, stride, opacity, mirror, mood = null, s = null) {
   if (mirror) {
     x = mirror - x
     dx = -dx
@@ -308,11 +336,16 @@ function ped(item, x, y, dx, stride, opacity, mirror, mood = null) {
   const swing = Math.sin(stride / 3) * 2.2
   return {
     id: item.id,
+    item,
+    s,
+    kid: !!item.kid,
+    pack: item.pack,
+    hat: item.hat,
     shirt: item.color,
     mad: mood === 'mad',
     confused: mood === 'confused',
     flip: dx < 0, // mirrored figure — its ?/! marker counter-flips to stay readable
-    transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})${dx < 0 ? ' scale(-1 1)' : ''}`,
+    transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})${dx < 0 ? ' scale(-1 1)' : ''}${item.kid ? ' scale(0.72)' : ''}`,
     legs: `M0 -4 L${swing.toFixed(1)} 0 M0 -4 L${(-swing).toFixed(1)} 0`,
     opacity,
   }
@@ -385,7 +418,17 @@ function lostPed(item, t, s, mirror) {
   const w = puzzledWander(t, item.id)
   const p = roadAt(Math.max(2, s + w.off))
   const dx = w.dir > 0 ? p.tx : -p.tx
-  return ped(item, p.x, p.y + LANE.walk - puzzledHop(t, item.id), dx, t * 25, 1, mirror, 'confused')
+  return ped(
+    item,
+    p.x,
+    p.y + LANE.walk - puzzledHop(t, item.id),
+    dx,
+    t * 25,
+    1,
+    mirror,
+    'confused',
+    s,
+  )
 }
 
 // Everything at one dock (side 0 = Bowen, 1 = mainland) at time t.
@@ -521,6 +564,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
           1,
           mirror,
           mad ? 'mad' : null,
+          s,
         ),
       )
     } else if (sigma < PED_LOAD(j)) {
@@ -529,7 +573,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
         return
       }
       const p = roadAt(WAIT_S(j))
-      peds.push(ped(item, p.x, p.y + LANE.walk, 1, 0, 1, mirror))
+      peds.push(ped(item, p.x, p.y + LANE.walk, 1, 0, 1, mirror, null, WAIT_S(j)))
     } else {
       const e = (sigma - PED_LOAD(j)) * PED_V
       if (e < WAIT_S(j)) {
@@ -554,7 +598,62 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       peds.push(lostPed(item, t, slot, mirror))
       return
     }
-    peds.push(ped(item, p.x, p.y + LANE.walk, 1, walking ? e : 0, Math.min(1, e / 20), mirror))
+    peds.push(
+      ped(
+        item,
+        p.x,
+        p.y + LANE.walk,
+        1,
+        walking ? e : 0,
+        Math.min(1, e / 20),
+        mirror,
+        null,
+        walking ? null : slot,
+      ),
+    )
+  })
+
+  // --- school kids: bunched on the dock (a little staggered), all board ---
+  lineAt(S, 'kid', v).forEach((item, k) => {
+    const s0 = KID_WAIT_S(k)
+    const dy = (k % 2) * 2
+    if (sigma < KID_LOAD(k)) {
+      if (puzzled) return peds.push(lostPed(item, t, s0, mirror))
+      const p = roadAt(s0)
+      return peds.push(ped(item, p.x, p.y + LANE.walk + dy, 1, 0, 1, mirror, null, s0))
+    }
+    const e = (sigma - KID_LOAD(k)) * KID_V
+    if (e < s0) {
+      const p = roadAt(s0 - e)
+      peds.push(ped(item, p.x, p.y + LANE.walk + dy, 1, e, 1, mirror))
+    } else {
+      const at = along(WALK_ON, e - s0)
+      if (at) peds.push(ped(item, at.x, at.y, 1, e, 1, mirror))
+    }
+  })
+  const nextKids = lineAt(S, 'kid', v + 2)
+  nextKids.forEach((item, i) => {
+    const start = KID_ARRIVE(i, nextKids.length)
+    if (sigma < start) return
+    const e = (sigma - start) * KID_V
+    const slot = KID_WAIT_S(i)
+    const s = Math.max(slot, PED_START_S - e)
+    if (puzzled && s === slot) return peds.push(lostPed(item, t, slot, mirror))
+    const p = roadAt(s)
+    const here = s === slot
+    peds.push(
+      ped(
+        item,
+        p.x,
+        p.y + LANE.walk + (i % 2) * 2,
+        1,
+        here ? 0 : e,
+        Math.min(1, e / 20),
+        mirror,
+        null,
+        here ? slot : null,
+      ),
+    )
   })
 
   if (ferryHere) unloadAt(S, t, side, cars, peds, W)
@@ -586,6 +685,15 @@ function unloadAt(S, t, side, cars, peds, W) {
       peds.push(ped(item, off.x, off.y, -1, e, 1, mirror))
       return
     }
+    const s = e - WALK_ON_LENGTH
+    const p = roadAt(s)
+    peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (PED_GONE_S - s) / 40), mirror))
+  })
+  boarders(S, 'kid', v - 1).forEach((item, k) => {
+    const e = (sigma - KID_UNLOAD(k)) * KID_V
+    if (e < 0 || e > PED_GONE_S + WALK_ON_LENGTH) return
+    const off = along([...WALK_ON].reverse(), e)
+    if (off) return peds.push(ped(item, off.x, off.y, -1, e, 1, mirror))
     const s = e - WALK_ON_LENGTH
     const p = roadAt(s)
     peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (PED_GONE_S - s) / 40), mirror))
@@ -813,6 +921,14 @@ function sceneFrame(S, t, W) {
   boarders(S, 'ped', h).forEach((item, j) => {
     if (pedBoarded(tau, j)) riders.push(riderAt(item, sign * RIDER_SPOTS[j]))
   })
+  const kidsOff = boarders(S, 'kid', h - 1)
+  kidsOff.forEach((item, k) => {
+    if (tauU < KID_UNLOAD(k)) riders.push(riderAt(item, -sign * kidSpot(k, kidsOff.length)))
+  })
+  const kidsOn = boarders(S, 'kid', h)
+  kidsOn.forEach((item, k) => {
+    if (kidBoarded(tau, k)) riders.push(riderAt(item, sign * kidSpot(k, kidsOn.length)))
+  })
 
   // Each dock's ramp: lowered onto the ferry while it's berthed there,
   // raised a moment before it leaves and while it's away.
@@ -872,7 +988,7 @@ function sleepyZs(time, ferryX) {
 // real days (see seasonSampler). Returns (t, W) => frame, with .halfStart(h).
 export function createGoatScene({ sampler = null } = {}) {
   const S = {
-    lines: { car: new Map(), ped: new Map() },
+    lines: { car: new Map(), ped: new Map(), kid: new Map() },
     starts: [0],
     trouble: new Map(),
     sampler,
@@ -948,6 +1064,27 @@ export function seasonSampler(docs, pick = Math.random) {
     dateIso: dayOf(k0).dateIso,
     // First half of the day containing h (null before the first full day).
     dayStart: (h) => dayAt(h).start,
+    // Who else rides visit v's sailing: 'kids' on school runs (the 7:30am
+    // from Bowen and the 3:55pm back, weekdays, September–June), 'tourists'
+    // in summer (July–August: over from the mainland in the morning, back in
+    // the mid/late afternoon), else null.
+    extraCrowd(v) {
+      const d = sailingFor(v)
+      if (!d || dayAt(v).i === 0) return null
+      const date = new Date(`${d.dateIso}T12:00:00Z`)
+      const month = date.getUTCMonth() + 1
+      const hour = parseInt(d.sailingTime)
+      if (month === 7 || month === 8) {
+        if (d.direction === 'To Bowen' && hour >= 7 && hour < 12) return 'tourists'
+        if (d.direction === 'To HSB' && hour >= 13 && hour < 19) return 'tourists'
+        return null
+      }
+      const weekday = date.getUTCDay()
+      if (weekday === 0 || weekday === 6) return null
+      if (d.direction === 'To HSB' && d.sailingTime === '07:30') return 'kids'
+      if (d.direction === 'To Bowen' && d.sailingTime === '15:55') return 'kids'
+      return null
+    },
     // Visit v is a day's empty first run (Horseshoe Bay → Bowen).
     emptyRun: (v) => dayAt(v).i === 0,
     // Half h is the first of a new day (so the night before it is slept).
