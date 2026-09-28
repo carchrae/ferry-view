@@ -521,7 +521,7 @@
           fill="#e3f2fd"
         />
 
-        <!-- The ferry, after the Queen of Cumberland: double-ended (never turns),
+        <!-- The ferry, after the Queen of Capilano: double-ended (never turns),
              raked black hull, open car deck, a passenger deck that narrows as
              it rises, and the control tower on top, tapered in at the bottom. -->
         <g :transform="`translate(${scene.ferryX.toFixed(1)} 198)`">
@@ -533,10 +533,46 @@
             :fill="c.color"
             :transform="`translate(${c.dx} -12)`"
           />
-          <path d="M-56 0 L56 0 L66 -7 L-66 -7 Z" fill="#212121" />
-          <!-- side wall, tall enough to hide the wheels -->
+          <!-- dark hull, orange boot-top stripe at the waterline -->
+          <path d="M-56 0 L56 0 L66 -7 L-66 -7 Z" fill="#263238" />
+          <path d="M-57 -1.2 L57 -1.2 L58.3 -2.8 L-58.3 -2.8 Z" fill="#ff6d00" />
+          <!-- side wall, tall enough to hide the wheels: the long navy stripe
+               sweeping down aft, a row of small windows forward, the name -->
           <path d="M-66 -7 L66 -7 L65 -19 L-65 -19 Z" fill="#fafafa" />
-          <rect x="-65" y="-9" width="130" height="1.5" fill="#1565c0" />
+          <path
+            d="M-65 -13.2 L20 -13.2 L26 -9.5 L65 -9.5 L65 -8.3 L25.4 -8.3 L19.4 -12 L-65 -12 Z"
+            fill="#1a3a8f"
+          />
+          <rect
+            v-for="w in 6"
+            :key="`hw${w}`"
+            :x="-54.2 + w * 4.2"
+            y="-17.2"
+            width="2.6"
+            height="1.8"
+            rx="0.4"
+            fill="#263238"
+          />
+          <text
+            x="44"
+            y="-15"
+            font-family="Georgia, serif"
+            font-style="italic"
+            font-size="3.6"
+            text-anchor="middle"
+            fill="#263238"
+          >
+            Queen of Capilano
+          </text>
+          <!-- railings at the open car-deck ends -->
+          <path
+            v-for="end in [-1, 1]"
+            :key="`rail${end}`"
+            :d="`M${65 * end} -19 L${65 * end} -22.5 L${44 * end} -22.5 M${59.75 * end} -19 L${59.75 * end} -22.5 M${54.5 * end} -19 L${54.5 * end} -22.5 M${49.25 * end} -19 L${49.25 * end} -22.5`"
+            stroke="#eceff1"
+            stroke-width="0.7"
+            fill="none"
+          />
           <!-- windowed centre section between the car lanes, in front of the
                cars: ends lean in; the windows are cut-outs, so the cars inside
                show through -->
@@ -567,6 +603,13 @@
             rx="0.8"
             fill="#263238"
           />
+          <!-- an orange lifeboat slung on the passenger deck's side -->
+          <path
+            d="M20 -44.8 L33 -44.8 Q 32 -41.6 29 -41.4 L23.5 -41.4 Q 20.6 -41.8 20 -44.8 Z"
+            fill="#ff6d00"
+          />
+          <rect x="21.5" y="-46.2" width="10" height="1.4" rx="0.6" fill="#ff8a3d" />
+          <path d="M21 -44.8 L21 -48 M32 -44.8 L32 -48" stroke="#b0bec5" stroke-width="0.6" />
           <!-- roof railings either side of the tower -->
           <path
             d="M-38 -45 L-38 -49 L-18 -49 M18 -49 L38 -49 L38 -45"
@@ -577,8 +620,24 @@
           <!-- control tower: tapered in at the bottom, dark wraparound windows -->
           <path d="M-12 -45 L12 -45 L17 -60 L-17 -60 Z" fill="#fafafa" />
           <path d="M-15.5 -56 L15.5 -56 L16.5 -59 L-16.5 -59 Z" fill="#263238" />
-          <rect x="-8" y="-63" width="16" height="3" rx="1" fill="#1565c0" />
-          <path d="M0 -63 L0 -70 M-5 -63 L-5 -68" stroke="#b0bec5" stroke-width="0.8" />
+          <!-- raised top with the blue wave emblem; the mast (radar bar, light,
+               a small flag) -->
+          <rect x="-9" y="-66" width="18" height="6" rx="1" fill="#fafafa" />
+          <path
+            d="M-6.5 -61.5 Q -3.5 -65.5 0 -62.8 Q 3.5 -60 6.5 -64 L 6.5 -61.5 Z"
+            fill="#1a3a8f"
+          />
+          <path
+            d="M-6.5 -63.4 Q -3.5 -67 0 -64.4 Q 3.5 -61.8 6.5 -65.2"
+            stroke="#4fc3f7"
+            stroke-width="0.7"
+            fill="none"
+          />
+          <path d="M3 -66 L3 -78 M-4 -66 L-4 -74" stroke="#b0bec5" stroke-width="0.9" />
+          <rect x="-1" y="-75.5" width="8" height="1.2" rx="0.5" fill="#eceff1" />
+          <circle cx="3" cy="-78.5" r="0.9" fill="#fff59d" />
+          <path d="M3 -78 L8.5 -76.8 L3 -75.6 Z" fill="#e53935" />
+          <rect x="4.8" y="-77.3" width="1.6" height="1.4" fill="#fafafa" />
           <!-- walk-ons riding up top -->
           <g v-for="p in scene.riders" :key="p.id" :transform="p.transform">
             <rect v-if="p.kid" x="-3.6" y="-10.5" width="2.2" height="5" rx="0.8" :fill="p.pack" />
