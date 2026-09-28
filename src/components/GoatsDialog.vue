@@ -462,6 +462,16 @@
           !
         </text>
 
+        <!-- School buses (never board; they meet the kids at each end) -->
+        <g v-for="b in scene.buses" :key="b.id" :transform="b.transform">
+          <rect x="-16" y="-14" width="32" height="11" rx="2" fill="#fbc02d" />
+          <rect x="-14" y="-12.4" width="23" height="3.6" fill="#37474f" />
+          <rect x="10.5" y="-12.4" width="4.5" height="5.5" rx="0.8" fill="#90caf9" />
+          <rect x="-16" y="-6.8" width="32" height="1" fill="#212121" />
+          <circle cx="-10" cy="-3" r="3" fill="#111" />
+          <circle cx="9" cy="-3" r="3" fill="#111" />
+          <circle cx="15.3" cy="-5" r="1" fill="#fff59d" />
+        </g>
         <!-- Foot passengers (the ones who missed the boat are fuming) -->
         <g v-for="p in scene.peds" :key="p.id" :transform="p.transform" :opacity="p.opacity">
           <path :d="p.legs" stroke="#eceff1" stroke-width="1.4" stroke-linecap="round" />

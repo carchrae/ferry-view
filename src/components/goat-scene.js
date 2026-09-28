@@ -53,6 +53,30 @@ const KID_V = 85
 const KID_WAIT_S = (k) => 6 + 2.2 * k // a packed crowd
 const KID_LOAD = (k) => 1.7 + 0.035 * k // …streaming aboard
 const KID_UNLOAD = (k) => 0.5 + 0.07 * k
+// The school bus never boards: it drops the kids at their dock (parking on
+// the shoulder by the dock, BUS_S up the road) and another meets them off
+// the ferry at the other end.
+const BUS_S = 36
+const BUS_V = 200
+const BUS_DROP_AT = 2 // σ when the drop-off bus sets off down the road
+const BUS_WAIT_AT = 8 // σ when the pick-up bus sets off (ferry's on its way)
+const isSchool = (crowd) => crowd.length > 0 && !!crowd[0].kid
+// The bus at road position s, facing downhill (arriving) or uphill (leaving),
+// on the shoulder in front of the lanes.
+function bus(id, s, uphill, mirror) {
+  const p = roadAt(s)
+  const [dx, dy] = uphill ? [p.tx, p.ty] : [-p.tx, -p.ty]
+  return car({ id, color: '#fbc02d' }, 'bus', p.x, p.y + LANE.walk + 7, dx, dy, mirror)
+}
+// Driving down from the top of the road to park at BUS_S from time `from`,
+// then (from `leave`) back up and away; null once gone (or not yet come).
+function busTrip(id, clock, from, leave, mirror) {
+  if (clock < from) return null
+  if (clock < leave)
+    return bus(id, Math.max(BUS_S, ROAD.length - (clock - from) * BUS_V), false, mirror)
+  const s = BUS_S + (clock - leave) * BUS_V
+  return s < ROAD.length ? bus(id, s, true, mirror) : null
+}
 // They start gathering as soon as the previous sailing has left.
 const KID_ARRIVE = (i, n) => 4.4 + i * Math.min(0.35, 6.5 / n)
 const kidSpot = (k, n) => -33 + (66 * (k + 0.5)) / n // on the roof, ferry frame
@@ -163,12 +187,12 @@ const nightDelay = (S, h) =>
 const dockDelay = (S, h) => jamDelay(S, h) + nightDelay(S, h)
 // Whale crossings: a tail surfaces in the ferry's path, so it eases to a stop
 // just short of it and waits until the whale has gone back under (about one
-// crossing in eight, never on a breakdown crossing; the first comes early).
+// crossing in thirty-odd, never on a breakdown crossing; the first comes early).
 const WHALE_S = 2.4 // as long as its surprised jingle
 export const WHALE_Y = 198 // the whale breaks the surface right at the horizon line
 const FIRST_WHALE = 1
 const whaleStop = (S, h) =>
-  h >= 0 && !troubleAt(S, h).sea && (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h, 13) < 0.12))
+  h >= 0 && !troubleAt(S, h).sea && (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h, 13) < 0.03))
 const halfLen = (S, h) =>
   H +
   (troubleAt(S, h).sea ? BREAKDOWN_S + SMOKE_CLEAR_S : 0) +
@@ -656,12 +680,28 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     }
   })
   const nextKids = lineAt(S, 'kid', v + 2)
+  const schoolDrop = isSchool(nextKids)
+  if (schoolDrop) {
+    // The drop-off bus: down to the dock, kids out, back up the hill.
+    const leave = KID_ARRIVE(nextKids.length - 1, nextKids.length) + 1
+    const b = busTrip(`busD${v + 2}`, sigma, BUS_DROP_AT, leave, mirror)
+    if (b) cars.push(b)
+  }
+  // The ferry's on its way here with school kids aboard: a bus comes down to
+  // meet them (it leaves once they're all on — see unloadAt).
+  if (isSchool(boarders(S, 'kid', v + 1))) {
+    const b = busTrip(`busP${v + 1}`, sigma, BUS_WAIT_AT, Infinity, mirror)
+    if (b) cars.push(b)
+  }
   nextKids.forEach((item, i) => {
     const start = KID_ARRIVE(i, nextKids.length)
     if (sigma < start) return
     const e = (sigma - start) * KID_V
     const slot = KID_WAIT_S(i)
-    const s = Math.max(slot, PED_START_S - e)
+    // School kids pile out of the bus; tourists stroll down the road.
+    const s = schoolDrop
+      ? BUS_S + Math.sign(slot - BUS_S) * Math.min(e, Math.abs(slot - BUS_S))
+      : Math.max(slot, PED_START_S - e)
     if (puzzled && s === slot) return peds.push(lostPed(item, t, slot, mirror))
     const p = roadAt(s)
     const here = s === slot
@@ -713,15 +753,25 @@ function unloadAt(S, t, side, cars, peds, W) {
     const p = roadAt(s)
     peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (PED_GONE_S - s) / 40), mirror))
   })
-  boarders(S, 'kid', v - 1).forEach((item, k) => {
+  const arriving = boarders(S, 'kid', v - 1)
+  const school = isSchool(arriving)
+  arriving.forEach((item, k) => {
     const e = (sigma - KID_UNLOAD(k)) * KID_V
     if (e < 0 || e > PED_GONE_S + WALK_ON_LENGTH) return
     const off = along([...WALK_ON].reverse(), e)
     if (off) return peds.push(ped(item, off.x, off.y, -1, e, 1, mirror))
     const s = e - WALK_ON_LENGTH
+    if (school && s >= BUS_S) return // on the bus
     const p = roadAt(s)
     peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (PED_GONE_S - s) / 40), mirror))
   })
+  if (school) {
+    // The bus that met them waits until the last kid's aboard, then goes.
+    const last = arriving.length - 1
+    const leave = KID_UNLOAD(last) + (WALK_ON_LENGTH + BUS_S) / KID_V + 0.5
+    const b = busTrip(`busP${v - 1}`, sigma, -Infinity, leave, mirror)
+    if (b) cars.push(b)
+  }
 }
 
 // The whole scene at time t (seconds): ferry position, the cars and walk-ons
@@ -990,6 +1040,7 @@ function sceneFrame(S, t, W) {
     deck,
     riders,
     carsOut: cars.filter((c) => c.lane === 'out'),
+    buses: cars.filter((c) => c.lane === 'bus'),
     carsIn: cars.filter((c) => c.lane === 'in'),
     peds,
   }
