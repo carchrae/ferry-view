@@ -58,8 +58,12 @@ const KID_UNLOAD = (k) => 0.5 + 0.07 * k
 // the ferry at the other end.
 const BUS_S = 36
 const BUS_V = 200
-const BUS_DROP_AT = 2 // σ when the drop-off bus sets off down the road
-const BUS_WAIT_AT = 8 // σ when the pick-up bus sets off (ferry's on its way)
+// Both buses pull in just as the ferry leaves the other dock: the drop-off
+// bus as it sets off to fetch the kids, the pick-up bus as it sets off with
+// them. busDriveS() is the drive down the hill.
+const busDriveS = () => (ROAD.length - BUS_S) / BUS_V
+// When kid i (of n) steps out of the drop-off bus, after it parks.
+const kidOutAt = (i, n) => 0.3 + i * Math.min(0.15, 3 / n)
 const isSchool = (crowd) => crowd.length > 0 && !!crowd[0].kid
 // The bus at road position s, facing downhill (arriving) or uphill (leaving),
 // on the shoulder in front of the lanes.
@@ -224,6 +228,9 @@ function halfAt(S, t) {
   }
   return { h, tau, tauU, tauE: tau - dockDelay(S, h), overnight }
 }
+// When the ferry leaves the dock of half h (scene time).
+const departsAt = (S, h) => halfStartOf(S, h) + dockDelay(S, h) + DEPART
+
 // The overnight window before day-start half h0, in scene time.
 function overnightWindow(S, h0) {
   const N0 = halfStartOf(S, h0) + jamDelay(S, h0) + UNLOAD_END
@@ -681,22 +688,28 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   })
   const nextKids = lineAt(S, 'kid', v + 2)
   const schoolDrop = isSchool(nextKids)
+  // When the ferry next leaves the other dock (coming here): the moment the
+  // school buses pull in at this end.
+  const busParks = departsAt(S, v + 1)
   if (schoolDrop) {
-    // The drop-off bus: down to the dock, kids out, back up the hill.
-    const leave = KID_ARRIVE(nextKids.length - 1, nextKids.length) + 1
-    const b = busTrip(`busD${v + 2}`, sigma, BUS_DROP_AT, leave, mirror)
+    // The drop-off bus: down to the dock, kids pour out, back up the hill.
+    const leave = busParks + kidOutAt(nextKids.length - 1, nextKids.length) + 0.8
+    const b = busTrip(`busD${v + 2}`, t, busParks - busDriveS(), leave, mirror)
     if (b) cars.push(b)
   }
-  // The ferry's on its way here with school kids aboard: a bus comes down to
-  // meet them (it leaves once they're all on — see unloadAt).
+  // The ferry's setting off for here with school kids aboard: a bus comes
+  // down to meet them (it leaves once they're all on — see unloadAt).
   if (isSchool(boarders(S, 'kid', v + 1))) {
-    const b = busTrip(`busP${v + 1}`, sigma, BUS_WAIT_AT, Infinity, mirror)
+    const b = busTrip(`busP${v + 1}`, t, busParks - busDriveS(), Infinity, mirror)
     if (b) cars.push(b)
   }
   nextKids.forEach((item, i) => {
-    const start = KID_ARRIVE(i, nextKids.length)
-    if (sigma < start) return
-    const e = (sigma - start) * KID_V
+    // School kids come out of the bus; tourists turn up on their own.
+    const since = schoolDrop
+      ? t - (busParks + kidOutAt(i, nextKids.length))
+      : sigma - KID_ARRIVE(i, nextKids.length)
+    if (since < 0) return
+    const e = since * KID_V
     const slot = KID_WAIT_S(i)
     // School kids pile out of the bus; tourists stroll down the road.
     const s = schoolDrop
