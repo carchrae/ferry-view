@@ -8,7 +8,6 @@ import {
   breaksDown,
   whaleCrossing,
   rampJams,
-  H,
   BERTHS,
   CAR_CAPACITY,
   CROSSWALK,
@@ -23,8 +22,8 @@ const ids = (list) =>
 describe('goatScene', () => {
   it('berths at a dock, then crosses to the other one', () => {
     assert.equal(goatScene(0.5).ferryX, BERTHS[0])
-    assert.equal(goatScene(H + 0.5).ferryX, BERTHS[1])
-    const mid = goatScene(H - 1.4).ferryX
+    assert.equal(goatScene(halfStart(1) + 0.5).ferryX, BERTHS[1])
+    const mid = goatScene(halfStart(1) - 1.4).ferryX
     assert.ok(mid > BERTHS[0] && mid < BERTHS[1])
   })
 
@@ -372,9 +371,10 @@ describe('goatScene', () => {
         direction: 'To HSB',
         lastCapacity: '30%',
       })
+      // (each day's run to Bowen comes first: 6:30, then 7:00 back, 7:30, …)
       docs.push({
         dateIso: '2026-09-15',
-        sailingTime: `${hh}:30`,
+        sailingTime: `${String(6 + i).padStart(2, '0')}:30`,
         direction: 'To Bowen',
         lastCapacity: '50%',
       })

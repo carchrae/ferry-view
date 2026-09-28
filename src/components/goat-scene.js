@@ -163,7 +163,7 @@ const busHold = (S, h) => {
 // the school bus both use it. First there takes the front; a bus turning up
 // while another's parked pulls in right behind it (see stopSpot). (Far
 // enough up that a bus at the front has its nose off the dock.)
-const STOP_S = 106
+const STOP_S = 100
 // Waiting for the bus: on the roadside just short of the front bus's door
 // (just past its front wheel, see busDoors), so they walk up to it, not back.
 const STOP_WAIT = STOP_S - 20
@@ -486,13 +486,29 @@ const whaleStop = (S, h) =>
   !troubleAt(S, h).sea &&
   (h === FIRST_WHALE || (h > FIRST_WHALE && rnd(h + S.seed, 13) < 0.03))
 // A big crowd (a summer tour group) can take longer to shuffle aboard than
-// the usual turnaround: the ferry holds at the dock until the last of them is
-// on and the ramp's up — nobody steps off the end into the sea.
+// the usual turnaround — and on Bowen the cars wait for the foot passengers:
+// the ferry holds at the dock until the last of them is on and the ramp's up
+// — nobody steps off the end into the sea, no car's left on the ramp.
 function boardHold(S, h) {
   if (h < 0) return 0 // (the scene opens mid-cycle, on a fixed clock)
   let last = 0
   lineAt(S, 'kid', h).forEach((item, k) => {
     last = Math.max(last, crowdLoad(item, k) + (crowdSpot(item, k) + WALK_ON_LENGTH) / boardV(item))
+  })
+  boarders(S, 'car', h).forEach((_, k) => {
+    last = Math.max(last, carAboard(S, h, k))
+  })
+  // …and everyone getting off is off the ramp (their unload clock runs
+  // ahead of the load clock by the dock's holds)
+  const lag = dockDelay(S, h) - jamDelay(S, h)
+  boarders(S, 'kid', h - 1).forEach((x, k) => {
+    const off = x.kid
+      ? KID_UNLOAD(k) + WALK_ON_LENGTH / KID_V
+      : TOURIST_UNLOAD(k) + WALK_ON_LENGTH / touristPace(x)
+    last = Math.max(last, off - lag)
+  })
+  boarders(S, 'ped', h - 1).forEach((_, j) => {
+    last = Math.max(last, PED_UNLOAD(j) + WALK_ON_LENGTH / PED_V - lag)
   })
   return Math.max(0, last + 0.35 - DEPART)
 }
@@ -667,7 +683,7 @@ function crosswalkTimed(S, v, side, left, a) {
   const drive = (ROAD.length - QUEUE_S(CROSSWALK_K)) / CAR_V // down to its spot
   // (all in line before boarding starts — even if, as a real line sometimes
   // does, it only gets that long while the ferry's in unloading)
-  const boarding = halfStartOf(S, v + 2) + dockDelay(S, v + 2) + CAR_LOAD(0)
+  const boarding = halfStartOf(S, v + 2) + dockDelay(S, v + 2) + carLoad(S, v + 2, 0)
   const until = boarding - 0.4 - ROAD.length / CAR_V - base
   const when = whenClockReads(S, at, halfStartOf(S, v), departsAt(S, v + 2))
   const target = Math.min(until, Math.max(ARRIVE_WINDOW[0], when - base - drive))
@@ -694,7 +710,11 @@ const kidBoarded = (sigma, k, item) =>
   sigma >= crowdLoad(item, k) + (crowdSpot(item, k) + WALK_ON_LENGTH) / boardV(item)
 // Tourists coming off at visit h hold the cars up until they've wandered
 // clear of the ramp: how long the cars wait (on the unload clock).
+// On Bowen the cars wait for every foot passenger to get off and clear the
+// ramp first. (At Horseshoe Bay they just roll off alongside them.)
 function touristHold(S, h) {
+  const bowen = mod(h, 2) === 0
+  if (!bowen) return 0
   let clear = 0
   boarders(S, 'kid', h - 1).forEach((x, k) => {
     if (!x.kid)
@@ -702,6 +722,10 @@ function touristHold(S, h) {
         clear,
         TOURIST_UNLOAD(k) + WALK_ON_LENGTH / touristPace(x) + touristDawdle(x),
       )
+    else clear = Math.max(clear, KID_UNLOAD(k) + WALK_ON_LENGTH / KID_V)
+  })
+  boarders(S, 'ped', h - 1).forEach((x, j) => {
+    clear = Math.max(clear, PED_UNLOAD(j) + WALK_ON_LENGTH / PED_V)
   })
   return clear ? clear + 0.4 : 0
 }
@@ -792,8 +816,26 @@ function toDeck(e, s0, deckX) {
   const at = along(deckPath(deckX), e - s0)
   return at && { ...at, onRamp: true }
 }
-const carBoarded = (sigma, k) => {
-  const e = (sigma - CAR_LOAD(k)) * CAR_V
+// On Bowen the cars only start boarding once every foot passenger (and any
+// crowd) is aboard: how much later than usual, on visit v's load clock.
+function carsWaitToBoard(S, v) {
+  if (v < 0 || mod(v, 2) !== 0) return 0
+  let done = 0
+  lineAt(S, 'ped', v).forEach((_, j) => {
+    done = Math.max(done, PED_LOAD(j) + (WAIT_S(j) + WALK_ON_LENGTH) / PED_V)
+  })
+  lineAt(S, 'kid', v).forEach((item, k) => {
+    done = Math.max(done, crowdLoad(item, k) + (crowdSpot(item, k) + WALK_ON_LENGTH) / boardV(item))
+  })
+  return Math.max(0, done + 0.2 - CAR_LOAD(0))
+}
+// When visit v's car k sets off aboard (load clock).
+const carLoad = (S, v, k) => CAR_LOAD(k) + carsWaitToBoard(S, v)
+// …and when it's parked on the deck.
+const carAboard = (S, v, k) =>
+  carLoad(S, v, k) + (QUEUE_S(k) + pathLength(deckPath(BERTH + FAR_SLOTS[k]))) / CAR_V
+const carBoarded = (S, v, sigma, k) => {
+  const e = (sigma - carLoad(S, v, k)) * CAR_V
   return e > 0 && !toDeck(e, QUEUE_S(k), BERTH + FAR_SLOTS[k])
 }
 const pedBoarded = (sigma, j) => sigma >= PED_LOAD(j) + (WAIT_S(j) + WALK_ON_LENGTH) / PED_V
@@ -942,11 +984,11 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       if (t >= homeTime) return // went home for the night
       // Didn't make it: pull up to the dock and bounce on the springs in a
       // rage, alongside the walk-ons, while the ferry sails off.
-      const moved = Math.max(0, sigma - CAR_LOAD(k)) * CAR_V
+      const moved = Math.max(0, sigma - carLoad(S, v, k)) * CAR_V
       const mad = sigma >= HOP[0] && sigma < HOP[1]
       const bounce = mad ? 0.3 + Math.abs(Math.sin(sigma * 15 + k * 2.3)) * 3 : 0
       cars.push(queued(item, Math.max(QUEUE_S(k - nBoard), QUEUE_S(k) - moved), mirror, bounce))
-    } else if (sigma < CAR_LOAD(k)) {
+    } else if (sigma < carLoad(S, v, k)) {
       if (opensNow != null) {
         // (the day's first line at Bowen: driving in from 5am)
         const start = opensNow + 0.1 + k * 0.25
@@ -963,7 +1005,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       }
       cars.push(queued(item, QUEUE_S(k), mirror, fuming(v, t, k)))
     } else {
-      const at = toDeck((sigma - CAR_LOAD(k)) * CAR_V, QUEUE_S(k), BERTH + FAR_SLOTS[k])
+      const at = toDeck((sigma - carLoad(S, v, k)) * CAR_V, QUEUE_S(k), BERTH + FAR_SLOTS[k])
       // On the ramp it's drawn with the far lane, i.e. behind the ferry's wall.
       if (at) cars.push(car(item, at.onRamp ? 'out' : 'in', at.x, at.y, at.dx, at.dy, mirror))
     }
@@ -1204,21 +1246,23 @@ function walkOffPlan(S, v, side) {
       }
     }
   } else if (side === 0) {
-    // Bowen shuttle: tourists take the seats first, then locals; it goes once
-    // everyone with a seat is aboard.
+    // Bowen shuttle: it goes as the cars start loading for the next sailing
+    // (once the ones off this ferry have gone by). Tourists take the seats
+    // first, then locals — whoever's at the stop by then.
+    leave = Math.max(dockDelay(S, v) - jamDelay(S, v) + carLoad(S, v, 0), carsClearU(S, v, STOP_S))
     const byArrival = (a, b) => a.arrive - b.arrive
     const queue = [
       ...riders.filter((r) => r.wants && !r.local).sort(byArrival),
       ...riders.filter((r) => r.wants && r.local).sort(byArrival),
     ]
-    queue.forEach((r, i) => {
-      r.board = i < SHUTTLE_SEATS ? r.arrive : null
-    })
-    const seated = queue.filter((r) => r.board != null)
-    // (+1.4: along to the door and aboard)
-    leave = seated.length ? Math.max(...seated.map((r) => r.arrive)) + 1.4 : 2.5
-    leave = Math.max(leave, carsClearU(S, v, STOP_S)) // (and the cars have gone by)
-    for (const r of queue) if (r.board == null) r.strandedAt = Math.max(r.arrive, leave)
+    let seats = SHUTTLE_SEATS
+    for (const r of queue) {
+      // (+0.6: along to the door and aboard)
+      if (seats > 0 && r.arrive + 0.6 <= leave) {
+        r.board = r.arrive
+        seats--
+      } else r.strandedAt = Math.max(r.arrive, leave)
+    }
   } else {
     // Horseshoe Bay: whichever articulated bus is there when they get there.
     for (const r of riders) {
@@ -1702,7 +1746,8 @@ function sceneFrame(S, t, W) {
       deck.push({ id: item.id, dx: -sign * FAR_SLOTS[i], color: item.color })
   })
   boarders(S, 'car', h).forEach((item, k) => {
-    if (carBoarded(tau, k)) deck.push({ id: item.id, dx: sign * FAR_SLOTS[k], color: item.color })
+    if (carBoarded(S, h, tau, k))
+      deck.push({ id: item.id, dx: sign * FAR_SLOTS[k], color: item.color })
   })
   const riders = []
   boarders(S, 'ped', h - 1).forEach((item, j) => {
