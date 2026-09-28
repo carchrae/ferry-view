@@ -590,7 +590,7 @@ export function startGoatParty({ onSoundBlocked, muted = false, music = true } =
     onState()
   }
 
-  // Fireworks: a random shell over the upper screen every ~0.6 s.
+  // Fireworks: a random shell over the upper screen every ~0.8 s.
   let layer = null
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   if (!reduced && typeof document !== 'undefined') {
@@ -608,7 +608,7 @@ export function startGoatParty({ onSoundBlocked, muted = false, music = true } =
       )
       // Spent sparks are invisible (fill: forwards) — prune them.
       while (layer.childElementCount > 200) layer.firstChild.remove()
-      timers.push(setTimeout(shell, rand(350, 850)))
+      timers.push(setTimeout(shell, rand(500, 1100)))
     }
     shell()
   }
