@@ -534,13 +534,13 @@
             <rect x="-11.5" y="-13" width="23" height="5.6" rx="1.2" fill="#1565c0" />
             <rect x="-10.5" y="-11.8" width="19.5" height="3.4" fill="#263238" />
             <rect x="-11.5" y="-7.6" width="23" height="0.8" fill="#fbc02d" />
-            <template v-if="b.part === 0">
+            <template v-if="b.front">
               <path d="M1 -6.8 Q 6 -6.8 11.5 -4.5 L11.5 -3 L1 -3 Z" fill="#1565c0" />
               <rect x="9.5" y="-12" width="2.4" height="9" rx="0.6" fill="#37474f" />
               <rect x="8.4" y="-12.9" width="3.4" height="1.1" rx="0.3" fill="#ffb300" />
               <circle cx="11.4" cy="-4.6" r="0.7" fill="#fff59d" />
             </template>
-            <g v-if="!b.last">
+            <g v-if="!b.trailing">
               <rect x="-14" y="-12.6" width="2.5" height="9.2" fill="#cfd8dc" />
               <path
                 d="M-13.4 -12.6 V -3.4 M-12.2 -12.6 V -3.4"
