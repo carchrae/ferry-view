@@ -190,8 +190,11 @@ function troubleAt(S, h) {
     const r = troubleAt(S, k)
     used += r.jam + r.sea
   }
-  const jam = jamRoll(h) && used < MAX_BREAKDOWNS
-  const sea = seaRoll(h) && used + jam < MAX_BREAKDOWNS
+  // Replaying real days, a sailing that really ran late may owe it to a
+  // breakdown: its ramp jammed (at h), or the ferry broke down on the way in
+  // (the crossing before, h - 1). Otherwise it's the odd random failure.
+  const jam = (jamRoll(h) || S.sampler?.lateCause(h) === 'jam') && used < MAX_BREAKDOWNS
+  const sea = (seaRoll(h) || S.sampler?.lateCause(h + 1) === 'sea') && used + jam < MAX_BREAKDOWNS
   const r = { jam, sea }
   memo.set(h, r)
   return r
@@ -298,7 +301,12 @@ function newcomers(S, kind, v, carried = 0) {
     const crowd = S.sampler?.extraCrowd(v)
     if (!crowd) return []
     const kids = crowd === 'kids'
-    const n = kids ? 20 + Math.floor(rnd(v, 4) * 11) : 5 + Math.floor(rnd(v, 4) * 6)
+    // Kids: a busload. Tourists: the later the sailing really ran, the more
+    // of them there were to blame.
+    const late = Math.max(0, S.sampler.sailing(v)?.lateMin ?? 0)
+    const n = kids
+      ? 20 + Math.floor(rnd(v, 4) * 11)
+      : Math.min(16, 3 + Math.round(late / 2.5) + Math.floor(rnd(v, 4) * 2))
     return Array.from({ length: n }, (_, i) => ({
       id: `kid${v}.${i}`,
       color: SHIRTS[mod(v * 7 + i * 3, SHIRTS.length)],
@@ -1288,8 +1296,11 @@ export function seasonSampler(docs, pick = Math.random) {
       const month = date.getUTCMonth() + 1
       const hour = parseInt(d.sailingTime)
       if (month === 7 || month === 8) {
+        // Tourists over in the morning, home in the afternoon — and on any
+        // summer sailing that ran noticeably late (they were the hold-up).
         if (d.direction === 'To Bowen' && hour >= 7 && hour < 12) return 'tourists'
         if (d.direction === 'To HSB' && hour >= 13 && hour < 19) return 'tourists'
+        if ((minutesLate(d) ?? 0) >= 8) return 'tourists'
         return null
       }
       const weekday = date.getUTCDay()
@@ -1297,6 +1308,19 @@ export function seasonSampler(docs, pick = Math.random) {
       if (d.direction === 'To HSB' && d.sailingTime === '07:30') return 'kids'
       if (d.direction === 'To Bowen' && d.sailingTime === '15:55') return 'kids'
       return null
+    },
+    // Why sailing v really ran late, if a breakdown's the story: outside
+    // summer anything over 20 minutes late; in summer (tourists explain most
+    // of it) only over 35. Half the time the ramp jammed ('jam'), else the
+    // ferry broke down on its way in ('sea').
+    lateCause(v) {
+      const d = sailingFor(v)
+      if (!d || dayAt(v).i === 0) return null
+      const late = minutesLate(d) ?? 0
+      const month = new Date(`${d.dateIso}T12:00:00Z`).getUTCMonth() + 1
+      const summer = month === 7 || month === 8
+      if (late <= (summer ? 35 : 20)) return null
+      return rnd(v, 81) < 0.5 ? 'jam' : 'sea'
     },
     // Visit v is a day's empty first run (Horseshoe Bay → Bowen).
     emptyRun: (v) => dayAt(v).i === 0,

@@ -304,4 +304,43 @@ describe('goatScene', () => {
     const earlier = scene(scene.halfStart(2) - 1)
     assert.ok(!earlier.carsIn.some((c) => c.mad))
   })
+
+  it('a badly late sailing out of summer gets a breakdown; in summer, tourists scale with lateness', () => {
+    const day = (dateIso, lateHalf4) => {
+      const docs = []
+      for (let i = 0; i < 8; i++) {
+        const sailingTime = `${String(7 + i).padStart(2, '0')}:00`
+        const late = i === 1 ? lateHalf4 : 0
+        const actualDepartureTime = `${String(7 + i).padStart(2, '0')}:${String(late).padStart(2, '0')}`
+        docs.push({
+          dateIso,
+          sailingTime,
+          actualDepartureTime,
+          direction: 'To HSB',
+          lastCapacity: '50%',
+        })
+        docs.push({
+          dateIso,
+          sailingTime,
+          actualDepartureTime: sailingTime,
+          direction: 'To Bowen',
+          lastCapacity: '50%',
+        })
+      }
+      return seasonSampler(docs, () => 0)
+    }
+    // September, the 8:00 from Bowen (half 4) left 30 min late: a jam there, or a breakdown on the way in
+    const sept = day('2026-09-15', 30)
+    assert.equal(sept.sailing(4).lateMin, 30)
+    const scene = createGoatScene({ sampler: sept })
+    assert.ok(scene.rampJams(4) || scene.breaksDown(3), 'late sailing explained by a breakdown')
+    // August: late sailings bring tourists, more the later it ran
+    const quiet = day('2026-08-04', 9)
+    const busy = day('2026-08-04', 35)
+    const count = (sampler) => {
+      const sc = createGoatScene({ sampler })
+      return sc(sc.halfStart(5) - 0.5).riders.filter((r) => r.hat).length
+    }
+    assert.ok(count(busy) > count(quiet), `tourists: ${count(quiet)} vs ${count(busy)}`)
+  })
 })
