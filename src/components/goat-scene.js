@@ -1218,6 +1218,11 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
 // Who got off at visit v's dock (walk-on locals and tourists), and what each
 // does about the bus. Times are on v's unload clock.
 function walkOffPlan(S, v, side) {
+  const key = `${v}:${side}`
+  if (!S.plans.has(key)) S.plans.set(key, planWalkOffs(S, v, side))
+  return S.plans.get(key)
+}
+function planWalkOffs(S, v, side) {
   const riders = []
   boarders(S, 'ped', v - 1).forEach((item, j) => {
     const start = PED_UNLOAD(j)
@@ -1264,7 +1269,12 @@ function walkOffPlan(S, v, side) {
     // Bowen shuttle: it goes as the cars start loading for the next sailing
     // (once the ones off this ferry have gone by). Tourists take the seats
     // first, then locals — whoever's at the stop by then.
-    leave = Math.max(dockDelay(S, v) - jamDelay(S, v) + carLoad(S, v, 0), carsClearU(S, v, STOP_S))
+    const park = shuttlePark(S, v) - base
+    leave = Math.max(
+      dockDelay(S, v) - jamDelay(S, v) + carLoad(S, v, 0),
+      carsClearU(S, v, STOP_S),
+      park + 1, // (and it stops a moment)
+    )
     const byArrival = (a, b) => a.arrive - b.arrive
     const queue = [
       ...riders.filter((r) => r.wants && !r.local).sort(byArrival),
@@ -1273,8 +1283,10 @@ function walkOffPlan(S, v, side) {
     let seats = SHUTTLE_SEATS
     for (const r of queue) {
       // (+0.6: along to the door and aboard)
-      if (seats > 0 && r.arrive + 0.6 <= leave) {
-        r.board = r.arrive
+      // (on once it's here — they wait in line for it if they're early)
+      const on = Math.max(r.arrive, park)
+      if (seats > 0 && on + 0.6 <= leave) {
+        r.board = on
         seats--
       } else r.strandedAt = Math.max(r.arrive, leave)
     }
@@ -1401,12 +1413,23 @@ function walkOff(r, u, t, mirror, bus, slot = STOP_WAIT) {
 // leaves Horseshoe Bay — once the previous run's been and gone.
 function shuttlePark(S, w) {
   let prevLeave = -Infinity
-  if (shuttleRuns(S, w - 2)) {
+  if (w - 2 >= 0 && shuttleRuns(S, w - 2)) {
     const prev = walkOffPlan(S, w - 2, 0)
     prevLeave = prev.base + prev.leave
   }
   const opens = bowenOpens(S, w) ?? -Infinity // (not before 5am)
-  return Math.max(departsAt(S, w - 1), prevLeave + 2 * transitDriveS() + 0.3, opens)
+  return Math.max(shuttleDue(S, w), prevLeave + 2 * transitDriveS() + 0.3, opens)
+}
+// When it's due: replaying, 10–15 minutes before the sailing's scheduled
+// departure (by the simulated clock); otherwise as the ferry leaves Horseshoe
+// Bay.
+function shuttleDue(S, w) {
+  const s = S.sampler?.sailing(w)
+  if (!s || s.empty) return departsAt(S, w - 1)
+  const [hh, mm] = s.time.split(':').map(Number)
+  const day = Math.round(Date.parse(`${s.dateIso}T00:00:00Z`) / 86400000)
+  const due = day * 1440 + hh * 60 + mm - (10 + rnd(w, 113) * 5)
+  return whenClockReads(S, due, halfStartOf(S, w - 2), departsAt(S, w))
 }
 // If walk-on `item`, lining up for visit w on `side`, comes by bus: when they
 // step off it at the stop (scene time), else null (they walk down the hill).
@@ -1928,6 +1951,7 @@ export function createGoatScene({ sampler = null, seed = 0 } = {}) {
     seed,
     lines: { car: new Map(), ped: new Map(), kid: new Map() },
     spots: new Map(), // where each bus stops at the bus stop (stopSpot)
+    plans: new Map(), // who does what off each ferry (walkOffPlan)
     starts: [0],
     trouble: new Map(),
     sampler,
