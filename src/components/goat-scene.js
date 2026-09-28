@@ -1128,7 +1128,8 @@ function walkOff(r, u, t, mirror) {
     if (s > gone) return null
     const p = roadAt(s)
     const q = ped(item, p.x, p.y + LANE.walk, p.tx, e * 12, Math.min(1, (gone - s) / 40), mirror)
-    return r.torch ? { ...q, torch: true } : q
+    // (the flashlight bobs up and down with their stride)
+    return r.torch ? { ...q, torch: true, torchTilt: Math.sin(e * 6) * 7 } : q
   }
   // At the bus stop.
   if (r.board != null && u >= r.board) return null // on the bus / in the car

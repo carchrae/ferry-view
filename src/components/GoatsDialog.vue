@@ -45,20 +45,28 @@
           class="q-mr-sm"
           @click.stop="toggleSound"
         />
-        <!-- Fast-forward ⇄ realtime (1 simulated minute per real minute) -->
+        <!-- Playback speed: the usual fast-forward, or 1×, 2×, 4×… real time -->
         <q-btn
           v-if="clock"
           round
           flat
           dense
+          no-caps
           color="white"
-          :icon="realtime ? 'schedule' : 'fast_forward'"
-          :aria-label="realtime ? 'Play fast-forward' : 'Play in real time'"
-          @click.stop="realtime = !realtime"
+          :icon="speed == null ? 'fast_forward' : undefined"
+          :label="speed == null ? undefined : `${speed}×`"
+          :aria-label="
+            speed == null ? 'Playback speed: fast-forward' : `Playback speed: ${speed}× real time`
+          "
+          @click.stop="nextSpeed"
         >
-          <q-tooltip>{{
-            realtime ? 'Real time — tap for fast-forward' : 'Fast-forward — tap for real time'
-          }}</q-tooltip>
+          <q-tooltip>
+            {{
+              speed == null
+                ? 'Fast-forward — tap for real time'
+                : `${speed}× real time — tap to double`
+            }}
+          </q-tooltip>
         </q-btn>
         <!-- Replay a particular day (from those with history) -->
         <q-btn
@@ -730,10 +738,21 @@ function toggleSound() {
 let sceneSeed = 0
 let sceneAt = createGoatScene()
 const scene = ref(sceneAt(0.5))
-const sceneT = ref(0) // story time: the ferry, traffic, people (can run at realtime)
+const sceneT = ref(0) // story time: the ferry, traffic, people (speed-adjustable)
 const animT = ref(0) // real time since opening: waves, animals, plane, stars
-// Fast-forward (default) or realtime (1 simulated minute per real minute).
-const realtime = ref(false)
+// Playback speed: null = the usual fast-forward; otherwise a multiple of
+// real time (1 = one simulated minute per real minute). Each tap doubles it,
+// until doubling would reach the fast-forward speed — then back to that.
+const speed = ref(null)
+function nextSpeed() {
+  if (speed.value == null) {
+    speed.value = 1
+    return
+  }
+  const rate = sceneAt.clock?.(sceneT.value)?.rate ?? 0
+  const doubled = speed.value * 2
+  speed.value = doubled * rate >= 1 ? null : doubled
+}
 const clock = ref(null) // the simulated clock, when replaying real days
 const { docs: historyDocs, fetchStats } = useHistoricalStats()
 // Dates the replay can show (for the date picker), and the one it started on.
@@ -1077,7 +1096,8 @@ function animateScene() {
     animT.value += dt
     // Realtime: advance the story at 1 simulated second per real second.
     const c = sceneAt.clock?.(sceneT.value)
-    sceneT.value += realtime.value && c ? dt * c.rate : dt
+    // At a real-time multiple (never faster than the usual fast-forward).
+    sceneT.value += speed.value != null && c ? dt * Math.min(1, c.rate * speed.value) : dt
     clock.value = sceneAt.clock?.(sceneT.value) ?? null
     scene.value = sceneAt(sceneT.value, worldW.value)
     cueSounds(scene.value)
