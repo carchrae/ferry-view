@@ -11,7 +11,6 @@ import {
   H,
   BERTHS,
   CAR_CAPACITY,
-  PED_CAPACITY,
 } from '../src/components/goat-scene.js'
 
 const ids = (list) =>
@@ -37,21 +36,41 @@ describe('goatScene', () => {
     }
   })
 
-  it('varies the load, never exceeds capacity, and sometimes leaves people behind', () => {
+  it('varies the load; cars sometimes left behind, walk-ons never', () => {
     const loads = new Set()
     let full = 0
-    let mad = 0
+    let madCars = 0
     for (let h = 1; h < 60; h++) {
       const s = goatScene(halfStart(h + 1) - 0.01)
       assert.ok(s.deck.length <= CAR_CAPACITY)
-      assert.ok(s.riders.length <= PED_CAPACITY)
       loads.add(s.deck.length)
       if (s.deck.length === CAR_CAPACITY) full++
-      if (goatScene(halfStart(h) + 4).peds.some((p) => p.mad)) mad++
+      const ashore = goatScene(halfStart(h) + 4)
+      assert.ok(!ashore.peds.some((p) => p.mad), 'walk-ons always get on')
+      if (ashore.carsIn.some((c) => c.mad)) madCars++
     }
     assert.ok(loads.size >= 4, `loads seen: ${[...loads]}`)
     assert.ok(full > 0 && full < 59, `full sailings: ${full}`)
-    assert.ok(mad > 0 && mad < 59, `visits with walk-ons left behind: ${mad}`)
+    assert.ok(madCars > 0 && madCars < 59, `visits with cars left behind: ${madCars}`)
+  })
+
+  it('a big crowd of people takes car spots', () => {
+    const docs = []
+    for (let i = 0; i < 8; i++) {
+      const sailingTime = i === 1 ? '07:30' : `${String(6 + i).padStart(2, '0')}:00`
+      docs.push({ dateIso: '2026-09-15', sailingTime, direction: 'To HSB', lastCapacity: 'Full' })
+      docs.push({ dateIso: '2026-09-15', sailingTime, direction: 'To Bowen', lastCapacity: 'Full' })
+    }
+    const sampler = seasonSampler(docs, () => 0)
+    const scene = createGoatScene({ sampler })
+    // half 4 is the 7:30 school run from Bowen (10+ kids)
+    assert.equal(sampler.sailing(4).time, '07:30')
+    const leaving = scene(scene.halfStart(5) - 0.5)
+    const people = leaving.riders.length
+    const expected = Math.max(6, CAR_CAPACITY - Math.max(0, Math.floor((people - 12) / 3)))
+    assert.ok(people > 12, `crowd aboard: ${people}`)
+    assert.equal(leaving.deck.length, expected)
+    assert.ok(leaving.deck.length < CAR_CAPACITY)
   })
 
   it('never renders the same car or person twice in a frame', () => {
@@ -121,6 +140,7 @@ describe('goatScene', () => {
       direction: 'To Bowen',
       capacity: '90%',
       empty: true,
+      lateMin: null,
     })
     // …then Bowen's first sailing, and the next mainland one.
     assert.equal(sampler.sailing(2).direction, 'To HSB')
@@ -239,5 +259,42 @@ describe('goatScene', () => {
     assert.equal(summer.extraCrowd(4), null)
     assert.equal(summer.extraCrowd(5), 'tourists') // 08:05 to Bowen
     assert.equal(summer.extraCrowd(12), 'tourists') // 15:15 to Horseshoe Bay
+  })
+
+  it('shows how late a sailing really was, and a >20-minute wait makes the line fume', () => {
+    const docs = []
+    for (let i = 0; i < 8; i++) {
+      const sailingTime = `${String(7 + i).padStart(2, '0')}:00`
+      // the 8:00 from Bowen (half 4) ran 25 minutes late; the rest on time
+      const actualDepartureTime = i === 1 ? '08:25' : sailingTime
+      docs.push({
+        dateIso: '2026-08-04',
+        sailingTime,
+        actualDepartureTime,
+        direction: 'To HSB',
+        lastCapacity: '50%',
+      })
+      docs.push({
+        dateIso: '2026-08-04',
+        sailingTime,
+        actualDepartureTime: sailingTime,
+        direction: 'To Bowen',
+        lastCapacity: '50%',
+      })
+    }
+    const sampler = seasonSampler(docs, () => 0)
+    assert.equal(sampler.sailing(4).time, '08:00')
+    assert.equal(sampler.sailing(4).lateMin, 25)
+    assert.equal(sampler.sailing(2).lateMin, 0)
+    const scene = createGoatScene({ sampler })
+    // Bowen's line waiting for the late 8:00 (while the ferry's still on its way)
+    const waiting = scene(scene.halfStart(4) - 1)
+    assert.ok(
+      waiting.carsIn.some((c) => c.mad),
+      'cars fuming at the late sailing',
+    )
+    // …but not for the on-time 7:00 before it
+    const earlier = scene(scene.halfStart(2) - 1)
+    assert.ok(!earlier.carsIn.some((c) => c.mad))
   })
 })

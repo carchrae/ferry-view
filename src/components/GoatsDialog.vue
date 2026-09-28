@@ -510,7 +510,12 @@
         />
       </svg>
       <!-- Season sampler: which real sailing the scene is replaying -->
-      <div v-if="scene.sailing" class="goats-replay">{{ replayLabel }}</div>
+      <div v-if="scene.sailing" class="goats-replay">
+        {{ replayLabel }}
+        <span v-if="lateness" :class="{ 'goats-late': lateness.fuming }"
+          >· {{ lateness.text }}</span
+        >
+      </div>
     </div>
   </q-dialog>
 </template>
@@ -685,6 +690,13 @@ const replayLabel = computed(() => {
   const how = s.empty ? 'empty run' : capacityFullLabel(s.capacity)
   const when = `${dayjs(s.dateIso).format('ddd, MMM D')} · ${formatTime12h(s.time)} ${route}`
   return `Replaying ${how ? `${when} · ${how}` : when}`
+})
+// How late the replayed sailing really left (red once the line's fuming).
+const lateness = computed(() => {
+  const s = scene.value.sailing
+  if (!s || s.empty || scene.value.night != null || s.lateMin == null) return null
+  if (s.lateMin <= 0) return { text: 'on time', fuming: false }
+  return { text: `${s.lateMin} min late`, fuming: s.lateMin > 20 }
 })
 let raf = null
 
@@ -1053,6 +1065,10 @@ function displayName(e) {
   color: rgba(255, 255, 255, 0.75);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   pointer-events: none;
+}
+.goats-late {
+  color: #ff8a80;
+  font-weight: 700;
 }
 .goats-scene {
   display: block;

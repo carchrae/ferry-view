@@ -39,10 +39,11 @@ export const CAR_CAPACITY = FAR_SLOTS.length
 const RIDER_SPOTS = [-34, -27, 25, 32]
 export const PED_CAPACITY = RIDER_SPOTS.length
 const QUEUE_S = (k) => 50 + 22 * k // car k's spot in line (0 = front, at the dock)
-const WAIT_S = (j) => 14 + 8 * j // walk-on j's spot on the dock
+// Walk-on j's spot on the dock (a big crowd packs in tighter).
+const WAIT_S = (j) => 14 + 6 * Math.min(j, 4) + 3 * Math.max(0, j - 4)
 // The line moves off together, like real traffic, keeping its spacing.
 const CAR_LOAD = (k) => 2.0 + 0.05 * k
-const PED_LOAD = (j) => 1.6 + 0.15 * j
+const PED_LOAD = (j) => 1.6 + 0.06 * j
 const CAR_UNLOAD = (i) => 0.15 + 0.12 * i
 const PED_UNLOAD = (j) => 0.4 + 0.3 * j
 // Extra crowds on particular sailings — school kids on school runs, tourists
@@ -217,7 +218,18 @@ function rnd(v, salt) {
 // (3–8 cars and 1–3 walk-ons, or a rush of 11–14 and 5–6 — or, replaying a
 // real day, as many as that sailing actually carried). Memoized per scene
 // instance (S.lines) — each visit builds on the one before.
-const CAPACITY = { car: CAR_CAPACITY, ped: PED_CAPACITY, kid: Infinity }
+// How many of each can board visit v. Walk-ons (and kids) always all get
+// on; but a really big crowd of people takes room from the cars — one car
+// spot per 3 people over 12, down to MIN_CARS.
+const MIN_CARS = 6
+const LATE_FUMING = 20 // minutes late before the waiting cars lose patience
+function capOf(S, kind, v) {
+  if (kind !== 'car') return Infinity
+  const people = lineAt(S, 'ped', v).length + lineAt(S, 'kid', v).length
+  return Math.max(MIN_CARS, CAR_CAPACITY - Math.max(0, Math.floor((people - 12) / 3)))
+}
+// Walk-on j's spot on the roof: the four usual ones, then spreading out.
+const riderSpot = (j) => (j < RIDER_SPOTS.length ? RIDER_SPOTS[j] : -30 + (((j - 4) * 11) % 60))
 // First visit of a replayed day at its dock (the previous day's stragglers
 // went home overnight, so nobody carries over).
 const firstOfDay = (S, v) => !!S.sampler && (S.sampler.isDayStart(v) || S.sampler.isDayStart(v - 1))
@@ -257,7 +269,7 @@ function newcomers(S, kind, v, carried = 0) {
   // Replaying a sailing that wasn't full: everyone waiting got on, so the
   // line never outgrows the ferry.
   const fits =
-    S.sampler && load !== 'full' ? Math.max(carried ? 0 : 1, CAPACITY[kind] - carried) : n
+    S.sampler && load !== 'full' ? Math.max(carried ? 0 : 1, capOf(S, kind, v) - carried) : n
   return Array.from({ length: Math.min(n, fits) }, (_, i) => ({
     id: `${kind}${v}.${i}`,
     color:
@@ -274,7 +286,8 @@ function lineAt(S, kind, v) {
     let start = v
     while (start - 2 >= -2 && !memo.has(start - 2)) start -= 2
     for (let u = start; u <= v; u += 2) {
-      const carry = u - 2 >= -2 && !firstOfDay(S, u) ? memo.get(u - 2).slice(CAPACITY[kind]) : []
+      const carry =
+        u - 2 >= -2 && !firstOfDay(S, u) ? memo.get(u - 2).slice(capOf(S, kind, u - 2)) : []
       memo.set(u, carry.concat(newcomers(S, kind, u, carry.length)))
     }
   }
@@ -298,7 +311,7 @@ function carArrivals(v, n) {
   let at = ARRIVE_WINDOW[0]
   return gaps.map((g) => (at += g * scale))
 }
-const boarders = (S, kind, v) => lineAt(S, kind, v).slice(0, CAPACITY[kind])
+const boarders = (S, kind, v) => lineAt(S, kind, v).slice(0, capOf(S, kind, v))
 const kidBoarded = (sigma, k) => sigma >= KID_LOAD(k) + (KID_WAIT_S(k) + WALK_ON_LENGTH) / KID_V
 
 // A car at (x, y) heading along (dx, dy): its transform keeps it upright with
@@ -492,6 +505,12 @@ function overnightDock(S, t, side, cars, peds, ferryHere, W, h0) {
 
 // A normal (daytime) dock.
 function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
+  // Waiting for a sailing that (really) ran more than LATE_FUMING minutes
+  // late: the cars in line bounce on their springs, fuming.
+  const fuming = (visit, time, k) =>
+    (S.sampler?.sailing(visit)?.lateMin ?? 0) > LATE_FUMING
+      ? 0.3 + Math.abs(Math.sin(time * 13 + k * 2.1)) * 2.5
+      : 0
   const mirror = side === 1 ? W : 0
   const { h } = halfAt(S, t)
   const v = h - mod(h - side, 2) // this dock's latest visit (half index)
@@ -506,7 +525,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   // --- cars: board up to capacity; the rest roll forward with the line and
   // stop at the front of the dock, still there as the ferry pulls away ---
   const line = lineAt(S, 'car', v)
-  const nBoard = Math.min(line.length, CAR_CAPACITY)
+  const nBoard = Math.min(line.length, capOf(S, 'car', v))
   line.forEach((item, k) => {
     if (k >= nBoard) {
       if (t >= homeTime) return // went home for the night
@@ -517,7 +536,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       const bounce = mad ? 0.3 + Math.abs(Math.sin(sigma * 15 + k * 2.3)) * 3 : 0
       cars.push(queued(item, Math.max(QUEUE_S(k - nBoard), QUEUE_S(k) - moved), mirror, bounce))
     } else if (sigma < CAR_LOAD(k)) {
-      cars.push(queued(item, QUEUE_S(k), mirror))
+      cars.push(queued(item, QUEUE_S(k), mirror, fuming(v, t, k)))
     } else {
       const at = toDeck((sigma - CAR_LOAD(k)) * CAR_V, QUEUE_S(k), BERTH + FAR_SLOTS[k])
       // On the ramp it's drawn with the far lane, i.e. behind the ferry's wall.
@@ -531,12 +550,13 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     const start = arrivals[i]
     if (sigma < start) return
     const slot = QUEUE_S(leftCars + i)
-    cars.push(queued(item, Math.max(slot, ROAD.length - (sigma - start) * CAR_V), mirror))
+    const s = Math.max(slot, ROAD.length - (sigma - start) * CAR_V)
+    cars.push(queued(item, s, mirror, s === slot ? fuming(v + 2, t, leftCars + i) : 0))
   })
 
   // --- walk-ons: same, but the ones left behind hop up and down, mad ---
   const crowd = lineAt(S, 'ped', v)
-  const nWalk = Math.min(crowd.length, PED_CAPACITY)
+  const nWalk = crowd.length // walk-ons always get on
   crowd.forEach((item, j) => {
     if (j >= nWalk) {
       if (t >= homeTime) return // went home for the night
@@ -913,10 +933,10 @@ function sceneFrame(S, t, W) {
   })
   const riders = []
   boarders(S, 'ped', h - 1).forEach((item, j) => {
-    if (tauU < PED_UNLOAD(j)) riders.push(riderAt(item, -sign * RIDER_SPOTS[j]))
+    if (tauU < PED_UNLOAD(j)) riders.push(riderAt(item, -sign * riderSpot(j)))
   })
   boarders(S, 'ped', h).forEach((item, j) => {
-    if (pedBoarded(tau, j)) riders.push(riderAt(item, sign * RIDER_SPOTS[j]))
+    if (pedBoarded(tau, j)) riders.push(riderAt(item, sign * riderSpot(j)))
   })
   const kidsOff = boarders(S, 'kid', h - 1)
   kidsOff.forEach((item, k) => {
@@ -1000,6 +1020,20 @@ export function createGoatScene({ sampler = null } = {}) {
 const randomScene = createGoatScene()
 export const goatScene = (t, W) => randomScene(t, W)
 export const { halfStart, breaksDown, rampJams, whaleCrossing } = randomScene
+
+// How late a sailing really left (actual departure vs schedule, "HH:MM"),
+// in minutes; null when unknown.
+function minutesLate(d) {
+  if (!d?.actualDepartureTime || !d.sailingTime) return null
+  const mins = (hhmm) => {
+    const [hh, mm] = String(hhmm).split(':').map(Number)
+    return hh * 60 + mm
+  }
+  let late = mins(d.actualDepartureTime) - mins(d.sailingTime)
+  if (late < -720) late += 1440 // left after midnight
+  if (late > 720) late -= 1440
+  return Number.isFinite(late) ? late : null
+}
 
 // --- Season sampler ----------------------------------------------------------
 // Replays how full the ferry really was, day after real day, from the history
@@ -1107,6 +1141,7 @@ export function seasonSampler(docs, pick = Math.random) {
           direction: d.direction,
           capacity: d.lastCapacity,
           empty: dayAt(v).i === 0,
+          lateMin: minutesLate(d),
         }
       )
     },
