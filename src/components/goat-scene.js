@@ -839,6 +839,16 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     const b = busTrip(`busD${v + 2}`, t, busParks - busDriveS(), leave, mirror)
     if (b) cars.push(b)
   }
+  // The drop-off bus that brought this sailing's kids may still be parked or
+  // pulling away after the ferry's arrived (the visit ticks over, but it
+  // hasn't gone yet).
+  const ownKids = lineAt(S, 'kid', v)
+  if (isSchool(ownKids)) {
+    const parked = departsAt(S, v - 1)
+    const leave = parked + kidOutAt(ownKids.length - 1, ownKids.length) + 0.8
+    const b = busTrip(`busD${v}`, t, parked - busDriveS(), leave, mirror)
+    if (b) cars.push(b)
+  }
   // The ferry's setting off for here with school kids aboard: a bus comes
   // down to meet them (it leaves once they're all on — see unloadAt).
   if (isSchool(boarders(S, 'kid', v + 1))) {
