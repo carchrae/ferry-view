@@ -559,6 +559,11 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
   const homeTime = dayBreak
     ? overnightWindow(S, S.sampler.isDayStart(v + 2) ? v + 2 : v + 1).N0
     : Infinity
+  // After the day's last sailing from here nobody new turns up — tomorrow's
+  // first line arrives in the morning (see overnightDock), and is simply
+  // there once the night's over.
+  const quietEvening = dayBreak && t < homeTime
+  const none = []
 
   // --- cars: board up to capacity; the rest roll forward with the line and
   // stop at the front of the dock, still there as the ferry pulls away ---
@@ -582,7 +587,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     }
   })
   const leftCars = dayBreak ? 0 : line.length - nBoard
-  const nextCars = lineAt(S, 'car', v + 2).slice(leftCars)
+  const nextCars = quietEvening ? none : lineAt(S, 'car', v + 2).slice(leftCars)
   const arrivals = carArrivals(v + 2, nextCars.length)
   nextCars.forEach((item, i) => {
     const start = arrivals[i]
@@ -641,7 +646,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     }
   })
   const leftPeds = dayBreak ? 0 : crowd.length - nWalk
-  const nextPeds = lineAt(S, 'ped', v + 2).slice(leftPeds)
+  const nextPeds = quietEvening ? none : lineAt(S, 'ped', v + 2).slice(leftPeds)
   nextPeds.forEach((item, i) => {
     const start = PED_ARRIVE(i, nextPeds.length)
     if (sigma < start) return
@@ -686,7 +691,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       if (at) peds.push(ped(item, at.x, at.y, 1, e, 1, mirror))
     }
   })
-  const nextKids = lineAt(S, 'kid', v + 2)
+  const nextKids = quietEvening ? none : lineAt(S, 'kid', v + 2)
   const schoolDrop = isSchool(nextKids)
   // When the ferry next leaves the other dock (coming here): the moment the
   // school buses pull in at this end.

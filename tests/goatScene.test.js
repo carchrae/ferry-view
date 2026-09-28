@@ -218,6 +218,13 @@ describe('goatScene', () => {
       }
     }
     assert.ok(morning && morning.carsIn.length > 0, "Bowen's morning line arriving")
+    // Nobody for tomorrow's first sailing (Bowen, half 18) turns up in the
+    // evening after the day's last departure — only in the morning.
+    for (let e = scene.halfStart(16) + 5; e < scene.halfStart(17) + 8; e += 0.25) {
+      const f = scene(e)
+      const early = [...f.carsIn, ...f.peds].filter((x) => /^(car|ped)18\./.test(x.id))
+      assert.equal(early.length, 0, `tomorrow's line showed up in the evening at t=${e}`)
+    }
     // …and the day's first run leaves Horseshoe Bay empty
     const firstRun = scene(scene.halfStart(18) - 0.5)
     assert.equal(firstRun.night, null)
