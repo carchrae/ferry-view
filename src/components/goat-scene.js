@@ -102,7 +102,8 @@ const isSchool = (crowd) => crowd.length > 0 && !!crowd[0].kid
 function bus(id, s, uphill, mirror, lane) {
   const p = roadAt(s)
   const [dx, dy] = uphill ? [p.tx, p.ty] : [-p.tx, -p.ty]
-  return scaled(car({ id, color: '#fbc02d' }, 'bus', p.x, p.y + lane, dx, dy, mirror))
+  const c = scaled(car({ id, color: '#fbc02d' }, 'bus', p.x, p.y + lane, dx, dy, mirror))
+  return { ...c, kind: 'school', leaving: uphill }
 }
 const mixLane = (a, b, u) => a + (b - a) * Math.max(0, Math.min(1, u))
 // Driving down from the top of the road to park at BUS_S from time `from`,
@@ -240,6 +241,7 @@ function transitBus(id, kind, s, uphill, mirror, parts) {
           kind === 'artic' ? ARTIC_SCALE : BUS_SCALE,
         ),
         kind,
+        leaving: uphill,
         // the leading section gets the nose, the others the bellows behind
         front: uphill ? k === last : k === 0,
         trailing: uphill ? k === 0 : k === last,
@@ -1540,8 +1542,11 @@ function sceneFrame(S, t, W) {
     deck,
     riders,
     carsOut: cars.filter((c) => c.lane === 'out'),
-    buses: cars.filter((c) => c.lane === 'bus'),
-    transit: cars.filter((c) => c.lane === 'transit'),
+    // Buses arriving/parked (drawn in front) vs pulling away in the far lane
+    // (drawn behind the waiting cars).
+    buses: cars.filter((c) => c.lane === 'bus' && !c.leaving),
+    transit: cars.filter((c) => c.lane === 'transit' && !c.leaving),
+    busesLeaving: cars.filter((c) => (c.lane === 'bus' || c.lane === 'transit') && c.leaving),
     rescues: cars.filter((c) => c.lane === 'rescue'),
     carsIn: cars.filter((c) => c.lane === 'in'),
     peds,
