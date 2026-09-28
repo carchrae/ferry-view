@@ -50,6 +50,12 @@ const PED_UNLOAD = (j) => 0.4 + 0.3 * j
 // in summer (the 'kid' line): bunched up on the dock, never left behind,
 // dashing aboard and off in a stream, crowding the passenger deck.
 const KID_V = 85
+// Summer tourists (the hats) amble: slow walkers, drifting back and forth
+// while they wait, arriving from nearer and fading out sooner on their way.
+const TOURIST_V = 30
+const TOURIST_START_S = 95
+const TOURIST_GONE_S = 120
+const crowdV = (item) => (item.kid ? KID_V : TOURIST_V)
 const KID_WAIT_S = (k) => 6 + 2.2 * k // a packed crowd
 const KID_LOAD = (k) => 1.7 + 0.035 * k // …streaming aboard
 const KID_UNLOAD = (k) => 0.5 + 0.07 * k
@@ -344,7 +350,8 @@ function carArrivals(v, n) {
   return gaps.map((g) => (at += g * scale))
 }
 const boarders = (S, kind, v) => lineAt(S, kind, v).slice(0, capOf(S, kind, v))
-const kidBoarded = (sigma, k) => sigma >= KID_LOAD(k) + (KID_WAIT_S(k) + WALK_ON_LENGTH) / KID_V
+const kidBoarded = (sigma, k, item) =>
+  sigma >= KID_LOAD(k) + (KID_WAIT_S(k) + WALK_ON_LENGTH) / crowdV(item)
 
 // A car at (x, y) heading along (dx, dy): its transform keeps it upright with
 // the headlights (drawn at +x) leading.
@@ -477,6 +484,15 @@ function lostPed(item, t, s, mirror) {
     'confused',
     s,
   )
+}
+
+// A tourist waiting at road position s: ambling back and forth around it,
+// facing the way they're drifting, no hurry at all.
+function strollPed(item, t, s, mirror, dy = 0) {
+  const w = puzzledWander(t * 0.6, item.id)
+  const p = roadAt(s + 11 + w.off) // drifting up and down the dock around their spot
+  const dx = w.dir > 0 ? p.tx : -p.tx
+  return ped(item, p.x, p.y + LANE.walk + dy, dx, t * 10, 1, mirror, null, s)
 }
 
 // Everything at one dock (side 0 = Bowen, 1 = mainland) at time t.
@@ -679,10 +695,11 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
     const dy = (k % 2) * 2
     if (sigma < KID_LOAD(k)) {
       if (puzzled) return peds.push(lostPed(item, t, s0, mirror))
+      if (!item.kid) return peds.push(strollPed(item, t, s0, mirror, dy))
       const p = roadAt(s0)
       return peds.push(ped(item, p.x, p.y + LANE.walk + dy, 1, 0, 1, mirror, null, s0))
     }
-    const e = (sigma - KID_LOAD(k)) * KID_V
+    const e = (sigma - KID_LOAD(k)) * crowdV(item)
     if (e < s0) {
       const p = roadAt(s0 - e)
       peds.push(ped(item, p.x, p.y + LANE.walk + dy, 1, e, 1, mirror))
@@ -714,13 +731,14 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       ? t - (busParks + kidOutAt(i, nextKids.length))
       : sigma - KID_ARRIVE(i, nextKids.length)
     if (since < 0) return
-    const e = since * KID_V
+    const e = since * crowdV(item)
     const slot = KID_WAIT_S(i)
-    // School kids pile out of the bus; tourists stroll down the road.
+    // School kids pile out of the bus; tourists amble down the road.
     const s = schoolDrop
       ? BUS_S + Math.sign(slot - BUS_S) * Math.min(e, Math.abs(slot - BUS_S))
-      : Math.max(slot, PED_START_S - e)
+      : Math.max(slot, TOURIST_START_S - e)
     if (puzzled && s === slot) return peds.push(lostPed(item, t, slot, mirror))
+    if (!item.kid && s === slot) return peds.push(strollPed(item, t, slot, mirror, (i % 2) * 2))
     const p = roadAt(s)
     const here = s === slot
     peds.push(
@@ -774,14 +792,15 @@ function unloadAt(S, t, side, cars, peds, W) {
   const arriving = boarders(S, 'kid', v - 1)
   const school = isSchool(arriving)
   arriving.forEach((item, k) => {
-    const e = (sigma - KID_UNLOAD(k)) * KID_V
-    if (e < 0 || e > PED_GONE_S + WALK_ON_LENGTH) return
+    const e = (sigma - KID_UNLOAD(k)) * crowdV(item)
+    const gone = item.kid ? PED_GONE_S : TOURIST_GONE_S
+    if (e < 0 || e > gone + WALK_ON_LENGTH) return
     const off = along([...WALK_ON].reverse(), e)
     if (off) return peds.push(ped(item, off.x, off.y, -1, e, 1, mirror))
     const s = e - WALK_ON_LENGTH
     if (school && s >= BUS_S) return // on the bus
     const p = roadAt(s)
-    peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (PED_GONE_S - s) / 40), mirror))
+    peds.push(ped(item, p.x, p.y + LANE.walk, p.tx, e, Math.min(1, (gone - s) / 40), mirror))
   })
   if (school) {
     // The bus that met them waits until the last kid's aboard, then goes.
@@ -1020,7 +1039,7 @@ function sceneFrame(S, t, W) {
   })
   const kidsOn = boarders(S, 'kid', h)
   kidsOn.forEach((item, k) => {
-    if (kidBoarded(tau, k)) riders.push(riderAt(item, sign * kidSpot(k, kidsOn.length)))
+    if (kidBoarded(tau, k, item)) riders.push(riderAt(item, sign * kidSpot(k, kidsOn.length)))
   })
 
   // Each dock's ramp: lowered onto the ferry while it's berthed there,
