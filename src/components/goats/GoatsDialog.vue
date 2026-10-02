@@ -251,6 +251,42 @@
             <circle cx="6" cy="-3" r="3" fill="#111" />
             <circle cx="11" cy="-10" r="2" fill="#ffe082" />
           </g>
+          <!-- The worm's car: the same car with its roof off — body, a raked
+               windscreen up to where the hard top would be, and the cockpit
+               open so the worm can stand up in it. -->
+          <g id="goat-convertible">
+            <rect x="-11" y="-13" width="22" height="9" rx="3" />
+            <rect x="-7.5" y="-14.6" width="9.5" height="3" rx="1.2" fill="#37474f" />
+            <path d="M2 -13.4 L5.4 -19 L6.6 -18.3 L3.6 -13.4 Z" fill="#cfd8dc" />
+            <circle cx="-6" cy="-3" r="3" fill="#111" />
+            <circle cx="6" cy="-3" r="3" fill="#111" />
+            <circle cx="11" cy="-10" r="2" fill="#ffe082" />
+          </g>
+          <!-- The worm itself, in the driver's seat behind the windscreen:
+               neck up out of the open top and the head riding at about twice
+               the height of the car's roof (19), in an alpine hat. -->
+          <g id="goat-worm" stroke="#4b3425" stroke-width="0.7" stroke-linejoin="round">
+            <rect x="-4.6" y="-28.5" width="4.4" height="15.5" rx="2.2" fill="#4a6fc4" />
+            <!-- bow tie, where the worm meets the seat -->
+            <path d="M-2.4 -17.4 L-6 -19.2 L-6 -15.4 Z" fill="#d94f2b" />
+            <path d="M-2.4 -17.4 L1.2 -19.2 L1.2 -15.4 Z" fill="#d94f2b" />
+            <circle cx="-2.4" cy="-17.4" r="0.9" fill="#b03d1f" />
+            <circle cx="-2.4" cy="-30.5" r="5" fill="#d98a4f" />
+            <!-- one big eye, looking the way the car is going (+x) -->
+            <circle cx="-0.6" cy="-31.5" r="2.5" fill="#fff" />
+            <circle cx="0.1" cy="-31.7" r="1.2" fill="#1a1a1a" stroke="none" />
+            <path d="M-1.4 -27.7 C -0.4 -26.9, 0.8 -27.3, 1.2 -28.3" fill="none" />
+            <!-- hat: worn at a tilt, feather sweeping back off the brim -->
+            <g transform="translate(-2.4 -30.5) rotate(-18)">
+              <path
+                d="M-2 -4.6 C -8 -7, -11.6 -2.4, -9 2 C -8.6 -1.4, -5.6 -3.8, -2 -4.6 Z"
+                fill="#ece79a"
+              />
+              <path d="M-8.8 1.2 C -8.2 -1.8, -5.4 -3.8, -2.6 -4.5" fill="none" stroke-width="0.5" />
+              <path d="M-5.4 -3.4 C -5 -9.6, 4.6 -10.2, 5.2 -3.6 C 2 -5.6, -2.6 -5.8, -5.4 -3.4 Z" fill="#4a9f4e" />
+              <path d="M-7.4 -2.8 C -3.6 -5.9, 3.8 -6, 6.6 -2.6 C 3.4 -0.6, -4.2 -0.4, -7.4 -2.8 Z" fill="#3c8c41" />
+            </g>
+          </g>
           <!-- After dark: a headlight beam ahead (drawn under the cars) and
                red tail lights (on the car), in a car's frame: front at +x -->
           <path id="goat-car-beam" d="M11 -10 L46 -2 L46 -16 Z" fill="url(#goat-beam)" />
@@ -508,7 +544,8 @@
           />
         </g>
         <g v-for="c in scene.carsOut" :key="c.id" :transform="c.transform">
-          <use href="#goat-car" :fill="c.color" />
+          <use :href="c.worm ? '#goat-convertible' : '#goat-car'" :fill="c.color" />
+          <use v-if="c.worm" href="#goat-worm" :transform="`rotate(${c.sway} -2.4 -13)`" />
           <use v-if="dark" href="#goat-car-tail" />
         </g>
 
@@ -528,13 +565,14 @@
              it rises, and the control tower on top, tapered in at the bottom. -->
         <g :transform="`translate(${scene.ferryX.toFixed(1)} 198)`">
           <!-- car deck: cars (overlapping when it's busy) behind a side wall -->
-          <use
+          <g
             v-for="c in scene.deck"
             :key="c.id"
-            href="#goat-car"
-            :fill="c.color"
-            :transform="`translate(${c.dx} -12)`"
-          />
+            :transform="`translate(${c.dx} -12)${c.flip ? ' scale(-1 1)' : ''}`"
+          >
+            <use :href="c.worm ? '#goat-convertible' : '#goat-car'" :fill="c.color" />
+            <use v-if="c.worm" href="#goat-worm" :transform="`rotate(${c.sway} -2.4 -13)`" />
+          </g>
           <!-- dark hull, orange boot-top stripe at the waterline -->
           <path d="M-56 0 L56 0 L66 -7 L-66 -7 Z" fill="#263238" />
           <path d="M-57 -1.2 L57 -1.2 L58.3 -2.8 L-58.3 -2.8 Z" fill="#ff6d00" />
@@ -685,7 +723,8 @@
           />
         </g>
         <g v-for="c in scene.carsIn" :key="c.id" :transform="c.transform">
-          <use href="#goat-car" :fill="c.color" />
+          <use :href="c.worm ? '#goat-convertible' : '#goat-car'" :fill="c.color" />
+          <use v-if="c.worm" href="#goat-worm" :transform="`rotate(${c.sway} -2.4 -13)`" />
           <use v-if="dark" href="#goat-car-tail" />
         </g>
         <!-- …and the ones that didn't fit, fuming -->

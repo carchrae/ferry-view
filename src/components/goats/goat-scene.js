@@ -658,13 +658,36 @@ function newcomers(S, kind, v, carried = 0) {
   // backlog, plus newcomers up to how full it was.
   const room = typeof load === 'number' && kind === 'car' ? CAR_CAPACITY : capOf(S, kind, v)
   const fits = S.sampler && load !== 'full' ? Math.max(carried ? 0 : 1, room - carried) : n
-  return Array.from({ length: Math.min(n, fits) }, (_, i) => ({
+  const items = Array.from({ length: Math.min(n, fits) }, (_, i) => ({
     id: `${kind}${v}.${i}`,
     color:
       kind === 'car'
         ? CAR_COLORS[mod(v * 5 + i, CAR_COLORS.length)]
         : SHIRTS[mod(v * 3 + i, SHIRTS.length)],
   }))
+  // One car a day is the worm's convertible (see wormCar).
+  const worm = kind === 'car' ? wormCar(S, v, items.length) : -1
+  if (worm >= 0) items[worm].worm = true
+  return items
+}
+
+// The worm — a very tall worm in an alpine hat, riding a convertible — takes
+// the ferry once a day: one sailing, one car in its line. Which sailing is
+// seeded by the day's first half, so a replayed day always puts the worm on
+// the same one, and which car by the visit, so it's the same car every time
+// that line is rebuilt. Never the day's empty first run (nobody's aboard).
+// WORM_EVERY_SAILING is the testing switch: a worm on every sailing instead
+// (createGoatScene takes `wormEverySailing` to override it).
+export const WORM_EVERY_SAILING = false
+function wormVisit(S, v) {
+  if (S.wormEverySailing) return v
+  const halves = (S.sampler ? S.sampler.dayHalves(v) : DAY_HALVES) || DAY_HALVES
+  const start = v - (S.sampler ? S.sampler.dayIndex(v) : mod(v, DAY_HALVES))
+  return start + 1 + Math.floor(rnd(start, 91) * Math.max(1, halves - 1))
+}
+function wormCar(S, v, n) {
+  if (!n || wormVisit(S, v) !== v) return -1
+  return Math.floor(rnd(v, 92) * n)
 }
 function lineAt(S, kind, v) {
   if (v < -2) return []
@@ -778,6 +801,8 @@ function car(item, lane, x, y, dx, dy, mirror, mad = false) {
     lane,
     color: item.color,
     mad,
+    worm: !!item.worm,
+    sway: item.worm ? wormSway(item) : 0,
     // Where to put the angry "!" (above the roof, unrotated).
     badge: { x: x.toFixed(1), y: (y - 24).toFixed(1) },
     transform: `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${deg.toFixed(1)})${flip ? ' scale(-1 1)' : ''}`,
@@ -863,14 +888,24 @@ function carsWaitToBoard(S, v) {
   })
   return Math.max(0, done + 0.2 - CAR_LOAD(0))
 }
+// Where visit v's car k ends up on the deck. The worm waits his turn in the
+// line like everyone else, but once aboard he drives straight up to the front
+// of the ferry, past whoever boarded ahead of him — and so is first off at
+// the other end. Everyone he passes parks one spot further back.
+function deckIndex(S, v, k) {
+  const w = boarders(S, 'car', v).findIndex((item) => item.worm)
+  if (w < 0 || k > w) return k
+  return k === w ? 0 : k + 1
+}
+const deckSlot = (S, v, k) => farSlot(deckIndex(S, v, k))
 // When visit v's car k sets off aboard (load clock).
 const carLoad = (S, v, k) => CAR_LOAD(k) + carsWaitToBoard(S, v)
 // …and when it's parked on the deck.
 const carAboard = (S, v, k) =>
-  carLoad(S, v, k) + (QUEUE_S(k) + pathLength(deckPath(BERTH + farSlot(k)))) / CAR_V
+  carLoad(S, v, k) + (QUEUE_S(k) + pathLength(deckPath(BERTH + deckSlot(S, v, k)))) / CAR_V
 const carBoarded = (S, v, sigma, k) => {
   const e = (sigma - carLoad(S, v, k)) * CAR_V
-  return e > 0 && !toDeck(e, QUEUE_S(k), BERTH + farSlot(k))
+  return e > 0 && !toDeck(e, QUEUE_S(k), BERTH + deckSlot(S, v, k))
 }
 const pedBoarded = (sigma, j) => sigma >= PED_LOAD(j) + (WAIT_S(j) + WALK_ON_LENGTH) / PED_V
 
@@ -888,6 +923,8 @@ function queued(item, s, mirror, bounce = 0) {
 
 // Confused, during a breakdown: a little hop, out of step person to person…
 const seedOf = (id) => id.length * 1.3 + id.charCodeAt(id.length - 1)
+// The worm stands a head taller than the windscreen, so it sways as it goes.
+const wormSway = (item) => +(Math.sin(frameT * 2.2 + seedOf(item.id) * 1.7) * 6).toFixed(1)
 const puzzledHop = (t, id) => Math.abs(Math.sin(t * 9 + seedOf(id))) * 4
 // …while wandering back and forth. `off` is how far they've strayed (units),
 // `dir` which way they're heading (+1 = toward larger off).
@@ -1039,7 +1076,7 @@ function dockDay(S, t, side, cars, peds, ferryHere, W, puzzled) {
       }
       cars.push(queued(item, QUEUE_S(k), mirror, fuming(v, t, k)))
     } else {
-      const at = toDeck((sigma - carLoad(S, v, k)) * CAR_V, QUEUE_S(k), BERTH + farSlot(k))
+      const at = toDeck((sigma - carLoad(S, v, k)) * CAR_V, QUEUE_S(k), BERTH + deckSlot(S, v, k))
       // On the ramp it's drawn with the far lane, i.e. behind the ferry's wall.
       if (at) cars.push(car(item, at.onRamp ? 'out' : 'in', at.x, at.y, at.dx, at.dy, mirror))
     }
@@ -1606,9 +1643,10 @@ function unloadAt(S, t, side, cars, peds, W) {
   const mirror = side === 1 ? W : 0
   const { h: v, tauU: sigma, tauC } = halfAt(S, t)
   boarders(S, 'car', v - 1).forEach((item, i) => {
-    const start = CAR_UNLOAD(i)
+    const d = deckIndex(S, v - 1, i)
+    const start = CAR_UNLOAD(d)
     if (tauC < start) return // (still waiting for the tourists to clear)
-    const route = deckPath(BERTH - farSlot(i)).reverse()
+    const route = deckPath(BERTH - farSlot(d)).reverse()
     const e = (tauC - start) * CAR_V
     const at = along(route, e)
     if (at) {
@@ -1849,12 +1887,24 @@ function sceneFrame(S, t, W) {
   // layout is mirrored, hence `sign`.
   const sign = side === 0 ? 1 : -1
   const deck = []
+  // Parked cars keep the way they drove aboard (and will drive off, straight
+  // through the double-ended ferry): off the Bowen ramp they face +x, off the
+  // mainland's -x. Drawn facing +x either way, a car — and unmistakably the
+  // worm — would spin round as it parked.
+  const aboard = (item, dx, flip) => ({
+    id: item.id,
+    dx,
+    flip,
+    color: item.color,
+    worm: !!item.worm,
+    sway: item.worm ? wormSway(item) : 0,
+  })
   boarders(S, 'car', h - 1).forEach((item, i) => {
-    if (tauC < CAR_UNLOAD(i)) deck.push({ id: item.id, dx: -sign * farSlot(i), color: item.color })
+    const d = deckIndex(S, h - 1, i)
+    if (tauC < CAR_UNLOAD(d)) deck.push(aboard(item, -sign * farSlot(d), sign > 0))
   })
   boarders(S, 'car', h).forEach((item, k) => {
-    if (carBoarded(S, h, tau, k))
-      deck.push({ id: item.id, dx: sign * farSlot(k), color: item.color })
+    if (carBoarded(S, h, tau, k)) deck.push(aboard(item, sign * deckSlot(S, h, k), sign < 0))
   })
   const riders = []
   boarders(S, 'ped', h - 1).forEach((item, j) => {
@@ -1995,9 +2045,14 @@ function sleepyZs(time, ferryX) {
 // real days (see seasonSampler). Returns (t, W) => frame, with .halfStart(h).
 // `seed` varies the random breakdowns and whales between openings (the tests
 // keep the default, 0, so they're repeatable).
-export function createGoatScene({ sampler = null, seed = 0 } = {}) {
+export function createGoatScene({
+  sampler = null,
+  seed = 0,
+  wormEverySailing = WORM_EVERY_SAILING,
+} = {}) {
   const S = {
     seed,
+    wormEverySailing,
     lines: { car: new Map(), ped: new Map(), kid: new Map() },
     spots: new Map(), // where each bus stops at the bus stop (stopSpot)
     plans: new Map(), // who does what off each ferry (walkOffPlan)
@@ -2203,8 +2258,9 @@ export function seasonSampler(
       return rnd(v, 81) < 0.5 ? 'jam' : 'sea'
     },
     // Visit v's position in its day (0 = the empty first run, 1 = the first
-    // sailing from Bowen, …).
+    // sailing from Bowen, …), and how many halves that day runs to.
     dayIndex: (v) => dayAt(v).i,
+    dayHalves: (v) => dayOf(dayAt(v).k).halves,
     // Visit v is a day's empty first run (Horseshoe Bay → Bowen).
     emptyRun: (v) => dayAt(v).i === 0,
     // Half h is the first of a new day (so the night before it is slept).

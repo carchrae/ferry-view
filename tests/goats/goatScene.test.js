@@ -178,6 +178,43 @@ describe('goatScene', () => {
     assert.equal(goatScene(halfStart(h + 1) + 0.5).ferryX, BERTHS[(h + 1) % 2])
   })
 
+  it('the worm rides one sailing a day, parked at the front of the ferry', () => {
+    const docs = []
+    for (const dateIso of ['2026-08-02', '2026-08-03']) {
+      for (let i = 0; i < 8; i++) {
+        const sailingTime = `${String(7 + i).padStart(2, '0')}:00`
+        docs.push({ dateIso, sailingTime, direction: 'To HSB', lastCapacity: '50%' })
+        docs.push({ dateIso, sailingTime, direction: 'To Bowen', lastCapacity: '50%' })
+      }
+    }
+    // The worm's convertibles seen anywhere in day one (halves 1–16). One car
+    // shows up over several halves — waiting, aboard, driving off — so it's
+    // the distinct cars that count.
+    const wormCars = (opts) => {
+      const scene = createGoatScene({ sampler: seasonSampler(docs, () => 0), ...opts })
+      const seen = new Set()
+      for (let h = 1; h <= 16; h++) {
+        for (const dt of [0.5, 2, 3.5, 5]) {
+          const f = scene(scene.halfStart(h) + dt)
+          for (const c of [...f.deck, ...f.carsIn, ...f.carsOut]) if (c.worm) seen.add(c.id)
+          // Aboard, he's always at the front: no car is parked ahead of him.
+          const worm = f.deck.find((c) => c.worm)
+          if (worm) {
+            const ahead = f.deck.filter((c) => Math.abs(c.dx) > Math.abs(worm.dx))
+            assert.equal(ahead.length, 0, `cars ahead of the worm at ${h}: ${ahead.length}`)
+          }
+        }
+      }
+      return [...seen]
+    }
+    // Once a day: a single car, and the same one every time the day is built.
+    const once = wormCars({ wormEverySailing: false })
+    assert.equal(once.length, 1, `worm cars in a day: ${once}`)
+    assert.deepEqual(wormCars({ wormEverySailing: false }), once)
+    // The testing switch puts one on (near enough) every sailing.
+    assert.ok(wormCars({ wormEverySailing: true }).length > 10)
+  })
+
   it('after the last sailing the ferry sleeps at Horseshoe Bay, docks empty, then morning', () => {
     const docs = []
     for (const dateIso of ['2026-08-02', '2026-08-03']) {
