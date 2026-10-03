@@ -1,133 +1,150 @@
 <template>
-  <div class="user-reports">
-    <!-- The header doubles as the show-more toggle once reports are folded,
+  <!-- Content on the left, a round add button on the right — the same
+       shape as the status card's buttons. -->
+  <div class="user-reports row no-wrap items-center">
+    <div class="col" style="min-width: 0">
+      <!-- The header doubles as the show-more toggle once reports are folded,
          so the toggle costs no row of its own. -->
-    <div
-      class="row items-center no-wrap"
-      :class="{ 'cursor-pointer': canFold }"
-      :role="canFold ? 'button' : undefined"
-      :aria-expanded="canFold ? showAll : undefined"
-      @click="canFold && (showAll = !showAll)"
-    >
-      <div class="col ellipsis text-caption text-weight-bold text-grey-6">
-        <span v-if="canFold" class="text-primary q-mr-xs">
-          <q-icon :name="showAll ? 'expand_less' : 'expand_more'" size="16px" />{{
-            showAll ? 'hide' : `${totalReports - COLLAPSED_COUNT} more`
-          }}
-          ·
-        </span>
-        Rider reports
-        <!-- The first day's heading rides on this line to save a row. -->
-        <span v-if="shownDays.length" class="text-weight-regular">· {{ shownDays[0].label }}</span>
-        <span v-if="!reportDays.length && !adding" class="text-weight-regular text-grey-5">
-          — seeing something? tell other riders
-        </span>
-      </div>
-      <q-btn
-        v-if="!adding"
-        flat
-        rounded
-        dense
-        no-caps
-        color="primary"
-        icon="add"
-        label="Report"
-        class="ur-add"
-        @click.stop="startAdd"
-      />
-    </div>
-
-    <form v-if="adding" class="row items-start no-wrap q-mb-xs" @submit.prevent="submit">
-      <q-input
-        v-model="draft"
-        class="col"
-        dense
-        outlined
-        autofocus
-        counter
-        :maxlength="USER_REPORT_MAX_LENGTH"
-        placeholder="e.g. lineup past the gas station"
-        @keydown.esc="cancelAdd"
-      />
-      <q-btn
-        type="submit"
-        dense
-        no-caps
-        unelevated
-        color="primary"
-        label="Post"
-        class="q-ml-xs"
-        :loading="saving"
-        :disable="!draft.trim()"
-      />
-      <q-btn flat dense no-caps color="grey-7" label="Cancel" class="q-ml-xs" @click="cancelAdd" />
-    </form>
-
-    <div v-for="(g, i) in shownDays" :key="g.day">
-      <div v-if="i > 0" class="ur-day text-caption text-grey-6">{{ g.label }}</div>
-      <div v-for="r in g.reports" :key="r.id" class="ur-item">
-        <div
-          class="ur-line row no-wrap items-center cursor-pointer"
-          role="button"
-          :aria-expanded="expanded === r.id"
-          @click="toggle(r.id)"
-        >
-          <q-icon name="chat_bubble_outline" size="14px" color="grey-6" class="q-mr-xs" />
-          <div class="col text-body2" :class="expanded === r.id ? 'ur-text-full' : 'ellipsis'">
-            {{ r.text }}
-          </div>
-          <span
-            v-if="reportScore(r)"
-            class="text-caption q-ml-sm text-no-wrap"
-            :class="reportScore(r) > 0 ? 'text-positive' : 'text-negative'"
-            ><q-icon :name="reportScore(r) > 0 ? 'thumb_up' : 'thumb_down'" size="12px" />
-            {{ Math.abs(reportScore(r)) }}</span
+      <div
+        class="row items-center no-wrap"
+        :class="{ 'cursor-pointer': canFold }"
+        :role="canFold ? 'button' : undefined"
+        :aria-expanded="canFold ? showAll : undefined"
+        @click="canFold && (showAll = !showAll)"
+      >
+        <div class="col ellipsis text-caption text-weight-bold text-grey-6">
+          <span v-if="canFold" class="text-primary q-mr-xs">
+            <q-icon :name="showAll ? 'expand_less' : 'expand_more'" size="16px" />{{
+              showAll ? 'hide' : `${totalReports - COLLAPSED_COUNT} more`
+            }}
+            ·
+          </span>
+          Rider reports
+          <!-- The first day's heading rides on this line to save a row. -->
+          <span v-if="shownDays.length" class="text-weight-regular"
+            >· {{ shownDays[0].label }}</span
           >
-          <span class="text-caption text-grey-6 q-ml-sm text-no-wrap">{{ ago(r.createdAt) }}</span>
+          <span v-if="!reportDays.length && !adding" class="text-weight-regular text-grey-5">
+            — seeing something? tell other riders
+          </span>
         </div>
-        <div
-          v-if="expanded === r.id"
-          class="row items-center no-wrap text-caption text-grey-7 q-pl-md"
-        >
-          <div class="col ellipsis">
-            {{ r.anonymous ? 'Anonymous' : formatReporterName(r.userName) }} ·
-            {{ clockTime(r.createdAt) }}
+      </div>
+
+      <form v-if="adding" class="row items-start no-wrap q-mb-xs" @submit.prevent="submit">
+        <q-input
+          v-model="draft"
+          class="col"
+          dense
+          outlined
+          autofocus
+          counter
+          :maxlength="USER_REPORT_MAX_LENGTH"
+          placeholder="e.g. lineup past the gas station"
+          @keydown.esc="cancelAdd"
+        />
+        <q-btn
+          type="submit"
+          dense
+          no-caps
+          unelevated
+          color="primary"
+          label="Post"
+          class="q-ml-xs"
+          :loading="saving"
+          :disable="!draft.trim()"
+        />
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="grey-7"
+          label="Cancel"
+          class="q-ml-xs"
+          @click="cancelAdd"
+        />
+      </form>
+
+      <div v-for="(g, i) in shownDays" :key="g.day">
+        <div v-if="i > 0" class="ur-day text-caption text-grey-6">{{ g.label }}</div>
+        <div v-for="r in g.reports" :key="r.id" class="ur-item">
+          <div
+            class="ur-line row no-wrap items-center cursor-pointer"
+            role="button"
+            :aria-expanded="expanded === r.id"
+            @click="toggle(r.id)"
+          >
+            <q-icon name="chat_bubble_outline" size="14px" color="grey-6" class="q-mr-xs" />
+            <div class="col text-body2" :class="expanded === r.id ? 'ur-text-full' : 'ellipsis'">
+              {{ r.text }}
+            </div>
+            <span
+              v-if="reportScore(r)"
+              class="text-caption q-ml-sm text-no-wrap"
+              :class="reportScore(r) > 0 ? 'text-positive' : 'text-negative'"
+              ><q-icon :name="reportScore(r) > 0 ? 'thumb_up' : 'thumb_down'" size="12px" />
+              {{ Math.abs(reportScore(r)) }}</span
+            >
+            <span class="text-caption text-grey-6 q-ml-sm text-no-wrap">{{
+              ago(r.createdAt)
+            }}</span>
           </div>
-          <q-btn
-            flat
-            dense
-            no-caps
-            size="sm"
-            icon="thumb_up"
-            :color="myVote(r) === 1 ? 'positive' : 'grey-6'"
-            :label="String(tallyVotes(r.votes).up)"
-            aria-label="Thumbs up"
-            @click.stop="castVote(r, 1)"
-          />
-          <q-btn
-            flat
-            dense
-            no-caps
-            size="sm"
-            icon="thumb_down"
-            :color="myVote(r) === -1 ? 'negative' : 'grey-6'"
-            :label="String(tallyVotes(r.votes).down)"
-            aria-label="Thumbs down"
-            @click.stop="castVote(r, -1)"
-          />
-          <q-btn
-            v-if="user && r.userUid === user.uid"
-            flat
-            dense
-            size="sm"
-            icon="delete_outline"
-            color="grey-6"
-            aria-label="Delete report"
-            @click.stop="remove(r)"
-          />
+          <div
+            v-if="expanded === r.id"
+            class="row items-center no-wrap text-caption text-grey-7 q-pl-md"
+          >
+            <div class="col ellipsis">
+              {{ r.anonymous ? 'Anonymous' : formatReporterName(r.userName) }} ·
+              {{ clockTime(r.createdAt) }}
+            </div>
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="thumb_up"
+              :color="myVote(r) === 1 ? 'positive' : 'grey-6'"
+              :label="String(tallyVotes(r.votes).up)"
+              aria-label="Thumbs up"
+              @click.stop="castVote(r, 1)"
+            />
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              icon="thumb_down"
+              :color="myVote(r) === -1 ? 'negative' : 'grey-6'"
+              :label="String(tallyVotes(r.votes).down)"
+              aria-label="Thumbs down"
+              @click.stop="castVote(r, -1)"
+            />
+            <q-btn
+              v-if="user && r.userUid === user.uid"
+              flat
+              dense
+              size="sm"
+              icon="delete_outline"
+              color="grey-6"
+              aria-label="Delete report"
+              @click.stop="remove(r)"
+            />
+          </div>
         </div>
       </div>
     </div>
+    <q-btn
+      v-if="!adding"
+      dense
+      round
+      unelevated
+      size="md"
+      color="green-1"
+      text-color="primary"
+      icon="add"
+      aria-label="Add a rider report"
+      class="ur-add"
+      @click.stop="startAdd"
+    />
   </div>
 </template>
 
@@ -262,10 +279,7 @@ function clockTime(ms) {
 }
 
 .ur-add {
-  min-height: 0;
-  /* Right edge flush with the report times below it. */
-  padding: 2px 2px 2px 6px;
-  font-size: 14px;
+  margin: 4px 0 4px 8px;
 }
 
 .ur-line {

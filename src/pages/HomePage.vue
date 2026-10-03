@@ -1,5 +1,5 @@
 <template>
-  <q-page class="q-pa-sm">
+  <q-page class="q-pa-sm home-page">
     <!-- Stale-data overlay. The page keeps rendering underneath — the numbers
          are still the best we have — but it must not look live when it isn't.
          Suppressed for a grace period after mount so a slow first snapshot
@@ -124,7 +124,7 @@
                 round
                 unelevated
                 size="md"
-                color="blue-1"
+                color="green-1"
                 text-color="primary"
                 :icon="speedIcon"
                 aria-label="Ferry on the map"
@@ -184,7 +184,7 @@
               round
               unelevated
               size="md"
-              color="blue-1"
+              color="green-1"
               text-color="primary"
               :icon="speedIcon"
               aria-label="Ferry on the map"

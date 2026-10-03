@@ -14,3 +14,21 @@
 .debugcss * {
   border: 1px solid green;
 }
+
+// Phones: half the usual side padding on every page, so content gets the
+// width. Top/bottom padding unchanged.
+@media (max-width: 599.98px) {
+  .q-page.q-pa-sm {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  .q-page.q-pa-md {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  // Home goes nearly edge to edge.
+  .q-page.home-page {
+    padding-left: 1px;
+    padding-right: 1px;
+  }
+}
