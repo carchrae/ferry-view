@@ -1,5 +1,5 @@
 <template>
-  <div class="user-reports q-mb-sm">
+  <div class="user-reports">
     <!-- The header doubles as the show-more toggle once reports are folded,
          so the toggle costs no row of its own. -->
     <div
@@ -26,12 +26,13 @@
       <q-btn
         v-if="!adding"
         flat
+        rounded
         dense
         no-caps
-        size="sm"
         color="primary"
-        icon="add_comment"
+        icon="add"
         label="Report"
+        class="ur-add"
         @click.stop="startAdd"
       />
     </div>
@@ -152,7 +153,7 @@ watch(needsSignIn, (v) => {
 
 // More than this many reports and the rest fold behind the header's "N more", so a
 // busy day can't push the sailings off the first screen.
-const COLLAPSED_COUNT = 1
+const COLLAPSED_COUNT = 2
 const showAll = ref(false)
 
 const totalReports = computed(() => reportDays.value.reduce((n, g) => n + g.reports.length, 0))
@@ -251,6 +252,22 @@ function clockTime(ms) {
 </script>
 
 <style scoped>
+/* A card like the status card above it (HomePage .vs-card): same border
+   and radius, so the two read as a pair. */
+.user-reports {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 0 6px 2px 8px;
+  margin-bottom: 8px;
+}
+
+.ur-add {
+  min-height: 0;
+  /* Right edge flush with the report times below it. */
+  padding: 2px 2px 2px 6px;
+  font-size: 14px;
+}
+
 .ur-line {
   padding: 2px 0;
   min-height: 24px;
