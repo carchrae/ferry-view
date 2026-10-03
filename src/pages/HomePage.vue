@@ -139,25 +139,28 @@
             <!-- Below the rule: the next boat each way with its current
                  fullness and the typical-history hint — the same two facts,
                  in the same order, that the sailing rows below carry. -->
-            <div v-if="nextHints.length" class="vs-next text-caption">
-              <!-- Route / time / what-to-expect as three grid columns. The
-                   cells are direct children of the grid, not wrapped per row,
-                   which is what lets the two rows share column widths and line
-                   up despite "to HSB" and "to Bowen" being different lengths. -->
-              <template v-for="n in nextHints" :key="n.label">
-                <span class="text-grey-7 text-no-wrap">{{ n.label }}</span>
-                <span class="text-grey-7 text-no-wrap">{{ n.time }}</span>
-                <span class="vs-next-fact">
-                  <span
-                    v-if="n.status"
-                    class="text-weight-bold"
-                    :class="'text-' + n.status.color"
-                    >{{ n.status.text }}</span
-                  >
-                  <span v-if="n.status && n.hint" class="text-grey-5"> · </span>
-                  <span v-if="n.hint" :class="'text-' + n.hint.color">{{ n.hint.text }}</span>
-                </span>
-              </template>
+            <div v-if="nextHints.length" class="vs-next-wrap row no-wrap items-center">
+              <div class="vs-next text-caption col">
+                <!-- Route / time / what-to-expect as three grid columns. The
+                     cells are direct children of the grid, not wrapped per row,
+                     which is what lets the two rows share column widths and line
+                     up despite "to HSB" and "to Bowen" being different lengths. -->
+                <template v-for="n in nextHints" :key="n.label">
+                  <span class="text-grey-7 text-no-wrap">{{ n.label }}</span>
+                  <span class="text-grey-7 text-no-wrap">{{ n.time }}</span>
+                  <span class="vs-next-fact">
+                    <span
+                      v-if="n.status"
+                      class="text-weight-bold"
+                      :class="'text-' + n.status.color"
+                      >{{ n.status.text }}</span
+                    >
+                    <span v-if="n.status && n.hint" class="text-grey-5"> · </span>
+                    <span v-if="n.hint" :class="'text-' + n.hint.color">{{ n.hint.text }}</span>
+                  </span>
+                </template>
+              </div>
+              <ServiceNoticeButton class="q-ml-xs" />
             </div>
           </div>
         </div>
@@ -170,6 +173,7 @@
               <div class="text-caption">{{ speedText }}</div>
             </div>
             <q-space />
+            <ServiceNoticeButton class="q-mr-sm" />
             <div class="text-caption text-grey-6">
               Last Update <br />
               {{ formatTime12h(ferryData.lastUpdate) }}
@@ -200,6 +204,8 @@
           {{ holidayContext.onHoliday ? holidayContext.name : `${holidayContext.name} weekend` }}
           — expect heavier traffic than usual
         </div>
+
+        <UserReports @sign-in="showSignInDialog = true" />
 
         <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col-12">
@@ -921,6 +927,8 @@ import { useWebcamHealth } from 'src/composables/useWebcamHealth'
 import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
+import UserReports from 'src/components/UserReports.vue'
+import ServiceNoticeButton from 'src/components/ServiceNoticeButton.vue'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 
 const $q = useQuasar()
@@ -1985,10 +1993,14 @@ onUnmounted(() => {
   padding: 5px 8px 6px;
 }
 
-.vs-next {
+.vs-next-wrap {
   margin-top: 4px;
   padding-top: 4px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.vs-next {
+  min-width: 0;
   display: grid;
   // Route and time size to their widest content and so align down the rows;
   // the facts take the rest. minmax(0, 1fr) rather than 1fr so the column is

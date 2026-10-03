@@ -41,6 +41,7 @@ import { recomputeHistoricalStats } from './lib/history-aggregate.js'
 import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
 import { functionsActive } from './lib/control.js'
 import { ensureClassifierModelDocs } from './lib/classifier-models.js'
+import { refreshServiceNotices } from './lib/service-notices.js'
 import { isValidLineupReport } from './lib/lineup-labels.js'
 import { nowInVancouver, timeToDate, TZ } from './lib/time.js'
 
@@ -635,6 +636,22 @@ export const rebuildLeaderboard = onRequest(async (req, res) => {
     res.status(500).json({ error: String(e) })
   }
 })
+
+// BC Ferries service notices for the Bowen route → snapshots/serviceNotices.
+// Notices change a few times a week at most; 5 minutes is plenty.
+export const pollServiceNotices = onSchedule(
+  {
+    schedule: 'every 5 minutes',
+  },
+  async () => {
+    if (!(await functionsActive())) return
+    try {
+      await refreshServiceNotices(db)
+    } catch (e) {
+      logger.error('Service notice poll failed:', e.message || e)
+    }
+  },
+)
 
 export const cleanupWebcams = onSchedule(
   {

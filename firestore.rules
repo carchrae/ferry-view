@@ -74,6 +74,33 @@ service cloud.firestore {
         && request.auth.uid == resource.data.userUid;
     }
 
+    // Rider reports ("lineup past the gas station", "4:00 cancelled").
+    // Signed-in users create their own; anyone signed in may cast, change or
+    // withdraw THEIR OWN vote in the votes map ({uid: 1 | -1}) and nothing
+    // else. Authors may delete their own. Hiding a heavily down-voted report
+    // is a client-side filter over the votes map.
+    match /userReports/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['text', 'userUid', 'createdAt', 'votes'])
+        && request.resource.data.keys().hasOnly(['text', 'userUid', 'createdAt', 'votes',
+            'userName', 'userPhoto', 'anonymous'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 280
+        && request.resource.data.createdAt is number
+        && request.resource.data.votes == {}
+        && request.resource.data.userUid == request.auth.uid;
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes'])
+        && request.resource.data.votes.diff(resource.data.votes).affectedKeys()
+            .hasOnly([request.auth.uid])
+        && (!(request.auth.uid in request.resource.data.votes)
+            || request.resource.data.votes[request.auth.uid] in [1, -1]);
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.userUid;
+    }
+
     // Sailing status collection (server-write only)
     match /sailingStatus/{docId} {
       allow read: if true;
