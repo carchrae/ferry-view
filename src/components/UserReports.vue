@@ -1,7 +1,21 @@
 <template>
   <div class="user-reports q-mb-sm">
-    <div class="row items-center no-wrap">
-      <div class="col text-caption text-weight-bold text-grey-6">
+    <!-- The header doubles as the show-more toggle once reports are folded,
+         so the toggle costs no row of its own. -->
+    <div
+      class="row items-center no-wrap"
+      :class="{ 'cursor-pointer': canFold }"
+      :role="canFold ? 'button' : undefined"
+      :aria-expanded="canFold ? showAll : undefined"
+      @click="canFold && (showAll = !showAll)"
+    >
+      <div class="col ellipsis text-caption text-weight-bold text-grey-6">
+        <span v-if="canFold" class="text-primary q-mr-xs">
+          <q-icon :name="showAll ? 'expand_less' : 'expand_more'" size="16px" />{{
+            showAll ? 'hide' : `${totalReports - COLLAPSED_COUNT} more`
+          }}
+          ·
+        </span>
         Rider reports
         <!-- The first day's heading rides on this line to save a row. -->
         <span v-if="shownDays.length" class="text-weight-regular">· {{ shownDays[0].label }}</span>
@@ -18,7 +32,7 @@
         color="primary"
         icon="add_comment"
         label="Report"
-        @click="startAdd"
+        @click.stop="startAdd"
       />
     </div>
 
@@ -113,19 +127,6 @@
         </div>
       </div>
     </div>
-
-    <q-btn
-      v-if="totalReports > COLLAPSED_COUNT"
-      flat
-      dense
-      no-caps
-      size="sm"
-      color="primary"
-      class="q-mt-xs"
-      :icon="showAll ? 'expand_less' : 'expand_more'"
-      :label="showAll ? 'Show fewer' : `Show ${totalReports - COLLAPSED_COUNT} more`"
-      @click="showAll = !showAll"
-    />
   </div>
 </template>
 
@@ -149,12 +150,13 @@ watch(needsSignIn, (v) => {
   }
 })
 
-// More than this many reports and the rest fold behind "Show N more", so a
+// More than this many reports and the rest fold behind the header's "N more", so a
 // busy day can't push the sailings off the first screen.
-const COLLAPSED_COUNT = 3
+const COLLAPSED_COUNT = 1
 const showAll = ref(false)
 
 const totalReports = computed(() => reportDays.value.reduce((n, g) => n + g.reports.length, 0))
+const canFold = computed(() => totalReports.value > COLLAPSED_COUNT)
 
 // The first COLLAPSED_COUNT reports in display order, keeping their day
 // headings; a day left with nothing to show drops out.
