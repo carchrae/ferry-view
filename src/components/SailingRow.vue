@@ -57,8 +57,9 @@
              happened to end. -->
         <div
           v-if="hasNowFact || hint"
+          ref="factsEl"
           class="sr-status sr-facts text-caption"
-          :class="{ 'sr-facts--hint-only': !hasNowFact }"
+          :class="{ 'sr-facts--hint-only': !hasNowFact, 'sr-facts--clip': clipHint }"
         >
           <span v-if="hasNowFact" class="sr-fact-now">
             <template v-if="capacity">
@@ -79,7 +80,7 @@
               <span class="text-orange-9">{{ typeBadge.text }}</span>
             </template>
           </span>
-          <HintLine v-if="hint" :hint="hint" inline @click="$emit('typical')" />
+          <HintLine v-if="hint" :hint="cardHint" inline @click="$emit('typical')" />
         </div>
       </div>
     </div>
@@ -173,7 +174,7 @@
 </template>
 
 <script setup>
-import { computed, h } from 'vue'
+import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useQuasar, QIcon } from 'quasar'
 import { formatTime12h, dayjs, TZ } from '../../functions/lib/time.js'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
@@ -189,6 +190,9 @@ const props = defineProps({
   // First row in its column: drops the top gap, since the column header (or
   // section divider) above already provides the separation.
   first: { type: Boolean, default: false },
+  // Upcoming only: live lateness estimate {text, short, color} from the home
+  // page. null = estimated on time; undefined = none, use sailing.lateText.
+  estimate: { type: Object, default: undefined },
 })
 
 defineEmits(['open', 'typical'])
@@ -212,6 +216,10 @@ function shortLate(text) {
 }
 
 const late = computed(() => {
+  if (!isPast.value && props.estimate !== undefined) {
+    const e = props.estimate
+    return e && { text: $q.screen.xs ? e.short : e.text, color: e.color }
+  }
   const s = props.sailing
   const text = isPast.value ? s.diffText : s.lateText
   if (!text) return null
@@ -353,6 +361,56 @@ const vFitScale = {
 // (@click -> 'open'), so the native click has to be stopped here or tapping
 // the hint would open the history dialog as well. A no-op for the designs
 // that render it outside the clickable row.
+// Cards keep to two rows. When the facts row would wrap to a third line,
+// shorten "usually" to "usu."; if even that wraps, clip the hint to one line
+// with an ellipsis (tapping it still opens the full typical history).
+// Measured, since whether it fits depends on the card's width and the facts
+// beside the hint. Re-measured from the full text whenever the width or the
+// text changes; height changes alone don't re-trigger, so it can't loop.
+const factsEl = ref(null)
+const abbreviate = ref(false)
+const clipHint = ref(false)
+const cardHint = computed(() =>
+  props.hint && abbreviate.value
+    ? { ...props.hint, text: props.hint.text.replace(/\busually\b/g, 'usu.') }
+    : props.hint,
+)
+
+async function measureFacts() {
+  abbreviate.value = false
+  clipHint.value = false
+  await nextTick()
+  const el = factsEl.value
+  if (!el) return
+  const line = parseFloat(getComputedStyle(el).lineHeight) || 15
+  const wraps = () => el.offsetHeight > line * 1.5
+  if (!wraps()) return
+  abbreviate.value = true
+  await nextTick()
+  clipHint.value = wraps()
+}
+
+let factsObserver = null
+let lastWidth = 0
+onMounted(() => {
+  if (props.design !== 'cards' || typeof ResizeObserver === 'undefined') return
+  factsObserver = new ResizeObserver(([entry]) => {
+    const w = Math.round(entry.contentRect.width)
+    if (w === lastWidth) return
+    lastWidth = w
+    measureFacts()
+  })
+  // Observe the card body, not the facts row: its width is what changes.
+  if (factsEl.value?.parentElement) factsObserver.observe(factsEl.value.parentElement)
+})
+onBeforeUnmount(() => factsObserver?.disconnect())
+watch(
+  () => [props.hint?.text, statusText.value, crosswalkText.value, props.design],
+  () => {
+    if (props.design === 'cards') measureFacts()
+  },
+)
+
 const HintLine = (p, { emit }) =>
   h(
     p.inline ? 'span' : 'div',
@@ -455,6 +513,13 @@ HintLine.emits = ['click']
 // line level with the fullness reading either way.
 .sr-facts .typical-hint-inline {
   min-width: 0;
+}
+
+// Last resort for keeping a card to two rows (see measureFacts).
+.sr-facts--clip .typical-hint-inline {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sr-fact-now {

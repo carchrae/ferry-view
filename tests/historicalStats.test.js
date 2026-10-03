@@ -10,6 +10,7 @@ import {
   factDetailText,
   factColor,
   factExplanation,
+  minutesToLabel,
   freqWord,
   weeksOfData,
   EXCEPTION_MIN_SAMPLES,
@@ -302,5 +303,14 @@ describe('weeksOfData', () => {
   it('is zero for a day with no data', () => {
     assert.equal(weeksOfData(undefined), 0)
     assert.equal(weeksOfData({}), 0)
+  })
+})
+
+describe('minutesToLabel', () => {
+  it('rounds the whole time, never showing :60', () => {
+    assert.equal(minutesToLabel(839.6), '2:00 pm')
+    assert.equal(minutesToLabel(839.4), '1:59 pm')
+    assert.equal(minutesToLabel(719.7), '12:00 pm')
+    assert.equal(minutesToLabel(0), '12:00 am')
   })
 })

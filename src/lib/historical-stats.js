@@ -117,8 +117,11 @@ function parseFilledMinutes(v) {
 }
 
 export function minutesToLabel(mins) {
-  const h = Math.floor(mins / 60)
-  const m = Math.round(mins % 60)
+  // Round the total first: rounding only the minutes turned 839.6 into
+  // "1:60 pm".
+  const total = Math.round(mins)
+  const h = Math.floor(total / 60)
+  const m = total % 60
   const ampm = h < 12 ? 'am' : 'pm'
   const h12 = h % 12 === 0 ? 12 : h % 12
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`

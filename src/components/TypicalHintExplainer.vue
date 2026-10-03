@@ -1,17 +1,24 @@
 <template>
-  <div v-if="facts.length" class="hint-explainer">
-    <div class="text-caption text-weight-medium text-grey-8 q-mb-xs">
-      How this is worked out
+  <q-expansion-item
+    v-if="facts.length"
+    dense
+    dense-toggle
+    switch-toggle-side
+    icon="help_outline"
+    label="How this is worked out"
+    header-class="text-caption text-weight-medium text-grey-8 q-px-xs"
+  >
+    <div class="hint-explainer">
+      <div v-for="(fact, i) in facts" :key="i" class="explain-row">
+        <span class="explain-dot" :class="'text-' + factColor(fact)">●</span>
+        <span class="text-caption text-grey-8">{{ factExplanation(fact) }}</span>
+      </div>
+      <div v-if="exceptionNote" class="explain-row">
+        <q-icon name="warning" size="xs" color="amber-8" class="q-mr-xs" />
+        <span class="text-caption text-grey-8">{{ exceptionNote }}</span>
+      </div>
     </div>
-    <div v-for="(fact, i) in facts" :key="i" class="explain-row">
-      <span class="explain-dot" :class="'text-' + factColor(fact)">●</span>
-      <span class="text-caption text-grey-8">{{ factExplanation(fact) }}</span>
-    </div>
-    <div v-if="exceptionNote" class="explain-row">
-      <q-icon name="warning" size="xs" color="amber-8" class="q-mr-xs" />
-      <span class="text-caption text-grey-8">{{ exceptionNote }}</span>
-    </div>
-  </div>
+  </q-expansion-item>
 </template>
 
 <script setup>

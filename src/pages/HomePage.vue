@@ -256,6 +256,7 @@
                       :key="'ub' + i"
                       :sailing="s"
                       kind="upcoming"
+                      :estimate="upcomingEstimate(s, i)"
                       :first="i === 0"
                       :design="sailingDesign"
                       :hint="sailingHints(s)"
@@ -272,6 +273,7 @@
                       :key="'uh' + i"
                       :sailing="s"
                       kind="upcoming"
+                      :estimate="upcomingEstimate(s, i)"
                       :first="i === 0"
                       :design="sailingDesign"
                       :hint="sailingHints(s)"
@@ -698,6 +700,7 @@
                 :key="'ub' + i"
                 :sailing="s"
                 kind="upcoming"
+                :estimate="upcomingEstimate(s, i)"
                 :design="sailingDesign"
                 :hint="sailingHints(s)"
                 @open="openHistory(s.shortTime, s.label, s)"
@@ -713,6 +716,7 @@
                 :key="'uh' + i"
                 :sailing="s"
                 kind="upcoming"
+                :estimate="upcomingEstimate(s, i)"
                 :design="sailingDesign"
                 :hint="sailingHints(s)"
                 @open="openHistory(s.shortTime, s.label, s)"
@@ -782,6 +786,10 @@
           <div v-else class="text-caption text-grey-6 q-py-xs">
             Nothing recorded for this sailing yet.
           </div>
+          <DepartureEstimateExplainer
+            v-if="selectedEstimate !== undefined"
+            :timings="estimateTimings"
+          />
           <!-- The webcams — always offered on Bowen departures, plenty of
                riders just want the photos. When the robot reported, the same
                dialogs double as its verification. -->
@@ -903,7 +911,7 @@ import {
   typicalHints,
   labelToPanel,
 } from 'src/composables/useHistoricalStats'
-import { DEFAULT_HISTORY_WEEKS } from 'src/lib/historical-stats.js'
+import { DEFAULT_HISTORY_WEEKS, minutesToLabel } from 'src/lib/historical-stats.js'
 import { useToday } from 'src/composables/useToday'
 import { getHolidayContext } from '../../functions/lib/holidays.js'
 import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
@@ -928,6 +936,15 @@ import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import UserReports from 'src/components/UserReports.vue'
+import {
+  estimateDepartures,
+  todaysTimings,
+  toMinutes,
+  bandFromCapacity,
+  bandFromHistory,
+} from 'src/lib/departure-estimate.js'
+import DepartureEstimateExplainer from 'src/components/DepartureEstimateExplainer.vue'
+import { getUpcomingLateColor } from '../../functions/lib/constants.js'
 import ServiceNoticeButton from 'src/components/ServiceNoticeButton.vue'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 
@@ -1280,7 +1297,8 @@ const typicalStatus = computed(() => {
     })
   if (e.repositioning)
     lines.push({ icon: 'warning', color: 'orange-9', text: 'Repositioning sailing.' })
-  const late = e.diffText || e.lateText
+  const late = selectedEstimate.value !== undefined ? null : e.diffText || e.lateText
+  if (selectedEstimate.value !== undefined) lines.push(estimateStatusLine(selectedEstimate.value))
   const departed = Boolean(e.diffText)
   // Actual departure time when a departure event matched (matching.js keeps
   // it on _depDisplay) — riders want the time itself, not just the lateness.
@@ -1562,6 +1580,117 @@ const upcomingSailings = computed(() => schedule.upcomingSailings(6))
 const pastSailings = computed(() => schedule.pastSailings(6))
 const allUpcomingHSB = computed(() => schedule.allUpcomingHSB())
 const allUpcomingBowen = computed(() => schedule.allUpcomingBowen())
+
+// Live departure estimates: the boat simulated forward from its last logged
+// arrival/departure with today's crossing and turnaround times (see
+// src/lib/departure-estimate.js). Replaces "minutes past scheduled", which
+// read +3m for a boat that was still unloading and would leave ~25 late.
+// How full a sailing is, or is likely to be, for the estimate's loading time:
+// a recorded capacity (rider/robot tag, or HSB's live deck space) first, a
+// crosswalk mark next, else the sailing's typical history.
+function sailingFullness(loc, hhmm) {
+  const d = ferryData.value
+  const label = loc === 'Horseshoe Bay' ? 'HSB' : 'Bowen'
+  const item = (label === 'HSB' ? d?.hsbSchedule : d?.bowenSchedule)?.find((x) => x.time === hhmm)
+  const live = bandFromCapacity(item?.lastCapacity) || bandFromCapacity(item?.deckSpace)
+  if (live) return live
+  if (item?.crosswalkFullAt) return 'busy'
+  return bandFromHistory(
+    getTypical(historyByDayOfWeek.value, labelToPanel(label), todayDow.value, hhmm),
+  )
+}
+
+const departureEstimates = computed(() => {
+  const d = ferryData.value
+  if (!d) return new Map()
+  const now = dayjs(nowTick.value).tz(TZ)
+  const times = (list) => (list || []).map((s) => s.time)
+  const speed = parseFloat(d.speed)
+  return estimateDepartures({
+    recentActivity: d.recentActivity,
+    schedules: { Bowen: times(d.bowenSchedule), 'Horseshoe Bay': times(d.hsbSchedule) },
+    upcoming: {
+      Bowen: allUpcomingBowen.value.map((s) => s.shortTime),
+      'Horseshoe Bay': allUpcomingHSB.value.map((s) => s.shortTime),
+    },
+    nowMins: now.hour() * 60 + now.minute(),
+    underway: !isNaN(speed) && speed > 0.5,
+    fullnessOf: sailingFullness,
+  })
+})
+
+// Only shown from 5 min late: below that the backtest found every method within
+// a minute or two, and a quiet on-time card reads better than "~+3m".
+const ESTIMATE_LATE_MIN = 5
+
+// The lateness slot for an upcoming card. The first card in a column gets one
+// number; later ones a low–high range, since each leg of the simulation adds
+// uncertainty. undefined = no estimate (fall back to the sailing's own
+// lateText); null = estimated on time (show nothing).
+// Inputs behind the estimates, for the dialog's explainer.
+const estimateTimings = computed(() => {
+  const d = ferryData.value
+  const times = (list) => (list || []).map((s) => s.time)
+  return todaysTimings(
+    d?.recentActivity,
+    { Bowen: times(d?.bowenSchedule), 'Horseshoe Bay': times(d?.hsbSchedule) },
+    sailingFullness,
+  )
+})
+
+// The estimate for the upcoming sailing open in the dialog, as the card showed
+// it. undefined = no estimate (past sailing, or nothing logged yet today).
+const selectedEstimate = computed(() => {
+  const e = selectedTypical.value?.entry
+  if (!e?.shortTime || 'diffText' in e) return undefined
+  const list = e.label === 'HSB' ? allUpcomingHSB.value : allUpcomingBowen.value
+  const i = list.findIndex((s) => s.shortTime === e.shortTime)
+  const loc = e.label === 'HSB' ? 'Horseshoe Bay' : 'Bowen'
+  const raw = departureEstimates.value.get(`${loc}|${e.shortTime}`)
+  if (i < 0 || !raw) return undefined
+  return { ...raw, sched: toMinutes(e.shortTime), single: i === 0 || raw.low === raw.high }
+})
+
+function estimateStatusLine(est) {
+  const at = (delay) => minutesToLabel(est.sched + delay)
+  if (est.single && est.point >= ESTIMATE_LATE_MIN) {
+    return {
+      icon: 'schedule',
+      color: 'deep-orange',
+      text: `Estimated to leave around ${at(est.point)} — about ${est.point}m late.`,
+    }
+  }
+  if (!est.single && est.high >= ESTIMATE_LATE_MIN) {
+    return {
+      icon: 'schedule',
+      color: 'deep-orange',
+      text:
+        `Estimated ${est.low}‥${est.high}m late — leaving between ` +
+        `${at(est.low)} and ${at(est.high)}.`,
+    }
+  }
+  return { icon: 'schedule', color: 'positive', text: 'Expected on time, or within a few minutes.' }
+}
+
+function upcomingEstimate(s, i) {
+  const loc = s.label === 'HSB' ? 'Horseshoe Bay' : 'Bowen'
+  const e = departureEstimates.value.get(`${loc}|${s.shortTime}`)
+  if (!e) return undefined
+  if (i === 0 || e.low === e.high) {
+    if (e.point < ESTIMATE_LATE_MIN) return null
+    return {
+      text: `~${e.point}m late`,
+      short: `~+${e.point}m`,
+      color: getUpcomingLateColor(e.point),
+    }
+  }
+  if (e.high < ESTIMATE_LATE_MIN) return null
+  return {
+    text: `~${e.low}‥${e.high}m late`,
+    short: `~+${e.low}‥${e.high}m`,
+    color: getUpcomingLateColor(Math.round((e.low + e.high) / 2)),
+  }
+}
 const allPastHSB = computed(() => schedule.allPastHSB())
 const allPastBowen = computed(() => schedule.allPastBowen())
 const recentPastHSB = computed(() =>
