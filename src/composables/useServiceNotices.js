@@ -12,7 +12,16 @@ import { db } from 'src/boot/firebase'
 
 const SEEN_KEY = 'bowenlift.seenServiceNotices'
 
-export const SERVICE_NOTICES_PAGE = 'https://www.bcferries.com/current-conditions/BOW-HSB'
+// The notice's own page, in the form BC Ferries links it from the route
+// (subscriptionRoute included). Built from the code rather than the scraped
+// url so the shape can change without a functions deploy.
+export function noticeUrl(notice) {
+  const params = new URLSearchParams({
+    serviceNoticeCode: notice.code,
+    subscriptionRoute: 'HSB-BOW',
+  })
+  return `https://www.bcferries.com/current-conditions/service-notices?${params}`
+}
 
 function loadSeen() {
   try {

@@ -14,11 +14,9 @@
   >
     <q-badge v-if="hasNew" floating rounded color="negative" class="sn-dot" />
     <!-- Marked seen when the menu closes, not opens, so the new ones stay
-         highlighted while the rider is reading the list. Every item opens the
-         route's conditions page, which lists the notices, rather than the
-         notice's own service-notices?serviceNoticeCode= URL: BC Ferries' bot
-         protection blocks visitors landing on those deep links. noreferrer so
-         we don't announce a third-party referrer either. -->
+         highlighted while the rider is reading the list. noreferrer: BC
+         Ferries' bot protection seemed to block visitors arriving from our
+         origin (localhost in dev) on these deep links. -->
     <q-menu anchor="bottom right" self="top right" @hide="markAllSeen">
       <q-list dense style="max-width: 320px">
         <q-item-label header class="q-pb-xs">BC Ferries service notices</q-item-label>
@@ -28,7 +26,7 @@
           v-close-popup
           clickable
           tag="a"
-          :href="SERVICE_NOTICES_PAGE"
+          :href="noticeUrl(n)"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -46,7 +44,7 @@
 </template>
 
 <script setup>
-import { useServiceNotices, SERVICE_NOTICES_PAGE } from 'src/composables/useServiceNotices'
+import { useServiceNotices, noticeUrl } from 'src/composables/useServiceNotices'
 
 const { notices, hasNew, isNew, markAllSeen } = useServiceNotices()
 </script>
