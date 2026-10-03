@@ -119,7 +119,18 @@
           <div class="vs-rail" :class="'bg-' + vesselRailColor"></div>
           <div class="vs-body">
             <div class="row items-center no-wrap">
-              <q-icon :name="speedIcon" size="20px" class="q-mr-sm" />
+              <q-btn
+                dense
+                round
+                unelevated
+                size="md"
+                color="blue-1"
+                text-color="primary"
+                :icon="speedIcon"
+                aria-label="Ferry on the map"
+                @click="showMapDialog = true"
+                class="q-mr-sm"
+              />
               <div class="col ellipsis">
                 <div class="text-subtitle2 ellipsis">{{ ferryData.vesselName }}</div>
                 <div class="text-caption text-grey-8 ellipsis">{{ speedText }}</div>
@@ -160,6 +171,7 @@
                   </span>
                 </template>
               </div>
+              <RideShareButton :rides="sortedRides" class="q-ml-xs" />
               <ServiceNoticeButton class="q-ml-xs" />
             </div>
           </div>
@@ -167,12 +179,24 @@
 
         <q-card v-else flat bordered :style="vesselCardStyle" class="q-mb-sm">
           <q-card-section horizontal class="items-center q-pa-sm">
-            <q-icon :name="speedIcon" size="sm" class="q-mr-sm" />
+            <q-btn
+              dense
+              round
+              unelevated
+              size="md"
+              color="blue-1"
+              text-color="primary"
+              :icon="speedIcon"
+              aria-label="Ferry on the map"
+              @click="showMapDialog = true"
+              class="q-mr-sm"
+            />
             <div>
               <div class="text-subtitle2">{{ ferryData.vesselName }}</div>
               <div class="text-caption">{{ speedText }}</div>
             </div>
             <q-space />
+            <RideShareButton :rides="sortedRides" class="q-mr-sm" />
             <ServiceNoticeButton class="q-mr-sm" />
             <div class="text-caption text-grey-6">
               Last Update <br />
@@ -216,7 +240,7 @@
               <q-card-section class="q-py-xs q-px-none">
                 <div class="row items-start q-col-gutter-sm q-mb-sm">
                   <div class="col">
-                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">
+                    <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
                       to Horseshoe Bay
                     </div>
                     <SailingRow
@@ -233,7 +257,7 @@
                     </div>
                   </div>
                   <div class="col">
-                    <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
+                    <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
                     <SailingRow
                       v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
@@ -248,7 +272,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="section-divider text-caption text-grey-7 q-my-xs">upcoming</div>
+                <div class="section-divider text-caption text-grey-7 q-my-xs">upcoming forecast</div>
                 <div class="row items-start q-col-gutter-sm">
                   <div class="col">
                     <SailingRow
@@ -287,18 +311,6 @@
                 </div>
                 <div class="text-center text-caption text-grey-5 q-mt-xs">
                   Predictions are just a guess — there's no certainty with the ferry.
-                </div>
-                <div
-                  v-if="anyCrosswalkBadge || anyRobotBadge"
-                  class="text-center text-caption text-grey-6 q-mt-xs"
-                >
-                  <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
-                  <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
-                  <template v-if="anyRobotBadge">
-                    <q-icon name="smart_toy" size="12px" color="indigo" />
-                    {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction
-                    <span class="gt-xs">— tap time to verify</span>
-                  </template>
                 </div>
                 <div
                   v-if="ferryData && ferryData.usingFallback"
@@ -654,21 +666,9 @@
               on-time
             </template>
           </div>
-          <div
-            v-if="anyCrosswalkBadge || anyRobotBadge"
-            class="text-center text-caption text-grey-6 q-mb-sm"
-          >
-            <template v-if="anyCrosswalkBadge">C = full to crosswalk</template>
-            <template v-if="anyCrosswalkBadge && anyRobotBadge"> · </template>
-            <template v-if="anyRobotBadge">
-              <q-icon name="smart_toy" size="12px" color="indigo" />
-              {{ sailingDesign === 'classic' ? 'blue border' : 'icon' }} = robot prediction
-              <span class="gt-xs">— tap time to verify</span>
-            </template>
-          </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">
             <div class="col">
-              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">to Horseshoe Bay</div>
+              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">to Horseshoe Bay</div>
               <SailingRow
                 v-for="(event, i) in allPastBowen"
                 :key="'pb' + i"
@@ -680,7 +680,7 @@
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
             <div class="col">
-              <div class="text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
+              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
               <SailingRow
                 v-for="(event, i) in allPastHSB"
                 :key="'ph' + i"
@@ -692,7 +692,7 @@
               <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
           </div>
-          <div class="text-center text-grey-8 q-my-sm">upcoming</div>
+          <div class="text-center text-grey-8 q-my-sm">upcoming forecast</div>
           <div class="row items-start q-col-gutter-sm">
             <div class="col">
               <SailingRow
@@ -754,6 +754,48 @@
     </q-dialog>
 
     <!-- Prediction detail dialog -->
+    <!-- The map page's live ferry tracker, without leaving home. Phones get a
+         full-width sheet over the bottom half so the status stays in view. -->
+    <q-dialog
+      v-model="showMapDialog"
+      :position="$q.screen.xs ? 'bottom' : 'standard'"
+      :full-width="$q.screen.xs"
+    >
+      <q-card
+        class="column no-wrap"
+        :style="
+          $q.screen.xs
+            ? { height: '50vh' }
+            : { width: '80vw', maxWidth: '1000px', height: '80vh' }
+        "
+      >
+        <q-card-section class="row items-center q-py-xs q-pr-xs">
+          <div class="text-subtitle1 col">bowenferry.ca tracker</div>
+          <q-btn
+            flat
+            dense
+            round
+            icon="open_in_new"
+            aria-label="Open bowenferry.ca in a new tab"
+            href="https://bowenferry.ca"
+            target="_blank"
+            rel="noopener"
+          />
+          <q-btn flat dense round icon="close" aria-label="Close" v-close-popup />
+        </q-card-section>
+        <!-- bowenferry.ca splits its height between map and data panels, so
+             at half a phone screen the map gets squashed. On phones render the
+             page twice as tall and clip it: the top half is mostly map. -->
+        <div class="col relative-position" style="overflow: hidden">
+          <iframe
+            src="https://bowenferry.ca"
+            class="absolute-top"
+            :style="{ width: '100%', height: $q.screen.xs ? '200%' : '100%', border: 'none' }"
+          />
+        </div>
+      </q-card>
+    </q-dialog>
+
     <q-dialog v-model="showTypicalDialog" position="top">
       <q-card
         :style="{
@@ -781,6 +823,22 @@
             >
               <q-icon :name="line.icon" size="18px" :color="line.color" class="q-mr-sm" />
               <span class="col">{{ line.text }}</span>
+              <!-- Same source markers as the sailing rows, so riders learn
+                   them here instead of from a legend. -->
+              <q-icon
+                v-if="line.source === 'robot'"
+                name="smart_toy"
+                size="16px"
+                color="indigo"
+                class="q-ml-xs"
+              />
+              <q-icon
+                v-else-if="line.source === 'user'"
+                name="person"
+                size="16px"
+                color="grey-7"
+                class="q-ml-xs"
+              />
             </div>
           </div>
           <div v-else class="text-caption text-grey-6 q-py-xs">
@@ -946,6 +1004,7 @@ import {
 import DepartureEstimateExplainer from 'src/components/DepartureEstimateExplainer.vue'
 import { getUpcomingLateColor } from '../../functions/lib/constants.js'
 import ServiceNoticeButton from 'src/components/ServiceNoticeButton.vue'
+import RideShareButton from 'src/components/RideShareButton.vue'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 
 const $q = useQuasar()
@@ -1245,6 +1304,7 @@ const lastSailingStatus = computed(() => {
 // either from a sailing's typical-history hint or by tapping any sailing time
 // (past or upcoming, either terminal). `info` may be null when there's no
 // recent history for that day-of-week + time.
+const showMapDialog = ref(false)
 const showTypicalDialog = ref(false)
 const selectedTypical = ref(null)
 function openHistory(time, label, entry = null) {
@@ -1339,15 +1399,22 @@ const typicalStatus = computed(() => {
     lines.push({
       icon: 'directions_boat',
       color: 'deep-orange',
+      source: e.capacitySource,
       text: `The ferry left full${filledTime ? ` — full by ${filledTime}` : ''}${capSrc}.`,
     })
   } else if (cap === 'Not Full') {
-    lines.push({ icon: 'directions_boat', color: 'positive', text: `The ferry left with room${capSrc}.` })
+    lines.push({
+      icon: 'directions_boat',
+      color: 'positive',
+      source: e.capacitySource,
+      text: `The ferry left with room${capSrc}.`,
+    })
   } else if (cap) {
     const n = parseInt(cap)
     lines.push({
       icon: 'directions_boat',
       color: 'grey-8',
+      source: e.capacitySource,
       text: isNaN(n)
         ? `Capacity: ${cap}${capSrc}.`
         : `The ferry left about ${100 - n}% full${capSrc}.`,
@@ -1368,6 +1435,7 @@ const typicalStatus = computed(() => {
     lines.push({
       icon: 'directions_walk',
       color: 'grey-8',
+      source: e.crosswalkSource === 'robot' ? 'robot' : 'user',
       text: at
         ? `Lineup reached the crosswalk at ${at} (${src}).`
         : `Lineup reached the crosswalk (${src}).`,
@@ -1934,23 +2002,6 @@ watch(fullscreen, (open) => {
 })
 
 onUnmounted(stopPlayback)
-
-// True when any Bowen sailing shown (past or upcoming) carries a crosswalk
-// tag, so the "C = …" legend only appears when there's a C badge to explain.
-const anyCrosswalkBadge = computed(() =>
-  [...recentPastBowen.value, ...allUpcomingBowen.value, ...allPastBowen.value].some(
-    (e) => e?.crosswalkFullAt,
-  ),
-)
-
-// Same gate for the robot legend: any visible Bowen sailing whose displayed
-// capacity or crosswalk value came from the webcam classifier. Robot badges
-// are square (humans stay rounded) — shape carries the source, color the value.
-const anyRobotBadge = computed(() =>
-  [...recentPastBowen.value, ...allUpcomingBowen.value, ...allPastBowen.value].some(
-    (e) => e?.capacitySource === 'robot' || e?.crosswalkSource === 'robot',
-  ),
-)
 
 const isSailing = computed(() => {
   if (!ferryData.value) return false

@@ -27,16 +27,25 @@
         </q-toolbar-title>
 
         <!-- Desktop nav tabs -->
-        <q-tabs v-model="currentTab" shrink stretch class="gt-sm">
+        <q-tabs v-model="currentTab" shrink stretch class="gt-sm nav-tabs">
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
           <q-route-tab name="status" label="History" icon="history" to="/history" />
-          <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
+          <q-route-tab name="rides" label="Rides" icon="img:thumb-icon-48.png" to="/rides" />
           <q-route-tab name="map" label="Map" icon="map" to="/map" />
+          <!-- On mobile Settings and About are in the drawer. -->
+          <q-route-tab name="settings" label="Settings" icon="settings" to="/settings" />
         </q-tabs>
-
-        <!-- One destination instead of two: About now lives behind a button on
-             the settings page (and the title still opens it directly). -->
-        <q-btn flat dense round icon="settings" aria-label="Settings" to="/settings" />
+        <!-- About opens a dialog rather than a route, so it's a button styled
+             as a tab: a real q-tab would steal the active highlight from the
+             current page's tab. -->
+        <q-btn
+          flat
+          stack
+          icon="info"
+          label="About"
+          class="gt-sm nav-tab-btn self-stretch"
+          @click="showAttributions = true"
+        />
       </q-toolbar>
     </q-header>
 
@@ -139,16 +148,6 @@
     <q-page-container>
       <router-view />
     </q-page-container>
-
-    <!-- Mobile bottom nav -->
-    <q-footer class="gt-sm-hide lt-md bg-primary text-white shadow-up-3">
-      <q-tabs v-model="currentTab" active-color="white" indicator-color="white" class="text-grey-4">
-        <q-route-tab name="home" label="Home" icon="home" to="/" exact />
-        <q-route-tab name="status" label="History" icon="history" to="/history" />
-        <q-route-tab name="rides" label="Rides" icon="img:app-icon-transparent.png" to="/rides" />
-        <q-route-tab name="map" label="Map" icon="map" to="/map" />
-      </q-tabs>
-    </q-footer>
   </q-layout>
 </template>
 
@@ -167,6 +166,7 @@ const currentTab = ref(
   route.path === '/history' ? 'status'
     : route.path === '/rides' ? 'rides'
       : route.path === '/map' ? 'map'
+        : route.path === '/settings' ? 'settings'
         : 'home'
 )
 const leftDrawerOpen = ref(false)
@@ -224,14 +224,25 @@ function toggleLeftDrawer() {
 </script>
 
 <style>
-.q-footer .q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon-transparent"],
-.q-header .q-tab:not(.q-tab--active) .q-tab__icon img[src*="app-icon-transparent"] {
+/* Same width for every tab, so the icons sit evenly spaced whatever the
+   label length ("Map" vs "Settings"). */
+.nav-tabs .q-tab,
+.nav-tab-btn {
+  width: 96px;
+  padding: 0 4px;
+}
+.nav-tab-btn {
+  border-radius: 0;
+  /* Match an inactive q-tab. */
+  opacity: 0.85;
+}
+.q-header .q-tab:not(.q-tab--active) .q-tab__icon img[src*="thumb-icon"] {
   opacity: 0.5;
 }
-.q-header .q-tab:has(.q-tab__icon img[src*="app-icon-transparent"]):hover .q-tab__icon img {
+.q-header .q-tab:has(.q-tab__icon img[src*="thumb-icon"]):hover .q-tab__icon img {
   opacity: 0.8;
 }
-.q-header .q-tab--active .q-tab__icon img[src*="app-icon-transparent"] {
+.q-header .q-tab--active .q-tab__icon img[src*="thumb-icon"] {
   opacity: 1;
 }
 </style>
