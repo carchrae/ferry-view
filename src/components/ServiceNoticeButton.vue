@@ -2,17 +2,16 @@
   <q-btn
     v-if="notices.length"
     dense
-    no-caps
-    size="sm"
-    :flat="!hasNew"
-    :unelevated="hasNew"
-    :color="hasNew ? 'warning' : 'grey-7'"
-    :text-color="hasNew ? 'black' : undefined"
+    round
+    size="md"
+    unelevated
+    :color="hasNew ? 'warning' : 'amber-2'"
+    :text-color="hasNew ? 'black' : 'amber-10'"
     icon="campaign"
-    :label="hasNew ? 'New notice' : 'Notices'"
+    class="sn-btn"
+    :class="{ 'sn-blink': hasNew }"
     :aria-label="hasNew ? 'New BC Ferries service notice' : 'BC Ferries service notices'"
   >
-    <q-badge v-if="hasNew" floating rounded color="negative" class="sn-dot" />
     <!-- Marked seen when the menu closes, not opens, so the new ones stay
          highlighted while the rider is reading the list. noreferrer: BC
          Ferries' bot protection seemed to block visitors arriving from our
@@ -50,8 +49,21 @@ const { notices, hasNew, isNew, markAllSeen } = useServiceNotices()
 </script>
 
 <style scoped>
-.sn-dot {
-  padding: 4px;
-  min-height: 0;
+/* Mirror the megaphone so it faces the other way. */
+.sn-btn :deep(.q-icon) {
+  transform: scaleX(-1);
+}
+.sn-blink {
+  animation: sn-blink 1s ease-in-out infinite;
+}
+@keyframes sn-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sn-blink {
+    animation: none;
+  }
 }
 </style>
