@@ -1,12 +1,5 @@
 <template>
-  <q-expansion-item
-    dense
-    dense-toggle
-    switch-toggle-side
-    icon="schedule"
-    label="How the lateness estimate works"
-    header-class="text-caption text-weight-medium text-grey-8 q-px-xs"
-  >
+  <ExpandableSection label="How the lateness estimate works" icon="schedule">
     <div class="estimate-explainer text-caption text-grey-8">
       <p>
         The boat is followed forward from its last logged arrival or departure. A boat that is ready
@@ -36,10 +29,11 @@
         crossings; when how full a sailing will be isn't known, the range runs from light to full.
       </p>
     </div>
-  </q-expansion-item>
+  </ExpandableSection>
 </template>
 
 <script setup>
+import ExpandableSection from 'src/components/ExpandableSection.vue'
 import { computed } from 'vue'
 import { LOADING } from 'src/lib/departure-estimate.js'
 
