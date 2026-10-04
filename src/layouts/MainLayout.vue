@@ -91,6 +91,17 @@
     <!-- Attributions dialog -->
     <AboutDialog v-model="showAttributions" />
 
+    <!-- Post / edit ride: one dialog for the whole app (useRideFormDialog).
+         Remounted per open so each starts from a fresh form. -->
+    <q-dialog v-model="rideFormOpen" :full-width="$q.screen.xs" class="ride-dialog">
+      <RideForm
+        v-if="rideFormOpen"
+        :edit-id="rideFormEditId"
+        :style="{ width: $q.screen.xs ? '100%' : '560px', maxWidth: '100%' }"
+        @close="closeRideForm"
+      />
+    </q-dialog>
+
     <q-drawer
       v-model="leftDrawerOpen"
       bordered
@@ -159,6 +170,8 @@ import { useAuth } from 'src/composables/useAuth'
 import { isAnonymous } from 'src/composables/useAnonymity'
 import { isStaging, productionDataOverride } from '../boot/firebase.js'
 import AboutDialog from 'src/components/AboutDialog.vue'
+import RideForm from 'src/components/RideForm.vue'
+import { useRideFormDialog } from 'src/composables/useRideFormDialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -170,6 +183,11 @@ const currentTab = ref(
         : 'home'
 )
 const leftDrawerOpen = ref(false)
+const {
+  open: rideFormOpen,
+  editId: rideFormEditId,
+  close: closeRideForm,
+} = useRideFormDialog()
 const showAttributions = ref(false)
 
 // From the drawer: close the drawer first, or the dialog opens behind it.

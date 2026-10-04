@@ -19,8 +19,8 @@
             </div>
             <div class="text-caption text-grey-7">
               <template v-if="isOnline">
-                Nothing new since {{ formatTime12h(ferryData.lastUpdate) }} — what's below may
-                be out of date.
+                Nothing new since {{ formatTime12h(ferryData.lastUpdate) }} — what's below may be
+                out of date.
               </template>
               <template v-else>
                 You're offline. This is the last data that reached the app.
@@ -35,7 +35,7 @@
             color="primary"
             icon="refresh"
             label="Refresh"
-            class="q-ml-md"
+            class="q-ml-md app-btn"
             @click="reloadPage"
           />
         </q-card-section>
@@ -89,7 +89,7 @@
               <div class="text-subtitle2">Install Bowen Lift</div>
               <div class="text-caption text-grey-8">Add to your home screen for quick access.</div>
             </div>
-            <q-btn no-caps dense color="primary" label="Install" @click="install" />
+            <q-btn no-caps dense color="primary" label="Install" @click="install" class="app-btn" />
             <q-btn
               flat
               dense
@@ -108,8 +108,9 @@
       <!--        <NotificationSettings />-->
       <!--      </div>-->
 
-      <!-- Sailings (one col-md-6 block) -->
-      <div v-if="ferryData" class="col-12 col-md-6">
+      <!-- Sailings. On desktop a phone-width column (.home-left), the
+           webcams take the rest. -->
+      <div v-if="ferryData" class="col-12 col-md home-left">
         <!-- Vessel Status. In the 'cards' style it takes the same shape as the
              sailing cards below — left rail, tight body, no tint — and absorbs
              the two loose lines that used to float underneath it (last update,
@@ -171,7 +172,7 @@
                   </span>
                 </template>
               </div>
-              <RideShareButton :rides="sortedRides" class="q-ml-xs" />
+              <RideShareButton ref="rideShareBtn" :rides="sortedRides" class="q-ml-xs" />
               <ServiceNoticeButton class="q-ml-xs" />
             </div>
           </div>
@@ -196,7 +197,7 @@
               <div class="text-caption">{{ speedText }}</div>
             </div>
             <q-space />
-            <RideShareButton :rides="sortedRides" class="q-mr-sm" />
+            <RideShareButton ref="rideShareBtn" :rides="sortedRides" class="q-mr-sm" />
             <ServiceNoticeButton class="q-mr-sm" />
             <div class="text-caption text-grey-6">
               Last Update <br />
@@ -237,7 +238,10 @@
                  a group of bordered cards just adds a second frame and eats
                  width the sailing rows need. -->
             <q-card flat>
-              <q-card-section class="q-py-xs q-px-none">
+              <q-card-section class="q-pt-none q-pb-xs q-px-none">
+                <div class="text-center text-caption text-grey-5 q-mt-xs">
+                  Predictions are just a guess — there's no certainty with the ferry.
+                </div>
                 <div class="row items-start q-col-gutter-sm q-mb-sm">
                   <div class="col">
                     <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
@@ -257,7 +261,9 @@
                     </div>
                   </div>
                   <div class="col">
-                    <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
+                    <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
+                      to Bowen
+                    </div>
                     <SailingRow
                       v-for="(event, i) in recentPastHSB.slice(-3)"
                       :key="'ph' + i"
@@ -272,7 +278,9 @@
                     </div>
                   </div>
                 </div>
-                <div class="section-divider text-caption text-grey-7 q-my-xs">upcoming forecast</div>
+                <div class="section-divider text-caption text-grey-7 q-my-xs">
+                  upcoming forecast
+                </div>
                 <div class="row items-start q-col-gutter-sm">
                   <div class="col">
                     <SailingRow
@@ -309,9 +317,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="text-center text-caption text-grey-5 q-mt-xs">
-                  Predictions are just a guess — there's no certainty with the ferry.
-                </div>
+
                 <div
                   v-if="ferryData && ferryData.usingFallback"
                   class="text-center text-caption text-grey-6 q-mt-sm"
@@ -325,95 +331,41 @@
           </div>
         </div>
         <!--        <div class="text-caption text-grey-5 text-center">although we try, computers can lie</div>-->
-        <div class="row q-mb-sm q-col-gutter-sm">
-          <div class="col">
-            <q-btn
-              no-caps
-              dense
-              outline
-              color="primary"
-              icon="calendar_today"
-              label="Today's Sailings"
-              class="full-width no-wrap"
-              @click="showFullDialog = true"
-            />
-          </div>
-          <div class="col">
-            <q-btn
-              no-caps
-              dense
-              outline
-              color="primary"
-              icon="photo_camera"
-              label="Bowen Departures"
-              class="full-width no-wrap"
-              to="/bowen-departures"
-            />
-          </div>
-        </div>
-
-        <!-- Rides — above the champions row so an open ride request is on
-             screen without scrolling. -->
-        <div class="col-12 col-md-6 q-mb-sm">
-          <q-card flat bordered>
-            <q-card-section v-if="!sortedRides.length" class="text-center q-pa-sm">
-              <div class="text-body2 text-grey-7">
-                Need a ride from the ferry? Or have room in your car?
-              </div>
+        <!-- Inset like the buttons inside the rides card below (8px card
+             padding + 1px border), so the button rows line up. -->
+        <div class="q-mb-sm" style="padding: 0 9px">
+          <div class="row q-col-gutter-sm">
+            <div class="col">
               <q-btn
-                color="primary"
                 no-caps
                 dense
-                label="Offer or Request a Ride"
-                icon="img:app-icon.png"
-                to="/rides/post"
-                class="q-mt-sm"
+                outline
+                color="primary"
+                icon="calendar_today"
+                label="Today's Sailings"
+                class="full-width no-wrap app-btn"
+                @click="showFullDialog = true"
               />
-            </q-card-section>
-          </q-card>
-          <q-card v-if="sortedRides.length" flat bordered>
-            <q-card-section class="q-pa-sm">
-              <RideCard
-                v-for="ride in sortedRides"
-                :key="ride.id"
-                :ride="ride"
-                :upcoming="ride.isUpcoming"
-                class="q-mt-sm"
+            </div>
+            <div class="col">
+              <q-btn
+                no-caps
+                dense
+                outline
+                color="primary"
+                icon="photo_camera"
+                label="Bowen Departures"
+                class="full-width no-wrap app-btn"
+                to="/bowen-departures"
               />
-
-              <div class="row q-gutter-sm q-mt-sm">
-                <q-btn
-                  no-caps
-                  dense
-                  outline
-                  class="col"
-                  color="primary"
-                  icon="list"
-                  label="Ride Sharing"
-                  to="/rides"
-                />
-
-                <q-btn
-                  no-caps
-                  dense
-                  class="col"
-                  color="primary"
-                  icon="add"
-                  label="Post a Ride"
-                  to="/rides/post"
-                />
-              </div>
-            </q-card-section>
-          </q-card>
+            </div>
+          </div>
         </div>
 
         <!-- Leaderboard champions: top capacity reporter + top ride sharer -->
-        <div v-if="championsLoaded" class="row q-col-gutter-sm q-mb-sm">
+        <div v-if="championsLoaded" class="row q-col-gutter-sm q-mb-sm q-px-sm">
           <div v-if="champion" class="col-6">
-            <router-link
-              to="/leaderboard"
-              class="champion-row column no-wrap q-pa-sm full-height"
-            >
+            <router-link to="/leaderboard" class="champion-row column no-wrap q-pa-sm full-height">
               <div class="row items-center no-wrap">
                 <div class="champion-star q-mr-sm">
                   <img
@@ -465,16 +417,14 @@
             </router-link>
             <router-link
               v-else
-              to="/rides/post"
+              @click="openPostRide"
               class="champion-row ride column no-wrap q-pa-sm full-height"
             >
               <div class="row items-start no-wrap">
                 <div class="champion-star ride q-mr-sm">
                   <q-icon name="directions_car" color="white" size="16px" />
                 </div>
-                <div class="text-caption text-weight-bold text-blue-9 col">
-                  Ride Share Hero
-                </div>
+                <div class="text-caption text-weight-bold text-blue-9 col">Ride Share Hero</div>
               </div>
               <div class="text-caption text-grey-8 q-mt-xs">
                 Could be you — offer or ask for more than one ride this month.
@@ -483,18 +433,69 @@
           </div>
         </div>
 
+        <!-- Rides: their buttons (inset like the Today's Sailings row), then
+             the list. With no rides, the invitation card stands in. -->
+        <div class="q-mb-sm">
+          <q-card v-if="!sortedRides.length" flat bordered>
+            <q-card-section class="text-center q-pa-sm">
+              <div class="text-body2 text-grey-7">
+                Need a ride from the ferry? Or have room in your car?
+              </div>
+              <q-btn
+                color="primary"
+                no-caps
+                dense
+                label="Offer or Request a Ride"
+                icon="img:app-icon.png"
+                @click="openPostRide"
+                class="q-mt-sm app-btn"
+              />
+            </q-card-section>
+          </q-card>
+          <template v-if="sortedRides.length">
+            <div style="padding: 0 9px">
+              <div class="row q-gutter-sm q-mb-sm">
+                <q-btn
+                  no-caps
+                  dense
+                  outline
+                  class="col app-btn"
+                  color="primary"
+                  icon="list"
+                  label="Ride Sharing"
+                  to="/rides"
+                />
+
+                <q-btn
+                  no-caps
+                  dense
+                  class="col app-btn"
+                  color="primary"
+                  icon="add"
+                  label="Post a Ride"
+                  @click="openPostRide"
+                />
+              </div>
+            </div>
+            <!-- Full-width ride cards, framed like the sailing cards above
+                 (no outer card around them). -->
+            <RideCard
+              v-for="(ride, i) in sortedRides"
+              :key="ride.id"
+              :ride="ride"
+              :upcoming="ride.isUpcoming"
+              :class="{ 'q-mt-xs': i > 0 }"
+              @open="(r) => rideShareBtn?.openRide(r.id)"
+            />
+          </template>
+        </div>
       </div>
 
       <!-- Cameras Grid -->
-      <div class="col-12 col-md-6">
+      <div class="col-12 col-md">
         <!-- A frozen camera still returns a perfectly good-looking picture, so
              say so out loud: without this the image reads as live. -->
-        <q-banner
-          v-if="anyStalled"
-          dense
-          rounded
-          class="bg-orange-1 text-orange-10 q-mb-sm"
-        >
+        <q-banner v-if="anyStalled" dense rounded class="bg-orange-1 text-orange-10 q-mb-sm">
           <template v-slot:avatar>
             <q-icon name="videocam_off" color="orange-9" />
           </template>
@@ -506,7 +507,7 @@
           </div>
         </q-banner>
         <div class="row q-col-gutter-sm">
-          <div v-for="(cam, index) in displayCams" :key="index" class="col-6">
+          <div v-for="(cam, index) in displayCams" :key="index" class="col-12 col-md-6 col-lg-4">
             <q-card
               flat
               bordered
@@ -668,7 +669,9 @@
           </div>
           <div class="row items-start q-col-gutter-sm q-mb-md">
             <div class="col">
-              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">to Horseshoe Bay</div>
+              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
+                to Horseshoe Bay
+              </div>
               <SailingRow
                 v-for="(event, i) in allPastBowen"
                 :key="'pb' + i"
@@ -680,7 +683,9 @@
               <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
             </div>
             <div class="col">
-              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">to Bowen</div>
+              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
+                to Bowen
+              </div>
               <SailingRow
                 v-for="(event, i) in allPastHSB"
                 :key="'ph' + i"
@@ -764,9 +769,7 @@
       <q-card
         class="column no-wrap"
         :style="
-          $q.screen.xs
-            ? { height: '50vh' }
-            : { width: '80vw', maxWidth: '1000px', height: '80vh' }
+          $q.screen.xs ? { height: '50vh' } : { width: '80vw', maxWidth: '1000px', height: '80vh' }
         "
       >
         <q-card-section class="row items-center q-py-xs q-pr-xs">
@@ -861,7 +864,7 @@
               color="indigo"
               icon="photo_camera"
               label="At crosswalk"
-              class="q-px-md"
+              class="q-px-md app-btn"
               @click="openRobotFromTypical('crosswalk')"
             />
             <q-btn
@@ -870,7 +873,7 @@
               color="indigo"
               icon="photo_camera"
               label="Front of lineup"
-              class="q-px-md"
+              class="q-px-md app-btn"
               @click="openRobotFromTypical('fullness')"
             />
           </div>
@@ -911,8 +914,8 @@
         <q-card-section>
           <div class="text-subtitle1">Sailings have a new look</div>
           <div class="text-body2 text-grey-8 q-mt-sm">
-            Cards are the default now — the same information, with fullness and what's typical
-            for the sailing on the card. You're set to
+            Cards are the default now — the same information, with fullness and what's typical for
+            the sailing on the card. You're set to
             <b>{{ sailingDesignLabel(sailingDesign) }}</b
             >, which we've left alone. Want to try cards?
           </div>
@@ -922,7 +925,14 @@
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat no-caps label="Keep mine" @click="declineStyleOffer" />
-          <q-btn unelevated no-caps color="primary" label="Try cards" @click="acceptStyleOffer" />
+          <q-btn
+            unelevated
+            no-caps
+            color="primary"
+            label="Try cards"
+            @click="acceptStyleOffer"
+            class="app-btn"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -955,7 +965,13 @@ import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryList
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
 import { useSchedule, timeToDate } from 'src/composables/useSchedule'
-import { formatTime12h, normalizeTime, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
+import {
+  formatTime12h,
+  normalizeTime,
+  nowInVancouver,
+  dayjs,
+  TZ,
+} from '../../functions/lib/time.js'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
 import { isStaging } from 'src/boot/firebase'
 import RideCard from 'src/components/RideCard.vue'
@@ -1006,6 +1022,11 @@ import { getUpcomingLateColor } from '../../functions/lib/constants.js'
 import ServiceNoticeButton from 'src/components/ServiceNoticeButton.vue'
 import RideShareButton from 'src/components/RideShareButton.vue'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
+import { useRideFormDialog } from 'src/composables/useRideFormDialog'
+
+const { openPostRide } = useRideFormDialog()
+// The status card's rides button; ride cards below open its dialog.
+const rideShareBtn = ref(null)
 
 const $q = useQuasar()
 const { ferryData, error } = useFirestoreFerryListener()
@@ -1189,11 +1210,9 @@ const holidayContext = computed(() => getHolidayContext(todayIso.value))
 // The 8-week baseline window is relative to today, and yesterday's sailings
 // only join it once the day rolls over — so refetch rather than re-slicing
 // the data loaded at mount. immediate:true covers the initial load.
-watch(
-  todayIso,
-  () => fetchHistory({ weeksBack: DEFAULT_HISTORY_WEEKS, excludeHolidays: true }),
-  { immediate: true },
-)
+watch(todayIso, () => fetchHistory({ weeksBack: DEFAULT_HISTORY_WEEKS, excludeHolidays: true }), {
+  immediate: true,
+})
 
 // Typical stats for an upcoming sailing (day-of-week specific), or null.
 function sailingTypical(s) {
@@ -1494,7 +1513,8 @@ async function openRobotVerify(kind, time) {
     // loadUpcomingLineup.
     if (!s && kind === 'crosswalk') {
       const up = await loadUpcomingLineup()
-      if (up && normalizeTime(up.sailingTime) === t) s = { ...up, arrival: { timelapse: up.timelapse } }
+      if (up && normalizeTime(up.sailingTime) === t)
+        s = { ...up, arrival: { timelapse: up.timelapse } }
     }
     if (!s) {
       $q.notify({ type: 'warning', message: "Couldn't find that sailing's photos" })
@@ -1788,6 +1808,10 @@ const sortedRides = computed(() => {
       return { ...r, isToday, isUpcoming }
     })
     .sort((a, b) => {
+      // Rides the poster says worked out always go last: nothing to act on.
+      const aDone = a.outcome === 'matched'
+      const bDone = b.outcome === 'matched'
+      if (aDone !== bDone) return aDone ? 1 : -1
       if (a.isToday && !b.isToday) return -1
       if (!a.isToday && b.isToday) return 1
       if (a.isUpcoming && !b.isUpcoming) return -1
@@ -2137,6 +2161,32 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
+/* Desktop: the sailings column stays about an iPhone wide (430px content +
+   the 8px column gutter) instead of half the screen; webcams get the rest. */
+/* Home's buttons: a little shorter than the site-wide app-btn (40px), and
+   the icon sits beside the label with the pair centred together, rather
+   than pinned to the left edge. Dialogs are teleported out of .home-page,
+   so they keep the standard look. */
+.home-page :deep(.q-btn.app-btn) {
+  min-height: 34px;
+}
+.home-page :deep(.q-btn.app-btn:has(> .q-btn__content > .q-icon.on-left)) {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.home-page :deep(.q-btn.app-btn .q-btn__content > .q-icon.on-left) {
+  position: static;
+  transform: none;
+  margin-right: 8px;
+}
+
+@media (min-width: $breakpoint-md-min) {
+  .home-left {
+    flex: 0 0 438px;
+    max-width: 438px;
+  }
+}
+
 // Mirrors .sr-card / .sr-rail / .sr-card-body in SailingRow.vue (scoped there,
 // so the rules can't be shared) — same border, radius and rail width, with a
 // slightly roomier body because this one is a header rather than a list row.

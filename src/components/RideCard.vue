@@ -1,66 +1,83 @@
 <template>
-  <q-card
-    flat
-    bordered
-    class="q-pa-sm ride-card cursor-pointer"
-    :class="upcoming ? 'bg-yellow-1' : ''"
-    @click="$router.push('/rides/' + ride.id)"
+  <!-- Same shape as the home page's sailing cards (SailingRow 'cards'):
+       coloured left rail, tight two-line body. Rail: green offer, blue
+       request, grey once the poster says it worked out. -->
+  <div
+    class="rc-card row no-wrap cursor-pointer"
+    :class="{ 'bg-yellow-1': upcoming }"
+    @click="onOpen ? onOpen(ride) : $router.push('/rides/' + ride.id)"
   >
-    <div class="row items-center no-wrap">
-      <q-badge
-        :color="ride.type === 'offer' ? 'positive' : 'info'"
-        :label="ride.type === 'offer' ? 'Offer' : 'Request'"
-        class="q-mr-sm"
-      />
-      <q-badge
-        outline
-        :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
-        :label="ride.direction === 'on-bowen' ? 'Bowen' : 'Mainland'"
-        class="q-mr-sm"
-      />
-      <q-badge
-        v-if="ride.recurring"
-        outline
-        color="accent"
-        :label="ride.schedule || 'Recurring'"
-        class="q-mr-sm"
-      />
-      <span v-if="ride.date" class="text-caption text-weight-bold q-ml-sm"
-        >When: {{ formatDate(ride.date) }}</span
-      >
-      <span v-if="ride.sailing" class="text-caption text-grey-7 q-ml-xs"
-        >at {{ formatTime12h(ride.sailing) }}</span
-      >
-    </div>
-    <div class="row items-center no-wrap">
-      <div class="text-body2 col" :class="{ 'ellipsis-lines': isMobile }">
-        {{ ride.description }}
+    <div class="rc-rail" :class="'bg-' + railColor"></div>
+    <div class="rc-body">
+      <!-- Time first in bold, like the sailing cards; what kind of ride on
+           the right where they show lateness. -->
+      <div class="row items-baseline no-wrap">
+        <div class="rc-title ellipsis">
+          {{ whenText.time
+          }}<span v-if="whenText.date" class="rc-date">{{ whenText.time ? ' ' : '' }}{{ whenText.date }}</span>
+        </div>
+        <span v-if="ride.outcome === 'matched'" class="text-caption text-grey-7 q-ml-sm text-no-wrap"
+          >✓ {{ ride.type === 'offer' ? 'taken' : 'sorted' }}</span
+        >
+        <q-space />
+        <span
+          class="text-caption text-weight-bold q-ml-xs text-no-wrap"
+          :class="'text-' + railColor"
+          >{{ kindText }}</span
+        >
       </div>
-      <q-icon name="chevron_right" color="primary" size="sm" class="q-ml-sm" />
+      <!-- Message shown in full: the card grows rather than clipping it.
+           The poster's name sits bottom-right, level with the last line. -->
+      <div class="row items-end no-wrap">
+        <div class="col text-caption text-grey-8 rc-message">{{ ride.description }}</div>
+        <span
+          class="text-caption text-primary q-ml-sm text-no-wrap"
+          :class="{ 'text-weight-bold': isMine }"
+          >{{ isMine ? 'Yours' : ride.authorName }}</span
+        >
+      </div>
     </div>
-    <div class="row items-center no-wrap">
-      <q-badge v-if="isMine" color="primary" label="Yours" />
-      <span v-else class="text-caption text-primary">{{ ride.authorName }}</span>
-    </div>
-  </q-card>
+  </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { useQuasar } from 'quasar'
 import { useAuth } from 'src/composables/useAuth'
-import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
-
-const $q = useQuasar()
-const isMobile = computed(() => $q.screen.lt.sm)
+import { formatTime12h, timeToDate, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
 
 const props = defineProps({
   ride: { type: Object, required: true },
   upcoming: { type: Boolean, default: false },
+  // @open listener (declared as a prop so we can tell whether one was
+  // given): the parent shows the ride itself, e.g. in a dialog. Without
+  // it, a click goes to the ride's page.
+  onOpen: { type: Function, default: null },
 })
 
 const { user } = useAuth()
 const isMine = computed(() => user.value && props.ride.authorUid === user.value.uid)
+
+const railColor = computed(() => {
+  if (props.ride.outcome === 'matched') return 'grey-5'
+  return props.ride.type === 'offer' ? 'positive' : 'info'
+})
+
+// "Looking for a ride on Bowen", "Offering a ride on the mainland".
+const kindText = computed(
+  () =>
+    `${props.ride.type === 'offer' ? 'Offering' : 'Looking for'} a ride ` +
+    (props.ride.direction === 'on-bowen' ? 'on Bowen' : 'on the mainland'),
+)
+
+// Time first (bold), then the date: "5:20pm Today", "after work Tomorrow";
+// recurring rides show their schedule ("Weekdays"). Free-text times are
+// shown as typed.
+const whenText = computed(() => {
+  const r = props.ride
+  if (r.recurring) return { time: r.schedule || 'Recurring', date: '' }
+  const time = r.sailing ? (timeToDate(r.sailing) ? formatTime12h(r.sailing) : r.sailing) : ''
+  return { time, date: r.date ? formatDate(r.date) : '' }
+})
 function formatDate(dateStr) {
   if (!dateStr) return ''
   const d = dayjs.tz(dateStr, TZ)
@@ -72,21 +89,40 @@ function formatDate(dateStr) {
 </script>
 
 <style lang="scss" scoped>
-.ride-card {
-  transition:
-    background-color 0.15s,
-    box-shadow 0.15s,
-    transform 0.15s;
-  &:hover {
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-    transform: translateY(-1px);
-  }
+/* Matches SailingRow's .sr-card / .sr-rail / .sr-card-body. */
+.rc-card {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
-.ellipsis-lines {
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.rc-rail {
+  width: 5px;
+  flex: 0 0 auto;
+}
+
+.rc-body {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px 4px;
+  line-height: 1.2;
+}
+
+.rc-date {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #616161;
+}
+
+.rc-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.rc-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  min-width: 0;
 }
 </style>

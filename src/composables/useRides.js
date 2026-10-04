@@ -52,6 +52,7 @@ export function useRides({ live = true } = {}) {
       description: data.description,
       direction: data.direction,
       sailing: data.sailing || null,
+      ferryTime: data.ferryTime || null,
       date: data.date || null,
       authorName: data.authorName || user.displayName || user.email || 'Anonymous',
       authorEmail: user.email || null,
@@ -78,6 +79,7 @@ export function useRides({ live = true } = {}) {
       description: data.description,
       direction: data.direction,
       sailing: data.sailing || null,
+      ferryTime: data.ferryTime || null,
       date: data.date || null,
       authorName: data.authorName || null,
       contactMethod: data.contactMethod || null,
@@ -86,9 +88,18 @@ export function useRides({ live = true } = {}) {
     })
   }
 
+  // The poster's "did it work out?" answer ('matched' | 'unmatched'), or
+  // null to clear it.
+  async function setRideOutcome(id, outcome) {
+    await updateDoc(doc(db, 'rides', id), {
+      outcome: outcome || null,
+      outcomeAt: outcome ? Timestamp.now() : null,
+    })
+  }
+
   async function deleteRide(id) {
     await deleteDoc(doc(db, 'rides', id))
   }
 
-  return { rides, createRide, updateRide, deleteRide }
+  return { rides, createRide, updateRide, deleteRide, setRideOutcome }
 }

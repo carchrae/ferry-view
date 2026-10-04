@@ -12,40 +12,81 @@
     icon="img:thumb-icon-48.png"
     :class="{ 'rs-blink': hasNew }"
     :aria-label="hasNew ? 'New ride offers or requests' : 'Ride offers and requests'"
+    @click="open = true"
   >
-    <!-- Marked seen when the menu closes, not opens, so the new ones stay
-         highlighted while the rider is reading the list. -->
-    <q-menu anchor="bottom right" self="top right" @hide="markAllSeen">
-      <q-list dense style="max-width: 320px">
-        <q-item-label header class="q-pb-xs">Ride offers and requests</q-item-label>
-        <q-item v-for="r in rides" :key="r.id" v-close-popup clickable :to="'/rides/' + r.id">
-          <q-item-section>
-            <q-item-label :class="{ 'text-weight-bold': isNew(r) }">
-              {{ r.type === 'offer' ? 'Offer' : 'Request' }} ·
-              {{ r.direction === 'on-bowen' ? 'Bowen' : 'Mainland' }}
-              <template v-if="r.sailing">· {{ formatTime12h(r.sailing) }}</template>
-            </q-item-label>
-            <q-item-label caption lines="1">{{ r.description }}</q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <q-badge v-if="isNew(r)" color="positive" label="new" />
-            <q-icon v-else name="chevron_right" size="xs" />
-          </q-item-section>
-        </q-item>
+    <!-- A dialog, not a menu: a ride opens in place instead of navigating
+         away from home. Marked seen when it closes, so the new ones stay
+         highlighted while the rider is reading. -->
+    <q-dialog v-model="open" class="ride-dialog" @hide="onHide">
+      <q-card :style="{ width: $q.screen.xs ? '100%' : '420px' }">
+        <q-card-section class="row items-center no-wrap q-py-xs q-pl-sm q-pr-xs">
+          <q-btn
+            v-if="selected"
+            flat
+            dense
+            round
+            icon="arrow_back"
+            aria-label="Back to the list"
+            @click="selectedId = null"
+          />
+          <div class="text-subtitle1 col q-ml-xs ellipsis">Ride offers and requests</div>
+          <q-btn flat dense round icon="close" aria-label="Close" v-close-popup />
+        </q-card-section>
         <q-separator />
-        <q-item v-close-popup clickable to="/rides">
-          <q-item-section avatar><q-icon name="list" color="primary" /></q-item-section>
-          <q-item-section>All rides</q-item-section>
-        </q-item>
-      </q-list>
-    </q-menu>
+
+        <RideDetails v-if="selected" :ride="selected" />
+        <q-list v-else>
+          <q-item v-for="r in rides" :key="r.id" clickable @click="selectedId = r.id">
+            <q-item-section>
+              <q-item-label :class="{ 'text-weight-bold': isNew(r) }">
+                {{ r.type === 'offer' ? 'Offer' : 'Request' }} ·
+                {{ r.direction === 'on-bowen' ? 'Bowen' : 'Mainland' }}
+                <template v-if="r.sailing">· {{ formatTime12h(r.sailing) }}</template>
+              </q-item-label>
+              <q-item-label caption lines="1">{{ r.description }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-badge v-if="isNew(r)" color="positive" label="new" />
+              <q-icon v-else name="chevron_right" size="xs" />
+            </q-item-section>
+          </q-item>
+        </q-list>
+
+        <q-separator v-if="!selected" />
+        <!-- List actions; a single ride's details don't need them. -->
+        <q-card-section v-if="!selected" class="row q-gutter-sm q-pa-sm">
+          <q-btn
+            outline
+            no-caps
+            color="primary"
+            icon="list"
+            label="Show All"
+            class="col app-btn"
+            to="/rides"
+          />
+          <q-btn
+            unelevated
+            no-caps
+            color="primary"
+            icon="add"
+            label="Post a ride"
+            class="col app-btn"
+            @click="openPostRide"
+          />
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-btn>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { useAuth } from 'src/composables/useAuth'
+import RideDetails from 'src/components/RideDetails.vue'
 import { formatTime12h } from '../../functions/lib/time.js'
+import { useRideFormDialog } from 'src/composables/useRideFormDialog'
+
+const { openPostRide } = useRideFormDialog()
 
 // The home page already listens to active rides; take them as a prop rather
 // than opening a second listener.
@@ -66,6 +107,23 @@ function loadSeen() {
 }
 
 const seen = ref(loadSeen())
+const open = ref(false)
+// The ride shown in the dialog, by id so it stays live as the list updates
+// (and falls back to the list if that ride expires meanwhile).
+const selectedId = ref(null)
+const selected = computed(() => props.rides.find((r) => r.id === selectedId.value) || null)
+
+// Open straight to one ride (the home page's ride cards use this).
+function openRide(id) {
+  selectedId.value = id
+  open.value = true
+}
+defineExpose({ openRide })
+
+function onHide() {
+  markAllSeen()
+  selectedId.value = null
+}
 const { user } = useAuth()
 
 // Your own posts are never "new" to you.

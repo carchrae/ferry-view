@@ -99,7 +99,7 @@
           empty-text="No one has posted more than one ride in the last 30 days yet."
         />
         <div v-if="!loading && !rideBoard.length" class="text-caption text-grey-6 q-mt-sm">
-          <router-link to="/rides/post">Post more than one ride</router-link> this month to appear here.
+          <a class="text-primary cursor-pointer" role="button" @click="openPostRide">Post more than one ride</a> this month to appear here.
         </div>
       </div>
     </div>
@@ -156,6 +156,9 @@ import LeaderboardList from 'src/components/LeaderboardList.vue'
 import ScoringExplainDialog from 'src/components/ScoringExplainDialog.vue'
 import GoatsDialog from 'src/components/goats/GoatsDialog.vue'
 import { dayjs, formatTime12h, TZ } from '../../functions/lib/time.js'
+import { useRideFormDialog } from 'src/composables/useRideFormDialog'
+
+const { openPostRide } = useRideFormDialog()
 
 const $q = useQuasar()
 const { getLeaderboard, getRideLeaderboard, getUserReports, subscribeLeaderboard } = useLeaderboard()

@@ -32,3 +32,59 @@
     padding-right: 1px;
   }
 }
+
+// Standard rectangular button (add class "app-btn" to a q-btn): 40px tall,
+// 8px corners, label centred across the whole button with any icon pinned
+// to the left edge, out of the label's way.
+.q-btn.app-btn {
+  min-height: 40px;
+  border-radius: 8px;
+
+  // Roboto's capitals sit ~1.5px above centre in the box (room kept for
+  // descenders); nudge the label, not the icon, down 1px.
+  .q-btn__content > .block {
+    position: relative;
+    top: 1px;
+  }
+
+  // Equal room both sides when there's an icon, so the label stays centred
+  // and the pinned icon never sits on top of it.
+  &:has(> .q-btn__content > .q-icon.on-left) {
+    padding-left: 36px;
+    padding-right: 36px;
+  }
+
+  // Narrow buttons (e.g. a third-width Delete): icon beside the label,
+  // the pair centred, instead of pinned left with padding both sides.
+  // (:has() here too, to outrank the icon-padding rule above.)
+  &.app-btn--inline-icon:has(> .q-btn__content > .q-icon.on-left) {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  &.app-btn--inline-icon {
+    .q-btn__content > .q-icon.on-left {
+      position: static;
+      transform: none;
+      margin-right: 6px;
+    }
+  }
+
+  .q-btn__content > .q-icon.on-left {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+  }
+}
+
+// Ride dialogs (post/edit form, rides list): Quasar caps a dialog at
+// 100vh - 108px on Android Chrome (48px elsewhere), so a long form scrolled
+// with room to spare. Let these grow to the visible height (dvh: excludes
+// the browser bars) minus a small margin. Specific enough to beat Quasar's
+// body.platform-android rule.
+body .q-dialog.ride-dialog .q-dialog__inner.q-dialog__inner--minimized > div {
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+}

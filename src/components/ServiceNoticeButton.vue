@@ -17,7 +17,12 @@
          Ferries' bot protection seemed to block visitors arriving from our
          origin (localhost in dev) on these deep links. -->
     <q-menu anchor="bottom right" self="top right" @hide="markAllSeen">
-      <q-list dense style="max-width: 320px">
+      <!-- Phones: full-size rows and nearly full width, so they are easy to
+           read and tap. -->
+      <q-list
+        :dense="!$q.screen.xs"
+        :style="$q.screen.xs ? { width: '92vw' } : { maxWidth: '320px' }"
+      >
         <q-item-label header class="q-pb-xs">BC Ferries service notices</q-item-label>
         <q-item
           v-for="n in notices"

@@ -1,66 +1,7 @@
 <template>
   <q-page class="q-pa-sm">
     <q-card v-if="ride" flat bordered>
-      <q-card-section>
-        <div class="row items-center no-wrap">
-          <q-badge
-            :color="ride.type === 'offer' ? 'positive' : 'info'"
-            :label="ride.type === 'offer' ? 'Offer' : 'Request'"
-            class="q-mr-sm"
-          />
-          <q-badge
-            outline
-            :color="ride.direction === 'on-bowen' ? 'primary' : 'secondary'"
-            :label="ride.direction === 'on-bowen' ? 'Bowen' : 'Mainland'"
-          />
-          <q-space />
-          <q-btn
-            v-if="canEdit"
-            no-caps dense flat
-            icon="edit"
-            color="grey-7"
-            :to="`/rides/${ride.id}/edit`"
-          />
-        </div>
-
-        <div class="text-body1 q-mt-sm">{{ ride.authorName }}</div>
-        <div class="text-body2 text-grey-7 q-mb-sm">
-          {{ ride.type === 'offer' ? 'Offering' : 'Seeking' }}
-          a ride
-          <template v-if="ride.date">on {{ formatDate(ride.date) }}</template>
-          <template v-if="ride.sailing">at {{ formatTime12h(ride.sailing) }}</template>
-        </div>
-
-        <q-separator />
-
-        <!-- Message -->
-        <div class="text-overline text-grey-7 q-mt-sm q-mb-xs">Message</div>
-        <div class="text-body1 q-mb-sm" style="white-space: pre-wrap">{{ ride.description }}</div>
-
-        <q-separator />
-
-        <!-- Contact info -->
-        <div class="text-overline text-grey-7 q-mt-sm q-mb-xs">Contact</div>
-        <div v-if="ride.contactMethod === 'email' && ride.authorEmail">
-          <a :href="'mailto:' + ride.authorEmail" class="text-body1 text-primary">{{ ride.authorEmail }}</a>
-        </div>
-        <div v-else-if="ride.contactMethod === 'sms' && ride.contactInfo">
-          <a :href="'sms:' + ride.contactInfo" class="text-body1">{{ ride.contactInfo }}</a>
-        </div>
-        <div v-else-if="ride.contactMethod === 'other' && ride.contactInfo" class="text-body1">
-          {{ ride.contactInfo }}
-        </div>
-        <div v-else class="text-caption text-grey-5">
-          No contact info provided
-        </div>
-
-        <q-separator class="q-mt-sm" />
-
-        <!-- Footer -->
-        <div class="text-caption text-grey-6 q-mt-sm">
-          Posted {{ formatDateTime(ride.createdAt) }}
-        </div>
-      </q-card-section>
+      <RideDetails :ride="ride" />
     </q-card>
 
     <!-- Loading -->
@@ -88,19 +29,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
-import { useAuth } from 'src/composables/useAuth'
-import { formatTime12h, nowInVancouver, dayjs, TZ } from '../../functions/lib/time.js'
+import RideDetails from 'src/components/RideDetails.vue'
 
 const route = useRoute()
-const { user } = useAuth()
-
 const ride = ref(null)
 const loading = ref(true)
-const canEdit = computed(() => user.value && ride.value && ride.value.authorUid === user.value.uid)
 let unsubscribe = null
 
 onMounted(() => {
@@ -116,18 +53,4 @@ onMounted(() => {
 onUnmounted(() => {
   if (unsubscribe) unsubscribe()
 })
-
-function formatDate(dateStr) {
-  if (!dateStr) return ''
-  const d = dayjs.tz(dateStr, TZ)
-  const now = nowInVancouver()
-  if (d.format('YYYY-MM-DD') === now.format('YYYY-MM-DD')) return 'Today'
-  if (d.format('YYYY-MM-DD') === now.add(1, 'day').format('YYYY-MM-DD')) return 'Tomorrow'
-  return d.format('ddd, MMM D')
-}
-
-function formatDateTime(ts) {
-  if (!ts?.toMillis) return ''
-  return dayjs(ts.toMillis()).tz(TZ).format('MMM D, h:mm A')
-}
 </script>

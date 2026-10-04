@@ -25,7 +25,7 @@
             >· {{ shownDays[0].label }}</span
           >
           <span v-if="!reportDays.length && !adding" class="text-weight-regular text-grey-5">
-            — seeing something? tell other riders
+            — seeing something? tell others
           </span>
         </div>
       </div>
@@ -42,26 +42,30 @@
           placeholder="e.g. lineup past the gas station"
           @keydown.esc="cancelAdd"
         />
-        <q-btn
-          type="submit"
-          dense
-          no-caps
-          unelevated
-          color="primary"
-          label="Post"
-          class="q-ml-xs"
-          :loading="saving"
-          :disable="!draft.trim()"
-        />
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="grey-7"
-          label="Cancel"
-          class="q-ml-xs"
-          @click="cancelAdd"
-        />
+        <!-- Same height as the dense input (40px), so the buttons centre on
+             the field rather than on field + counter. -->
+        <div class="row items-center no-wrap" style="height: 40px">
+          <q-btn
+            type="submit"
+            dense
+            no-caps
+            unelevated
+            color="primary"
+            label="Post"
+            class="q-ml-xs app-btn"
+            :loading="saving"
+            :disable="!draft.trim()"
+          />
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="grey-7"
+            label="Cancel"
+            class="q-ml-xs"
+            @click="cancelAdd"
+          />
+        </div>
       </form>
 
       <div v-for="(g, i) in shownDays" :key="g.day">
@@ -275,7 +279,7 @@ function clockTime(ms) {
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 6px;
   padding: 0 6px 2px 8px;
-  margin-bottom: 8px;
+  margin-bottom: 2px;
 }
 
 .ur-add {

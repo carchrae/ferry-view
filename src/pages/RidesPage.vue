@@ -24,14 +24,14 @@
       </q-card-section>
     </q-card>
 
-    <q-btn color="primary" icon="add" label="Post a Ride" no-caps dense class="q-mb-sm full-width" to="/rides/post" />
+    <q-btn color="primary" icon="add" label="Post a Ride" no-caps dense class="q-mb-sm full-width" @click="openPostRide" />
 
     <!-- Ride list (visible to everyone) -->
     <q-card flat bordered>
       <q-card-section class="q-pa-sm">
         <div class="text-overline text-grey-7">Active Rides</div>
         <div v-if="!rides.length" class="text-caption text-grey-5 q-mt-xs">No rides posted yet</div>
-        <RideCard v-for="ride in rides" :key="ride.id" :ride="ride" class="q-mt-sm" />
+        <RideCard v-for="ride in orderedRides" :key="ride.id" :ride="ride" class="q-mt-sm" />
       </q-card-section>
     </q-card>
 
@@ -39,11 +39,21 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useAuth } from 'src/composables/useAuth'
 import { useRides } from 'src/composables/useRides'
 import SignInOptions from 'src/components/SignInOptions.vue'
 import RideCard from 'src/components/RideCard.vue'
+import { useRideFormDialog } from 'src/composables/useRideFormDialog'
+
+const { openPostRide } = useRideFormDialog()
 
 const { user, signOut } = useAuth()
 const { rides } = useRides()
+// Rides the poster says worked out go last: nothing to act on.
+const orderedRides = computed(() =>
+  [...rides.value].sort(
+    (a, b) => (a.outcome === 'matched' ? 1 : 0) - (b.outcome === 'matched' ? 1 : 0),
+  ),
+)
 </script>
