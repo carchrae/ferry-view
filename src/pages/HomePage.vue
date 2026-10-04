@@ -544,8 +544,20 @@
                   <span class="text-caption">Stuck</span>
                 </div>
                 <template v-slot:error>
-                  <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
+                  <div class="absolute-full column flex-center bg-grey-3 text-grey-7">
                     <q-icon name="videocam_off" size="24px" />
+                    <!-- Too many failed, so auto-retry has stopped. -->
+                    <q-btn
+                      v-if="tooManyCamsFailed"
+                      unelevated
+                      no-caps
+                      dense
+                      color="primary"
+                      icon="refresh"
+                      label="Reload"
+                      class="q-mt-sm q-px-sm"
+                      @click.stop="reloadCams"
+                    />
                   </div>
                 </template>
               </q-img>
@@ -1897,15 +1909,35 @@ const MAX_CAM_RETRIES = 10
 const CAM_RETRY_DELAY = 1000
 const camRetries = ref(allCamUrls.map(() => 0))
 const retryTimeouts = {}
+// Whether each cam's latest load failed.
+const camFailed = ref(allCamUrls.map(() => false))
 
-function handleCamError(camIndex) {
+// More than 3 cams failing at once: likely offline or being blocked, so stop
+// retrying (and skip the minute refresh) — more requests won't help and
+// could make a block worse. Each failed image then offers a Reload button.
+const MAX_FAILED_CAMS = 3
+const tooManyCamsFailed = computed(
+  () => camFailed.value.filter(Boolean).length > MAX_FAILED_CAMS,
+)
+
+function clearRetry(camIndex) {
   if (retryTimeouts[camIndex]) {
     clearTimeout(retryTimeouts[camIndex])
     retryTimeouts[camIndex] = false
   }
+}
+
+function handleCamError(camIndex) {
+  clearRetry(camIndex)
+  camFailed.value[camIndex] = true
+  if (tooManyCamsFailed.value) {
+    Object.keys(retryTimeouts).forEach(clearRetry)
+    return
+  }
   if (camRetries.value[camIndex] >= MAX_CAM_RETRIES) return
   camRetries.value[camIndex]++
   const t = setTimeout(() => {
+    if (tooManyCamsFailed.value) return
     cacheBusters.value[camIndex] = Date.now()
   }, CAM_RETRY_DELAY * camRetries.value[camIndex])
   retryTimeouts[camIndex] = t
@@ -1913,10 +1945,24 @@ function handleCamError(camIndex) {
 
 function handleCamLoad(camIndex) {
   camRetries.value[camIndex] = 0
-  if (retryTimeouts[camIndex]) {
-    clearTimeout(retryTimeouts[camIndex])
-    retryTimeouts[camIndex] = false
-  }
+  camFailed.value[camIndex] = false
+  clearRetry(camIndex)
+}
+
+// Refresh every cam: others at once, BC Ferries ones staggered.
+function refreshAllCams() {
+  allCamUrls.forEach((url, i) => {
+    if (isBcferriesUrl(url)) return
+    cacheBusters.value[i] = Date.now()
+    camRetries.value[i] = 0
+  })
+  staggerBcfLoads()
+}
+
+// The Reload button (shown once too many cams have failed).
+function reloadCams() {
+  camFailed.value = allCamUrls.map(() => false)
+  refreshAllCams()
 }
 
 const { stalledCameras, anyStalled, stalledMessage, isCamStalled } = useWebcamHealth()
@@ -2177,12 +2223,7 @@ let camRefreshInterval
 onMounted(() => {
   staggerBcfLoads()
   camRefreshInterval = setInterval(() => {
-    allCamUrls.forEach((url, i) => {
-      if (isBcferriesUrl(url)) return
-      cacheBusters.value[i] = Date.now()
-      camRetries.value[i] = 0
-    })
-    staggerBcfLoads()
+    if (!tooManyCamsFailed.value) refreshAllCams()
   }, 60000)
   // Well under the 5-minute threshold, so the overlay appears promptly rather
   // than up to a tick late.
