@@ -514,7 +514,25 @@
               class="webcam-card cursor-pointer"
               @click="openFullscreen(cam.globalIndex)"
             >
+              <!-- Not loaded yet (staggered BC Ferries cam), or switched off
+                   in dev (see lib/bcferries-images.js). -->
+              <q-responsive v-if="!cam.src" :ratio="16 / 9">
+                <div
+                  v-if="cam.pending"
+                  class="column flex-center bg-grey-3 text-grey-6"
+                >
+                  <q-spinner color="primary" size="24px" />
+                </div>
+                <div
+                  v-else
+                  class="column flex-center bg-grey-3 text-grey-6 text-caption text-center q-pa-sm"
+                >
+                  <q-icon name="videocam_off" size="24px" />
+                  BC Ferries cams are off in dev
+                </div>
+              </q-responsive>
               <q-img
+                v-else
                 :src="cam.src"
                 :ratio="16 / 9"
                 spinner-color="primary"
@@ -553,7 +571,7 @@
     <!-- Fullscreen viewer -->
     <q-dialog v-model="fullscreen" maximized transition-show="fade" transition-hide="fade">
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
-        <img :src="viewerSrc" class="fullscreen-img" />
+        <img v-if="viewerSrc" :src="viewerSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 2">
           <q-btn
             round
@@ -1021,6 +1039,7 @@ import DepartureEstimateExplainer from 'src/components/DepartureEstimateExplaine
 import { getUpcomingLateColor } from '../../functions/lib/constants.js'
 import ServiceNoticeButton from 'src/components/ServiceNoticeButton.vue'
 import RideShareButton from 'src/components/RideShareButton.vue'
+import { bcfSafeSrc, isBcferriesUrl } from 'src/lib/bcferries-images.js'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
 import { useRideFormDialog } from 'src/composables/useRideFormDialog'
 
@@ -1855,7 +1874,24 @@ const allCamLabels = [
 ]
 
 const displayIndexes = [4, 5, 0, 1, 2, 3]
-const cacheBusters = ref(allCamUrls.map(() => Date.now()))
+// null = not requested yet (a BC Ferries cam waiting its turn, below).
+const cacheBusters = ref(allCamUrls.map((url) => (isBcferriesUrl(url) ? null : Date.now())))
+
+// BC Ferries cams load one at a time, 5s apart (in display order), on the
+// first load and each minute's refresh, rather than as a burst of requests
+// to bcferries.com. Other cams refresh immediately.
+const BCF_STAGGER_MS = 5000
+const bcfCamOrder = displayIndexes.filter((i) => isBcferriesUrl(allCamUrls[i]))
+let bcfStaggerTimeouts = []
+function staggerBcfLoads() {
+  bcfStaggerTimeouts.forEach(clearTimeout)
+  bcfStaggerTimeouts = bcfCamOrder.map((camIndex, k) =>
+    setTimeout(() => {
+      cacheBusters.value[camIndex] = Date.now()
+      camRetries.value[camIndex] = 0
+    }, k * BCF_STAGGER_MS),
+  )
+}
 
 const MAX_CAM_RETRIES = 10
 const CAM_RETRY_DELAY = 1000
@@ -1887,7 +1923,12 @@ const { stalledCameras, anyStalled, stalledMessage, isCamStalled } = useWebcamHe
 
 const displayCams = computed(() =>
   displayIndexes.map((i) => ({
-    src: `${allCamUrls[i]}?t=${cacheBusters.value[i]}`,
+    src:
+      cacheBusters.value[i] == null
+        ? null
+        : bcfSafeSrc(`${allCamUrls[i]}?t=${cacheBusters.value[i]}`),
+    // Waiting for its staggered turn (vs. switched off in dev).
+    pending: cacheBusters.value[i] == null,
     label: allCamLabels[i],
     globalIndex: i,
     // Only the two cameras the server captures from are health-checked; the
@@ -1900,7 +1941,8 @@ const fullscreen = ref(false)
 const fullscreenIndex = ref(0)
 const showFullDialog = ref(false)
 const fullscreenSrc = computed(
-  () => `${allCamUrls[fullscreenIndex.value]}?t=${cacheBusters.value[fullscreenIndex.value]}`,
+  () =>
+    bcfSafeSrc(`${allCamUrls[fullscreenIndex.value]}?t=${cacheBusters.value[fullscreenIndex.value]}`),
 )
 
 // Fullscreen playback: the two cameras the server captures from have a
@@ -2133,9 +2175,14 @@ const speedIcon = computed(() => {
 
 let camRefreshInterval
 onMounted(() => {
+  staggerBcfLoads()
   camRefreshInterval = setInterval(() => {
-    cacheBusters.value = allCamUrls.map(() => Date.now())
-    camRetries.value = allCamUrls.map(() => 0)
+    allCamUrls.forEach((url, i) => {
+      if (isBcferriesUrl(url)) return
+      cacheBusters.value[i] = Date.now()
+      camRetries.value[i] = 0
+    })
+    staggerBcfLoads()
   }, 60000)
   // Well under the 5-minute threshold, so the overlay appears promptly rather
   // than up to a tick late.
@@ -2152,6 +2199,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   clearInterval(camRefreshInterval)
+  bcfStaggerTimeouts.forEach(clearTimeout)
   clearInterval(staleTicker)
   window.removeEventListener('online', setOnline)
   window.removeEventListener('offline', setOffline)

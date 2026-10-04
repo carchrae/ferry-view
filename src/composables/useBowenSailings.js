@@ -8,8 +8,10 @@ import {
   normalizeTime,
   TZ,
 } from '../../functions/lib/time.js'
+import { BCF_IMAGES_ENABLED } from 'src/lib/bcferries-images.js'
 
-// Same live camera the home page shows as "Bowen Terminal".
+// Same live camera the home page shows as "Bowen Terminal" (not offered in
+// dev builds — see lib/bcferries-images.js).
 export const BOWEN_TERMINAL_CAM_URL =
   'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 
@@ -371,7 +373,13 @@ function finalize(sailings, todayIso) {
   // photo, not for the card. Not taggable (SailingTagCards hides the Full
   // button for live cards).
   const newest = built[0]
-  if (newest && newest.dateIso === todayIso && newest.arrival && !newest.departure?.imageUrl) {
+  if (
+    BCF_IMAGES_ENABLED &&
+    newest &&
+    newest.dateIso === todayIso &&
+    newest.arrival &&
+    !newest.departure?.imageUrl
+  ) {
     newest.departure = {
       imageUrl: `${BOWEN_TERMINAL_CAM_URL}?t=${Date.now()}`,
       sailingKey: newest.sailingKey,
