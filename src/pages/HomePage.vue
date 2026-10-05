@@ -256,9 +256,6 @@
                       :design="sailingDesign"
                       @open="openHistory(event.scheduledTime, event.label, event)"
                     />
-                    <div v-if="!recentPastBowen.length" class="text-caption text-grey-5 q-mt-xs">
-                      None
-                    </div>
                   </div>
                   <div class="col">
                     <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
@@ -273,9 +270,6 @@
                       :design="sailingDesign"
                       @open="openHistory(event.scheduledTime, event.label, event)"
                     />
-                    <div v-if="!recentPastHSB.length" class="text-caption text-grey-5 q-mt-xs">
-                      None
-                    </div>
                   </div>
                 </div>
                 <div class="section-divider text-caption text-grey-7 q-my-xs">
@@ -1889,10 +1883,10 @@ const displayIndexes = [4, 5, 0, 1, 2, 3]
 // null = not requested yet (a BC Ferries cam waiting its turn, below).
 const cacheBusters = ref(allCamUrls.map((url) => (isBcferriesUrl(url) ? null : Date.now())))
 
-// BC Ferries cams load one at a time, 5s apart (in display order), on the
+// BC Ferries cams load one at a time, 1s apart (in display order), on the
 // first load and each minute's refresh, rather than as a burst of requests
 // to bcferries.com. Other cams refresh immediately.
-const BCF_STAGGER_MS = 5000
+const BCF_STAGGER_MS = 1000
 const bcfCamOrder = displayIndexes.filter((i) => isBcferriesUrl(allCamUrls[i]))
 let bcfStaggerTimeouts = []
 function staggerBcfLoads() {
