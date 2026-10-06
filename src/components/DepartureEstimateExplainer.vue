@@ -25,8 +25,9 @@
         late boat catches up on light sailings and stays late on busy ones.
       </p>
       <p class="q-mb-none">
-        The next sailing gets one number. Later ones show a range from faster and slower loading and
-        crossings; when how full a sailing will be isn't known, the range runs from light to full.
+        Each sailing shows a range from faster and slower loading and crossings, collapsing to one
+        number when they agree; when how full a sailing will be isn't known, the range runs from
+        light to full.
       </p>
     </div>
   </ExpandableSection>

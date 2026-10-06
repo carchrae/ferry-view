@@ -288,7 +288,7 @@
                       :key="'ub' + i"
                       :sailing="s"
                       kind="upcoming"
-                      :estimate="upcomingEstimate(s, i)"
+                      :estimate="upcomingEstimate(s)"
                       :first="i === 0"
                       :design="sailingDesign"
                       :hint="sailingHints(s)"
@@ -305,7 +305,7 @@
                       :key="'uh' + i"
                       :sailing="s"
                       kind="upcoming"
-                      :estimate="upcomingEstimate(s, i)"
+                      :estimate="upcomingEstimate(s)"
                       :first="i === 0"
                       :design="sailingDesign"
                       :hint="sailingHints(s)"
@@ -735,7 +735,7 @@
                 :key="'ub' + i"
                 :sailing="s"
                 kind="upcoming"
-                :estimate="upcomingEstimate(s, i)"
+                :estimate="upcomingEstimate(s)"
                 :design="sailingDesign"
                 :hint="sailingHints(s)"
                 @open="openHistory(s.shortTime, s.label, s)"
@@ -751,7 +751,7 @@
                 :key="'uh' + i"
                 :sailing="s"
                 kind="upcoming"
-                :estimate="upcomingEstimate(s, i)"
+                :estimate="upcomingEstimate(s)"
                 :design="sailingDesign"
                 :hint="sailingHints(s)"
                 @open="openHistory(s.shortTime, s.label, s)"
@@ -1741,10 +1741,10 @@ const departureEstimates = computed(() => {
 // a minute or two, and a quiet on-time card reads better than "~+3m".
 const ESTIMATE_LATE_MIN = 5
 
-// The lateness slot for an upcoming card. The first card in a column gets one
-// number; later ones a low–high range, since each leg of the simulation adds
-// uncertainty. undefined = no estimate (fall back to the sailing's own
-// lateText); null = estimated on time (show nothing).
+// The lateness slot for an upcoming card: a low–high range, collapsing to one
+// number when the simulation's fast and slow runs agree (the next sailing's
+// often do once the boat is loading). undefined = no estimate (fall back to
+// the sailing's own lateText); null = estimated on time (show nothing).
 // Inputs behind the estimates, for the dialog's explainer.
 const estimateTimings = computed(() => {
   const d = ferryData.value
@@ -1766,7 +1766,7 @@ const selectedEstimate = computed(() => {
   const loc = e.label === 'HSB' ? 'Horseshoe Bay' : 'Bowen'
   const raw = departureEstimates.value.get(`${loc}|${e.shortTime}`)
   if (i < 0 || !raw) return undefined
-  return { ...raw, sched: toMinutes(e.shortTime), single: i === 0 || raw.low === raw.high }
+  return { ...raw, sched: toMinutes(e.shortTime), single: raw.low === raw.high }
 })
 
 function estimateStatusLine(est) {
@@ -1790,11 +1790,11 @@ function estimateStatusLine(est) {
   return { icon: 'schedule', color: 'positive', text: 'Expected on time, or within a few minutes.' }
 }
 
-function upcomingEstimate(s, i) {
+function upcomingEstimate(s) {
   const loc = s.label === 'HSB' ? 'Horseshoe Bay' : 'Bowen'
   const e = departureEstimates.value.get(`${loc}|${s.shortTime}`)
   if (!e) return undefined
-  if (i === 0 || e.low === e.high) {
+  if (e.low === e.high) {
     if (e.point < ESTIMATE_LATE_MIN) return null
     return {
       text: `~${e.point}m late`,
