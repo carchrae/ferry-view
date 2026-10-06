@@ -29,7 +29,7 @@
         <!-- Desktop nav tabs -->
         <q-tabs v-model="currentTab" shrink stretch class="gt-sm nav-tabs">
           <q-route-tab name="home" label="Home" icon="home" to="/" exact />
-          <q-route-tab name="status" label="History" icon="history" to="/history" />
+          <q-route-tab name="status" label="History" icon="history" :to="historyTo" />
           <q-route-tab name="rides" label="Rides" icon="img:thumb-icon-48.png" to="/rides" />
           <q-route-tab name="map" label="Map" icon="map" to="/map" />
           <!-- On mobile Settings and About are in the drawer. -->
@@ -159,11 +159,28 @@
     <q-page-container>
       <router-view />
     </q-page-container>
+
+    <!-- Mobile bottom nav: the four main pages, one thumb away. Shorter than
+         Quasar's default icon+label tab bar (72px) — see .mobile-nav. -->
+    <q-footer class="lt-md bg-primary text-white shadow-up-3">
+      <q-tabs
+        v-model="currentTab"
+        dense
+        active-color="white"
+        indicator-color="white"
+        class="text-grey-4 mobile-nav"
+      >
+        <q-route-tab name="home" label="Home" icon="home" to="/" exact />
+        <q-route-tab name="status" label="History" icon="history" :to="historyTo" />
+        <q-route-tab name="rides" label="Rides" icon="img:thumb-icon-48.png" to="/rides" />
+        <q-route-tab name="map" label="Map" icon="map" to="/map" />
+      </q-tabs>
+    </q-footer>
   </q-layout>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useInstall } from 'src/composables/useInstall'
 import { useAuth } from 'src/composables/useAuth'
@@ -175,8 +192,15 @@ import { useRideFormDialog } from 'src/composables/useRideFormDialog'
 
 const route = useRoute()
 const router = useRouter()
+// The history page puts its direction in the path (/history/hsb), and a
+// route-tab pointing at plain /history doesn't count as active there (the
+// router compares params). So while on the page the tab targets the current
+// direction; elsewhere it's /history and the page picks its default.
+const historyTo = computed(() =>
+  route.params.direction ? `/history/${route.params.direction}` : '/history',
+)
 const currentTab = ref(
-  route.path === '/history' ? 'status'
+  route.path.startsWith('/history') ? 'status'
     : route.path === '/rides' ? 'rides'
       : route.path === '/map' ? 'map'
         : route.path === '/settings' ? 'settings'
@@ -254,13 +278,43 @@ function toggleLeftDrawer() {
   /* Match an inactive q-tab. */
   opacity: 0.85;
 }
-.q-header .q-tab:not(.q-tab--active) .q-tab__icon img[src*="thumb-icon"] {
+.q-header .q-tab:not(.q-tab--active) .q-tab__icon img[src*="thumb-icon"],
+.q-footer .q-tab:not(.q-tab--active) .q-tab__icon img[src*="thumb-icon"] {
   opacity: 0.5;
 }
-.q-header .q-tab:has(.q-tab__icon img[src*="thumb-icon"]):hover .q-tab__icon img {
+.q-header .q-tab:has(.q-tab__icon img[src*="thumb-icon"]):hover .q-tab__icon img,
+.q-footer .q-tab:has(.q-tab__icon img[src*="thumb-icon"]):hover .q-tab__icon img {
   opacity: 0.8;
 }
-.q-header .q-tab--active .q-tab__icon img[src*="thumb-icon"] {
+.q-header .q-tab--active .q-tab__icon img[src*="thumb-icon"],
+.q-footer .q-tab--active .q-tab__icon img[src*="thumb-icon"] {
   opacity: 1;
+}
+
+/* Bottom nav, compact: 48px instead of the 72px a stacked icon+label tab
+   normally gets (dense alone only brings it to 52px). Smaller icon, label
+   tucked right under it. Padded for the iPhone home indicator. */
+.mobile-nav .q-tab {
+  min-height: 48px;
+  padding: 0 8px;
+}
+.mobile-nav .q-tab__content {
+  min-width: 0;
+  padding: 2px 0;
+}
+.mobile-nav .q-tab__icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+}
+.mobile-nav .q-tab__label {
+  font-size: 11px;
+  line-height: 1.2;
+}
+.mobile-nav .q-tab__icon + .q-tab__label {
+  padding-top: 2px;
+}
+.q-footer .mobile-nav {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 </style>

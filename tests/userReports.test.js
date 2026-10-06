@@ -8,6 +8,7 @@ import {
   reportScore,
   groupReportsByDay,
   USER_REPORT_WINDOW_MS,
+  USER_REPORT_MAX_PER_USER,
 } from '../src/lib/user-reports.js'
 
 test('tallyVotes counts ups and downs, ignoring junk', () => {
@@ -68,5 +69,35 @@ test('groupReportsByDay: newest day first, most popular first, nothing past 48h'
       ['Yesterday', ['yest-top', 'yest']],
       ['Thursday', ['two-days']],
     ],
+  )
+})
+
+test('visibleReports shows at most 3 per rider — their newest — others unaffected', () => {
+  assert.equal(USER_REPORT_MAX_PER_USER, 3)
+  const now = 10 * USER_REPORT_WINDOW_MS
+  const reports = [
+    { id: 'spam1', userUid: 'spammer', createdAt: now - 1, votes: {} },
+    { id: 'spam2', userUid: 'spammer', createdAt: now - 2, votes: {} },
+    { id: 'other', userUid: 'someone', createdAt: now - 3, votes: {} },
+    { id: 'spam3', userUid: 'spammer', createdAt: now - 4, votes: {} },
+    // Fourth and fifth from the same rider: dropped, however popular.
+    { id: 'spam4', userUid: 'spammer', createdAt: now - 5, votes: { a: 1, b: 1 } },
+    { id: 'spam5', userUid: 'spammer', createdAt: now - 6, votes: {} },
+    { id: 'other2', userUid: 'someone', createdAt: now - 7, votes: {} },
+  ]
+  assert.deepEqual(
+    visibleReports(reports, now).map((r) => r.id),
+    ['spam1', 'spam2', 'other', 'spam3', 'other2'],
+  )
+  // A hidden (down-voted) report doesn't use up one of the rider's three.
+  const withHidden = [
+    { id: 'down', userUid: 'u', createdAt: now - 1, votes: { a: -1, b: -1, c: -1, d: -1 } },
+    { id: 'k1', userUid: 'u', createdAt: now - 2, votes: {} },
+    { id: 'k2', userUid: 'u', createdAt: now - 3, votes: {} },
+    { id: 'k3', userUid: 'u', createdAt: now - 4, votes: {} },
+  ]
+  assert.deepEqual(
+    visibleReports(withHidden, now).map((r) => r.id),
+    ['k1', 'k2', 'k3'],
   )
 })

@@ -11,6 +11,11 @@ export const USER_REPORT_WINDOW_MS = 48 * 60 * 60 * 1000
 // More than this many thumbs-down hides a report for everyone.
 export const USER_REPORT_HIDE_DOWNVOTES = 3
 
+// Only this many of a rider's reports (their newest) are listed — one person can't
+// flood the list. Older ones stay in the database (and on the leaderboard)
+// but aren't shown.
+export const USER_REPORT_MAX_PER_USER = 3
+
 // votes is {uid: 1 | -1}.
 export function tallyVotes(votes) {
   let up = 0
@@ -32,12 +37,22 @@ export function reportScore(report) {
   return up - down
 }
 
-// Recent, not voted down, newest first.
+// Recent, not voted down, at most USER_REPORT_MAX_PER_USER per rider (their
+// newest), newest first.
 export function visibleReports(reports, nowMs = Date.now()) {
   const cutoff = nowMs - USER_REPORT_WINDOW_MS
+  const perUser = new Map()
   return (reports || [])
     .filter((r) => typeof r.createdAt === 'number' && r.createdAt >= cutoff && !isReportHidden(r))
     .sort((a, b) => b.createdAt - a.createdAt)
+    .filter((r) => {
+      // Reports without an author (shouldn't happen — the rules require one)
+      // are not lumped together as one spammer.
+      if (!r.userUid) return true
+      const n = (perUser.get(r.userUid) || 0) + 1
+      perUser.set(r.userUid, n)
+      return n <= USER_REPORT_MAX_PER_USER
+    })
 }
 
 // The vote to store when `uid` taps `dir` (1 or -1): tapping your current

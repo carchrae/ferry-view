@@ -1,6 +1,8 @@
 <template>
+  <!-- Notices: BC Ferries' service notices for the route, then riders' own
+       reports. Always shown — even with nothing posted it is where a rider
+       goes to post. Blinks while anything in it is new to this device. -->
   <q-btn
-    v-if="notices.length"
     dense
     round
     size="md"
@@ -10,7 +12,7 @@
     icon="campaign"
     class="sn-btn"
     :class="{ 'sn-blink': hasNew }"
-    :aria-label="hasNew ? 'New BC Ferries service notice' : 'BC Ferries service notices'"
+    :aria-label="hasNew ? 'New notices and rider reports' : 'Notices and rider reports'"
   >
     <!-- Marked seen when the menu closes, not opens, so the new ones stay
          highlighted while the rider is reading the list. noreferrer: BC
@@ -21,36 +23,60 @@
            read and tap. -->
       <q-list
         :dense="!$q.screen.xs"
-        :style="$q.screen.xs ? { width: '92vw' } : { maxWidth: '320px' }"
+        :style="$q.screen.xs ? { width: '92vw' } : { width: '360px', maxWidth: '92vw' }"
       >
-        <q-item-label header class="q-pb-xs">BC Ferries service notices</q-item-label>
-        <q-item
-          v-for="n in notices"
-          :key="n.code"
-          v-close-popup
-          clickable
-          tag="a"
-          :href="noticeUrl(n)"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <q-item-section>
-            <q-item-label :class="{ 'text-weight-bold': isNew(n) }">{{ n.title }}</q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <q-badge v-if="isNew(n)" color="warning" text-color="black" label="new" />
-            <q-icon v-else name="open_in_new" size="xs" />
-          </q-item-section>
-        </q-item>
+        <template v-if="notices.length">
+          <q-item-label header class="q-pb-xs">BC Ferries service notices</q-item-label>
+          <q-item
+            v-for="n in notices"
+            :key="n.code"
+            v-close-popup
+            clickable
+            tag="a"
+            :href="noticeUrl(n)"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <q-item-section>
+              <q-item-label :class="{ 'text-weight-bold': isNew(n) }">{{ n.title }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-badge v-if="isNew(n)" color="warning" text-color="black" label="new" />
+              <q-icon v-else name="open_in_new" size="xs" />
+            </q-item-section>
+          </q-item>
+          <q-separator class="q-my-xs" />
+        </template>
+        <!-- Riders' reports: list, votes and the add button all live in the
+             component; the menu just hosts it. -->
+        <UserReports @sign-in="emit('sign-in')" />
       </q-list>
     </q-menu>
   </q-btn>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useServiceNotices, noticeUrl } from 'src/composables/useServiceNotices'
+import { useUserReports } from 'src/composables/useUserReports'
+import UserReports from 'src/components/UserReports.vue'
 
-const { notices, hasNew, isNew, markAllSeen } = useServiceNotices()
+const emit = defineEmits(['sign-in'])
+
+const {
+  notices,
+  hasNew: hasNewNotice,
+  isNew,
+  markAllSeen: markNoticesSeen,
+} = useServiceNotices()
+const { hasNew: hasNewReport, markAllSeen: markReportsSeen } = useUserReports()
+
+const hasNew = computed(() => hasNewNotice.value || hasNewReport.value)
+
+function markAllSeen() {
+  markNoticesSeen()
+  markReportsSeen()
+}
 </script>
 
 <style scoped>

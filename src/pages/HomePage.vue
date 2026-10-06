@@ -116,10 +116,31 @@
              the two loose lines that used to float underneath it (last update,
              last sailing). Busyness moves from the card's background tint to
              the rail, which is how the cards below express state. -->
-        <div v-if="sailingDesign === 'cards'" class="vs-card row no-wrap q-mb-sm">
+        <div v-if="sailingDesign === 'cards'" class="vs-card row no-wrap">
           <div class="vs-rail" :class="'bg-' + vesselRailColor"></div>
           <div class="vs-body">
             <div class="row items-center no-wrap">
+              <div class="col ellipsis">
+                <div class="text-subtitle2 ellipsis">{{ ferryData.vesselName }}</div>
+                <div class="text-caption text-grey-6 ellipsis">
+                  updated at {{ formatTime12h(ferryData.lastUpdate) }}
+                </div>
+              </div>
+              <!-- Where the boat is and how it's running, as a pair on the
+                   right. Capped so a long "Docked at Horseshoe Bay for
+                   12 min" trims rather than squeezing the name out. -->
+              <div class="vs-where text-caption text-right text-no-wrap q-ml-sm">
+                <div class="text-grey-8 ellipsis">{{ speedText }}</div>
+                <div
+                  v-if="lastSailingStatus"
+                  class="text-weight-medium"
+                  :class="'text-' + lastSailingStatus.color"
+                >
+                  {{ lastSailingStatus.text }}
+                </div>
+              </div>
+              <!-- Rightmost, like the notices button in the row below, so the
+                   two round buttons stack in one column. -->
               <q-btn
                 dense
                 round
@@ -129,24 +150,10 @@
                 text-color="primary"
                 :icon="speedIcon"
                 aria-label="Ferry on the map"
-                @click="showMapDialog = true"
-                class="q-mr-sm"
+                @click="openMap"
+                class="q-ml-sm"
+                :class="{ 'vs-pulse': pulseIcon }"
               />
-              <div class="col ellipsis">
-                <div class="text-subtitle2 ellipsis">{{ ferryData.vesselName }}</div>
-                <div class="text-caption text-grey-8 ellipsis">{{ speedText }}</div>
-              </div>
-              <div class="text-caption text-grey-6 text-right text-no-wrap q-ml-sm">
-                <div>Updated {{ formatTime12h(ferryData.lastUpdate) }}</div>
-                <!-- How the boat is running, right under how fresh that is. -->
-                <div
-                  v-if="lastSailingStatus"
-                  class="text-weight-medium"
-                  :class="'text-' + lastSailingStatus.color"
-                >
-                  {{ lastSailingStatus.text }}
-                </div>
-              </div>
             </div>
             <!-- Below the rule: the next boat each way with its current
                  fullness and the typical-history hint — the same two facts,
@@ -173,7 +180,7 @@
                 </template>
               </div>
               <RideShareButton ref="rideShareBtn" :rides="sortedRides" class="q-ml-xs" />
-              <ServiceNoticeButton class="q-ml-xs" />
+              <ServiceNoticeButton class="q-ml-xs" @sign-in="showSignInDialog = true" />
             </div>
           </div>
         </div>
@@ -189,8 +196,9 @@
               text-color="primary"
               :icon="speedIcon"
               aria-label="Ferry on the map"
-              @click="showMapDialog = true"
+              @click="openMap"
               class="q-mr-sm"
+              :class="{ 'vs-pulse': pulseIcon }"
             />
             <div>
               <div class="text-subtitle2">{{ ferryData.vesselName }}</div>
@@ -198,7 +206,7 @@
             </div>
             <q-space />
             <RideShareButton ref="rideShareBtn" :rides="sortedRides" class="q-mr-sm" />
-            <ServiceNoticeButton class="q-mr-sm" />
+            <ServiceNoticeButton class="q-mr-sm" @sign-in="showSignInDialog = true" />
             <div class="text-caption text-grey-6">
               Last Update <br />
               {{ formatTime12h(ferryData.lastUpdate) }}
@@ -230,8 +238,6 @@
           — expect heavier traffic than usual
         </div>
 
-        <UserReports @sign-in="showSignInDialog = true" />
-
         <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col-12">
             <!-- Plain wrapper, not a card: it holds cards, and a border round
@@ -239,13 +245,13 @@
                  width the sailing rows need. -->
             <q-card flat>
               <q-card-section class="q-pt-none q-pb-xs q-px-none">
-                <div class="text-center text-caption text-grey-5 q-mt-xs">
+                <div class="text-center text-caption text-grey-5">
                   Predictions are just a guess — there's no certainty with the ferry.
                 </div>
                 <div class="row items-start q-col-gutter-sm q-mb-sm">
                   <div class="col">
                     <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
-                      to Horseshoe Bay
+                      to Horseshoe Bay (HSB)
                     </div>
                     <SailingRow
                       v-for="(event, i) in recentPastBowen.slice(-3)"
@@ -1033,7 +1039,6 @@ import { useWebcamHealth } from 'src/composables/useWebcamHealth'
 import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
-import UserReports from 'src/components/UserReports.vue'
 import {
   estimateDepartures,
   todaysTimings,
@@ -2115,8 +2120,12 @@ const isSailing = computed(() => {
   return !isNaN(speed) && speed > 0.5
 })
 
+// Lowercase throughout: it reads as a caption under/beside the vessel name,
+// not a sentence of its own ("left Bowen 5 min ago", "docked at HSB"). HSB
+// as everywhere else on the card — the column title spells it out once.
+const shortPlace = (loc) => (loc === 'Horseshoe Bay' ? 'HSB' : loc)
 const speedText = computed(() => {
-  if (!ferryData.value) return 'Waiting for data...'
+  if (!ferryData.value) return 'waiting for data...'
 
   // In fallback mode the arrival/departure log (recentActivity) is stale, so a
   // "Docked/Sailing for N min" derived from it is unreliable. Instead use the live
@@ -2128,10 +2137,10 @@ const speedText = computed(() => {
       const since = ferryData.value.aisLocationSince
       const mins = since ? Math.round((nowMs() - since) / 60000) : null
       return mins != null && mins >= 0 && mins < 600
-        ? `Docked at ${loc} for ${mins} min`
-        : `Docked at ${loc}`
+        ? `docked at ${shortPlace(loc)} for ${mins} min`
+        : `docked at ${shortPlace(loc)}`
     }
-    return 'Sailing'
+    return 'sailing'
   }
 
   const mostRecent = ferryData.value.recentActivity[0]
@@ -2149,14 +2158,14 @@ const speedText = computed(() => {
   // "Docked at Horseshoe Bay for 221 min" while the ferry is mid-crossing.
   if (isSailing.value) {
     return mostRecent.action === 'Departed' && mins < 120
-      ? `Left ${mostRecent.location} ${mins} min ago`
-      : 'Sailing'
+      ? `left ${shortPlace(mostRecent.location)} ${mins} min ago`
+      : 'sailing'
   }
   if (mostRecent.action === 'Arrived') {
-    return `Docked at ${mostRecent.location} for ${mins} min`
+    return `docked at ${shortPlace(mostRecent.location)} for ${mins} min`
   }
   if (mostRecent.action === 'Departed') {
-    return `Stopped for ${mins} min`
+    return `stopped for ${mins} min`
   }
   return ''
 })
@@ -2212,6 +2221,25 @@ const speedIcon = computed(() => {
   if (!ferryData.value) return 'directions_boat'
   return isSailing.value ? 'sailing' : 'anchor'
 })
+
+// The status icon rocks like a boat while the ferry is underway — the same
+// "something is happening" cue the notice/ride buttons use — until either the
+// user taps it (they've seen it; the map opens) or the boat docks. Follows the
+// underway state rather than a one-shot: each time the boat leaves the dock
+// it starts again, and if it's already sailing when the page loads it starts
+// straight away.
+const pulseIcon = ref(false)
+watch(
+  isSailing,
+  (sailing) => {
+    pulseIcon.value = sailing
+  },
+  { immediate: true },
+)
+function openMap() {
+  pulseIcon.value = false
+  showMapDialog.value = true
+}
 
 let camRefreshInterval
 onMounted(() => {
@@ -2293,6 +2321,9 @@ onUnmounted(() => {
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 6px;
   overflow: hidden;
+  // Same as the body's bottom padding, so the line below the card sits as
+  // close under it as "to Bowen" sits above its border.
+  margin-bottom: 6px;
 }
 
 .vs-rail {
@@ -2304,6 +2335,27 @@ onUnmounted(() => {
   flex: 1;
   min-width: 0;
   padding: 5px 8px 6px;
+}
+
+.vs-where {
+  max-width: 60%;
+}
+
+// Status icon's "underway" pulse (see pulseIcon): the same blink as the
+// service-notice and rides buttons (sn-blink / rs-blink), so every "look
+// here" cue on the card moves the same way.
+.vs-pulse {
+  animation: vs-pulse 1s ease-in-out infinite;
+}
+@keyframes vs-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-pulse {
+    animation: none;
+  }
 }
 
 .vs-next-wrap {
