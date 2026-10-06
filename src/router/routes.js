@@ -3,7 +3,17 @@ const routes = [
     path: '/',
     component: () => import('layouts/MainLayout.vue'),
     children: [
-      { path: '', component: () => import('pages/HomePage.vue') },
+      // /today opens the Today's Sailings dialog over the home page and
+      // /today/dream opens it in dreamer mode (schedule only) — linkable, and
+      // Back closes it. The home path is an alias of the same record, so the
+      // page isn't remounted when the dialog opens or closes. (A child made
+      // only of optional params doesn't match "/", hence alias rather than
+      // optional segments.)
+      {
+        path: 'today/:dream(dream)?',
+        alias: '',
+        component: () => import('pages/HomePage.vue'),
+      },
       // The direction is part of the path so the two halves of the history are
       // separately linkable; omitting it falls back to the page's default.
       // Non-default weeks / holiday settings ride in the query string.

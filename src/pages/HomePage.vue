@@ -248,73 +248,86 @@
                 <div class="text-center text-caption text-grey-5">
                   Predictions are just a guess — there's no certainty with the ferry.
                 </div>
-                <div class="row items-start q-col-gutter-sm q-mb-sm">
-                  <div class="col">
-                    <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
-                      to Horseshoe Bay (HSB)
-                    </div>
-                    <SailingRow
-                      v-for="(event, i) in recentPastBowen.slice(-3)"
-                      :key="'pb' + i"
-                      :sailing="event"
-                      kind="past"
-                      :first="i === 0"
-                      :design="sailingDesign"
-                      @open="openHistory(event.scheduledTime, event.label, event)"
-                    />
+                <!-- Rows, not two independent stacks, so a card and the one
+                     beside it share a row and read left-to-right in time
+                     order (see pairColumns for the one-gap rule). -->
+                <div class="sailing-grid sailing-grid--even q-mb-sm">
+                  <div class="text-center text-caption text-weight-bold text-grey-6">
+                    to Horseshoe Bay (HSB)
                   </div>
-                  <div class="col">
-                    <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
-                      to Bowen
+                  <div class="text-center text-caption text-weight-bold text-grey-6">to Bowen</div>
+                  <template v-for="(row, i) in homePastPairs" :key="'p' + i">
+                    <div>
+                      <SailingRow
+                        v-if="row.l"
+                        :sailing="row.l"
+                        kind="past"
+                        first
+                        :design="sailingDesign"
+                        @open="openHistory(row.l.scheduledTime, row.l.label, row.l)"
+                      />
                     </div>
-                    <SailingRow
-                      v-for="(event, i) in recentPastHSB.slice(-3)"
-                      :key="'ph' + i"
-                      :sailing="event"
-                      kind="past"
-                      :first="i === 0"
-                      :design="sailingDesign"
-                      @open="openHistory(event.scheduledTime, event.label, event)"
-                    />
-                  </div>
+                    <div>
+                      <SailingRow
+                        v-if="row.r"
+                        :sailing="row.r"
+                        kind="past"
+                        first
+                        :design="sailingDesign"
+                        @open="openHistory(row.r.scheduledTime, row.r.label, row.r)"
+                      />
+                    </div>
+                  </template>
                 </div>
                 <div class="section-divider text-caption text-grey-7 q-my-xs">
                   upcoming forecast
                 </div>
-                <div class="row items-start q-col-gutter-sm">
-                  <div class="col">
-                    <SailingRow
-                      v-for="(s, i) in allUpcomingBowen.slice(0, 3)"
-                      :key="'ub' + i"
-                      :sailing="s"
-                      kind="upcoming"
-                      :estimate="upcomingEstimate(s)"
-                      :first="i === 0"
-                      :design="sailingDesign"
-                      :hint="sailingHints(s)"
-                      @open="openHistory(s.shortTime, s.label, s)"
-                      @typical="openTypical(s)"
-                    />
-                    <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
-                      None
+                <div class="sailing-grid sailing-grid--even">
+                  <template v-for="(row, i) in homeUpcomingPairs" :key="'u' + i">
+                    <div>
+                      <SailingRow
+                        v-if="row.l"
+                        :sailing="row.l"
+                        kind="upcoming"
+                        :estimate="upcomingEstimate(row.l)"
+                        first
+                        :design="sailingDesign"
+                        :hint="sailingHints(row.l)"
+                        @open="openHistory(row.l.shortTime, row.l.label, row.l)"
+                        @typical="openTypical(row.l)"
+                      />
+                      <div
+                        v-else-if="!allUpcomingBowen.length && i === 0"
+                        class="text-caption text-grey-5 q-mt-xs"
+                      >
+                        None
+                      </div>
                     </div>
+                    <div>
+                      <SailingRow
+                        v-if="row.r"
+                        :sailing="row.r"
+                        kind="upcoming"
+                        :estimate="upcomingEstimate(row.r)"
+                        first
+                        :design="sailingDesign"
+                        :hint="sailingHints(row.r)"
+                        @open="openHistory(row.r.shortTime, row.r.label, row.r)"
+                        @typical="openTypical(row.r)"
+                      />
+                      <div
+                        v-else-if="!allUpcomingHSB.length && i === 0"
+                        class="text-caption text-grey-5 q-mt-xs"
+                      >
+                        None
+                      </div>
+                    </div>
+                  </template>
+                  <div v-if="!homeUpcomingPairs.length" class="text-caption text-grey-5 q-mt-xs">
+                    None
                   </div>
-                  <div class="col">
-                    <SailingRow
-                      v-for="(s, i) in allUpcomingHSB.slice(0, 3)"
-                      :key="'uh' + i"
-                      :sailing="s"
-                      kind="upcoming"
-                      :estimate="upcomingEstimate(s)"
-                      :first="i === 0"
-                      :design="sailingDesign"
-                      :hint="sailingHints(s)"
-                      @open="openHistory(s.shortTime, s.label, s)"
-                      @typical="openTypical(s)"
-                    />
-                    <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">
-                      None
-                    </div>
+                  <div v-if="!homeUpcomingPairs.length" class="text-caption text-grey-5 q-mt-xs">
+                    None
                   </div>
                 </div>
 
@@ -666,25 +679,45 @@
       </div>
     </q-dialog>
 
-    <!-- Full schedule dialog -->
-    <q-dialog v-model="showFullDialog">
+    <!-- Full schedule dialog. Lives at /today (and /today/dream) — see
+         showFullDialog / dreaming. -->
+    <!-- no-route-dismiss: toggling dreamer mode changes the route (/today ↔
+         /today/dream), which would otherwise dismiss the dialog. Back still
+         closes it, because the model reads the route. -->
+    <q-dialog v-model="showFullDialog" no-route-dismiss>
       <q-card
+        class="today-dialog"
+        :class="{ dreaming }"
         :style="{
           minWidth: $q.screen.gt.xs ? '600px' : '95vw',
           maxWidth: '95vw',
           maxHeight: '90vh',
         }"
       >
-        <q-card-section class="row items-start q-pb-none">
-          <div class="text-h6">Today's Sailings</div>
-          <q-space />
-          <q-btn flat dense icon="close" aria-label="Close" @click="showFullDialog = false" />
+        <!-- Two same-size round buttons either side keep the title centred. -->
+        <q-card-section class="row items-center no-wrap q-pb-none">
+          <!-- Dreamer mode: the lateness and fullness fade away and only the
+               timetable is left — the day as the schedule dreams it. -->
+          <q-btn
+            flat
+            dense
+            round
+            icon="looks"
+            class="dreamer-btn"
+            :class="{ 'dreamer-btn--on': dreaming }"
+            :aria-pressed="dreaming"
+            :aria-label="dreaming ? 'Show lateness and fullness' : 'Just the schedule'"
+            @click="dreaming = !dreaming"
+          >
+            <q-tooltip>{{ dreaming ? 'Back to reality' : 'Just the schedule' }}</q-tooltip>
+          </q-btn>
+          <div class="col text-h6 text-center ellipsis">Today's Sailings</div>
+          <q-btn flat dense round icon="close" aria-label="Close" @click="showFullDialog = false" />
         </q-card-section>
-        <q-separator />
         <q-card-section class="q-pa-sm" style="overflow-y: auto">
           <div
             v-if="lastSailing && !lastSailing.skipped"
-            class="text-center text-caption text-grey-7 q-mb-xs"
+            class="text-center text-caption text-grey-7 q-mb-xs dream-fade dream-collapse"
           >
             <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
               last sailing
@@ -697,72 +730,97 @@
               on-time
             </template>
           </div>
-          <div class="row items-start q-col-gutter-sm q-mb-md">
-            <div class="col">
-              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
-                to Horseshoe Bay
-              </div>
-              <SailingRow
-                v-for="(event, i) in allPastBowen"
-                :key="'pb' + i"
-                :sailing="event"
-                kind="past"
-                :design="sailingDesign"
-                @open="openHistory(event.scheduledTime, event.label, event)"
-              />
-              <div v-if="!allPastBowen.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+          <!-- Rows, not two independent stacks, so a card and the one beside
+               it are the same row and read left-to-right in time order (see
+               pairColumns for the one-gap rule). -->
+          <div class="sailing-grid q-mb-md">
+            <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
+              to Horseshoe Bay
             </div>
-            <div class="col">
-              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
-                to Bowen
-              </div>
-              <SailingRow
-                v-for="(event, i) in allPastHSB"
-                :key="'ph' + i"
-                :sailing="event"
-                kind="past"
-                :design="sailingDesign"
-                @open="openHistory(event.scheduledTime, event.label, event)"
-              />
-              <div v-if="!allPastHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+            <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
+              to Bowen
             </div>
+            <template v-for="(row, i) in pastPairs" :key="'p' + i">
+              <div>
+                <SailingRow
+                  v-if="row.l"
+                  :sailing="row.l"
+                  kind="past"
+                  :design="sailingDesign"
+                  @open="openHistory(row.l.scheduledTime, row.l.label, row.l)"
+                />
+                <div
+                  v-else-if="!allPastBowen.length && i === 0"
+                  class="text-caption text-grey-5 q-mt-xs"
+                >
+                  None
+                </div>
+              </div>
+              <div>
+                <SailingRow
+                  v-if="row.r"
+                  :sailing="row.r"
+                  kind="past"
+                  :design="sailingDesign"
+                  @open="openHistory(row.r.scheduledTime, row.r.label, row.r)"
+                />
+                <div
+                  v-else-if="!allPastHSB.length && i === 0"
+                  class="text-caption text-grey-5 q-mt-xs"
+                >
+                  None
+                </div>
+              </div>
+            </template>
           </div>
-          <div class="text-center text-grey-8 q-my-sm">upcoming forecast</div>
-          <div class="row items-start q-col-gutter-sm">
-            <div class="col">
-              <SailingRow
-                v-for="(s, i) in allUpcomingBowen"
-                :key="'ub' + i"
-                :sailing="s"
-                kind="upcoming"
-                :estimate="upcomingEstimate(s)"
-                :design="sailingDesign"
-                :hint="sailingHints(s)"
-                @open="openHistory(s.shortTime, s.label, s)"
-                @typical="openTypical(s)"
-              />
-              <div v-if="!allUpcomingBowen.length" class="text-caption text-grey-5 q-mt-xs">
-                None
+          <div class="text-center text-grey-8 q-my-sm">
+            upcoming<span class="dream-fade dream-shrink"> forecast</span>
+          </div>
+          <div class="sailing-grid">
+            <template v-for="(row, i) in upcomingPairs" :key="'u' + i">
+              <div>
+                <SailingRow
+                  v-if="row.l"
+                  :sailing="row.l"
+                  kind="upcoming"
+                  :estimate="upcomingEstimate(row.l)"
+                  :design="sailingDesign"
+                  :hint="sailingHints(row.l)"
+                  @open="openHistory(row.l.shortTime, row.l.label, row.l)"
+                  @typical="openTypical(row.l)"
+                />
+                <div
+                  v-else-if="!allUpcomingBowen.length && i === 0"
+                  class="text-caption text-grey-5 q-mt-xs"
+                >
+                  None
+                </div>
               </div>
-            </div>
-            <div class="col">
-              <SailingRow
-                v-for="(s, i) in allUpcomingHSB"
-                :key="'uh' + i"
-                :sailing="s"
-                kind="upcoming"
-                :estimate="upcomingEstimate(s)"
-                :design="sailingDesign"
-                :hint="sailingHints(s)"
-                @open="openHistory(s.shortTime, s.label, s)"
-                @typical="openTypical(s)"
-              />
-              <div v-if="!allUpcomingHSB.length" class="text-caption text-grey-5 q-mt-xs">None</div>
-            </div>
+              <div>
+                <SailingRow
+                  v-if="row.r"
+                  :sailing="row.r"
+                  kind="upcoming"
+                  :estimate="upcomingEstimate(row.r)"
+                  :design="sailingDesign"
+                  :hint="sailingHints(row.r)"
+                  @open="openHistory(row.r.shortTime, row.r.label, row.r)"
+                  @typical="openTypical(row.r)"
+                />
+                <div
+                  v-else-if="!allUpcomingHSB.length && i === 0"
+                  class="text-caption text-grey-5 q-mt-xs"
+                >
+                  None
+                </div>
+              </div>
+            </template>
+            <div v-if="!upcomingPairs.length" class="text-caption text-grey-5 q-mt-xs">None</div>
+            <div v-if="!upcomingPairs.length" class="text-caption text-grey-5 q-mt-xs">None</div>
           </div>
         </q-card-section>
-        <q-separator />
-        <q-card-section class="q-py-sm text-center">
+        <!-- Not in the dream: the photos are the day as it really went. -->
+        <q-card-section v-if="!dreaming" class="q-py-sm text-center">
           <q-btn
             flat
             dense
@@ -771,7 +829,6 @@
             icon="photo_camera"
             label="Bowen Departures"
             to="/bowen-departures"
-            @click="showFullDialog = false"
           />
         </q-card-section>
         <q-card-section class="q-py-sm text-center">
@@ -991,6 +1048,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
+import { useRoute, useRouter } from 'vue-router'
 import { useFirestoreFerryListener } from 'src/composables/useFirestoreFerryListener'
 import { useRides } from 'src/composables/useRides'
 import { useInstall } from 'src/composables/useInstall'
@@ -1006,6 +1064,7 @@ import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisp
 import { isStaging } from 'src/boot/firebase'
 import RideCard from 'src/components/RideCard.vue'
 import SailingRow from 'src/components/SailingRow.vue'
+import { pairColumns } from 'src/lib/pair-columns.js'
 import SailingHistoryDetail from 'src/components/SailingHistoryDetail.vue'
 import { useLeaderboard, formatReporterName } from 'src/composables/useLeaderboard'
 import anonymousIcon from 'src/assets/cat.svg'
@@ -1059,6 +1118,8 @@ const { openPostRide } = useRideFormDialog()
 const rideShareBtn = ref(null)
 
 const $q = useQuasar()
+const route = useRoute()
+const router = useRouter()
 const { ferryData, error } = useFirestoreFerryListener()
 const { rides } = useRides()
 const { canInstall, install, dismiss } = useInstall()
@@ -1827,6 +1888,27 @@ const lastSailing = computed(() => {
   if (!b) return a
   return a.sortTime > b.sortTime ? a : b
 })
+// The dialog's side-by-side lists as rows (pairColumns): Bowen departures
+// ("to Horseshoe Bay") left, HSB departures ("to Bowen") right.
+const bySortTime = (e) => e.sortTime
+const pastPairs = computed(() => pairColumns(allPastBowen.value, allPastHSB.value, bySortTime))
+const upcomingPairs = computed(() =>
+  pairColumns(allUpcomingBowen.value, allUpcomingHSB.value, bySortTime),
+)
+// The home page shows three rows each way: the last three recent-past
+// sailings per column and the next three upcoming, paired. When the gap
+// (pairColumns) makes that a fourth row, the past drops its earliest row and
+// the upcoming its last — the rows nearest now are the ones that matter.
+const homePastPairs = computed(() =>
+  pairColumns(recentPastBowen.value.slice(-3), recentPastHSB.value.slice(-3), bySortTime).slice(-3),
+)
+const homeUpcomingPairs = computed(() =>
+  pairColumns(
+    allUpcomingBowen.value.slice(0, 3),
+    allUpcomingHSB.value.slice(0, 3),
+    bySortTime,
+  ).slice(0, 3),
+)
 const sortedRides = computed(() => {
   const todayStr = todayIso.value
   const upcoming = upcomingSailingTimes.value
@@ -1984,7 +2066,23 @@ const displayCams = computed(() =>
 
 const fullscreen = ref(false)
 const fullscreenIndex = ref(0)
-const showFullDialog = ref(false)
+// The Today's Sailings dialog lives at /today (linkable; Back closes it), and
+// /today/dream is the same dialog in dreamer mode. Both read from the route,
+// so a shared link lands straight in the dialog.
+const showFullDialog = computed({
+  get: () => route.path.startsWith('/today'),
+  set: (open) => {
+    if (open) router.push(dreaming.value ? '/today/dream' : '/today')
+    // Closing: go back if that's where we came from, so Back/close agree.
+    else if (window.history.state?.back === '/') router.back()
+    else router.replace('/')
+  },
+})
+const dreaming = computed({
+  get: () => route.params.dream === 'dream',
+  set: (on) => router.replace(on ? '/today/dream' : '/today'),
+})
+
 const fullscreenSrc = computed(
   () =>
     bcfSafeSrc(`${allCamUrls[fullscreenIndex.value]}?t=${cacheBusters.value[fullscreenIndex.value]}`),
@@ -2315,6 +2413,156 @@ onUnmounted(() => {
   pointer-events: auto;
   background: #fff8e1;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+// Today's Sailings dialog — dreamer mode. Everything that isn't the timetable
+// (lateness, fullness, crosswalk, hints, the fill rails and bars, the last-
+// sailing line) fades out and stops taking taps; the times stay put.
+// Two columns as rows (home page and the Today's Sailings dialog): the same
+// gutter as q-col-gutter-sm gave the old columns. Each row is as tall as its
+// taller card.
+.sailing-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+}
+
+// Home page: every card the same two-line height. Cards fill their row (so
+// the pair in a row match) and the body is never shorter than a time line
+// plus a caption line — a sailing with nothing to report gets the same tile
+// as one with. Rows are spaced by the grid, not the rows' own top margin
+// (`first` on every SailingRow), so a stretched card has no margin to
+// overflow by. The dialog keeps the natural heights so dreamer mode can
+// collapse them.
+.sailing-grid--even {
+  row-gap: 4px;
+  align-items: stretch;
+  > div {
+    display: flex;
+    flex-direction: column;
+  }
+  // The SailingRow's root, then its card.
+  > div > div {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  :deep(.sr-card) {
+    flex: 1;
+  }
+  :deep(.sr-card-body) {
+    // .sr-time line (0.95rem × 1.2) + a text-caption line (1.25rem) + padding.
+    min-height: calc(1.14rem + 1.25rem + 7px);
+  }
+}
+
+// Dreamer fade. Lines that carry no timetable (the facts/hint row under a
+// card's time, the last-sailing line) also collapse, in sequence: fade out,
+// then the empty space closes up; coming back, the space opens first and
+// the words fade in behind it. max-height rather than height so the natural
+// one- or two-line height needs no measuring.
+.today-dialog {
+  :deep(.sr-late),
+  :deep(.sr-fact),
+  :deep(.sr-fact-top),
+  :deep(.sr-track),
+  :deep(.typical-hint) {
+    transition: opacity 0.5s ease;
+  }
+  :deep(.sr-facts),
+  .dream-fade.dream-collapse {
+    overflow: hidden;
+    max-height: 2.6em;
+    transition:
+      max-height 0.4s ease,
+      opacity 0.4s ease 0.3s;
+  }
+  :deep(.sr-rail) {
+    transition: background-color 0.8s ease;
+  }
+  // "upcoming forecast" → "upcoming", still centred: the word gives up its
+  // width as it fades, not just its ink.
+  .dream-shrink {
+    display: inline-block;
+    white-space: pre;
+    overflow: hidden;
+    vertical-align: bottom;
+    max-width: 6em;
+    transition:
+      max-width 0.4s ease,
+      opacity 0.4s ease;
+  }
+}
+.today-dialog.dreaming {
+  .dream-shrink {
+    max-width: 0;
+  }
+  :deep(.sr-late),
+  :deep(.sr-fact),
+  :deep(.sr-fact-top),
+  :deep(.sr-track),
+  :deep(.typical-hint),
+  .dream-fade {
+    opacity: 0;
+    pointer-events: none;
+  }
+  :deep(.sr-facts),
+  .dream-fade.dream-collapse {
+    max-height: 0;
+    transition:
+      opacity 0.4s ease,
+      max-height 0.4s ease 0.3s;
+  }
+  // Every card green: in the dream, every sailing is on time with room to
+  // spare. bg-* utilities are !important, so this has to be too.
+  :deep(.sr-rail) {
+    background-color: $positive !important;
+  }
+}
+
+// The dreamer button: a rainbow (Material "looks") that twinkles briefly
+// every 8 seconds — a quick glint, then still, so it catches the eye without
+// nagging. Lit from behind while dreamer mode is on.
+.dreamer-btn :deep(.q-icon) {
+  background: linear-gradient(90deg, #e53935, #fb8c00, #fdd835, #43a047, #1e88e5, #8e24aa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: dreamer-twinkle 8s ease-in-out infinite;
+}
+.dreamer-btn--on {
+  background: linear-gradient(
+    135deg,
+    rgba(229, 57, 53, 0.14),
+    rgba(253, 216, 53, 0.14),
+    rgba(30, 136, 229, 0.14)
+  );
+}
+@keyframes dreamer-twinkle {
+  0%,
+  8%,
+  100% {
+    transform: scale(1) rotate(0);
+    filter: brightness(1);
+  }
+  2% {
+    transform: scale(1.3) rotate(-10deg);
+    filter: brightness(1.6);
+  }
+  5% {
+    transform: scale(0.95) rotate(6deg);
+    filter: brightness(1.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dreamer-btn :deep(.q-icon) {
+    animation: none;
+  }
+  .today-dialog :deep(*),
+  .today-dialog .dream-fade {
+    transition: none;
+  }
 }
 
 .vs-card {

@@ -5,14 +5,14 @@
       <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ timeText }}</div>
       <div v-fit-scale class="row items-center no-wrap col badge-fit">
         <q-badge v-if="skipped" rounded color="grey" class="badge-gap" dense>?</q-badge>
-        <q-badge v-else-if="late" rounded :color="late.color" class="badge-gap" dense>{{
+        <q-badge v-else-if="late" rounded :color="late.color" class="badge-gap sr-late" dense>{{
           late.text
         }}</q-badge>
         <q-badge
           v-if="capacity"
           rounded
           :color="capacity.color"
-          class="badge-gap"
+          class="badge-gap sr-fact"
           :class="{ 'robot-badge': capacity.robot && isPast }"
           dense
           >{{ classicCapacityText }}</q-badge
@@ -21,12 +21,12 @@
           v-if="crosswalk"
           rounded
           color="deep-orange"
-          class="badge-gap"
+          class="badge-gap sr-fact"
           :class="{ 'robot-badge': crosswalk.robot }"
           dense
           >{{ crosswalkText }}</q-badge
         >
-        <q-badge v-if="typeBadge" rounded :color="typeBadge.color" class="badge-gap" dense>{{
+        <q-badge v-if="typeBadge" rounded :color="typeBadge.color" class="badge-gap sr-fact" dense>{{
           typeBadge.text
         }}</q-badge>
       </div>
@@ -35,17 +35,23 @@
   </div>
 
   <!-- Cards: bordered tile with a fullness-colored left rail; time up top,
-       one status line below with the fill / crosswalk time spelled out. -->
+       one status line below with the fill / crosswalk time spelled out.
+       Upcoming cards put the "now" fact (fullness / crosswalk / type) on the
+       time line instead, so the typical-history hint gets the whole second
+       line; the fact clips before the lateness on its right does. -->
   <div v-else-if="design === 'cards'" :class="first ? '' : 'q-mt-xs'">
     <div class="sr-card row no-wrap cursor-pointer" @click="$emit('open')">
       <div class="sr-rail" :class="'bg-' + railColor"></div>
       <div class="sr-card-body">
         <div class="row items-baseline no-wrap">
           <div class="sr-time">{{ timeText }}</div>
+          <span v-if="factOnTop" class="sr-fact-now sr-fact-top text-caption ellipsis q-ml-xs">
+            <NowFact />
+          </span>
           <q-space />
           <div
             v-if="late || skipped"
-            class="text-caption text-weight-medium q-ml-xs text-no-wrap"
+            class="sr-late text-caption text-weight-medium q-ml-xs text-no-wrap col-auto"
             :class="'text-' + (skipped ? 'grey' : late.color)"
           >
             {{ skipped ? '?' : late.text }}
@@ -56,29 +62,13 @@
              cards instead of starting wherever the previous card's text
              happened to end. -->
         <div
-          v-if="hasNowFact || hint"
+          v-if="factBelow || hint"
           ref="factsEl"
           class="sr-status sr-facts text-caption"
-          :class="{ 'sr-facts--hint-only': !hasNowFact, 'sr-facts--clip': clipHint }"
+          :class="{ 'sr-facts--hint-only': !factBelow, 'sr-facts--clip': clipHint }"
         >
-          <span v-if="hasNowFact" class="sr-fact-now">
-            <template v-if="capacity">
-              <span class="text-weight-bold" :class="'text-' + capacity.color">{{
-                statusText
-              }}</span>
-              <RobotIcon v-if="capacity.robot" />
-            </template>
-            <template v-if="crosswalk">
-              <span v-if="capacity" class="text-grey-5"> · </span>
-              <span class="text-weight-bold text-deep-orange"
-                >{{ crosswalkText }}</span
-              >
-              <RobotIcon v-if="crosswalk.robot" />
-            </template>
-            <template v-if="typeBadge">
-              <span v-if="capacity || crosswalk" class="text-grey-5"> · </span>
-              <span class="text-orange-9">{{ typeBadge.text }}</span>
-            </template>
+          <span v-if="factBelow" class="sr-fact-now">
+            <NowFact />
           </span>
           <HintLine v-if="hint" :hint="cardHint" inline @click="$emit('typical')" />
         </div>
@@ -93,14 +83,14 @@
         <div class="sr-time">{{ timeText }}</div>
         <span
           v-if="late || skipped"
-          class="q-ml-xs text-caption text-no-wrap"
+          class="sr-late q-ml-xs text-caption text-no-wrap"
           :class="'text-' + (skipped ? 'grey' : late.color)"
           >{{ skipped ? '?' : late.text }}</span
         >
         <q-space />
         <div
           v-if="capacity"
-          class="text-caption text-weight-bold text-no-wrap q-ml-xs"
+          class="sr-fact text-caption text-weight-bold text-no-wrap q-ml-xs"
           :class="'text-' + capacity.color"
         >
           {{ meterStatusText }}
@@ -143,7 +133,7 @@
         <div class="sr-time-lg">{{ timeText }}</div>
         <span
           v-if="late || skipped"
-          class="q-ml-xs text-caption text-weight-medium text-no-wrap"
+          class="sr-late q-ml-xs text-caption text-weight-medium text-no-wrap"
           :class="'text-' + (skipped ? 'grey' : late.color)"
           >{{ skipped ? '?' : late.text }}</span
         >
@@ -411,6 +401,36 @@ watch(
   },
 )
 
+// Upcoming cards carry the "now" fact on the time line (see template); past
+// cards keep it on the status line, where the fill time reads as the record
+// of what happened.
+const factOnTop = computed(() => hasNowFact.value && !isPast.value)
+const factBelow = computed(() => hasNowFact.value && isPast.value)
+
+// The "now" fact — fullness, crosswalk, sailing type — as inline runs, so the
+// same markup can sit on either line. Returns a fragment.
+const NowFact = () => {
+  const c = capacity.value
+  const cw = crosswalk.value
+  const tb = typeBadge.value
+  const dot = h('span', { class: 'text-grey-5' }, ' · ')
+  const out = []
+  if (c) {
+    out.push(h('span', { class: ['text-weight-bold', `text-${c.color}`] }, statusText.value))
+    if (c.robot) out.push(h(RobotIcon))
+  }
+  if (cw) {
+    if (c) out.push(dot)
+    out.push(h('span', { class: 'text-weight-bold text-deep-orange' }, crosswalkText.value))
+    if (cw.robot) out.push(h(RobotIcon))
+  }
+  if (tb) {
+    if (c || cw) out.push(dot)
+    out.push(h('span', { class: 'text-orange-9' }, tb.text))
+  }
+  return out
+}
+
 const HintLine = (p, { emit }) =>
   h(
     p.inline ? 'span' : 'div',
@@ -522,8 +542,20 @@ HintLine.emits = ['click']
   text-overflow: ellipsis;
 }
 
+// .sr-late / .sr-fact / .sr-facts / .sr-track / .sr-rail / .typical-hint*
+// are also hooks for the Today's Sailings dialog's dreamer mode, which fades
+// everything but the timetable (HomePage .today-dialog).
 .sr-fact-now {
   min-width: 0;
+}
+
+// On the time line: takes what's left after the time and the lateness, and
+// clips with an ellipsis rather than pushing the lateness out. .ellipsis
+// supplies nowrap/hidden/ellipsis; this lets it shrink.
+.sr-fact-top {
+  flex: 0 1 auto;
+  // Sits on the time's baseline; the icon inside is inline so it comes along.
+  line-height: 1.2;
 }
 
 .sr-track {
