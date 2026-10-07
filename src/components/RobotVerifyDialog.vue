@@ -165,7 +165,8 @@
               color="positive"
               class="col"
               label="Yes — waiting or loading"
-              :disable="savingLabel"
+              :loading="pendingAnswer === true"
+              :disable="savingLabel && pendingAnswer !== true"
               @click="labelFrame(true)"
             />
             <q-btn
@@ -175,7 +176,8 @@
               color="negative"
               class="col"
               label="No — none waiting or loading"
-              :disable="savingLabel"
+              :loading="pendingAnswer === false"
+              :disable="savingLabel && pendingAnswer !== false"
               @click="labelFrame(false)"
             />
           </div>
@@ -429,6 +431,7 @@ watch(
     if (!open) return
     clearTimeout(settleTimer)
     savingLabel.value = false
+    pendingAnswer.value = null
     labelled.value = new Map()
     mine.value = new Map()
     scoresReady.value = false
@@ -453,6 +456,9 @@ const scores = ref(new Map()) // framePath -> { p, band }
 const scoresReady = ref(false)
 const labelled = ref(new Map()) // framePath -> boolean, this session
 const savingLabel = ref(false)
+// Which answer is being saved right now (true / false), null otherwise —
+// that button shows its spinner, the other is disabled meanwhile.
+const pendingAnswer = ref(null)
 // How long the answer chip shows on the frame before the view moves on.
 const SETTLE_MS = 800
 let settleTimer = null
@@ -581,12 +587,14 @@ function labelFrame(carsWaiting) {
   if (!frame.value?.path || savingLabel.value) return
   const framePath = frame.value.path
   savingLabel.value = true
+  pendingAnswer.value = carsWaiting
   emit('frame-label', {
     framePath,
     sailingKey: props.sailingKey,
     carsWaiting,
     autoP: scores.value.get(framePath)?.p ?? null,
     done: (ok) => {
+      pendingAnswer.value = null
       if (!ok) {
         savingLabel.value = false
         return
