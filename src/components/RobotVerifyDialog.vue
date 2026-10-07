@@ -157,6 +157,18 @@
               Sign in to save your answers.</template
             >
           </div>
+          <!-- Which frame is on screen, and the sailing's progress: how many
+               frames are tagged and how many answers the robot still needs
+               before the tail decides it. Above the buttons so the time
+               visibly changing after an answer tells the rider the view has
+               moved on to the next frame. -->
+          <div class="row items-center text-caption q-mt-xs frame-progress">
+            <span class="text-weight-medium text-grey-9">
+              <q-icon name="schedule" size="14px" class="q-mr-xs" />{{ frame.timeLabel }}
+            </span>
+            <q-space />
+            <span class="text-grey-7">{{ progressLine(progress, { scoresReady }) }}</span>
+          </div>
           <div class="row q-gutter-sm q-mt-xs">
             <q-btn
               dense
@@ -188,11 +200,6 @@
             <strong>{{ priorAnswer.carsWaiting ? 'waiting or loading' : 'none waiting' }}</strong>
             <template v-if="priorAnswer.when"> on {{ priorAnswer.when }}</template> — answer again
             to change it.
-          </div>
-          <!-- Progress on this sailing: how many frames are tagged and how
-               many answers the robot still needs before the tail decides it. -->
-          <div class="text-caption text-grey-7 q-mt-xs">
-            {{ progressLine(progress, { scoresReady }) }}
           </div>
         </div>
       </template>
@@ -678,6 +685,10 @@ const disagreeBtn = computed(() =>
 
 .verify-img {
   max-width: 100%;
+}
+
+.frame-progress {
+  min-height: 20px;
 }
 
 .replay-flip :deep(.q-icon) {
