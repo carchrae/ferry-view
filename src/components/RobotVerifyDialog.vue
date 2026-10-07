@@ -42,7 +42,18 @@
           </div>
         </div>
         <div class="row items-center justify-between q-mt-xs no-wrap">
-          <q-btn flat dense round icon="chevron_left" :disable="index <= 0" @click="index--" />
+          <!-- At either end the step button becomes a wrap-around: the far
+               end of the sequence, instead of a dead disabled arrow. -->
+          <q-btn
+            flat
+            dense
+            round
+            :icon="index <= 0 ? 'replay' : 'chevron_left'"
+            :class="{ 'replay-flip': index <= 0 }"
+            :aria-label="index <= 0 ? 'Jump to the last frame' : 'Previous frame'"
+            :disable="frames.length < 2"
+            @click="index = index <= 0 ? frames.length - 1 : index - 1"
+          />
           <div class="row items-center no-wrap">
             <div class="text-caption">{{ frame.timeLabel }}</div>
             <q-btn
@@ -63,9 +74,10 @@
             flat
             dense
             round
-            icon="chevron_right"
-            :disable="index >= frames.length - 1"
-            @click="index++"
+            :icon="index >= frames.length - 1 ? 'replay' : 'chevron_right'"
+            :aria-label="index >= frames.length - 1 ? 'Back to the first frame' : 'Next frame'"
+            :disable="frames.length < 2"
+            @click="index = index >= frames.length - 1 ? 0 : index + 1"
           />
         </div>
         <div v-if="showRoi" class="text-caption text-grey-6 roi-caption">
@@ -658,6 +670,10 @@ const disagreeBtn = computed(() =>
 
 .verify-img {
   max-width: 100%;
+}
+
+.replay-flip :deep(.q-icon) {
+  transform: scaleX(-1);
 }
 
 .answer-chip {
