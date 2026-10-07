@@ -370,6 +370,14 @@ export async function loadSailingFrames(dateIso, sailingTime, force = false) {
     // The lineup demonstrably reached the crosswalk (human mark or robot
     // detection) — the veto input for any "full" verdict.
     crosswalkOk: r.crosswalkFullAt != null || r.crosswalkFullAtAuto != null,
+    // When the lineup reached the crosswalk: the human mark (a frame's ts)
+    // first, else the robot's detection frame; null when neither.
+    crosswalkAt:
+      typeof r.crosswalkFullAt === 'number'
+        ? r.crosswalkFullAt
+        : typeof r.crosswalkFullAtAuto === 'number'
+          ? r.crosswalkFullAtAuto
+          : null,
     ferryNotFullAuto: r.ferryNotFullAuto || null,
     ferryFullAuto: r.ferryFullAuto || null,
     actualDepartureTime: r.actualDepartureTime || null,

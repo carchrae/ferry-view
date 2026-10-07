@@ -1526,8 +1526,9 @@ function dialogModeFor(label, entry) {
 
 // --- the dialog's camera tiles and robot opinion (Bowen sailings) ----------
 // One representative frame per camera off the sailing's aggregate record
-// (cached read): the lineup frame nearest the ferry's arrival (the peak
-// lineup) and the last terminal frame (what was left waiting at departure).
+// (cached read): the lineup frame at the crosswalk mark when the lineup
+// reached it (else the frame nearest the ferry's arrival, the peak lineup)
+// and the last terminal frame (what was left waiting at departure).
 // When nothing is on record for fullness, the browser classifier judges the
 // terminal frames — cached per device, else fetched on this tap, never on
 // page load — so the dialog can ask the rider to agree or help.
@@ -1566,7 +1567,7 @@ async function loadDialogFrames(time) {
     return
   }
   dialogFrames.value = {
-    lineup: nearestFrame(raw.lineup, raw.arrivalTs),
+    lineup: nearestFrame(raw.lineup, raw.crosswalkAt ?? raw.arrivalTs),
     terminal: raw.departure[raw.departure.length - 1] || null,
     sailingKey: raw.sailingKey,
     crosswalkOk: raw.crosswalkOk,
@@ -2753,16 +2754,23 @@ onUnmounted(() => {
 // then the empty space closes up; coming back, the space opens first and
 // the words fade in behind it. max-height rather than height so the natural
 // one- or two-line height needs no measuring.
-/* The typical dialog's camera tiles: a block host so the overlay's box is
-   exactly the picture's, with the picture filling its column. */
+/* The typical dialog's camera tiles: both cameras in the same 16:9 box so
+   the pair lines up. The community cam is 16:9 already; the terminal cam
+   is 4:3 and is cropped from the TOP (object-position bottom) — the sky is
+   the part nobody needs, the lineup is at the bottom. */
 .dialog-tile {
   display: block;
   width: 100%;
+  aspect-ratio: 16 / 9;
   border-radius: 4px;
   overflow: hidden;
+  line-height: 0;
 }
 .dialog-tile > img {
   width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center bottom;
 }
 .dialog-tile-pending {
   aspect-ratio: 16 / 9;
