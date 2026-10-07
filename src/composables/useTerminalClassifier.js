@@ -36,6 +36,12 @@ export const terminalClassifierReady = Boolean(
   model?.enabled && Array.isArray(model.weights) && Array.isArray(model.regions),
 )
 
+// The model's geometry, for drawing where it looks (RoiOverlay): the regions
+// it reads and the masks it ignores. Straight from the model file so the
+// picture riders see can never drift from what was trained.
+export const terminalRegions = model.regions || []
+export const terminalMasks = model.masks || []
+
 function proxyUrl(path) {
   return (
     '/webcam/' +

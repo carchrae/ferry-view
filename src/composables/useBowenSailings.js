@@ -64,6 +64,18 @@ function latenessMins(s) {
   return mins
 }
 
+// When the ferry arrived, as an epoch — the arrival photo's capture time
+// (exact), else the logged arrival time. The arrival timelapse defaults to
+// the frame nearest this moment (the peak lineup) instead of the last frame.
+function arrivalTsOf(s) {
+  return (
+    captureTs(s.communitySnapshotPath) ||
+    (s.communityArrivalTime && s.dateIso
+      ? dayjs.tz(`${s.dateIso} ${s.communityArrivalTime}`, TZ).valueOf()
+      : null)
+  )
+}
+
 // Both photos of a sailing share its sailingStatus doc, so they carry the same
 // sailingKey and capacity (unlike the two independently-written snapshot
 // singleton docs, where the lineup photo can belong to a different sailing than
@@ -79,14 +91,7 @@ function buildCards(s, todayIso) {
   // otherwise falls back to the single photo.
   const arrivalTimelapse = buildTimelapse(s.lineupTimelapsePaths)
   const departureTimelapse = buildTimelapse(s.departureTimelapsePaths)
-  // When the ferry arrived, as an epoch — the arrival photo's capture time
-  // (exact), else the logged arrival time. The arrival timelapse defaults to
-  // the frame nearest this moment (the peak lineup) instead of the last frame.
-  const arrivalTs =
-    captureTs(s.communitySnapshotPath) ||
-    (s.communityArrivalTime && s.dateIso
-      ? dayjs.tz(`${s.dateIso} ${s.communityArrivalTime}`, TZ).valueOf()
-      : null)
+  const arrivalTs = arrivalTsOf(s)
   return {
     ...s,
     dayLabel: dayLabel(s.dateIso, todayIso),
@@ -358,7 +363,32 @@ export async function loadSailingFrames(dateIso, sailingTime, force = false) {
   return {
     lineup: buildTimelapse(r.lineupTimelapsePaths),
     departure: buildTimelapse(r.departureTimelapsePaths),
+    // The record's own facts, for callers that show a frame per camera and
+    // ask the browser classifier about the sailing (home-page dialog).
+    sailingKey: r.sailingKey,
+    arrivalTs: arrivalTsOf(r),
+    // The lineup demonstrably reached the crosswalk (human mark or robot
+    // detection) — the veto input for any "full" verdict.
+    crosswalkOk: r.crosswalkFullAt != null || r.crosswalkFullAtAuto != null,
+    ferryNotFullAuto: r.ferryNotFullAuto || null,
+    ferryFullAuto: r.ferryFullAuto || null,
+    actualDepartureTime: r.actualDepartureTime || null,
+    lastCapacity: r.lastCapacity || null,
   }
+}
+
+// Scheduled times (HH:mm) of one day's Bowen departures a rider could still
+// help with: terminal frames exist (at least two — one frame can't decide
+// anything) and no fullness is recorded. Drives the home page's "help tag
+// it" hint; same cached aggregate read as everything else here.
+export async function loadTaggableTimes(dateIso) {
+  const out = new Set()
+  for (const r of await fetchRawSailings()) {
+    if (r.dateIso !== dateIso || r.lastCapacity) continue
+    if ((r.departureTimelapsePaths?.length || 0) < 2) continue
+    out.add(normalizeTime(r.sailingTime))
+  }
+  return out
 }
 
 function finalize(sailings, todayIso) {

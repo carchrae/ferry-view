@@ -191,6 +191,7 @@
       :sailing-label="sailingLabel"
       :departed-label="departedLabel"
       :claim="fullVisible ? 'full' : fullnessVisible ? 'notFull' : null"
+      :crosswalk-ok="autoAt != null || Boolean(humanRef && !humanRef.notYet)"
       @capacity="emit('capacity', $event)"
       @frame-label="emit('frame-label', $event)"
     />

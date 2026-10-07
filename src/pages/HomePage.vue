@@ -264,7 +264,9 @@
                         kind="past"
                         first
                         :design="sailingDesign"
+                        :help="helpHint(row.l)"
                         @open="openHistory(row.l.scheduledTime, row.l.label, row.l)"
+                        @help="openRobotVerify('fullness', row.l.scheduledTime)"
                       />
                     </div>
                     <div>
@@ -274,7 +276,9 @@
                         kind="past"
                         first
                         :design="sailingDesign"
+                        :help="helpHint(row.r)"
                         @open="openHistory(row.r.scheduledTime, row.r.label, row.r)"
+                        @help="openRobotVerify('fullness', row.r.scheduledTime)"
                       />
                     </div>
                   </template>
@@ -747,7 +751,9 @@
                   :sailing="row.l"
                   kind="past"
                   :design="sailingDesign"
+                  :help="helpHint(row.l)"
                   @open="openHistory(row.l.scheduledTime, row.l.label, row.l)"
+                  @help="openRobotVerify('fullness', row.l.scheduledTime)"
                 />
                 <div
                   v-else-if="!allPastBowen.length && i === 0"
@@ -762,7 +768,9 @@
                   :sailing="row.r"
                   kind="past"
                   :design="sailingDesign"
+                  :help="helpHint(row.r)"
                   @open="openHistory(row.r.scheduledTime, row.r.label, row.r)"
+                  @help="openRobotVerify('fullness', row.r.scheduledTime)"
                 />
                 <div
                   v-else-if="!allPastHSB.length && i === 0"
@@ -939,30 +947,82 @@
             :timings="estimateTimings"
           />
           <!-- The webcams — always offered on Bowen departures, plenty of
-               riders just want the photos. When the robot reported, the same
-               dialogs double as its verification. -->
-          <div
-            v-if="selectedTypical?.label === 'Bowen'"
-            class="row justify-center q-gutter-sm q-mt-sm"
-          >
-            <q-btn
-              outline
-              no-caps
-              color="indigo"
-              icon="photo_camera"
-              label="At crosswalk"
-              class="q-px-md app-btn"
-              @click="openRobotFromTypical('crosswalk')"
-            />
-            <q-btn
-              outline
-              no-caps
-              color="indigo"
-              icon="photo_camera"
-              label="Front of lineup"
-              class="q-px-md app-btn"
-              @click="openRobotFromTypical('fullness')"
-            />
+               riders just want the photos: one frame from each camera, with
+               the robot's boxes on it, tapping through to the frame-stepping
+               dialog (which doubles as the robot's verification). A camera
+               with no frames yet keeps the plain button. -->
+          <div v-if="selectedTypical?.label === 'Bowen'" class="q-mt-sm">
+            <div class="row q-col-gutter-sm">
+              <div v-for="tile in dialogTiles" :key="tile.kind" class="col-6">
+                <template v-if="tile.frame">
+                  <div
+                    class="roi-host dialog-tile cursor-pointer"
+                    @click="openRobotFromTypical(tile.kind)"
+                  >
+                    <img :src="tile.frame.imageUrl" alt="" />
+                    <RoiOverlay
+                      :regions="tile.regions"
+                      :masks="tile.masks"
+                      :labels="false"
+                      :dim="0.45"
+                    />
+                  </div>
+                  <div class="text-caption text-grey-7 text-center ellipsis">
+                    {{ tile.caption }}
+                  </div>
+                </template>
+                <q-btn
+                  v-else
+                  outline
+                  no-caps
+                  color="indigo"
+                  icon="photo_camera"
+                  :label="tile.label"
+                  class="full-width app-btn"
+                  @click="openRobotFromTypical(tile.kind)"
+                />
+              </div>
+            </div>
+            <!-- No fullness on record: the browser classifier's read of the
+                 terminal frames, and the rider's say. Either answer files a
+                 capacity report; "help it learn" opens the frame tagging. -->
+            <div v-if="dialogOpinion" class="q-mt-sm text-center">
+              <div class="text-body2 q-mb-xs">
+                <q-icon name="smart_toy" color="indigo" size="16px" class="q-mr-xs" />{{
+                  dialogOpinion.text
+                }}
+              </div>
+              <div class="row justify-center q-gutter-sm">
+                <q-btn
+                  dense
+                  no-caps
+                  unelevated
+                  color="deep-orange"
+                  label="Full"
+                  class="q-px-sm"
+                  @click="saveCapacityFor(dialogFrames.sailingKey, 'Full')"
+                />
+                <q-btn
+                  dense
+                  no-caps
+                  unelevated
+                  color="indigo"
+                  label="Not Full"
+                  class="q-px-sm"
+                  @click="saveCapacityFor(dialogFrames.sailingKey, 'Not Full')"
+                />
+                <q-btn
+                  dense
+                  no-caps
+                  outline
+                  color="indigo"
+                  icon="school"
+                  label="Help it learn"
+                  class="q-px-sm app-btn"
+                  @click="openRobotFromTypical('fullness')"
+                />
+              </div>
+            </div>
           </div>
           <q-separator class="q-my-sm" />
           <div
@@ -1033,6 +1093,7 @@
       :frames="robotVerify.frames"
       :sailing-key="robotVerify.sailingKey"
       :claim="robotVerify.claim"
+      :crosswalk-ok="robotVerify.crosswalkOk"
       :sailing-label="robotVerify.sailingLabel"
       :departed-label="robotVerify.departedLabel"
       @agree="onRobotVerifyAgree"
@@ -1083,7 +1144,17 @@ import {
   loadUpcomingLineup,
   loadSailingFrames,
   loadCameraFrames,
+  loadTaggableTimes,
 } from 'src/composables/useBowenSailings'
+import {
+  cachedTerminal,
+  predictTerminal,
+  terminalRegions,
+  terminalMasks,
+} from 'src/composables/useTerminalClassifier'
+import { lineupRegions } from 'src/composables/useLineupClassifier'
+import { isDarkAt } from '../../functions/lib/daylight.js'
+import RoiOverlay from 'src/components/RoiOverlay.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
@@ -1436,7 +1507,121 @@ function openHistory(time, label, entry = null) {
     robotCapacity: entry?.capacitySource === 'robot',
   }
   showTypicalDialog.value = true
+  if (label === 'Bowen') loadDialogFrames(time)
 }
+
+// --- the dialog's camera tiles and robot opinion (Bowen sailings) ----------
+// One representative frame per camera off the sailing's aggregate record
+// (cached read): the lineup frame nearest the ferry's arrival (the peak
+// lineup) and the last terminal frame (what was left waiting at departure).
+// When nothing is on record for fullness, the browser classifier judges the
+// terminal frames — cached per device, else fetched on this tap, never on
+// page load — so the dialog can ask the rider to agree or help.
+const dialogFrames = ref(null)
+// undefined = still computing, null = no verdict, else predictTerminal's result.
+const dialogVerdict = ref(undefined)
+
+function nearestFrame(frames, ts) {
+  if (!frames?.length) return null
+  if (ts == null) return frames[frames.length - 1]
+  let best = frames[frames.length - 1]
+  let bestDiff = Infinity
+  for (const f of frames) {
+    const diff = Math.abs((f.ts || 0) - ts)
+    if (f.ts && diff < bestDiff) {
+      bestDiff = diff
+      best = f
+    }
+  }
+  return best
+}
+
+async function loadDialogFrames(time) {
+  dialogFrames.value = null
+  dialogVerdict.value = undefined
+  const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  let raw = null
+  try {
+    raw = await loadSailingFrames(todayIso, time)
+  } catch (err) {
+    console.error('Failed to load the dialog frames:', err)
+  }
+  // The rider may have tapped another sailing meanwhile.
+  if (selectedTypical.value?.time !== time) return
+  if (!raw) {
+    dialogFrames.value = { lineup: null, terminal: null, sailingKey: null, departureCount: 0 }
+    dialogVerdict.value = null
+    return
+  }
+  dialogFrames.value = {
+    lineup: nearestFrame(raw.lineup, raw.arrivalTs),
+    terminal: raw.departure[raw.departure.length - 1] || null,
+    sailingKey: raw.sailingKey,
+    crosswalkOk: raw.crosswalkOk,
+    departureCount: raw.departure.length,
+    lastCapacity: raw.lastCapacity,
+  }
+  if (raw.lastCapacity || raw.departure.length < 2) {
+    dialogVerdict.value = null
+    return
+  }
+  const opts = { crosswalkOk: raw.crosswalkOk }
+  const cached = cachedTerminal(raw.sailingKey, opts)
+  if (cached) {
+    dialogVerdict.value = cached
+    return
+  }
+  try {
+    const v = await predictTerminal(
+      raw.sailingKey,
+      raw.departure.map((f) => f.path),
+      { ...opts, final: Boolean(raw.actualDepartureTime) },
+    )
+    if (selectedTypical.value?.time === time) dialogVerdict.value = v
+  } catch {
+    if (selectedTypical.value?.time === time) dialogVerdict.value = null
+  }
+}
+
+const dialogTiles = computed(() => {
+  const d = dialogFrames.value
+  const lineup = d?.lineup || null
+  const terminal = d?.terminal || null
+  return [
+    {
+      kind: 'crosswalk',
+      label: 'At crosswalk',
+      frame: lineup,
+      regions: lineupRegions,
+      masks: [],
+      caption: lineup
+        ? `At crosswalk · ${lineup.timeLabel}${isDarkAt(lineup.ts) ? ' · 🦉 night' : ''}`
+        : '',
+    },
+    {
+      kind: 'fullness',
+      label: 'Front of lineup',
+      frame: terminal,
+      regions: terminalRegions,
+      masks: terminalMasks,
+      caption: terminal ? `Front of lineup · ${terminal.timeLabel}` : '',
+    },
+  ]
+})
+
+// The opinion line, or null when fullness is already on record (either the
+// schedule entry's or the aggregate's) or there are too few frames to judge.
+const dialogOpinion = computed(() => {
+  const d = dialogFrames.value
+  if (!d?.sailingKey || d.departureCount < 2) return null
+  if (selectedTypical.value?.entry?.lastCapacity || d.lastCapacity) return null
+  const v = dialogVerdict.value
+  if (v === undefined) return { text: 'The robot is checking the terminal frames…' }
+  if (v?.kind === 'notFull') return { text: 'The robot thinks this one left with room — agree?' }
+  if (v?.kind === 'full') return { text: 'The robot thinks this one left full — agree?' }
+  return { text: "The robot isn't sure this one left full — what do you think?" }
+})
+
 
 // The selected sailing's status as explicit sentences — what actually
 // happened (or is happening), read from the schedule entry. Tolerates both
@@ -1588,6 +1773,7 @@ const robotVerify = ref({
   sailingKey: null,
   autoProb: null,
   claim: 'notFull',
+  crosswalkOk: false,
   sailingLabel: null,
   departedLabel: null,
 })
@@ -1617,12 +1803,29 @@ async function openRobotVerify(kind, time) {
     // plain photo browser with a "mark the frame" action, fullness with
     // claim null asks the per-frame question without defending a verdict.
     const rawCw = s.crosswalkFullAtAuto ?? s.crosswalkFullAt ?? null
+    const crosswalkOk = s.crosswalkFullAt != null || s.crosswalkFullAtAuto != null
+    // Fullness claim: the server's flags first; failing those, the browser
+    // classifier's cached verdict for this sailing (the dialog's own tiles
+    // may just have computed it) — so the intro can defend or own up.
+    let claim = s.ferryFullAuto
+      ? 'full'
+      : s.ferryNotFullAuto || s.terminalEmptyFrameTs != null
+        ? 'notFull'
+        : null
+    let terminalAt = s.terminalEmptyFrameTs ?? null
+    if (kind === 'fullness' && claim == null) {
+      const v = cachedTerminal(s.sailingKey, { crosswalkOk })
+      if (v) {
+        claim = v.kind
+        terminalAt = v.kind === 'notFull' ? v.emptyTs : v.fullAt
+      }
+    }
     const robotAt =
       kind === 'crosswalk'
         ? typeof rawCw === 'number'
           ? rawCw
           : null
-        : (s.terminalEmptyFrameTs ?? null)
+        : terminalAt
     // Frames come from the RAW sailing record, never the built cards —
     // finalize() swaps the newest sailing's departure card for the live-cam
     // stub (no timelapse) while its frames are sitting in the cache, which
@@ -1647,11 +1850,8 @@ async function openRobotVerify(kind, time) {
       frames,
       sailingKey: s.sailingKey,
       autoProb: s.crosswalkAutoProb ?? null,
-      claim: s.ferryFullAuto
-        ? 'full'
-        : s.ferryNotFullAuto || s.terminalEmptyFrameTs != null
-          ? 'notFull'
-          : null,
+      claim,
+      crosswalkOk,
       sailingLabel: formatTime12h(s.sailingTime),
       departedLabel: s.actualDepartureTime ? formatTime12h(s.actualDepartureTime) : null,
     }
@@ -1744,7 +1944,15 @@ async function onRobotVerifyFrameLabel({ framePath, sailingKey, carsWaiting, aut
 }
 
 function onRobotVerifyCapacity(capacity) {
-  saveRating(robotVerify.value.sailingKey, capacity, null)
+  saveCapacityFor(robotVerify.value.sailingKey, capacity)
+}
+
+// A rider's whole-sailing answer, from the verify dialog or the typical
+// dialog's opinion row. A rejected save (not signed in) opens the sign-in
+// dialog via the needsSignIn watcher.
+function saveCapacityFor(sailingKey, capacity) {
+  if (!sailingKey) return
+  saveRating(sailingKey, capacity, null)
     .then((saved) => {
       if (!saved) return // needsSignIn watcher opens the sign-in dialog
       $q.notify({ type: 'positive', message: 'Thanks — capacity recorded!' })
@@ -1878,6 +2086,39 @@ const recentPastHSB = computed(() =>
 const recentPastBowen = computed(() =>
   allPastBowen.value.filter((e) => e.diffText !== null || e.skipped),
 )
+
+// --- "help tag it" on the home page's past Bowen rows ----------------------
+// Which of today's departed Bowen sailings have terminal frames to tag and no
+// fullness yet. Fetched (one cached aggregate read) only when a row needs it
+// and re-fetched only when the set of candidate rows changes.
+const taggableTimes = ref(new Set())
+const helpCandidates = computed(() =>
+  allPastBowen.value
+    .filter((s) => !s.skipped && s.diffText != null && !s.lastCapacity)
+    .map((s) => normalizeTime(s.scheduledTime))
+    .sort()
+    .join(','),
+)
+watch(
+  helpCandidates,
+  async (key) => {
+    if (!key) {
+      taggableTimes.value = new Set()
+      return
+    }
+    try {
+      taggableTimes.value = await loadTaggableTimes(nowInVancouver().format('YYYY-MM-DD'))
+    } catch (err) {
+      console.error('Failed to load taggable sailings:', err)
+    }
+  },
+  { immediate: true },
+)
+const HELP_HINT = { text: 'No fullness yet — help tag it', color: 'indigo' }
+function helpHint(s) {
+  if (!s || s.label !== 'Bowen' || s.skipped || s.diffText == null || s.lastCapacity) return null
+  return taggableTimes.value.has(normalizeTime(s.scheduledTime)) ? HELP_HINT : null
+}
 const lastSailing = computed(() => {
   const hsb = recentPastHSB.value
   const bowen = recentPastBowen.value
@@ -2462,6 +2703,18 @@ onUnmounted(() => {
 // then the empty space closes up; coming back, the space opens first and
 // the words fade in behind it. max-height rather than height so the natural
 // one- or two-line height needs no measuring.
+/* The typical dialog's camera tiles: a block host so the overlay's box is
+   exactly the picture's, with the picture filling its column. */
+.dialog-tile {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.dialog-tile > img {
+  width: 100%;
+}
+
 .today-dialog {
   :deep(.sr-late),
   :deep(.sr-fact),

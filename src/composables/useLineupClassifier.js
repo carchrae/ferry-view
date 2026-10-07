@@ -29,6 +29,9 @@ export const browserClassifierReady = Boolean(
   model?.enabled && Array.isArray(model.weights) && Array.isArray(model.regions),
 )
 
+// The model's regions, for drawing where it looks (RoiOverlay).
+export const lineupRegions = model.regions || []
+
 // webcams/community/<date>/timelapse/<file>.jpg → /webcam/community/…
 function proxyUrl(path) {
   return (

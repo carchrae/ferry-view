@@ -351,6 +351,21 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   different questions. Hand labels win over rider labels; conflicts are dumped
   to `training-data/rider-label-disagreements.json` rather than dropped (see
   [training-data.md](training-data.md)).
+- **Boxes, progress, "enough"** (2026-10-07): the dialog draws the model's
+  own regions and masks over the photo (`RoiOverlay.vue`, geometry straight
+  from the model JSON) and dims the rest, and asks *"any vehicles inside the
+  highlighted boxes?"* — riders had been tagging cars outside the ROI, which
+  the model can't see. Frames are walked in a deterministic order
+  (`src/lib/tagging-progress.js`): the undecided frames of the tail first
+  (the last `FULL_TAIL_FRAMES`, where both verdict rules are decided —
+  "undecided" is unsure or weak cars below `FULL_CONFIDENT_P`), then the
+  robot's unsure frames, then the rest. Human answers override the robot's
+  read and are run through the same `terminalEmptyFrameTs` /
+  `terminalFullAtDeparture` rules, so the dialog can say "N more to decide"
+  and, once the tail decides, offer the resulting capacity as a one-tap save
+  (the crosswalk veto still applies to "full"). Home-page past Bowen rows
+  with frames but no fullness carry a "help tag it" nudge into the same
+  dialog, and the per-sailing dialog shows one boxed frame per camera.
 - **Tail rule, single threshold** (2026-08-16, second revision of the day):
   cars at `p >= threshold` (0.5), else empty, and the confirming empty pair
   must come **after the last solid cars frame**. A stricter per-frame empty

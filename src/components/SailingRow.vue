@@ -31,7 +31,7 @@
         }}</q-badge>
       </div>
     </div>
-    <HintLine v-if="hint" :hint="hint" @click="$emit('typical')" />
+    <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
   </div>
 
   <!-- Cards: bordered tile with a fullness-colored left rail; time up top,
@@ -62,7 +62,7 @@
              cards instead of starting wherever the previous card's text
              happened to end. -->
         <div
-          v-if="factBelow || hint"
+          v-if="factBelow || lineHint"
           ref="factsEl"
           class="sr-status sr-facts text-caption"
           :class="{ 'sr-facts--hint-only': !factBelow, 'sr-facts--clip': clipHint }"
@@ -70,7 +70,7 @@
           <span v-if="factBelow" class="sr-fact-now">
             <NowFact />
           </span>
-          <HintLine v-if="hint" :hint="cardHint" inline @click="$emit('typical')" />
+          <HintLine v-if="lineHint" :hint="cardHint" inline @click="onHintClick" />
         </div>
       </div>
     </div>
@@ -122,7 +122,7 @@
         </template>
       </div>
     </div>
-    <HintLine v-if="hint" :hint="hint" @click="$emit('typical')" />
+    <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
   </div>
 
   <!-- Board: departure-board typography — big time, plain colored text
@@ -159,7 +159,7 @@
         </template>
       </div>
     </div>
-    <HintLine v-if="hint" :hint="hint" @click="$emit('typical')" />
+    <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
   </div>
 </template>
 
@@ -177,6 +177,10 @@ const props = defineProps({
   kind: { type: String, required: true }, // 'past' | 'upcoming'
   design: { type: String, default: 'classic' },
   hint: { type: Object, default: null }, // typicalHints() result, upcoming only
+  // Past Bowen rows with no fullness and taggable frames: a {text, color}
+  // nudge rendered in the hint's slot, tapping it emits 'help' (opens the
+  // tagging dialog) instead of 'typical'. The hint wins when both are set.
+  help: { type: Object, default: null },
   // First row in its column: drops the top gap, since the column header (or
   // section divider) above already provides the separation.
   first: { type: Boolean, default: false },
@@ -185,7 +189,12 @@ const props = defineProps({
   estimate: { type: Object, default: undefined },
 })
 
-defineEmits(['open', 'typical'])
+const emit = defineEmits(['open', 'typical', 'help'])
+
+// Whatever occupies the hint line — the typical-history hint, else the
+// help-tag nudge — and where a tap on it goes.
+const lineHint = computed(() => props.hint || props.help)
+const onHintClick = () => emit(props.hint ? 'typical' : 'help')
 
 const $q = useQuasar()
 
@@ -361,9 +370,9 @@ const factsEl = ref(null)
 const abbreviate = ref(false)
 const clipHint = ref(false)
 const cardHint = computed(() =>
-  props.hint && abbreviate.value
-    ? { ...props.hint, text: props.hint.text.replace(/\busually\b/g, 'usu.') }
-    : props.hint,
+  lineHint.value && abbreviate.value
+    ? { ...lineHint.value, text: lineHint.value.text.replace(/\busually\b/g, 'usu.') }
+    : lineHint.value,
 )
 
 async function measureFacts() {
@@ -395,7 +404,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => factsObserver?.disconnect())
 watch(
-  () => [props.hint?.text, statusText.value, crosswalkText.value, props.design],
+  () => [lineHint.value?.text, statusText.value, crosswalkText.value, props.design],
   () => {
     if (props.design === 'cards') measureFacts()
   },
