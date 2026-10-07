@@ -28,17 +28,26 @@
               @click="openZoom(frame.imageUrl)"
             />
             <RoiOverlay :regions="roi.regions" :masks="roi.masks" :show="showRoi" />
-            <!-- The rider's answer for THIS frame (this session), as a chip on
-                 the photo rather than text in the question row, so the
-                 layout below doesn't jump when an answer lands. -->
-            <q-badge
-              v-if="kind === 'fullness' && labelled.get(frame.path) !== undefined"
-              :color="labelled.get(frame.path) ? 'positive' : 'negative'"
-              class="answer-chip"
-            >
-              <q-icon name="check" size="12px" class="q-mr-xs" />
-              {{ labelled.get(frame.path) ? 'waiting or loading' : 'none waiting' }}
-            </q-badge>
+            <!-- Chips on the photo, top right, so nothing below reflows: the
+                 robot's read of THIS frame and, once given, the rider's answer. -->
+            <div v-if="kind === 'fullness'" class="frame-chips">
+              <q-badge
+                v-if="labelled.get(frame.path) !== undefined"
+                :color="labelled.get(frame.path) ? 'positive' : 'negative'"
+                class="frame-chip"
+              >
+                <q-icon name="check" size="12px" class="q-mr-xs" />
+                {{ labelled.get(frame.path) ? 'waiting or loading' : 'none waiting' }}
+              </q-badge>
+              <q-badge
+                v-if="currentScore"
+                class="frame-chip"
+                :class="`chip-${currentScore.band}`"
+              >
+                <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
+                {{ bandWord(currentScore.band) }} {{ currentScore.p.toFixed(2) }}
+              </q-badge>
+            </div>
           </div>
         </div>
         <div class="row items-center justify-between q-mt-xs no-wrap">
@@ -142,14 +151,8 @@
              labelling is repeatable, and each answer advances to the next
              frame whose answer can still change the verdict. -->
         <div v-if="kind === 'fullness'" class="frame-label q-mt-sm">
-          <div class="text-caption text-grey-8 row items-center">
-            <span class="text-weight-medium"
-              >Any vehicles waiting or loading for the ferry inside the highlighted boxes?</span
-            >
-            <q-space />
-            <span v-if="currentScore" :class="`band-${currentScore.band}`" class="text-no-wrap">
-              robot: {{ bandWord(currentScore.band) }} ({{ currentScore.p.toFixed(2) }})
-            </span>
+          <div class="text-caption text-grey-8 text-weight-medium">
+            Any vehicles waiting or loading for the ferry inside the highlighted boxes?
           </div>
           <div class="text-caption text-grey-6">
             Only vehicles heading to the ferry count — ignore cars leaving in the other lane, and
@@ -170,36 +173,40 @@
             <span class="text-grey-7">{{ progressLine(progress, { scoresReady }) }}</span>
           </div>
           <div class="row q-gutter-sm q-mt-xs">
+            <!-- The rider's own answer (this session or an earlier visit) is
+                 the filled, active button; answering again replaces it. -->
             <q-btn
               dense
               no-caps
-              outline
+              :outline="said !== true"
+              :unelevated="said === true"
               color="positive"
               class="col"
-              label="Yes — waiting or loading"
+              :label="said === true ? 'You said Yes' : 'Yes — waiting or loading'"
               :loading="pendingAnswer === true"
               :disable="savingLabel && pendingAnswer !== true"
               @click="labelFrame(true)"
-            />
+            >
+              <q-tooltip v-if="said === true && priorAnswer?.when"
+                >You answered on {{ priorAnswer.when }} — tap to answer again</q-tooltip
+              >
+            </q-btn>
             <q-btn
               dense
               no-caps
-              outline
+              :outline="said !== false"
+              :unelevated="said === false"
               color="negative"
               class="col"
-              label="No — none waiting or loading"
+              :label="said === false ? 'You said No' : 'No — none waiting or loading'"
               :loading="pendingAnswer === false"
               :disable="savingLabel && pendingAnswer !== false"
               @click="labelFrame(false)"
-            />
-          </div>
-          <!-- What this rider said about this frame on an earlier visit —
-               saving again replaces it (each rider's latest answer counts). -->
-          <div v-if="priorAnswer" class="text-caption text-grey-7 q-mt-xs">
-            <q-icon name="history" size="14px" class="q-mr-xs" />You answered
-            <strong>{{ priorAnswer.carsWaiting ? 'waiting or loading' : 'none waiting' }}</strong>
-            <template v-if="priorAnswer.when"> on {{ priorAnswer.when }}</template> — answer again
-            to change it.
+            >
+              <q-tooltip v-if="said === false && priorAnswer?.when"
+                >You answered on {{ priorAnswer.when }} — tap to answer again</q-tooltip
+              >
+            </q-btn>
           </div>
         </div>
       </template>
@@ -493,6 +500,14 @@ const priorAnswer = computed(() => {
     when: r.recordedAt ? dayjs(r.recordedAt).tz(TZ).format('MMM D, h:mm a') : null,
   }
 })
+// What this rider has said about the frame on screen — this session's
+// answer first, else a saved one — drives the active button.
+const said = computed(() => {
+  const path = frame.value?.path
+  if (!path) return null
+  if (labelled.value.has(path)) return labelled.value.get(path)
+  return mine.value.get(path)?.carsWaiting ?? null
+})
 
 // Prior labels (prop, then this rider's saved answers) under this
 // session's answers.
@@ -658,15 +673,6 @@ const disagreeBtn = computed(() =>
   border-top: 1px solid rgba(128, 128, 128, 0.25);
   padding-top: 0.5rem;
 }
-.band-unsure {
-  color: #b8860b;
-}
-.band-cars {
-  color: #2a7;
-}
-.band-empty {
-  color: #d33;
-}
 .verify-card {
   width: 26rem;
   max-width: 92vw;
@@ -695,14 +701,28 @@ const disagreeBtn = computed(() =>
   transform: scaleX(-1);
 }
 
-.answer-chip {
+.frame-chips {
   position: absolute;
   top: 6px;
   right: 6px;
+  display: flex;
+  gap: 4px;
+  line-height: normal;
+}
+.frame-chip {
   font-size: 12px;
   line-height: 1.2;
   padding: 3px 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.chip-cars {
+  background: #2a7;
+}
+.chip-empty {
+  background: #d33;
+}
+.chip-unsure {
+  background: #b8860b;
 }
 
 .roi-caption {
