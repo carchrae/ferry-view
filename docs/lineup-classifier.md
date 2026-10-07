@@ -198,6 +198,53 @@ and the gate analysis (`training-data/experiments/dark-frame-analysis.mjs`)
 showed the −6° cut loses no human-corroborated detection. Revisit with a
 night model when the winter dark archive is labeled.
 
+### Night: stable-pixel composites (experiment, 2026-10-07)
+
+Tom's idea for the dark months: the community cam doesn't auto-expose and
+passing headlights bloom across the frame, so composite a window of frames
+and keep only the pixels that are stable, then classify that. Tried offline
+on the archived 5-minute frames (`training-data/experiments/stable-composite.mjs`,
+review page `training-data/report/stable-composite.html`), on last night's
+production frames (`fetch-prod-night.mjs` + `burst-composite.mjs`) and on a
+live pre-dawn burst (`capture-burst.mjs`; the camera refreshes every 60 s, so
+samples seconds apart are the same frame — a window needs minutes).
+
+Per-pixel composites over a trailing window of 3 frames, scored with the
+deployed v4 day model:
+
+| mode | dark frames ≥ 0.7 (of 191 with a window) | day P / R (labelled frames) |
+|---|---|---|
+| raw | 96 of 275 | 0.932 / 0.926 |
+| median | 30 | 0.984 / 0.796 |
+| minimum | 16 | 0.946 / 0.911 |
+| stable (range < 24 → median, else min) | 19 | 0.943 / 0.909 |
+
+- **Sweeping headlights vanish, stationary lights stay.** Minimum/stable
+  composites cut the day model's night false positives ~5× and, even at
+  5-minute spacing where a boarding queue itself moves, cost ~1.5 points of
+  day recall (the median costs 13 — queue creep). At 1-minute spacing the
+  creep is smaller still.
+- **A single stopped car survives the composite** and still reads as a
+  queue to the day model (one bright spot in the crosswalk box ⇒ p 0.8).
+- **The day model is blind at night in both directions.** A real pre-dawn
+  queue (2026-10-06 06:10–06:35, cars lined up in the left lane) scored
+  p ≤ 0.02 raw *and* composited; blooms score 1.0. Compositing is a cleaner
+  input, not a verdict: night needs its own model trained on composites with
+  night labels (there are **none** today — no night sailing has a crosswalk
+  mark; the only night ground truth is the 26 known-wrong detections).
+- **Classify-first means no neighbours at night.** 25 of the 26 known-wrong
+  detections were the first saved frame of their run (probes before it were
+  discarded), so the archive can't composite them and production couldn't
+  either: a night path needs the off-cadence probe frames kept in a small
+  in-memory buffer (~230 KB per 640×360 grey frame) and composited at the
+  5-minute capture. Contrast stretching (2–98 percentile) only raised false
+  positives and is not worth pursuing.
+
+Next, if pursued: night labels (rider crosswalk marks on night sailings via
+the boxed timelapse tagger, plus a hand-label page over composites), a
+separate night model (`--include-dark` / `--night` in the trainer, strong L2),
+then the probe buffer in `captureLineupTimelapse`, flagged off until judged.
+
 ### Detection-error severity (2026-09-05)
 
 Not all mistakes are equal: a detection one frame before the rider's mark is
