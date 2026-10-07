@@ -28,6 +28,17 @@
               @click="openZoom(frame.imageUrl)"
             />
             <RoiOverlay :regions="roi.regions" :masks="roi.masks" :show="showRoi" />
+            <!-- The rider's answer for THIS frame (this session), as a chip on
+                 the photo rather than text in the question row, so the
+                 layout below doesn't jump when an answer lands. -->
+            <q-badge
+              v-if="kind === 'fullness' && labelled.get(frame.path) !== undefined"
+              :color="labelled.get(frame.path) ? 'positive' : 'negative'"
+              class="answer-chip"
+            >
+              <q-icon name="check" size="12px" class="q-mr-xs" />
+              {{ labelled.get(frame.path) ? 'waiting or loading' : 'none waiting' }}
+            </q-badge>
           </div>
         </div>
         <div class="row items-center justify-between q-mt-xs no-wrap">
@@ -124,10 +135,7 @@
               >Any vehicles waiting or loading for the ferry inside the highlighted boxes?</span
             >
             <q-space />
-            <span v-if="labelled.get(frame.path) !== undefined" class="text-positive">
-              <q-icon name="check" /> {{ labelled.get(frame.path) ? 'vehicles' : 'empty' }}
-            </span>
-            <span v-else-if="currentScore" :class="`band-${currentScore.band}`">
+            <span v-if="currentScore" :class="`band-${currentScore.band}`" class="text-no-wrap">
               robot: {{ bandWord(currentScore.band) }} ({{ currentScore.p.toFixed(2) }})
             </span>
           </div>
@@ -407,6 +415,8 @@ watch(
   () => props.modelValue,
   (open) => {
     if (!open) return
+    clearTimeout(settleTimer)
+    savingLabel.value = false
     labelled.value = new Map()
     mine.value = new Map()
     scoresReady.value = false
@@ -431,6 +441,9 @@ const scores = ref(new Map()) // framePath -> { p, band }
 const scoresReady = ref(false)
 const labelled = ref(new Map()) // framePath -> boolean, this session
 const savingLabel = ref(false)
+// How long the answer chip shows on the frame before the view moves on.
+const SETTLE_MS = 800
+let settleTimer = null
 
 const currentScore = computed(() => (frame.value ? scores.value.get(frame.value.path) : null))
 const bandWord = (band) => (band === 'cars' ? 'cars' : band === 'empty' ? 'empty' : 'not sure')
@@ -562,10 +575,16 @@ function labelFrame(carsWaiting) {
     carsWaiting,
     autoP: scores.value.get(framePath)?.p ?? null,
     done: (ok) => {
-      savingLabel.value = false
-      if (!ok) return
+      if (!ok) {
+        savingLabel.value = false
+        return
+      }
       labelled.value.set(framePath, carsWaiting)
-      advance()
+      clearTimeout(settleTimer)
+      settleTimer = setTimeout(() => {
+        savingLabel.value = false
+        advance()
+      }, SETTLE_MS)
     },
   })
 }
@@ -639,6 +658,16 @@ const disagreeBtn = computed(() =>
 
 .verify-img {
   max-width: 100%;
+}
+
+.answer-chip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 3px 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .roi-caption {
