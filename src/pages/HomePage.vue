@@ -2144,7 +2144,7 @@ watch(
   },
   { immediate: true },
 )
-const HELP_HINT = { text: 'No fullness yet — help tag it', color: 'indigo' }
+const HELP_HINT = { text: 'Was it full? Help tag it', color: 'indigo' }
 function helpHint(s) {
   if (!s || s.label !== 'Bowen' || s.skipped || s.diffText == null || s.lastCapacity) return null
   return taggableTimes.value.has(normalizeTime(s.scheduledTime)) ? HELP_HINT : null

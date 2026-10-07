@@ -412,7 +412,7 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   `terminalFullAtDeparture` rules, so the dialog can say "N more to decide"
   and, once the tail decides, offer the resulting capacity as a one-tap save
   (the crosswalk veto still applies to "full"). Home-page past Bowen rows
-  with frames but no fullness carry a "help tag it" nudge into the same
+  with frames but no fullness carry a "Was it full? Help tag it" nudge into the same
   dialog, and the per-sailing dialog shows one boxed frame per camera.
 - **Tail rule, single threshold** (2026-08-16, second revision of the day):
   cars at `p >= threshold` (0.5), else empty, and the confirming empty pair
