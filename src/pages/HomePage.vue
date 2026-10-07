@@ -946,26 +946,20 @@
             v-if="selectedEstimate !== undefined"
             :timings="estimateTimings"
           />
-          <!-- The webcams — always offered on Bowen departures, plenty of
-               riders just want the photos: one frame from each camera, with
-               the robot's boxes on it, tapping through to the frame-stepping
-               dialog (which doubles as the robot's verification). A camera
-               with no frames yet keeps the plain button. -->
-          <div v-if="selectedTypical?.label === 'Bowen'" class="q-mt-sm">
+          <!-- The webcams, Bowen departures only. A departed sailing shows one
+               archived frame from each camera (the lineup at the ferry's
+               arrival, the terminal at departure), tapping through to the
+               frame-stepping dialog (which doubles as the robot's
+               verification; that screen draws the robot's boxes, this one
+               doesn't). A camera with no frames yet keeps the plain button.
+               The NEXT sailing shows the live cameras instead — its lineup
+               is building right now. Later sailings show no photos. -->
+          <div v-if="selectedTypical?.mode === 'past'" class="q-mt-sm">
             <div class="row q-col-gutter-sm">
               <div v-for="tile in dialogTiles" :key="tile.kind" class="col-6">
                 <template v-if="tile.frame">
-                  <div
-                    class="roi-host dialog-tile cursor-pointer"
-                    @click="openRobotFromTypical(tile.kind)"
-                  >
+                  <div class="dialog-tile cursor-pointer" @click="openRobotFromTypical(tile.kind)">
                     <img :src="tile.frame.imageUrl" alt="" />
-                    <RoiOverlay
-                      :regions="tile.regions"
-                      :masks="tile.masks"
-                      :labels="false"
-                      :dim="0.45"
-                    />
                   </div>
                   <div class="text-caption text-grey-7 text-center ellipsis">
                     {{ tile.caption }}
@@ -1021,6 +1015,19 @@
                   class="q-px-sm app-btn"
                   @click="openRobotFromTypical('fullness')"
                 />
+              </div>
+            </div>
+          </div>
+          <div v-else-if="selectedTypical?.mode === 'next'" class="q-mt-sm">
+            <div class="row q-col-gutter-sm">
+              <div v-for="cam in liveTiles" :key="cam.index" class="col-6">
+                <div class="dialog-tile cursor-pointer" @click="openLiveFromTypical(cam.index)">
+                  <img v-if="cam.src" :src="cam.src" alt="" @error="handleCamError(cam.index)" />
+                  <div v-else class="dialog-tile-pending bg-grey-3 text-grey-6 flex flex-center">
+                    <q-icon name="videocam" size="24px" />
+                  </div>
+                </div>
+                <div class="text-caption text-grey-7 text-center ellipsis">{{ cam.caption }}</div>
               </div>
             </div>
           </div>
@@ -1146,15 +1153,8 @@ import {
   loadCameraFrames,
   loadTaggableTimes,
 } from 'src/composables/useBowenSailings'
-import {
-  cachedTerminal,
-  predictTerminal,
-  terminalRegions,
-  terminalMasks,
-} from 'src/composables/useTerminalClassifier'
-import { lineupRegions } from 'src/composables/useLineupClassifier'
+import { cachedTerminal, predictTerminal } from 'src/composables/useTerminalClassifier'
 import { isDarkAt } from '../../functions/lib/daylight.js'
-import RoiOverlay from 'src/components/RoiOverlay.vue'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
@@ -1505,9 +1505,23 @@ function openHistory(time, label, entry = null) {
     // buttons mention the robot's report when these are set.
     robotCrosswalk: entry?.crosswalkSource === 'robot',
     robotCapacity: entry?.capacitySource === 'robot',
+    // Which photos the dialog shows (Bowen only): 'past' = archived frames
+    // of a departed sailing, 'next' = the live cameras for the sailing now
+    // boarding, 'later' = none (nothing to see yet).
+    mode: dialogModeFor(label, entry),
   }
   showTypicalDialog.value = true
-  if (label === 'Bowen') loadDialogFrames(time)
+  dialogFrames.value = null
+  dialogVerdict.value = undefined
+  if (selectedTypical.value.mode === 'past') loadDialogFrames(time)
+}
+
+function dialogModeFor(label, entry) {
+  if (label !== 'Bowen' || !entry) return null
+  const upcoming = allUpcomingBowen.value
+  if (upcoming[0] === entry) return 'next'
+  if (upcoming.includes(entry)) return 'later'
+  return 'past'
 }
 
 // --- the dialog's camera tiles and robot opinion (Bowen sailings) ----------
@@ -1537,8 +1551,6 @@ function nearestFrame(frames, ts) {
 }
 
 async function loadDialogFrames(time) {
-  dialogFrames.value = null
-  dialogVerdict.value = undefined
   const todayIso = nowInVancouver().format('YYYY-MM-DD')
   let raw = null
   try {
@@ -1592,8 +1604,6 @@ const dialogTiles = computed(() => {
       kind: 'crosswalk',
       label: 'At crosswalk',
       frame: lineup,
-      regions: lineupRegions,
-      masks: [],
       caption: lineup
         ? `At crosswalk · ${lineup.timeLabel}${isDarkAt(lineup.ts) ? ' · 🦉 night' : ''}`
         : '',
@@ -1602,12 +1612,31 @@ const dialogTiles = computed(() => {
       kind: 'fullness',
       label: 'Front of lineup',
       frame: terminal,
-      regions: terminalRegions,
-      masks: terminalMasks,
       caption: terminal ? `Front of lineup · ${terminal.timeLabel}` : '',
     },
   ]
 })
+
+// The next sailing's tiles: the two Bowen cameras, live (same sources and
+// cache-busting as the webcam grid — allCamUrls indexes 5 and 4).
+const LIVE_TILES = [
+  { index: 5, caption: 'At crosswalk · live' },
+  { index: 4, caption: 'Front of lineup · live' },
+]
+const liveTiles = computed(() =>
+  LIVE_TILES.map((t) => ({
+    ...t,
+    src:
+      cacheBusters.value[t.index] == null || camFailed.value[t.index]
+        ? null
+        : bcfSafeSrc(`${allCamUrls[t.index]}?t=${cacheBusters.value[t.index]}`),
+  })),
+)
+
+function openLiveFromTypical(index) {
+  showTypicalDialog.value = false
+  openFullscreen(index)
+}
 
 // The opinion line, or null when fullness is already on record (either the
 // schedule entry's or the aggregate's) or there are too few frames to judge.
@@ -2713,6 +2742,10 @@ onUnmounted(() => {
 }
 .dialog-tile > img {
   width: 100%;
+}
+.dialog-tile-pending {
+  aspect-ratio: 16 / 9;
+  line-height: normal;
 }
 
 .today-dialog {
