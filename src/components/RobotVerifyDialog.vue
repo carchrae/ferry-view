@@ -113,12 +113,16 @@
         <!-- Per-frame labels: the question the terminal classifier actually
              predicts, asked about the highlighted boxes only — cars outside
              them are invisible to the model, and tagging them taught it
-             nothing (or the wrong thing). Deliberately NOT v-close-popup —
+             nothing (or the wrong thing) — and only about vehicles heading
+             TO the ferry: the frame often also shows cars leaving in the
+             other lane, which are not a lineup. Deliberately NOT v-close-popup —
              labelling is repeatable, and each answer advances to the next
              frame whose answer can still change the verdict. -->
         <div v-if="kind === 'fullness'" class="frame-label q-mt-sm">
           <div class="text-caption text-grey-8 row items-center">
-            <span class="text-weight-medium">Are there any vehicles inside the highlighted boxes?</span>
+            <span class="text-weight-medium"
+              >Any vehicles waiting or loading for the ferry inside the highlighted boxes?</span
+            >
             <q-space />
             <span v-if="labelled.get(frame.path) !== undefined" class="text-positive">
               <q-icon name="check" /> {{ labelled.get(frame.path) ? 'vehicles' : 'empty' }}
@@ -128,7 +132,8 @@
             </span>
           </div>
           <div class="text-caption text-grey-6">
-            Ignore cars outside the boxes.<template v-if="!user">
+            Only vehicles heading to the ferry count — ignore cars leaving in the other lane, and
+            anything outside the boxes.<template v-if="!user">
               Sign in to save your answers.</template
             >
           </div>
@@ -139,7 +144,7 @@
               outline
               color="positive"
               class="col"
-              label="Yes — vehicles in the boxes"
+              label="Yes — waiting or loading"
               :disable="savingLabel"
               @click="labelFrame(true)"
             />
@@ -149,7 +154,7 @@
               outline
               color="negative"
               class="col"
-              label="No — boxes are empty"
+              label="No — none waiting or loading"
               :disable="savingLabel"
               @click="labelFrame(false)"
             />

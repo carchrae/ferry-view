@@ -401,8 +401,9 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
 - **Boxes, progress, "enough"** (2026-10-07): the dialog draws the model's
   own regions and masks over the photo (`RoiOverlay.vue`, geometry straight
   from the model JSON) and dims the rest, and asks *"any vehicles inside the
-  highlighted boxes?"* — riders had been tagging cars outside the ROI, which
-  the model can't see. Frames are walked in a deterministic order
+  waiting or loading for the ferry inside the highlighted boxes?"* — riders had been
+  tagging cars outside the ROI, which the model can't see, and the frame
+  often shows cars leaving in the other lane, which are not a lineup. Frames are walked in a deterministic order
   (`src/lib/tagging-progress.js`): the undecided frames of the tail first
   (the last `FULL_TAIL_FRAMES`, where both verdict rules are decided —
   "undecided" is unsure or weak cars below `FULL_CONFIDENT_P`), then the
