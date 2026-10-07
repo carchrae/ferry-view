@@ -94,17 +94,26 @@ test('a rider\'s answer on the departure frame decides: cars → full (no veto),
   const m = run(mixed)
   assert.equal(m.verdict, null)
   assert.equal(m.reason, 'mixed')
-  const full = run(mixed, { f4: true })
+  const full = run(mixed, { f4: true }, { crosswalkOk: true })
   assert.equal(full.verdict, 'full')
-  assert.equal(full.vetoed, false) // a human saw the cars; no crosswalk veto
+  assert.equal(full.vetoed, false)
   assert.equal(full.decidedBy, 'human')
   assert.equal(full.reason, 'human-cars-last')
+  // Without the crosswalk the cars probably rolled up late: no verdict, the
+  // rider is asked to confirm.
+  const late = run(mixed, { f4: true })
+  assert.equal(late.verdict, null)
+  assert.equal(late.vetoed, true)
+  assert.equal(late.reason, 'human-cars-last-noxwalk')
+  assert.equal(late.decidedBy, 'human')
+  assert.equal(late.enough, true)
   // The robot calls this one not-full (it treats the last cars frame as a
-  // blip); a rider saying cars WERE waiting on that frame wins.
+  // blip); a rider saying cars WERE waiting on that frame wins (crosswalk reached).
   const blip = [0.9, 0.9, 0.1, 0.1, 0.9]
   assert.equal(run(blip).verdict, 'notFull')
   assert.equal(run(blip).reason, 'robot-empty-pair')
-  assert.equal(run(blip, { f4: true }).verdict, 'full')
+  assert.equal(run(blip, { f4: true }, { crosswalkOk: true }).verdict, 'full')
+  assert.equal(run(blip, { f4: true }).reason, 'human-cars-last-noxwalk')
   // Same when the rider says the last frame was empty and the one before was empty too.
   const quiet = run([0.1, 0.1, 0.1], { f2: false })
   assert.equal(quiet.verdict, 'notFull')

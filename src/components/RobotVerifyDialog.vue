@@ -235,6 +235,32 @@
               <div v-if="savedVerdict && savedVerdict === progress.verdict" class="text-caption text-positive">
                 <q-icon name="check" size="14px" /> Saved as this sailing's capacity.
               </div>
+              <!-- Vehicles on the departure frame but the lineup never reached
+                   the crosswalk: probably late arrivals, not a full ferry — the
+                   rider confirms either way; both answers file a report. -->
+              <div v-if="progress.reason === 'human-cars-last-noxwalk' && !confirmedLate" class="row q-gutter-sm q-mt-xs">
+                <q-btn
+                  dense
+                  no-caps
+                  unelevated
+                  color="deep-orange"
+                  class="col"
+                  label="Yes — it left full"
+                  @click="confirmCapacity('Full')"
+                />
+                <q-btn
+                  dense
+                  no-caps
+                  outline
+                  color="indigo"
+                  class="col"
+                  label="No — they arrived late, it had room"
+                  @click="confirmCapacity('Not Full')"
+                />
+              </div>
+              <div v-else-if="confirmedLate" class="text-caption text-positive">
+                <q-icon name="check" size="14px" /> Saved: {{ confirmedLate }}.
+              </div>
             </div>
           </div>
         </div>
@@ -387,6 +413,7 @@ watch(
     savingLabel.value = false
     pendingAnswer.value = null
     savedVerdict.value = null
+    confirmedLate.value = null
     labelled.value = new Map()
     mine.value = new Map()
     scoresReady.value = false
@@ -478,6 +505,8 @@ const verdictText = computed(() => {
   const who = p.decidedBy === 'human' ? 'By your tags' : 'By the robot\'s read'
   if (p.verdict === 'notFull') return `${who}, the ferry left with room (not full).`
   if (p.verdict === 'full') return `${who}, the ferry left full — vehicles were still waiting.`
+  if (p.reason === 'human-cars-last-noxwalk')
+    return 'You saw vehicles on the last frame, but the lineup never reached the crosswalk — did the ferry leave full?'
   if (p.vetoed) return "Cars to the very end, but the lineup never reached the crosswalk, so the robot won't call it full."
   return "The last frames are tagged but the pattern is mixed — nothing decides it."
 })
@@ -494,6 +523,8 @@ const reasonText = computed(() => {
       return `Two empty frames in a row after the last cars, from ${t(p.verdictTs)} — nothing came back after.`
     case 'robot-cars-tail':
       return `The last four frames all read as cars, and the lineup had reached the crosswalk.`
+    case 'human-cars-last-noxwalk':
+      return `Without a lineup back to the crosswalk, the vehicles at ${t(p.verdictTs)} probably rolled up late, after loading closed — then the ferry still had room.`
     case 'vetoed':
       return 'Tag the last frame if you can see vehicles waiting — a rider\'s word on it counts.'
     case 'mixed':
@@ -508,6 +539,12 @@ const reasonText = computed(() => {
 // an answer given here (a verdict already standing when the dialog opened
 // was saved on an earlier visit or is the robot's own).
 const savedVerdict = ref(null)
+// The rider's answer to the late-arrivals question ('Full' | 'Not Full').
+const confirmedLate = ref(null)
+function confirmCapacity(capacity) {
+  confirmedLate.value = capacity
+  emit('capacity', capacity)
+}
 function saveInferredCapacity() {
   const p = progress.value
   if (!p.verdict || p.decidedBy !== 'human' || savedVerdict.value === p.verdict) return

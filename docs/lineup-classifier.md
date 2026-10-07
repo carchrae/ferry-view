@@ -414,9 +414,11 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   the tags and saved as the rider's capacity report the moment one of their
   answers decides it, with a one-line reason. A rider's answer on the
   departure (last) frame outranks the robot's rules — vehicles waiting there
-  means full, with no crosswalk veto (that veto guards the robot's eyesight,
-  not a human's); an empty last frame with an empty one before it means not
-  full even when no cars were seen first. Home-page past Bowen rows
+  means full when the lineup had reached the crosswalk; without that they
+  probably rolled up late after loading closed, so the dialog asks the rider
+  to confirm (full, or late arrivals = it had room) instead of deciding; an
+  empty last frame with an empty one before it means not full even when no
+  cars were seen first. Home-page past Bowen rows
   with frames but no fullness carry a "Was it full? Help tag it" nudge into the same
   dialog, and the per-sailing dialog shows one boxed frame per camera.
 - **Tail rule, single threshold** (2026-08-16, second revision of the day):

@@ -106,30 +106,40 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
   }
   // The robot's rules are strict because its per-frame read is noisy. A
   // rider's answer on the LAST frame — the departure — is not: vehicles
-  // still waiting when the ferry left means it left full (and a human saw
-  // them, so the crosswalk veto, which guards the robot's eyesight, doesn't
-  // apply); two empty frames at the end, the last one a rider's, means
-  // everyone got on even when the robot's rule couldn't say (no solid cars
-  // seen first, a short window, a lone cars blip before).
+  // still waiting when the ferry left means it left full — but only when
+  // the lineup had reached the crosswalk. Without that, the cars on the
+  // last frame probably rolled up late, after loading closed (Tom,
+  // 2026-10-07), so it is not a verdict but a question for the rider
+  // ('human-cars-last-noxwalk': confirm full, or they came late = room).
+  // Two empty frames at the end, the last one a rider's, means everyone got
+  // on even when the robot's rule couldn't say (no solid cars seen first, a
+  // short window, a lone cars blip before).
   // Why, as a code the UI words (with the frame times): 'robot-empty-pair',
   // 'robot-cars-tail', 'human-cars-last', 'human-empty-pair', 'vetoed',
-  // 'mixed' (tail tagged, nothing decides), or null (not enough yet).
+  // 'human-cars-last-noxwalk' (the rider must confirm), 'mixed' (tail
+  // tagged, nothing decides), or null (not enough yet).
   let reason = verdict === 'notFull' ? 'robot-empty-pair' : verdict === 'full' ? 'robot-cars-tail' : vetoed ? 'vetoed' : null
   const last = seq[total - 1]
   if (last?.source === 'human') {
     if (last.carsPresent === true) {
       // Overrides a robot not-full built on treating this frame as a blip.
-      verdict = 'full'
       verdictTs = last.ts
-      vetoed = false
-      reason = 'human-cars-last'
+      if (crosswalkOk) {
+        verdict = 'full'
+        vetoed = false
+        reason = 'human-cars-last'
+      } else {
+        verdict = null
+        vetoed = true
+        reason = 'human-cars-last-noxwalk'
+      }
     } else if (!verdict && seq[total - 2]?.carsPresent === false) {
       verdict = 'notFull'
       verdictTs = last.ts
       reason = 'human-empty-pair'
     }
   }
-  if (verdict) {
+  if (verdict || vetoed) {
     const tail = seq.slice(Math.max(0, total - FULL_TAIL_FRAMES))
     decidedBy = tail.some((f) => f.source === 'human') ? 'human' : 'robot'
   }
