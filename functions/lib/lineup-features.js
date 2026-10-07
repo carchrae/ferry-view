@@ -57,6 +57,104 @@ export async function extractFeatures(buf) {
   return out
 }
 
+// --- Night: stable-pixel composites ------------------------------------------
+// The community cam doesn't auto-expose: night frames are near-black and a
+// passing car's headlights bloom across both regions, which the day model
+// reads as a queue (2026-10-07 experiment, docs/lineup-classifier.md "Night:
+// stable-pixel composites"). Compositing a trailing window of frames and
+// keeping only the pixels that are STABLE across it removes the sweeping
+// blooms while a stationary queue's lights stay. These helpers are the one
+// implementation shared by the night trainer, the labelling page and the
+// server's night path, so train/serve preprocessing can't drift.
+//
+// Every frame is first reduced to a canonical 640x360 single-channel grey
+// buffer (the stored size; the rare uncompressed 1280x720 fallback is
+// resized), composited pixel-wise, re-encoded as JPEG q80 (the same bytes
+// shape the day path classifies) and run through extractFeatures above.
+export const COMPOSITE = {
+  width: 640,
+  height: 360,
+  // Trailing window: this many distinct frames, ~1 min apart in production
+  // (per-minute probes), 5 min apart in the archive.
+  k: 3,
+  // A pixel whose min..max range across the window is under tau is stable
+  // and keeps its median; a moving pixel takes the window minimum.
+  tau: 24,
+  // Frames further apart than this can't share a window (a capture gap).
+  maxGapMs: 7 * 60 * 1000,
+}
+
+export async function toCanonicalGrey(buf, { width = COMPOSITE.width, height = COMPOSITE.height } = {}) {
+  const { data, info } = await sharp(buf)
+    .resize(width, height, { fit: 'fill' })
+    .greyscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+  if (info.channels !== 1 || data.length !== width * height) {
+    throw new Error(`canonical grey: unexpected ${info.width}x${info.height}x${info.channels}`)
+  }
+  return data
+}
+
+// Per-pixel median of 1..n equal-length grey buffers (2 → mean).
+export function compositeMedian(greys) {
+  const k = greys.length
+  const n = greys[0].length
+  const out = Buffer.alloc(n)
+  if (k === 1) return Buffer.from(greys[0])
+  if (k === 2) {
+    for (let i = 0; i < n; i++) out[i] = (greys[0][i] + greys[1][i]) >> 1
+    return out
+  }
+  if (k === 3) {
+    const [a, b, c] = greys
+    for (let i = 0; i < n; i++) {
+      out[i] = Math.max(Math.min(a[i], b[i]), Math.min(Math.max(a[i], b[i]), c[i]))
+    }
+    return out
+  }
+  const tmp = new Array(k)
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < k; j++) tmp[j] = greys[j][i]
+    tmp.sort((p, q) => p - q)
+    out[i] = k % 2 ? tmp[(k - 1) / 2] : (tmp[k / 2 - 1] + tmp[k / 2]) >> 1
+  }
+  return out
+}
+
+// Stable-pixel composite: median where the window agrees (range < tau),
+// window minimum where it moves. One frame passes through unchanged.
+export function compositeStable(greys, tau = COMPOSITE.tau) {
+  const n = greys[0].length
+  if (greys.length === 1) return Buffer.from(greys[0])
+  const med = compositeMedian(greys)
+  const out = Buffer.alloc(n)
+  for (let i = 0; i < n; i++) {
+    let mn = 255
+    let mx = 0
+    for (const g of greys) {
+      const v = g[i]
+      if (v < mn) mn = v
+      if (v > mx) mx = v
+    }
+    out[i] = mx - mn < tau ? med[i] : mn
+  }
+  return out
+}
+
+export async function greyToJpeg(grey, { width = COMPOSITE.width, height = COMPOSITE.height, quality = 80 } = {}) {
+  return sharp(grey, { raw: { width, height, channels: 1 } }).jpeg({ quality }).toBuffer()
+}
+
+// JPEG buffers of a trailing window (oldest first, the frame being judged
+// last) → the night model's features: canonical grey each, stable composite,
+// JPEG q80, then the same crop/downscale as the day features.
+export async function extractCompositeFeatures(jpegs, { tau = COMPOSITE.tau } = {}) {
+  const greys = []
+  for (const j of jpegs) greys.push(await toCanonicalGrey(j))
+  return extractFeatures(await greyToJpeg(compositeStable(greys, tau)))
+}
+
 // Tag→label semantics live in lineup-labels.js (shared with the app's
 // triggers and the exporter, and free of the sharp dependency); re-exported
 // here so feature+label consumers (the trainer) have one import.
