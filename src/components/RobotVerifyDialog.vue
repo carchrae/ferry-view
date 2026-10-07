@@ -159,6 +159,14 @@
               @click="labelFrame(false)"
             />
           </div>
+          <!-- What this rider said about this frame on an earlier visit —
+               saving again replaces it (each rider's latest answer counts). -->
+          <div v-if="priorAnswer" class="text-caption text-grey-7 q-mt-xs">
+            <q-icon name="history" size="14px" class="q-mr-xs" />You answered
+            <strong>{{ priorAnswer.carsWaiting ? 'waiting or loading' : 'none waiting' }}</strong>
+            <template v-if="priorAnswer.when"> on {{ priorAnswer.when }}</template> — answer again
+            to change it.
+          </div>
           <!-- Progress on this sailing: how many frames are tagged and how
                many answers the robot still needs before the tail decides it. -->
           <div class="text-caption text-grey-7 q-mt-xs">
@@ -322,7 +330,7 @@ import {
   terminalMasks,
 } from 'src/composables/useTerminalClassifier'
 import { lineupRegions } from 'src/composables/useLineupClassifier'
-import { useAuth } from 'src/composables/useAuth'
+import { useFrameLabel } from 'src/composables/useFrameLabel'
 import { taggingProgress, progressLine } from 'src/lib/tagging-progress.js'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 import RoiOverlay from 'src/components/RoiOverlay.vue'
@@ -371,7 +379,7 @@ const emit = defineEmits([
   'frame-label',
 ])
 
-const { user } = useAuth()
+const { user, loadMyFrameLabels } = useFrameLabel()
 
 const index = ref(0)
 const robotIndex = computed(() => props.frames.findIndex((f) => f.ts === props.robotAt))
@@ -400,7 +408,9 @@ watch(
   (open) => {
     if (!open) return
     labelled.value = new Map()
+    mine.value = new Map()
     scoresReady.value = false
+    loadMine()
     index.value =
       robotIndex.value >= 0
         ? robotIndex.value
@@ -425,12 +435,35 @@ const savingLabel = ref(false)
 const currentScore = computed(() => (frame.value ? scores.value.get(frame.value.path) : null))
 const bandWord = (band) => (band === 'cars' ? 'cars' : band === 'empty' ? 'empty' : 'not sure')
 
-// Prior labels (prop) under this session's answers.
+// This rider's saved answers for the sailing (framePath → { carsWaiting,
+// recordedAt }), loaded on open when signed in. They count as tagged frames
+// and are shown under the buttons on the frame they belong to.
+const mine = ref(new Map())
+async function loadMine() {
+  if (props.kind !== 'fullness' || !props.sailingKey) return
+  const key = props.sailingKey
+  const m = await loadMyFrameLabels(key)
+  if (props.sailingKey === key && props.modelValue) mine.value = m
+}
+const priorAnswer = computed(() => {
+  const path = frame.value?.path
+  if (!path || labelled.value.has(path)) return null
+  const r = mine.value.get(path)
+  if (!r) return null
+  return {
+    carsWaiting: r.carsWaiting,
+    when: r.recordedAt ? dayjs(r.recordedAt).tz(TZ).format('MMM D, h:mm a') : null,
+  }
+})
+
+// Prior labels (prop, then this rider's saved answers) under this
+// session's answers.
 const mergedLabels = computed(() => {
   const m = new Map()
   const prior = props.labels
   if (prior instanceof Map) for (const [k, v] of prior) m.set(k, v)
   else if (prior) for (const [k, v] of Object.entries(prior)) m.set(k, v)
+  for (const [k, v] of mine.value) m.set(k, v.carsWaiting)
   for (const [k, v] of labelled.value) m.set(k, v)
   return m
 })

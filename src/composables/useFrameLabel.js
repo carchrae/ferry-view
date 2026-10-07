@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { addDoc, collection } from 'firebase/firestore'
+import { addDoc, collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from 'src/boot/firebase'
 import { useAuth } from 'src/composables/useAuth'
 import { resolveAvatarUrl } from 'src/composables/useAvatar'
@@ -53,5 +53,35 @@ export function useFrameLabel() {
     return true
   }
 
-  return { user, needsSignIn, saveFrameLabel }
+  // The signed-in rider's own labels for one sailing: framePath → their
+  // LATEST answer ({ carsWaiting, recordedAt }), so the dialog can show what
+  // they said before (and count those frames as already tagged). Two
+  // equality filters, a handful of docs per sailing, only once per open;
+  // empty when signed out. Read failures are swallowed — the dialog works
+  // without this, it just can't show history.
+  async function loadMyFrameLabels(sailingKey) {
+    const out = new Map()
+    if (!user.value || !sailingKey) return out
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, 'frameLabels'),
+          where('sailingKey', '==', sailingKey),
+          where('userUid', '==', user.value.uid),
+        ),
+      )
+      for (const d of snap.docs) {
+        const r = d.data()
+        if (typeof r.carsWaiting !== 'boolean' || !r.framePath) continue
+        const prev = out.get(r.framePath)
+        if (!prev || (r.recordedAt || 0) > (prev.recordedAt || 0))
+          out.set(r.framePath, { carsWaiting: r.carsWaiting, recordedAt: r.recordedAt || 0 })
+      }
+    } catch (e) {
+      console.warn('frameLabels history unavailable:', e?.message || e)
+    }
+    return out
+  }
+
+  return { user, needsSignIn, saveFrameLabel, loadMyFrameLabels }
 }
