@@ -74,16 +74,49 @@ test('needed = the undecided tail frames only, latest first', () => {
 test('a human answer overrides the robot and can flip the verdict', () => {
   const ps = [0.9, 0.9, 0.9, 0.42, 0.9]
   assert.equal(run(ps).verdict, null)
-  // Saying the unsure frame was empty isn't enough on its own (lone empty).
+  // Saying the unsure frame was empty isn't enough on its own (lone empty,
+  // and the robot still sees cars on the departure frame).
   const one = run(ps, { f3: false })
   assert.equal(one.verdict, null)
   assert.deepEqual(one.needed, [])
-  assert.equal(one.enough, true) // tail decided, pattern mixed → ask opinion
+  assert.equal(one.enough, true)
   // Labelling the last frame empty too makes a confirmed empty tail.
   const two = run(ps, { f3: false, f4: false })
   assert.equal(two.verdict, 'notFull')
   assert.equal(two.verdictTs, 1000 + 4 * 60000)
   assert.equal(two.labelled, 2)
+  assert.equal(two.decidedBy, 'human')
+})
+
+test('a rider\'s answer on the departure frame decides: cars → full (no veto), empty pair → not full', () => {
+  // Mixed tail the robot's rules can't call: cars at departure but not four in a row.
+  const mixed = [0.9, 0.9, 0.1, 0.9, 0.9]
+  const m = run(mixed)
+  assert.equal(m.verdict, null)
+  assert.equal(m.reason, 'mixed')
+  const full = run(mixed, { f4: true })
+  assert.equal(full.verdict, 'full')
+  assert.equal(full.vetoed, false) // a human saw the cars; no crosswalk veto
+  assert.equal(full.decidedBy, 'human')
+  assert.equal(full.reason, 'human-cars-last')
+  // The robot calls this one not-full (it treats the last cars frame as a
+  // blip); a rider saying cars WERE waiting on that frame wins.
+  const blip = [0.9, 0.9, 0.1, 0.1, 0.9]
+  assert.equal(run(blip).verdict, 'notFull')
+  assert.equal(run(blip).reason, 'robot-empty-pair')
+  assert.equal(run(blip, { f4: true }).verdict, 'full')
+  // Same when the rider says the last frame was empty and the one before was empty too.
+  const quiet = run([0.1, 0.1, 0.1], { f2: false })
+  assert.equal(quiet.verdict, 'notFull')
+  assert.equal(quiet.decidedBy, 'human')
+  assert.equal(quiet.reason, 'human-empty-pair')
+  // A lone human "empty" at the end after cars isn't confirmed.
+  assert.equal(run([0.9, 0.9, 0.9, 0.9], { f3: false }).verdict, null)
+  // The robot deciding alone is marked as such.
+  assert.equal(run([0.9, 0.9, 0.9, 0.1, 0.1]).decidedBy, 'robot')
+  const rf = run([0.9, 0.9, 0.9, 0.9, 0.9], {}, { crosswalkOk: true })
+  assert.equal(rf.reason, 'robot-cars-tail')
+  assert.equal(run([0.9, 0.9, 0.9, 0.9, 0.9]).reason, 'vetoed')
 })
 
 test('a human "cars" counts as p=1 and unlocks a full verdict blocked by weak cars', () => {

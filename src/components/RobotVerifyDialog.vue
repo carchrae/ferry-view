@@ -213,141 +213,81 @@
       <p v-else class="text-caption text-italic">
         The frames are no longer available to view — trust your memory, not the robot's.
       </p>
-      <!-- The bottom row answers a different question than the per-frame
-           labels above (whole sailing vs one photo) — say so for fullness,
-           where the two are easy to conflate. Once the tail is decided, the
-           frames themselves answer it: offer that answer to save. -->
-      <template v-if="kind === 'fullness' && frame && scoresReady && progress.enough">
-        <div class="done-panel q-mt-md text-body2">
-          <q-icon
-            :name="progress.verdict ? 'check_circle' : 'help_outline'"
-            :color="progress.verdict ? 'positive' : 'grey-7'"
-            size="18px"
-            class="q-mr-xs"
-          />{{ done.text }}
+      <!-- Fullness: the sailing's capacity is INFERRED from the frame tags —
+           there are no Full / Not Full buttons. Once the tail decides, the
+           panel says what and briefly why; a verdict a rider's tag produced
+           is saved as the sailing's capacity report automatically. -->
+      <template v-if="kind === 'fullness'">
+        <div
+          v-if="frame && scoresReady && progress.enough"
+          class="done-panel q-mt-md text-body2"
+        >
+          <div class="row no-wrap items-start">
+            <q-icon
+              :name="progress.verdict ? 'check_circle' : 'help_outline'"
+              :color="progress.verdict ? (progress.decidedBy === 'human' ? 'positive' : 'indigo') : 'grey-7'"
+              size="18px"
+              class="q-mr-xs q-mt-xs"
+            />
+            <div class="col">
+              <div>{{ verdictText }}</div>
+              <div class="text-caption text-grey-7">{{ reasonText }}</div>
+              <div v-if="savedVerdict && savedVerdict === progress.verdict" class="text-caption text-positive">
+                <q-icon name="check" size="14px" /> Saved as this sailing's capacity.
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="row items-center q-mt-xs">
-          <q-btn v-close-popup outline dense no-caps color="grey-7" label="Not sure" />
+        <div class="row items-center q-mt-sm">
           <q-space />
-          <template v-if="done.primary">
-            <q-btn
-              v-close-popup
-              flat
-              dense
-              no-caps
-              color="deep-orange"
-              :label="done.alt.label"
-              @click="emit('capacity', done.alt.capacity)"
-            />
-            <q-space />
-            <q-btn
-              v-close-popup
-              dense
-              no-caps
-              unelevated
-              color="indigo"
-              :label="done.primary.label"
-              @click="emit('capacity', done.primary.capacity)"
-            />
-          </template>
-          <template v-else>
-            <q-btn
-              v-close-popup
-              dense
-              no-caps
-              unelevated
-              color="deep-orange"
-              label="It was Full"
-              @click="emit('capacity', 'Full')"
-            />
-            <q-space />
-            <q-btn
-              v-close-popup
-              dense
-              no-caps
-              unelevated
-              color="indigo"
-              label="Not Full"
-              @click="emit('capacity', 'Not Full')"
-            />
-          </template>
+          <q-btn v-close-popup outline dense no-caps color="grey-7" label="Close" />
         </div>
       </template>
       <template v-else>
-        <div v-if="kind === 'fullness'" class="text-caption text-grey-7 q-mt-md">
-          Did this ferry leave full? Your answer is saved as a capacity report.
-        </div>
         <!-- q-space between every pair so the choices never run together
              (and stay apart when the row wraps on a phone). -->
-        <div class="row items-center" :class="kind === 'fullness' ? 'q-mt-xs' : 'q-mt-md'">
+        <div class="row items-center q-mt-md">
           <q-btn v-close-popup outline dense no-caps color="grey-7" label="Not sure" />
           <q-space />
           <!-- Crosswalk has one contextual action: on the robot's frame you can
                only agree; on any other frame the same button becomes the
                correction. "Hasn't passed yet" refutes the claim outright — the
                lineup never reached the crosswalk (stable label on purpose: it's
-               a statement, not a disagreement opener). Fullness always offers
-               both answers — either records a capacity report. -->
-          <template v-if="kind === 'crosswalk'">
-            <q-btn
-              v-close-popup
-              flat
-              dense
-              no-caps
-              color="deep-orange"
-              label="Hasn't passed yet"
-              @click="emit('refute')"
-            />
-            <q-space />
-            <q-btn
-              v-if="robotAt != null && (!frame || frame.ts === robotAt)"
-              v-close-popup
-              dense
-              no-caps
-              unelevated
-              color="indigo"
-              :label="`Agree — ${timeLabel(robotAt)}`"
-              @click="emit('agree')"
-            />
-            <q-btn
-              v-else-if="frame"
-              v-close-popup
-              dense
-              no-caps
-              unelevated
-              :color="robotAt != null ? 'deep-orange' : 'indigo'"
-              :label="
-                robotAt != null
-                  ? `${disagreeWord} It was ${frame.timeLabel}`
-                  : `It was ${frame.timeLabel}`
-              "
-              @click="emit('mark', frame.ts)"
-            />
-          </template>
-          <!-- Both capacity answers, always: deep-orange disagrees with the
-               robot's claim, indigo agrees (neutral labels when there is no
-               claim). Either records a capacity report. -->
-          <template v-else>
-            <q-btn
-              v-close-popup
-              dense
-              no-caps
-              unelevated
-              color="deep-orange"
-              :label="disagreeBtn.label"
-              @click="emit('capacity', disagreeBtn.capacity)"
-            />
-            <q-space />
-            <q-btn
-              v-close-popup
-              dense
-              no-caps
-              unelevated
-              color="indigo"
-              :label="agreeBtn.label"
-              @click="emit('capacity', agreeBtn.capacity)"
-            />
-          </template>
+               a statement, not a disagreement opener). -->
+          <q-btn
+            v-close-popup
+            flat
+            dense
+            no-caps
+            color="deep-orange"
+            label="Hasn't passed yet"
+            @click="emit('refute')"
+          />
+          <q-space />
+          <q-btn
+            v-if="robotAt != null && (!frame || frame.ts === robotAt)"
+            v-close-popup
+            dense
+            no-caps
+            unelevated
+            color="indigo"
+            :label="`Agree — ${timeLabel(robotAt)}`"
+            @click="emit('agree')"
+          />
+          <q-btn
+            v-else-if="frame"
+            v-close-popup
+            dense
+            no-caps
+            unelevated
+            :color="robotAt != null ? 'deep-orange' : 'indigo'"
+            :label="
+              robotAt != null
+                ? `${disagreeWord} It was ${frame.timeLabel}`
+                : `It was ${frame.timeLabel}`
+            "
+            @click="emit('mark', frame.ts)"
+          />
         </div>
       </template>
       <ZoomableImageDialog v-model="zoomOpen" :src="zoomSrc" />
@@ -446,6 +386,7 @@ watch(
     clearTimeout(settleTimer)
     savingLabel.value = false
     pendingAnswer.value = null
+    savedVerdict.value = null
     labelled.value = new Map()
     mine.value = new Map()
     scoresReady.value = false
@@ -530,33 +471,49 @@ const progress = computed(() =>
   }),
 )
 
-// What the tagged tail says, and the save it suggests. Null primary = the
-// frames can't decide (mixed tail, or a full pattern vetoed by the crosswalk):
-// both plain answers are offered instead.
-const done = computed(() => {
+// What the tagged tail says, and briefly why — the frames' own answer to
+// "did it leave full?", which this dialog never asks directly.
+const verdictText = computed(() => {
   const p = progress.value
-  if (p.verdict === 'notFull')
-    return {
-      text: "That's enough — by these frames the ferry left with room.",
-      primary: { label: 'Save "Not Full"', capacity: 'Not Full' },
-      alt: { label: 'Actually it was Full', capacity: 'Full' },
-    }
-  if (p.verdict === 'full')
-    return {
-      text: "That's enough — cars were still waiting at departure, so it left full.",
-      primary: { label: 'Save "Full"', capacity: 'Full' },
-      alt: { label: 'Actually it was Not Full', capacity: 'Not Full' },
-    }
-  if (p.vetoed)
-    return {
-      text: "Cars waited to the very end, but the lineup never reached the crosswalk, so the robot won't call it full. Your call:",
-      primary: null,
-    }
-  return {
-    text: "The last frames are tagged but the pattern is mixed — the robot can't decide. What do you think?",
-    primary: null,
+  const who = p.decidedBy === 'human' ? 'By your tags' : 'By the robot\'s read'
+  if (p.verdict === 'notFull') return `${who}, the ferry left with room (not full).`
+  if (p.verdict === 'full') return `${who}, the ferry left full — vehicles were still waiting.`
+  if (p.vetoed) return "Cars to the very end, but the lineup never reached the crosswalk, so the robot won't call it full."
+  return "The last frames are tagged but the pattern is mixed — nothing decides it."
+})
+const reasonText = computed(() => {
+  const p = progress.value
+  const t = (ts) => (typeof ts === 'number' ? timeLabel(ts) : '')
+  const prev = p.seq?.[p.total - 2]
+  switch (p.reason) {
+    case 'human-cars-last':
+      return `You said vehicles were waiting on the last frame (${t(p.verdictTs)}) — the one taken as the ferry left.`
+    case 'human-empty-pair':
+      return `You said the last frame (${t(p.verdictTs)}) was empty, and the one before${prev ? ` (${t(prev.ts)})` : ''} was too.`
+    case 'robot-empty-pair':
+      return `Two empty frames in a row after the last cars, from ${t(p.verdictTs)} — nothing came back after.`
+    case 'robot-cars-tail':
+      return `The last four frames all read as cars, and the lineup had reached the crosswalk.`
+    case 'vetoed':
+      return 'Tag the last frame if you can see vehicles waiting — a rider\'s word on it counts.'
+    case 'mixed':
+      return 'Cars and empties alternate at the end. Re-check the last frame: vehicles waiting means full, empty (with the frame before it) means not full.'
+    default:
+      return ''
   }
 })
+
+// A verdict that a rider's tag produced is saved as the sailing's capacity
+// report — once per verdict per open, and only when it changed because of
+// an answer given here (a verdict already standing when the dialog opened
+// was saved on an earlier visit or is the robot's own).
+const savedVerdict = ref(null)
+function saveInferredCapacity() {
+  const p = progress.value
+  if (!p.verdict || p.decidedBy !== 'human' || savedVerdict.value === p.verdict) return
+  savedVerdict.value = p.verdict
+  emit('capacity', p.verdict === 'full' ? 'Full' : 'Not Full')
+}
 
 async function scoreFrames() {
   if (props.kind !== 'fullness' || !terminalClassifierReady) {
@@ -622,6 +579,7 @@ function labelFrame(carsWaiting) {
         return
       }
       labelled.value.set(framePath, carsWaiting)
+      saveInferredCapacity()
       clearTimeout(settleTimer)
       settleTimer = setTimeout(() => {
         savingLabel.value = false
@@ -646,22 +604,6 @@ const disagreeWord = computed(
   () => DISAGREE_WORDS[Math.abs(props.robotAt || 0) % DISAGREE_WORDS.length],
 )
 
-// Fullness bottom buttons: the capacity each side files and its label,
-// derived from the robot's claim (see the claim prop).
-const agreeBtn = computed(() =>
-  props.claim === 'full'
-    ? { label: 'Agree — Full', capacity: 'Full' }
-    : props.claim == null
-      ? { label: 'Not Full', capacity: 'Not Full' }
-      : { label: 'Agree — Not Full', capacity: 'Not Full' },
-)
-const disagreeBtn = computed(() =>
-  props.claim === 'full'
-    ? { label: `${disagreeWord.value} It was Not Full`, capacity: 'Not Full' }
-    : props.claim == null
-      ? { label: 'It was Full', capacity: 'Full' }
-      : { label: `${disagreeWord.value} It was Full`, capacity: 'Full' },
-)
 </script>
 
 <style scoped>

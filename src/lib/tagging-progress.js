@@ -75,6 +75,8 @@ export function isDecided(f) {
 // The rider's progress on this sailing.
 //   verdict   'notFull' | 'full' | null — what the merged evidence decides
 //   verdictTs the deciding frame's ts (confirming empty frame / last frame)
+//   decidedBy 'human' when a rider's answer sits in the deciding tail, else 'robot'
+//   reason    a code for why (see below), for the dialog's one-line explanation
 //   vetoed    the full rule fired but the lineup never reached the crosswalk
 //   needed    tail frames still undecided (latest first) — empty once decided
 //   unsure    other unlabelled frames the robot is unsure about (latest first)
@@ -90,6 +92,9 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
   let verdict = null
   let verdictTs = null
   let vetoed = false
+  // Who decided: 'human' when a rider's answer on the departure frame(s)
+  // settles it, 'robot' when the robot's scores alone do.
+  let decidedBy = null
   if (emptyTs != null) {
     verdict = 'notFull'
     verdictTs = emptyTs
@@ -98,6 +103,35 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
       verdict = 'full'
       verdictTs = fullAt
     } else vetoed = true
+  }
+  // The robot's rules are strict because its per-frame read is noisy. A
+  // rider's answer on the LAST frame — the departure — is not: vehicles
+  // still waiting when the ferry left means it left full (and a human saw
+  // them, so the crosswalk veto, which guards the robot's eyesight, doesn't
+  // apply); two empty frames at the end, the last one a rider's, means
+  // everyone got on even when the robot's rule couldn't say (no solid cars
+  // seen first, a short window, a lone cars blip before).
+  // Why, as a code the UI words (with the frame times): 'robot-empty-pair',
+  // 'robot-cars-tail', 'human-cars-last', 'human-empty-pair', 'vetoed',
+  // 'mixed' (tail tagged, nothing decides), or null (not enough yet).
+  let reason = verdict === 'notFull' ? 'robot-empty-pair' : verdict === 'full' ? 'robot-cars-tail' : vetoed ? 'vetoed' : null
+  const last = seq[total - 1]
+  if (last?.source === 'human') {
+    if (last.carsPresent === true) {
+      // Overrides a robot not-full built on treating this frame as a blip.
+      verdict = 'full'
+      verdictTs = last.ts
+      vetoed = false
+      reason = 'human-cars-last'
+    } else if (!verdict && seq[total - 2]?.carsPresent === false) {
+      verdict = 'notFull'
+      verdictTs = last.ts
+      reason = 'human-empty-pair'
+    }
+  }
+  if (verdict) {
+    const tail = seq.slice(Math.max(0, total - FULL_TAIL_FRAMES))
+    decidedBy = tail.some((f) => f.source === 'human') ? 'human' : 'robot'
   }
 
   const unlabelled = (i) => seq[i].source !== 'human'
@@ -116,6 +150,8 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
   const taken = new Set([...needed, ...unsure])
   const rest = [...seq.keys()].filter((i) => !taken.has(i) && unlabelled(i)).sort(latestFirst)
 
+  const enough = verdict != null || vetoed || needed.length === 0
+  if (!reason && enough) reason = 'mixed'
   return {
     seq,
     total,
@@ -123,10 +159,12 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
     verdict,
     verdictTs,
     vetoed,
+    decidedBy,
+    reason,
     needed,
     unsure,
     walkOrder: [...needed, ...unsure, ...rest],
-    enough: verdict != null || vetoed || needed.length === 0,
+    enough,
   }
 }
 
