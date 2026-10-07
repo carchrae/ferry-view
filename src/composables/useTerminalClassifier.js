@@ -139,6 +139,11 @@ async function classifyFrame(path) {
   }
 }
 
+// One frame's read: { ts, p, carsPresent }. Throws when the frame can't be
+// fetched — callers scoring a list decide whether one miss spoils the rest
+// (the tagging dialog keeps going, frame by frame).
+export const classifyTerminalFrame = (path) => classifyFrame(path)
+
 // Classify EVERY frame of a sailing (no early stop) — evidence for the
 // "show details" dialog: per-frame probability in capture order, plus the
 // proxied image URL. Frames come from the browser HTTP cache when the

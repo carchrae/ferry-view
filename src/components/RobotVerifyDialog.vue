@@ -39,6 +39,8 @@
                 <q-icon name="check" size="12px" class="q-mr-xs" />
                 {{ labelled.get(frame.path) ? 'waiting or loading' : 'none waiting' }}
               </q-badge>
+              <!-- The robot chip is never silently absent: scored, still
+                   looking, or couldn't read this frame. -->
               <q-badge
                 v-if="currentScore"
                 class="frame-chip"
@@ -47,12 +49,18 @@
                 <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
                 {{ bandWord(currentScore.band) }} {{ currentScore.p.toFixed(2) }}
               </q-badge>
+              <q-badge v-else class="frame-chip chip-pending">
+                <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
+                {{ scoresReady ? 'no read' : 'looking…' }}
+              </q-badge>
             </div>
           </div>
         </div>
+        <!-- Step arrows at the edges; between them the answer for THIS frame
+             (fullness) — a tap row directly under the photo, nothing to read
+             first. At either end the step button becomes a wrap-around: the
+             far end of the sequence, instead of a dead disabled arrow. -->
         <div class="row items-center justify-between q-mt-xs no-wrap">
-          <!-- At either end the step button becomes a wrap-around: the far
-               end of the sequence, instead of a dead disabled arrow. -->
           <q-btn
             flat
             dense
@@ -61,9 +69,49 @@
             :class="{ 'replay-flip': index <= 0 }"
             :aria-label="index <= 0 ? 'Jump to the last frame' : 'Previous frame'"
             :disable="frames.length < 2"
-            @click="index = index <= 0 ? frames.length - 1 : index - 1"
+            @click="step(index <= 0 ? frames.length - 1 : index - 1)"
           />
-          <div class="row items-center no-wrap">
+          <div v-if="kind === 'fullness'" class="row items-center no-wrap col q-px-sm answer-row">
+            <!-- The rider's own answer (this session or an earlier visit) is
+                 the filled, active button; answering again replaces it. -->
+            <q-btn
+              dense
+              no-caps
+              :outline="said !== true"
+              :unelevated="said === true"
+              color="positive"
+              class="col"
+              :icon="said === true ? 'check' : undefined"
+              label="Yes"
+              :loading="pendingAnswer === true"
+              :disable="savingLabel && pendingAnswer !== true"
+              @click="labelFrame(true)"
+            >
+              <q-tooltip v-if="said === true"
+                >You said yes<template v-if="priorAnswer?.when"> on {{ priorAnswer.when }}</template>
+                — tap to answer again</q-tooltip
+              >
+            </q-btn>
+            <q-btn
+              dense
+              no-caps
+              :outline="said !== false"
+              :unelevated="said === false"
+              color="negative"
+              class="col q-ml-sm"
+              :icon="said === false ? 'check' : undefined"
+              label="No"
+              :loading="pendingAnswer === false"
+              :disable="savingLabel && pendingAnswer !== false"
+              @click="labelFrame(false)"
+            >
+              <q-tooltip v-if="said === false"
+                >You said no<template v-if="priorAnswer?.when"> on {{ priorAnswer.when }}</template>
+                — tap to answer again</q-tooltip
+              >
+            </q-btn>
+          </div>
+          <div v-else class="row items-center no-wrap">
             <div class="text-caption">{{ frame.timeLabel }}</div>
             <q-btn
               flat
@@ -86,9 +134,50 @@
             :icon="index >= frames.length - 1 ? 'replay' : 'chevron_right'"
             :aria-label="index >= frames.length - 1 ? 'Back to the first frame' : 'Next frame'"
             :disable="frames.length < 2"
-            @click="index = index >= frames.length - 1 ? 0 : index + 1"
+            @click="step(index >= frames.length - 1 ? 0 : index + 1)"
           />
         </div>
+        <template v-if="kind === 'fullness'">
+          <!-- Which frame is on screen, and the sailing's progress: how many
+               frames are tagged and how many answers the robot still needs
+               before the tail decides it. The time visibly changing after an
+               answer tells the rider the view has moved on to the next frame. -->
+          <div class="row items-center text-caption frame-progress">
+            <span class="text-weight-medium text-grey-9">
+              <q-icon name="schedule" size="14px" class="q-mr-xs" />{{ frame.timeLabel }}
+            </span>
+            <q-btn
+              flat
+              dense
+              size="sm"
+              :icon="showRoi ? 'grid_off' : 'grid_on'"
+              :color="showRoi ? 'amber-8' : 'grey-6'"
+              :aria-pressed="showRoi"
+              aria-label="Toggle the robot's boxes"
+              class="q-ml-xs"
+              @click="showRoi = !showRoi"
+            >
+              <q-tooltip>{{ showRoi ? 'Hide' : 'Show' }} where the robot looks</q-tooltip>
+            </q-btn>
+            <q-space />
+            <span class="text-grey-7">{{ progressLine(progress, { scoresReady }) }}</span>
+          </div>
+          <!-- The question the Yes / No above answer: the one the terminal
+               classifier actually predicts, asked about the highlighted boxes
+               only — cars outside them are invisible to the model, and
+               tagging them taught it nothing (or the wrong thing) — and only
+               about vehicles heading TO the ferry: the frame often also shows
+               cars leaving in the other lane, which are not a lineup. -->
+          <div class="text-caption text-grey-8 text-weight-medium q-mt-xs">
+            Any vehicles waiting or loading for the ferry inside the highlighted boxes?
+          </div>
+          <div class="text-caption text-grey-6">
+            Only vehicles heading to the ferry count — ignore cars leaving in the other lane, and
+            anything outside the boxes.<template v-if="!user">
+              Sign in to save your answers.</template
+            >
+          </div>
+        </template>
         <div v-if="showRoi" class="text-caption text-grey-6 roi-caption">
           Bright boxes = where the robot looks. Dimmed = ignored<template v-if="roi.masks.length">
             (incl. the sign-pole strip)</template
@@ -141,76 +230,7 @@
           — terminal empty at <strong>{{ timeLabel(robotAt) }}</strong></template>.
         Make sure to actually verify, the robot has poor eyesight.
       </p>
-      <template v-if="frame">
-        <!-- Per-frame labels: the question the terminal classifier actually
-             predicts, asked about the highlighted boxes only — cars outside
-             them are invisible to the model, and tagging them taught it
-             nothing (or the wrong thing) — and only about vehicles heading
-             TO the ferry: the frame often also shows cars leaving in the
-             other lane, which are not a lineup. Deliberately NOT v-close-popup —
-             labelling is repeatable, and each answer advances to the next
-             frame whose answer can still change the verdict. -->
-        <div v-if="kind === 'fullness'" class="frame-label q-mt-sm">
-          <div class="text-caption text-grey-8 text-weight-medium">
-            Any vehicles waiting or loading for the ferry inside the highlighted boxes?
-          </div>
-          <div class="text-caption text-grey-6">
-            Only vehicles heading to the ferry count — ignore cars leaving in the other lane, and
-            anything outside the boxes.<template v-if="!user">
-              Sign in to save your answers.</template
-            >
-          </div>
-          <!-- Which frame is on screen, and the sailing's progress: how many
-               frames are tagged and how many answers the robot still needs
-               before the tail decides it. Above the buttons so the time
-               visibly changing after an answer tells the rider the view has
-               moved on to the next frame. -->
-          <div class="row items-center text-caption q-mt-xs frame-progress">
-            <span class="text-weight-medium text-grey-9">
-              <q-icon name="schedule" size="14px" class="q-mr-xs" />{{ frame.timeLabel }}
-            </span>
-            <q-space />
-            <span class="text-grey-7">{{ progressLine(progress, { scoresReady }) }}</span>
-          </div>
-          <div class="row q-gutter-sm q-mt-xs">
-            <!-- The rider's own answer (this session or an earlier visit) is
-                 the filled, active button; answering again replaces it. -->
-            <q-btn
-              dense
-              no-caps
-              :outline="said !== true"
-              :unelevated="said === true"
-              color="positive"
-              class="col"
-              :label="said === true ? 'You said Yes' : 'Yes — waiting or loading'"
-              :loading="pendingAnswer === true"
-              :disable="savingLabel && pendingAnswer !== true"
-              @click="labelFrame(true)"
-            >
-              <q-tooltip v-if="said === true && priorAnswer?.when"
-                >You answered on {{ priorAnswer.when }} — tap to answer again</q-tooltip
-              >
-            </q-btn>
-            <q-btn
-              dense
-              no-caps
-              :outline="said !== false"
-              :unelevated="said === false"
-              color="negative"
-              class="col"
-              :label="said === false ? 'You said No' : 'No — none waiting or loading'"
-              :loading="pendingAnswer === false"
-              :disable="savingLabel && pendingAnswer !== false"
-              @click="labelFrame(false)"
-            >
-              <q-tooltip v-if="said === false && priorAnswer?.when"
-                >You answered on {{ priorAnswer.when }} — tap to answer again</q-tooltip
-              >
-            </q-btn>
-          </div>
-        </div>
-      </template>
-      <p v-else class="text-caption text-italic">
+      <p v-if="!frame" class="text-caption text-italic">
         The frames are no longer available to view — trust your memory, not the robot's.
       </p>
       <!-- Fullness: the sailing's capacity is INFERRED from the frame tags —
@@ -325,7 +345,7 @@
 import { ref, computed, watch } from 'vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 import {
-  classifyAllTerminalFrames,
+  classifyTerminalFrame,
   terminalClassifierReady,
   terminalBand,
   terminalRegions,
@@ -416,7 +436,9 @@ watch(
     confirmedLate.value = null
     labelled.value = new Map()
     mine.value = new Map()
+    scores.value = new Map()
     scoresReady.value = false
+    navigated.value = false
     loadMine()
     index.value =
       robotIndex.value >= 0
@@ -425,6 +447,22 @@ watch(
     scoreFrames()
   },
 )
+// Frames handed over after the dialog opened (a parent that loads them
+// lazily) get scored too — otherwise the robot chip would never appear.
+watch(
+  () => props.frames,
+  () => {
+    if (props.modelValue) scoreFrames()
+  },
+)
+
+// The rider stepping frames by hand; once they have, the end of scoring
+// no longer yanks the view to the frame the robot wants answered first.
+const navigated = ref(false)
+function step(to) {
+  navigated.value = true
+  index.value = to
+}
 
 const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 
@@ -552,40 +590,41 @@ function saveInferredCapacity() {
   emit('capacity', p.verdict === 'full' ? 'Full' : 'Not Full')
 }
 
+// Frame by frame, the one on screen first, each score landing as soon as
+// it is known — so the chip on the photo shows up in a second or two, not
+// after the whole sailing has been fetched, and one frame the proxy can't
+// serve costs only its own chip. A later run (reopen, new frames)
+// supersedes an earlier one still in flight.
+let scoreRun = 0
 async function scoreFrames() {
+  const run = ++scoreRun
+  scoresReady.value = false
   if (props.kind !== 'fullness' || !terminalClassifierReady) {
     scoresReady.value = true
     return
   }
-  const paths = props.frames.map((f) => f.path).filter(Boolean)
-  if (!paths.length) {
-    scoresReady.value = true
-    return
-  }
-  try {
-    // classifyAllTerminalFrames filters and re-sorts internally, so index
-    // does NOT map back to the input — join on the frame ts instead, which
-    // both sides parse from the same path suffix.
-    const scored = await classifyAllTerminalFrames(paths)
-    const byTs = new Map((scored || []).map((f) => [f.ts, f]))
-    const m = new Map()
-    for (const f of props.frames) {
-      const hit = f.path && byTs.get(f.ts)
-      if (hit) m.set(f.path, { p: hit.p, band: terminalBand(hit.p) })
+  const current = frame.value
+  const queue = props.frames.filter((f) => f.path && !scores.value.has(f.path))
+  if (current) queue.sort((a, b) => (a === current ? -1 : b === current ? 1 : 0))
+  for (const f of queue) {
+    try {
+      const { p } = await classifyTerminalFrame(f.path)
+      if (run !== scoreRun) return
+      const m = new Map(scores.value)
+      m.set(f.path, { p, band: terminalBand(p) })
+      scores.value = m
+    } catch {
+      // This frame stays unscored (chip says so); the rest still get read.
+      if (run !== scoreRun) return
     }
-    scores.value = m
-    // Scores decide which frame matters most; if the rider hasn't started and
-    // there is no robot frame to defend, start them there.
-    if (robotIndex.value < 0 && labelled.value.size === 0) {
-      const first = progress.value.walkOrder[0]
-      if (first !== undefined) index.value = first
-    }
-  } catch {
-    // Frames unreachable — the labelling buttons still work, just without the
-    // robot's opinion or the needed-first ordering.
-  } finally {
-    scoresReady.value = true
   }
+  // Scores decide which frame matters most; if the rider hasn't started and
+  // there is no robot frame to defend, start them there.
+  if (robotIndex.value < 0 && labelled.value.size === 0 && !navigated.value) {
+    const first = progress.value.walkOrder[0]
+    if (first !== undefined) index.value = first
+  }
+  scoresReady.value = true
 }
 
 // After answering, go to the next frame whose answer can still change the
@@ -644,9 +683,8 @@ const disagreeWord = computed(
 </script>
 
 <style scoped>
-.frame-label {
-  border-top: 1px solid rgba(128, 128, 128, 0.25);
-  padding-top: 0.5rem;
+.answer-row .q-btn {
+  min-width: 5.5rem;
 }
 .done-panel {
   border-top: 1px solid rgba(128, 128, 128, 0.25);
@@ -702,6 +740,9 @@ const disagreeWord = computed(
 }
 .chip-unsure {
   background: #b8860b;
+}
+.chip-pending {
+  background: rgba(60, 60, 60, 0.75);
 }
 
 .roi-caption {
