@@ -1,6 +1,10 @@
 <template>
+  <!-- no-route-dismiss: the home page keeps which dialog is open in the URL,
+       so opening this one over another changes the route — Quasar would
+       otherwise dismiss it on that change. -->
   <q-dialog
     class="robot-verify-dialog"
+    no-route-dismiss
     :model-value="modelValue"
     @update:model-value="emit('update:modelValue', $event)"
   >
@@ -27,31 +31,39 @@
               alt=""
               @click="openZoom(frame.imageUrl)"
             />
-            <RoiOverlay :regions="roi.regions" :masks="roi.masks" :show="showRoi" />
+            <RoiOverlay :regions="roi.regions" :masks="roi.masks" :show="tagging && showRoi" />
             <!-- Chips on the photo, top right, so nothing below reflows: the
                  robot's read of THIS frame and, once given, the rider's answer. -->
-            <div v-if="kind === 'fullness'" class="frame-chips">
+            <div class="frame-chips">
               <q-badge
-                v-if="labelled.get(frame.path) !== undefined"
+                v-if="tagging && labelled.get(frame.path) !== undefined"
                 :color="labelled.get(frame.path) ? 'positive' : 'negative'"
                 class="frame-chip"
               >
                 <q-icon name="check" size="12px" class="q-mr-xs" />
-                {{ labelled.get(frame.path) ? 'waiting or loading' : 'none waiting' }}
+                {{ answerWord(labelled.get(frame.path)) }}
               </q-badge>
-              <!-- The robot chip is never silently absent: scored, still
-                   looking, or couldn't read this frame. -->
-              <q-badge
-                v-if="currentScore"
-                class="frame-chip"
-                :class="`chip-${currentScore.band}`"
-              >
+              <template v-if="kind === 'fullness'">
+                <!-- The robot chip is never silently absent: scored, still
+                     looking, or couldn't read this frame. -->
+                <q-badge
+                  v-if="currentScore"
+                  class="frame-chip"
+                  :class="`chip-${currentScore.band}`"
+                >
+                  <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
+                  {{ bandWord(currentScore.band) }} {{ currentScore.p.toFixed(2) }}
+                </q-badge>
+                <q-badge v-else class="frame-chip chip-pending">
+                  <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
+                  {{ scoresReady ? 'no read' : 'looking…' }}
+                </q-badge>
+              </template>
+              <!-- Crosswalk: the robot judges the sailing from one frame, so
+                   the chip appears on that frame only. -->
+              <q-badge v-else-if="robotAt != null && frame.ts === robotAt" class="frame-chip chip-cars">
                 <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
-                {{ bandWord(currentScore.band) }} {{ currentScore.p.toFixed(2) }}
-              </q-badge>
-              <q-badge v-else class="frame-chip chip-pending">
-                <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
-                {{ scoresReady ? 'no read' : 'looking…' }}
+                at crosswalk{{ robotProb != null ? ` ${robotProb.toFixed(2)}` : '' }}
               </q-badge>
             </div>
           </div>
@@ -71,7 +83,7 @@
             :disable="frames.length < 2"
             @click="step(index <= 0 ? frames.length - 1 : index - 1)"
           />
-          <div v-if="kind === 'fullness'" class="row items-center no-wrap col q-px-sm answer-row">
+          <div v-if="tagging" class="row items-center no-wrap col q-px-sm answer-row">
             <!-- The rider's own answer (this session or an earlier visit) is
                  the filled, active button; answering again replaces it. -->
             <q-btn
@@ -111,22 +123,8 @@
               >
             </q-btn>
           </div>
-          <div v-else class="row items-center no-wrap">
-            <div class="text-caption">{{ frame.timeLabel }}</div>
-            <q-btn
-              flat
-              dense
-              size="sm"
-              :icon="showRoi ? 'grid_off' : 'grid_on'"
-              :color="showRoi ? 'amber-8' : 'grey-6'"
-              :aria-pressed="showRoi"
-              aria-label="Toggle the robot's boxes"
-              class="q-ml-xs"
-              @click="showRoi = !showRoi"
-            >
-              <q-tooltip>{{ showRoi ? 'Hide' : 'Show' }} where the robot looks</q-tooltip>
-            </q-btn>
-          </div>
+          <!-- Just looking: the frame time sits between the arrows. -->
+          <div v-else class="text-caption">{{ frame.timeLabel }}</div>
           <q-btn
             flat
             dense
@@ -137,7 +135,20 @@
             @click="step(index >= frames.length - 1 ? 0 : index + 1)"
           />
         </div>
-        <template v-if="kind === 'fullness'">
+        <!-- Viewing first (the sailing dialog's photo tiles land here): no
+             boxes, no question, no buttons — one button turns tagging on. -->
+        <q-btn
+          v-if="!tagging"
+          outline
+          dense
+          no-caps
+          color="indigo"
+          icon="school"
+          label="Help tag this sailing"
+          class="full-width q-mt-xs"
+          @click="tagging = true"
+        />
+        <template v-if="tagging && kind === 'fullness'">
           <!-- Which frame is on screen, and the sailing's progress: how many
                frames are tagged and how many answers the robot still needs
                before the tail decides it. The time visibly changing after an
@@ -178,7 +189,41 @@
             >
           </div>
         </template>
-        <div v-if="showRoi" class="text-caption text-grey-6 roi-caption">
+        <template v-else-if="tagging">
+          <div class="row items-center text-caption frame-progress">
+            <span class="text-weight-medium text-grey-9">
+              <q-icon name="schedule" size="14px" class="q-mr-xs" />{{ frame.timeLabel }}
+            </span>
+            <q-btn
+              flat
+              dense
+              size="sm"
+              :icon="showRoi ? 'grid_off' : 'grid_on'"
+              :color="showRoi ? 'amber-8' : 'grey-6'"
+              :aria-pressed="showRoi"
+              aria-label="Toggle the robot's boxes"
+              class="q-ml-xs"
+              @click="showRoi = !showRoi"
+            >
+              <q-tooltip>{{ showRoi ? 'Hide' : 'Show' }} where the robot looks</q-tooltip>
+            </q-btn>
+            <q-space />
+            <span class="text-grey-7">{{ progressLine(progress) }}</span>
+          </div>
+          <!-- The crosswalk question: the sailing's mark is the first frame
+               answered Yes with a No on the frame before it, so the walk
+               after each answer heads for whichever frame pins that down. -->
+          <div class="text-caption text-grey-8 text-weight-medium q-mt-xs">
+            Does the lineup reach the crosswalk (the highlighted box) in this frame?
+          </div>
+          <div class="text-caption text-grey-6">
+            Vehicles waiting for the ferry, back to the crosswalk. Yes on the first frame it gets
+            there, No on the frame before, and the time is pinned.<template v-if="!user">
+              Sign in to save your answers.</template
+            >
+          </div>
+        </template>
+        <div v-if="tagging && showRoi" class="text-caption text-grey-6 roi-caption">
           Bright boxes = where the robot looks. Dimmed = ignored<template v-if="roi.masks.length">
             (incl. the sign-pole strip)</template
           >.
@@ -208,11 +253,13 @@
       <p v-if="kind === 'crosswalk' && robotAt != null" class="text-caption q-my-sm">
         These are the frames the robot judged. It thinks the lineup first shows
         past the crosswalk at <strong>{{ timeLabel(robotAt) }}</strong> — make
-        sure to actually verify, the robot has poor eyesight.
+        sure to actually verify, the robot has poor eyesight.<template v-if="tagging">
+          Your answers on that frame and the one before settle it.</template>
       </p>
       <p v-else-if="kind === 'crosswalk'" class="text-caption q-my-sm">
-        The lineup photos for this sailing. If you can tell when the lineup
-        reached the crosswalk, mark that frame — the robot learns from it.
+        The lineup photos for this sailing.<template v-if="tagging">
+          Answer the crosswalk question frame by frame and the time the lineup
+          reached it falls out — the robot learns from it.</template>
       </p>
       <p v-else-if="claim === 'full'" class="text-caption q-my-sm">
         These are the terminal frames the robot judged. It thinks the ferry left
@@ -221,8 +268,9 @@
       </p>
       <p v-else-if="claim == null" class="text-caption q-my-sm">
         The robot looked at these terminal frames but couldn't tell whether the
-        ferry left full. Answer the box question on the last few frames and it
-        will decide — and learn from your eyes.
+        ferry left full.<template v-if="tagging">
+          Answer the box question on the last few frames and it will decide —
+          and learn from your eyes.</template>
       </p>
       <p v-else class="text-caption q-my-sm">
         These are the terminal frames the robot judged. It thinks everyone
@@ -233,13 +281,14 @@
       <p v-if="!frame" class="text-caption text-italic">
         The frames are no longer available to view — trust your memory, not the robot's.
       </p>
-      <!-- Fullness: the sailing's capacity is INFERRED from the frame tags —
-           there are no Full / Not Full buttons. Once the tail decides, the
-           panel says what and briefly why; a verdict a rider's tag produced
-           is saved as the sailing's capacity report automatically. -->
-      <template v-if="kind === 'fullness'">
+      <!-- The sailing's answer is INFERRED from the frame tags — there are no
+           Full / Not Full or Agree / It-was buttons. Fullness: once the tail
+           decides; crosswalk: once a No-then-Yes pair (or a No on the last
+           frame) pins it. The panel says what and briefly why; a verdict a
+           rider's tags produced is saved as the sailing's report
+           automatically. -->
         <div
-          v-if="frame && scoresReady && progress.enough"
+          v-if="tagging && frame && scoresReady && progress.enough"
           class="done-panel q-mt-md text-body2"
         >
           <div class="row no-wrap items-start">
@@ -252,8 +301,9 @@
             <div class="col">
               <div>{{ verdictText }}</div>
               <div class="text-caption text-grey-7">{{ reasonText }}</div>
-              <div v-if="savedVerdict && savedVerdict === progress.verdict" class="text-caption text-positive">
-                <q-icon name="check" size="14px" /> Saved as this sailing's capacity.
+              <div v-if="savedVerdict && savedVerdict === verdictKey" class="text-caption text-positive">
+                <q-icon name="check" size="14px" />
+                {{ kind === 'fullness' ? "Saved as this sailing's capacity." : "Saved as this sailing's crosswalk time." }}
               </div>
               <!-- Vehicles on the departure frame but the lineup never reached
                    the crosswalk: probably late arrivals, not a full ferry — the
@@ -288,54 +338,6 @@
           <q-space />
           <q-btn v-close-popup outline dense no-caps color="grey-7" label="Close" />
         </div>
-      </template>
-      <template v-else>
-        <!-- q-space between every pair so the choices never run together
-             (and stay apart when the row wraps on a phone). -->
-        <div class="row items-center q-mt-md">
-          <q-btn v-close-popup outline dense no-caps color="grey-7" label="Not sure" />
-          <q-space />
-          <!-- Crosswalk has one contextual action: on the robot's frame you can
-               only agree; on any other frame the same button becomes the
-               correction. "Hasn't passed yet" refutes the claim outright — the
-               lineup never reached the crosswalk (stable label on purpose: it's
-               a statement, not a disagreement opener). -->
-          <q-btn
-            v-close-popup
-            flat
-            dense
-            no-caps
-            color="deep-orange"
-            label="Hasn't passed yet"
-            @click="emit('refute')"
-          />
-          <q-space />
-          <q-btn
-            v-if="robotAt != null && (!frame || frame.ts === robotAt)"
-            v-close-popup
-            dense
-            no-caps
-            unelevated
-            color="indigo"
-            :label="`Agree — ${timeLabel(robotAt)}`"
-            @click="emit('agree')"
-          />
-          <q-btn
-            v-else-if="frame"
-            v-close-popup
-            dense
-            no-caps
-            unelevated
-            :color="robotAt != null ? 'deep-orange' : 'indigo'"
-            :label="
-              robotAt != null
-                ? `${disagreeWord} It was ${frame.timeLabel}`
-                : `It was ${frame.timeLabel}`
-            "
-            @click="emit('mark', frame.ts)"
-          />
-        </div>
-      </template>
       <ZoomableImageDialog v-model="zoomOpen" :src="zoomSrc" />
     </q-card>
   </q-dialog>
@@ -353,7 +355,7 @@ import {
 } from 'src/composables/useTerminalClassifier'
 import { lineupRegions } from 'src/composables/useLineupClassifier'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
-import { taggingProgress, progressLine } from 'src/lib/tagging-progress.js'
+import { taggingProgress, crosswalkProgress, progressLine } from 'src/lib/tagging-progress.js'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 import RoiOverlay from 'src/components/RoiOverlay.vue'
 
@@ -370,6 +372,8 @@ const props = defineProps({
   modelValue: Boolean,
   kind: { type: String, default: 'crosswalk' }, // 'crosswalk' | 'fullness'
   robotAt: { type: Number, default: null },
+  // Crosswalk only — the robot's certainty on its detection frame, for the chip.
+  robotProb: { type: Number, default: null },
   frames: { type: Array, default: () => [] }, // [{ path, imageUrl, timeLabel, ts }]
   // Sailing the frames belong to — needed to file a per-frame label.
   sailingKey: { type: String, default: null },
@@ -386,6 +390,10 @@ const props = defineProps({
   // Fullness only — prior rider labels for these frames (framePath → boolean),
   // counted toward progress and overriding the robot's read. Optional.
   labels: { type: [Object, Map], default: null },
+  // Open in tagging mode (boxes, question, Yes / No) or just showing the
+  // photos, with a button to switch tagging on — the sailing dialog's photo
+  // tiles open the plain view; the robot badges and help nudges open tagging.
+  startTagging: { type: Boolean, default: true },
   // Dialog title parts: the sailing's scheduled time label ("7:30 am") and,
   // when the departure was logged, the actual time it left.
   sailingLabel: { type: String, default: null },
@@ -421,12 +429,24 @@ const roi = computed(() =>
 )
 // Boxes on by default; the toggle persists while the dialog stays mounted.
 const showRoi = ref(true)
+// Tagging on, or the plain photo view; set from the prop on each open and
+// whenever the parent flips it while open (the URL's tag flag).
+const tagging = ref(true)
+watch(
+  () => props.startTagging,
+  (v) => {
+    tagging.value = v
+  },
+)
 
 // Each open starts on the robot's own frame, else on the frame whose answer
 // is worth most (the walk order's head — before scores land that is simply
 // the last frame).
+// Re-initialised on open and whenever an open dialog is pointed at another
+// camera or sailing (the home page swaps the props in place when the URL
+// changes from one dialog to the other).
 watch(
-  () => props.modelValue,
+  () => (props.modelValue ? `${props.kind}|${props.sailingKey}` : null),
   (open) => {
     if (!open) return
     clearTimeout(settleTimer)
@@ -439,6 +459,7 @@ watch(
     scores.value = new Map()
     scoresReady.value = false
     navigated.value = false
+    tagging.value = props.startTagging
     loadMine()
     index.value =
       robotIndex.value >= 0
@@ -451,7 +472,8 @@ watch(
 // lazily) get scored too — otherwise the robot chip would never appear.
 watch(
   () => props.frames,
-  () => {
+  (frames) => {
+    if (index.value >= frames.length) index.value = Math.max(0, frames.length - 1)
     if (props.modelValue) scoreFrames()
   },
 )
@@ -485,6 +507,15 @@ let settleTimer = null
 
 const currentScore = computed(() => (frame.value ? scores.value.get(frame.value.path) : null))
 const bandWord = (band) => (band === 'cars' ? 'cars' : band === 'empty' ? 'empty' : 'not sure')
+// The rider's answer, as the chip words it for this camera's question.
+const answerWord = (yes) =>
+  props.kind === 'fullness'
+    ? yes
+      ? 'waiting or loading'
+      : 'none waiting'
+    : yes
+      ? 'at crosswalk'
+      : 'not yet'
 
 // This rider's saved answers for the sailing (framePath → { carsWaiting,
 // recordedAt }), loaded on open when signed in. They count as tagged frames
@@ -527,19 +558,33 @@ const mergedLabels = computed(() => {
   return m
 })
 
-// Human answers + robot scores → verdict, what's still needed, walk order.
+// Human answers (+ robot scores, fullness) → verdict, what's still needed,
+// walk order. Same shape for both cameras so the template reads one object.
 const progress = computed(() =>
-  taggingProgress(props.frames, {
-    scores: scores.value,
-    labels: mergedLabels.value,
-    crosswalkOk: props.crosswalkOk,
-  }),
+  props.kind === 'fullness'
+    ? taggingProgress(props.frames, {
+        scores: scores.value,
+        labels: mergedLabels.value,
+        crosswalkOk: props.crosswalkOk,
+      })
+    : crosswalkProgress(props.frames, labelled.value),
 )
+// What a verdict saves as, for the "Saved" line and to save each one once:
+// the fullness verdict word, or the crosswalk time it pins.
+const verdictKey = computed(() => {
+  const p = progress.value
+  if (!p.verdict) return null
+  return props.kind === 'fullness' ? p.verdict : p.verdict === 'at' ? `at:${p.crossingTs}` : 'notYet'
+})
 
 // What the tagged tail says, and briefly why — the frames' own answer to
 // "did it leave full?", which this dialog never asks directly.
 const verdictText = computed(() => {
   const p = progress.value
+  if (props.kind === 'crosswalk') {
+    if (p.verdict === 'at') return `By your tags, the lineup reached the crosswalk at ${timeLabel(p.crossingTs)}.`
+    return 'By your tags, the lineup never reached the crosswalk.'
+  }
   const who = p.decidedBy === 'human' ? 'By your tags' : 'By the robot\'s read'
   if (p.verdict === 'notFull') return `${who}, the ferry left with room (not full).`
   if (p.verdict === 'full') return `${who}, the ferry left full — vehicles were still waiting.`
@@ -553,6 +598,16 @@ const reasonText = computed(() => {
   const t = (ts) => (typeof ts === 'number' ? timeLabel(ts) : '')
   const prev = p.seq?.[p.total - 2]
   switch (p.reason) {
+    case 'pinned': {
+      const i = p.seq.findIndex((f) => f.ts === p.crossingTs)
+      return `No at ${t(p.seq[i - 1]?.ts)}, Yes at ${t(p.crossingTs)} — the first frame showing the lineup at the crosswalk${
+        p.crossingTs === props.robotAt ? ', the same frame the robot picked' : ''
+      }.`
+    }
+    case 'first-frame':
+      return `Yes on the earliest frame (${t(p.crossingTs)}) — the lineup was already there when the photos start.`
+    case 'last-no':
+      return `No on the last frame (${t(p.seq[p.total - 1]?.ts)}) with no Yes before it.`
     case 'human-cars-last':
       return `You said vehicles were waiting on the last frame (${t(p.verdictTs)}) — the one taken as the ferry left.`
     case 'human-empty-pair':
@@ -583,11 +638,18 @@ function confirmCapacity(capacity) {
   confirmedLate.value = capacity
   emit('capacity', capacity)
 }
-function saveInferredCapacity() {
+// Fullness → a capacity report; crosswalk → a mark on the pinned frame
+// ('agree' when it is the robot's own frame, so the training flags say so),
+// or a refute when the lineup never got there. Each distinct answer once.
+function saveInferred() {
   const p = progress.value
-  if (!p.verdict || p.decidedBy !== 'human' || savedVerdict.value === p.verdict) return
-  savedVerdict.value = p.verdict
-  emit('capacity', p.verdict === 'full' ? 'Full' : 'Not Full')
+  const key = verdictKey.value
+  if (!key || p.decidedBy !== 'human' || savedVerdict.value === key) return
+  savedVerdict.value = key
+  if (props.kind === 'fullness') emit('capacity', p.verdict === 'full' ? 'Full' : 'Not Full')
+  else if (p.verdict === 'notYet') emit('refute')
+  else if (p.crossingTs === props.robotAt) emit('agree')
+  else emit('mark', p.crossingTs)
 }
 
 // Frame by frame, the one on screen first, each score landing as soon as
@@ -628,40 +690,62 @@ async function scoreFrames() {
 }
 
 // After answering, go to the next frame whose answer can still change the
-// verdict (undecided tail frames, latest first), then the robot's unsure
-// frames, then anything else unlabelled — the walk order; stay when done.
+// verdict, then the rest. Fullness: undecided tail frames latest first, the
+// robot's unsure frames, then anything unlabelled — the walk order. Crosswalk:
+// the one frame that pins the crossing when there is one, else loop onward
+// through the frames in time order (wrapping) to the next untagged one.
 function advance() {
-  const next = progress.value.walkOrder.find((i) => i !== index.value)
+  const p = progress.value
+  if (props.kind === 'crosswalk' && !p.needed.length) {
+    const n = props.frames.length
+    for (let k = 1; k < n; k++) {
+      const i = (index.value + k) % n
+      if (!labelled.value.has(props.frames[i].path)) {
+        index.value = i
+        return
+      }
+    }
+    return
+  }
+  const next = p.walkOrder.find((i) => i !== index.value)
   if (next !== undefined) index.value = next
 }
 
 // The parent saves (it owns auth + the sign-in dialog) and calls done(ok);
 // only then does the tick land and the view advance, so a rejected save
 // leaves the frame unlabelled and on screen.
-function labelFrame(carsWaiting) {
+function labelFrame(yes) {
   if (!frame.value?.path || savingLabel.value) return
   const framePath = frame.value.path
   savingLabel.value = true
-  pendingAnswer.value = carsWaiting
+  pendingAnswer.value = yes
+  const done = (ok) => {
+    pendingAnswer.value = null
+    if (!ok) {
+      savingLabel.value = false
+      return
+    }
+    labelled.value.set(framePath, yes)
+    saveInferred()
+    clearTimeout(settleTimer)
+    settleTimer = setTimeout(() => {
+      savingLabel.value = false
+      advance()
+    }, SETTLE_MS)
+  }
+  // Crosswalk answers have no per-frame record of their own: the mark they
+  // pin (saveInferred) is the sailing's report, and the exporter turns it
+  // back into per-frame labels. So the answer lands at once.
+  if (props.kind === 'crosswalk') {
+    done(true)
+    return
+  }
   emit('frame-label', {
     framePath,
     sailingKey: props.sailingKey,
-    carsWaiting,
+    carsWaiting: yes,
     autoP: scores.value.get(framePath)?.p ?? null,
-    done: (ok) => {
-      pendingAnswer.value = null
-      if (!ok) {
-        savingLabel.value = false
-        return
-      }
-      labelled.value.set(framePath, carsWaiting)
-      saveInferredCapacity()
-      clearTimeout(settleTimer)
-      settleTimer = setTimeout(() => {
-        savingLabel.value = false
-        advance()
-      }, SETTLE_MS)
-    },
+    done,
   })
 }
 
@@ -672,13 +756,6 @@ function openZoom(url) {
   zoomSrc.value = url
   zoomOpen.value = true
 }
-
-// Rotating openers for the disagree buttons — picked deterministically per
-// prediction so the label doesn't reshuffle while stepping frames.
-const DISAGREE_WORDS = ['Disagree!', 'I object!', 'No way —', 'Nope.', 'Objection!', 'Hard no —']
-const disagreeWord = computed(
-  () => DISAGREE_WORDS[Math.abs(props.robotAt || 0) % DISAGREE_WORDS.length],
-)
 
 </script>
 

@@ -598,7 +598,16 @@
     </div>
 
     <!-- Fullscreen viewer -->
-    <q-dialog v-model="fullscreen" maximized transition-show="fade" transition-hide="fade">
+    <!-- no-route-dismiss on the stacked dialogs: which one is open lives in
+         the URL (see "dialog URLs"), so opening one over another, or moving
+         between cameras, changes the route — Quasar must not close them on it. -->
+    <q-dialog
+      v-model="fullscreen"
+      maximized
+      no-route-dismiss
+      transition-show="fade"
+      transition-hide="fade"
+    >
       <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
         <img v-if="viewerSrc" :src="viewerSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 2">
@@ -894,7 +903,7 @@
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="showTypicalDialog" position="top">
+    <q-dialog v-model="showTypicalDialog" position="top" no-route-dismiss>
       <q-card
         :style="{
           minWidth: $q.screen.gt.xs ? '400px' : '95vw',
@@ -1013,7 +1022,7 @@
                   icon="school"
                   label="Help it learn"
                   class="q-px-sm app-btn"
-                  @click="openRobotFromTypical('fullness')"
+                  @click="openRobotFromTypical('fullness', true)"
                 />
               </div>
             </div>
@@ -1097,6 +1106,8 @@
       v-model="robotVerify.open"
       :kind="robotVerify.kind"
       :robot-at="robotVerify.robotAt"
+      :robot-prob="robotVerify.autoProb"
+      :start-tagging="robotVerify.startTagging"
       :frames="robotVerify.frames"
       :sailing-key="robotVerify.sailingKey"
       :claim="robotVerify.claim"
@@ -1488,8 +1499,14 @@ const lastSailingStatus = computed(() => {
 const showMapDialog = ref(false)
 const showTypicalDialog = ref(false)
 const selectedTypical = ref(null)
-function openHistory(time, label, entry = null) {
+// Opening a dialog is a navigation (see "dialog URLs" below): the URL
+// carries which dialog is open, so each is linkable and Back/close return
+// to whatever was open before. The route watcher does the actual showing.
+function openHistory(time, label) {
   if (!time) return
+  pushDialogQuery({ sailing: normalizeTime(time), dir: label === 'HSB' ? 'hsb' : 'bowen' })
+}
+function showTypical(time, label, entry = null) {
   const panel = labelToPanel(label)
   const info = getTypical(historyByDayOfWeek.value, panel, todayDow.value, time)
   const dir = label === 'HSB' ? 'to Bowen' : 'to Horseshoe Bay'
@@ -1635,9 +1652,7 @@ const liveTiles = computed(() =>
 )
 
 function openLiveFromTypical(index) {
-  const sailingTime = selectedTypical.value?.time ?? null
-  showTypicalDialog.value = false
-  openFullscreen(index, { sailingTime })
+  pushDialogQuery({ cam: String(index) })
 }
 
 // The opinion line, or null when fullness is already on record (either the
@@ -1774,9 +1789,9 @@ function openTypical(s) {
 }
 
 // From the typical dialog's robot section into the frame-check dialog.
-function openRobotFromTypical(kind) {
-  showTypicalDialog.value = false
-  openRobotVerify(kind, selectedTypical.value?.time)
+// Photo tiles open the plain photo view; "help it learn" opens tagging.
+function openRobotFromTypical(kind, tag = false) {
+  pushDialogQuery({ robot: kind, tag: tag ? '1' : undefined })
 }
 
 // A robot-sourced badge opens the robot's verify dialog (agree/disagree with
@@ -1799,6 +1814,8 @@ watch(needsSignIn, (v) => {
 const robotVerify = ref({
   open: false,
   kind: 'crosswalk',
+  time: null,
+  startTagging: true,
   robotAt: null,
   frames: [],
   sailingKey: null,
@@ -1809,9 +1826,15 @@ const robotVerify = ref({
   departedLabel: null,
 })
 
-async function openRobotVerify(kind, time) {
+function openRobotVerify(kind, time) {
+  if (!time) return
+  pushDialogQuery({ sailing: normalizeTime(time), dir: 'bowen', robot: kind, tag: '1' })
+}
+async function loadRobotVerify(kind, time) {
+  const t = normalizeTime(time)
+  // Still wanted once the frames are in? Back may have been pressed meanwhile.
+  const stillWanted = () => dialogQuery.value.robot === kind && dialogQuery.value.time === t
   try {
-    const t = normalizeTime(time)
     const todayIso = nowInVancouver().format('YYYY-MM-DD')
     let s = (await loadBowenSailings()).find(
       (x) => x.dateIso === todayIso && normalizeTime(x.sailingTime) === t,
@@ -1826,6 +1849,7 @@ async function openRobotVerify(kind, time) {
     }
     if (!s) {
       $q.notify({ type: 'warning', message: "Couldn't find that sailing's photos" })
+      if (stillWanted()) leaveDialogQuery(['robot', 'tag'])
       return
     }
     // The robot's detection ts when there is one — but the dialog also opens
@@ -1874,9 +1898,12 @@ async function openRobotVerify(kind, time) {
       (raw?.[wanted]?.length ? raw[wanted] : null) ||
       (kind === 'crosswalk' ? s.arrival?.timelapse : null) ||
       []
+    if (!stillWanted()) return
     robotVerify.value = {
       open: true,
       kind,
+      time: t,
+      startTagging: dialogQuery.value.tag,
       robotAt,
       frames,
       sailingKey: s.sailingKey,
@@ -2468,7 +2495,12 @@ async function loadScopedFrames(camera, sailingTime) {
   return raw?.[key] || []
 }
 
-function openFullscreen(index, { sailingTime = null } = {}) {
+function openFullscreen(index) {
+  pushDialogQuery({ cam: String(index) })
+}
+// Playback is scoped to the sailing in the URL when the viewer was opened
+// from that sailing's dialog; from the camera grid there is none.
+function showFullscreenCam(index, sailingTime) {
   playbackScope.value = sailingTime
   fullscreenIndex.value = index
   fullscreen.value = true
@@ -2486,11 +2518,13 @@ function refreshFullscreen() {
 function nextCam() {
   fullscreenIndex.value = (fullscreenIndex.value + 1) % allCamUrls.length
   loadCamPlayback(fullscreenIndex.value)
+  replaceDialogQuery({ cam: String(fullscreenIndex.value) })
 }
 
 function prevCam() {
   fullscreenIndex.value = (fullscreenIndex.value - 1 + allCamUrls.length) % allCamUrls.length
   loadCamPlayback(fullscreenIndex.value)
+  replaceDialogQuery({ cam: String(fullscreenIndex.value) })
 }
 
 watch(fullscreen, (open) => {
@@ -2503,6 +2537,110 @@ watch(fullscreen, (open) => {
 })
 
 onUnmounted(stopPlayback)
+
+// --- dialog URLs ------------------------------------------------------------
+// The dialogs stacked over this page each live at a query on the current
+// path (the page itself, or /today under the Today's Sailings dialog):
+//   ?sailing=11:15&dir=bowen                the per-sailing dialog
+//   ?sailing=11:15&dir=bowen&robot=fullness the photo dialog over it
+//                                           (&tag=1: opened in tagging mode)
+//   ?cam=5[&sailing=11:15&dir=bowen]        the fullscreen camera (playback
+//                                           scoped to the sailing when set)
+// Opening pushes a history entry, so Back (or the close button, which goes
+// back when that is how we got here) returns to the dialog underneath; and
+// every state is a link that lands straight in the dialog.
+function dialogRoute(patch, drop = []) {
+  const query = { ...route.query, ...patch }
+  for (const k of drop) delete query[k]
+  for (const k of Object.keys(query)) if (query[k] == null) delete query[k]
+  return { path: route.path, query }
+}
+function pushDialogQuery(patch) {
+  router.push(dialogRoute(patch))
+}
+function replaceDialogQuery(patch) {
+  router.replace(dialogRoute(patch))
+}
+// Leaving a dialog: Back when the previous history entry is this same page
+// (the normal case — we pushed to get here), else rewrite the URL in place
+// (a shared link, a reload).
+function leaveDialogQuery(keys) {
+  const back = window.history.state?.back
+  if (typeof back === 'string' && back.split('?')[0] === route.path) router.back()
+  else router.replace(dialogRoute({}, keys))
+}
+const dialogQuery = computed(() => {
+  const q = route.query
+  const time = typeof q.sailing === 'string' && q.sailing ? normalizeTime(q.sailing) : null
+  const label = q.dir === 'hsb' ? 'HSB' : 'Bowen'
+  const robot = q.robot === 'fullness' || q.robot === 'crosswalk' ? q.robot : null
+  const cam = /^\d+$/.test(String(q.cam ?? '')) ? Number(q.cam) : null
+  return {
+    time,
+    label,
+    entry: time ? findScheduleEntry(label, time) : null,
+    robot: time ? robot : null,
+    tag: q.tag === '1',
+    cam: cam != null && cam < allCamUrls.length ? cam : null,
+  }
+})
+// The schedule entry behind a dialog URL — past rows carry scheduledTime,
+// upcoming rows shortTime. Null until the schedule has loaded (the dialog
+// then fills in when it does).
+function findScheduleEntry(label, time) {
+  const lists =
+    label === 'HSB'
+      ? [allPastHSB.value, allUpcomingHSB.value]
+      : [allPastBowen.value, allUpcomingBowen.value]
+  for (const list of lists) {
+    const hit = list.find((e) => normalizeTime(e.scheduledTime || e.shortTime) === time)
+    if (hit) return hit
+  }
+  return null
+}
+// URL → dialogs. The topmost dialog in the URL is the one shown; the
+// per-sailing dialog underneath re-shows itself when the URL drops back to it.
+watch(
+  dialogQuery,
+  (q) => {
+    const typicalOnTop = q.time != null && !q.robot && q.cam == null
+    if (typicalOnTop) {
+      const cur = selectedTypical.value
+      if (
+        !cur ||
+        normalizeTime(cur.time) !== q.time ||
+        cur.label !== q.label ||
+        (!cur.entry && q.entry)
+      )
+        showTypical(q.time, q.label, q.entry)
+      showTypicalDialog.value = true
+    } else showTypicalDialog.value = false
+    if (q.robot) {
+      const r = robotVerify.value
+      if (!(r.open && r.kind === q.robot && r.time === q.time)) loadRobotVerify(q.robot, q.time)
+      else r.startTagging = q.tag
+    } else robotVerify.value.open = false
+    if (q.cam != null) {
+      if (!fullscreen.value || fullscreenIndex.value !== q.cam) showFullscreenCam(q.cam, q.time)
+    } else fullscreen.value = false
+  },
+  { immediate: true },
+)
+// Dialogs → URL: a dialog closed by its own controls leaves its query (Back
+// already removed it when that is what closed it, so these are no-ops then).
+watch(showTypicalDialog, (open) => {
+  const q = dialogQuery.value
+  if (!open && q.time != null && !q.robot && q.cam == null) leaveDialogQuery(['sailing', 'dir'])
+})
+watch(
+  () => robotVerify.value.open,
+  (open) => {
+    if (!open && dialogQuery.value.robot) leaveDialogQuery(['robot', 'tag'])
+  },
+)
+watch(fullscreen, (open) => {
+  if (!open && dialogQuery.value.cam != null) leaveDialogQuery(['cam'])
+})
 
 const isSailing = computed(() => {
   if (!ferryData.value) return false

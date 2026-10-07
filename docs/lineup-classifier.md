@@ -410,6 +410,12 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   robot's unsure frames, then the rest. Human answers override the robot's
   read and are run through the same `terminalEmptyFrameTs` /
   `terminalFullAtDeparture` rules, so the dialog can say "N more to decide".
+  The Yes / No buttons sit between the step arrows directly under the photo
+  (short labels; the rider's own answer is the filled button), with the frame
+  time, progress line and question below. The robot's read of the frame on
+  screen is a chip on the photo, scored frame by frame as the dialog opens
+  (current frame first; a frame the proxy can't serve keeps a "no read" chip
+  instead of hiding the rest).
   The dialog has no Full / Not Full buttons: the capacity is INFERRED from
   the tags and saved as the rider's capacity report the moment one of their
   answers decides it, with a one-line reason. A rider's answer on the
@@ -495,6 +501,25 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   past the crosswalk, the ferry was definitely not full — the trainer saves
   this per sailing as `notFullByCrosswalk` in
   `training-data/predictions.json`.
+- **Crosswalk tagging, same shape** (2026-10-07): the crosswalk dialog asks
+  *"does the lineup reach the crosswalk in this frame?"* with the same Yes /
+  No row and no Agree / It-was / Hasn't-passed buttons. The mark is INFERRED
+  (`crosswalkProgress` in `src/lib/tagging-progress.js`): the first frame
+  answered Yes with a No on the frame before it (or the earliest frame) is the
+  crossing — saved as the rider's mark, as "agree" when it is the robot's own
+  frame so the training flags still say so; a No on the last frame with no Yes
+  is the refute. After each answer the view goes to the one frame that pins
+  it, else loops onward through the untagged frames. Answers have no per-frame
+  record of their own (the exporter derives per-frame lineup labels from the
+  mark, as before).
+- **View first, tag on request** (2026-10-07): the sailing dialog's photo
+  tiles open the same dialog in a plain view — no boxes, question or buttons,
+  just the frames and the robot's chip — with a "Help tag this sailing"
+  button; the robot badges and the "help tag it" nudge open it in tagging
+  mode. On the home page each dialog lives at a URL query
+  (`?sailing=11:15&dir=bowen`, `&robot=fullness|crosswalk[&tag=1]`,
+  `&cam=N`), so Back / Close return to the dialog underneath and every state
+  is a link; the stacked dialogs are `no-route-dismiss` because of it.
 
 Pipeline (mirrors the crosswalk one, separate everywhere):
 `functions/lib/terminal-features.js` (two regions — "near lane" 32×18 and

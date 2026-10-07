@@ -5,6 +5,7 @@ import {
   isDecided,
   taggingProgress,
   progressLine,
+  crosswalkProgress,
 } from '../src/lib/tagging-progress.js'
 
 // Frames one minute apart; scores keyed by path. `ps` is the robot's p per
@@ -187,4 +188,48 @@ test('progressLine copy', () => {
     '0 of 6 frames tagged — tail done; 1 more the robot is unsure about (optional)',
   )
   assert.equal(progressLine(run([0.9, 0.9, 0.9, 0.1, 0.9])), '0 of 5 frames tagged')
+})
+
+test('crosswalkProgress: first yes after a no pins the crossing', () => {
+  const p = crosswalkProgress(frames(5), { f1: false, f2: true, f3: true })
+  assert.equal(p.verdict, 'at')
+  assert.equal(p.crossingTs, 1000 + 2 * 60000)
+  assert.equal(p.reason, 'pinned')
+  assert.equal(p.decidedBy, 'human')
+  assert.deepEqual(p.needed, [])
+  assert.equal(p.enough, true)
+  assert.equal(p.labelled, 3)
+})
+
+test('crosswalkProgress: a yes on the earliest frame decides; a yes with an untagged frame before needs it', () => {
+  const first = crosswalkProgress(frames(4), { f0: true })
+  assert.equal(first.verdict, 'at')
+  assert.equal(first.reason, 'first-frame')
+  const gap = crosswalkProgress(frames(5), { f3: true })
+  assert.equal(gap.verdict, null)
+  assert.deepEqual(gap.needed, [2])
+  assert.equal(gap.reason, 'need-before')
+  assert.equal(gap.walkOrder[0], 2)
+  assert.equal(gap.enough, false)
+  // The earliest yes wins even when later frames were tagged first.
+  const later = crosswalkProgress(frames(5), { f4: true, f1: false, f2: true })
+  assert.equal(later.crossingTs, 1000 + 2 * 60000)
+})
+
+test('crosswalkProgress: only noes — decided by a no on the last frame, else that frame is needed', () => {
+  const notYet = crosswalkProgress(frames(4), { f1: false, f3: false })
+  assert.equal(notYet.verdict, 'notYet')
+  assert.equal(notYet.reason, 'last-no')
+  assert.equal(notYet.crossingTs, null)
+  const open = crosswalkProgress(frames(4), { f1: false })
+  assert.equal(open.verdict, null)
+  assert.deepEqual(open.needed, [3])
+  assert.equal(open.reason, 'need-last')
+  const nothing = crosswalkProgress(frames(4), {})
+  assert.equal(nothing.reason, null)
+  assert.deepEqual(nothing.needed, [])
+  assert.deepEqual(nothing.walkOrder, [3, 2, 1, 0])
+  // progressLine copy is shared with the fullness dialog.
+  assert.equal(progressLine(open), '1 of 4 frames tagged — 1 more to decide')
+  assert.equal(progressLine(notYet), '2 of 4 frames tagged — enough to decide')
 })

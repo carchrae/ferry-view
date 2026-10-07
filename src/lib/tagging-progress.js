@@ -190,3 +190,63 @@ export function progressLine(progress, { scoresReady = true } = {}) {
     return `${head} — tail done; ${unsure.length} more the robot is unsure about (optional)`
   return head
 }
+
+// --- crosswalk (lineup camera) ---------------------------------------------
+// The rider answers "has the lineup reached the crosswalk?" per frame (labels:
+// path → boolean). The sailing's crosswalk mark is the FIRST frame answered
+// yes, provided the frame before it was answered no (or it is the earliest
+// frame); a no on the last frame with no yes anywhere means the lineup never
+// got there. Anything else still needs an answer on one specific frame.
+//   verdict    'at' | 'notYet' | null
+//   crossingTs the first at-crosswalk frame's ts when verdict is 'at'
+//   reason     'pinned' (no then yes), 'first-frame' (yes on the earliest
+//              frame), 'last-no', 'need-before' (yes seen, frame before it
+//              untagged), 'need-last' (only noes so far, last frame untagged),
+//              null (nothing tagged yet)
+//   needed     the one frame index whose answer decides, else []
+export function crosswalkProgress(frames, labels) {
+  const seq = (frames || []).map((f) => {
+    const at = lookup(labels, f.path)
+    return { path: f.path, ts: f.ts, at: typeof at === 'boolean' ? at : null }
+  })
+  const total = seq.length
+  const labelled = seq.filter((f) => f.at !== null).length
+  let verdict = null
+  let crossingTs = null
+  let reason = null
+  let needed = []
+  const firstYes = seq.findIndex((f) => f.at === true)
+  if (firstYes >= 0) {
+    const before = seq[firstYes - 1]
+    if (!before || before.at === false) {
+      verdict = 'at'
+      crossingTs = seq[firstYes].ts
+      reason = before ? 'pinned' : 'first-frame'
+    } else {
+      needed = [firstYes - 1]
+      reason = 'need-before'
+    }
+  } else if (total && seq[total - 1].at === false) {
+    verdict = 'notYet'
+    reason = 'last-no'
+  } else if (labelled) {
+    needed = [total - 1]
+    reason = 'need-last'
+  }
+  const unlabelled = [...seq.keys()].filter((i) => seq[i].at === null && !needed.includes(i))
+  return {
+    seq,
+    total,
+    labelled,
+    verdict,
+    crossingTs,
+    verdictTs: crossingTs,
+    decidedBy: verdict ? 'human' : null,
+    vetoed: false,
+    reason,
+    needed,
+    unsure: [],
+    walkOrder: [...needed, ...unlabelled.sort((a, b) => b - a)],
+    enough: verdict != null,
+  }
+}

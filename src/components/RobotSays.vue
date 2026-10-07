@@ -170,6 +170,7 @@
       v-model="showVerify"
       kind="crosswalk"
       :robot-at="autoAt"
+      :robot-prob="autoProb"
       :frames="frames"
       :sailing-label="sailingLabel"
       :departed-label="departedLabel"
