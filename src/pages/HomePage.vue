@@ -1634,8 +1634,9 @@ const liveTiles = computed(() =>
 )
 
 function openLiveFromTypical(index) {
+  const sailingTime = selectedTypical.value?.time ?? null
   showTypicalDialog.value = false
-  openFullscreen(index)
+  openFullscreen(index, { sailingTime })
 }
 
 // The opinion line, or null when fullness is already on record (either the
@@ -2374,6 +2375,11 @@ const playbackFrames = ref([])
 const frameIndex = ref(0)
 const playing = ref(false)
 let playTimer = null
+// When the viewer was opened from a sailing's dialog, its scheduled time:
+// playback is then that sailing's own frames (lineup frames on the
+// community cam, loading frames on the terminal cam), not the camera's
+// recent history across sailings. null = opened from the webcam grid.
+const playbackScope = ref(null)
 
 const viewerFrames = computed(() =>
   playbackFrames.value.length
@@ -2435,7 +2441,9 @@ async function loadCamPlayback(camIndex) {
   const camera = CAMERA_FRAME_SOURCE[camIndex]
   if (!camera) return
   try {
-    const frames = await loadCameraFrames(camera)
+    const frames = playbackScope.value
+      ? await loadScopedFrames(camera, playbackScope.value)
+      : await loadCameraFrames(camera)
     // The rider may have closed the viewer or moved to another camera while
     // this was in flight — don't stomp on what they're looking at now.
     if (!fullscreen.value || fullscreenIndex.value !== camIndex) return
@@ -2448,7 +2456,19 @@ async function loadCamPlayback(camIndex) {
   }
 }
 
-function openFullscreen(index) {
+// One sailing's frames for a camera, for the dialog-opened viewer. The
+// cached aggregate can lag new frames by up to 5 min, so a sailing with
+// nothing cached for this camera is re-read once (one doc read).
+async function loadScopedFrames(camera, sailingTime) {
+  const key = camera === 'community' ? 'lineup' : 'departure'
+  const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  let raw = await loadSailingFrames(todayIso, sailingTime)
+  if (!raw?.[key]?.length) raw = await loadSailingFrames(todayIso, sailingTime, true)
+  return raw?.[key] || []
+}
+
+function openFullscreen(index, { sailingTime = null } = {}) {
+  playbackScope.value = sailingTime
   fullscreenIndex.value = index
   fullscreen.value = true
   loadCamPlayback(index)
@@ -2476,6 +2496,7 @@ watch(fullscreen, (open) => {
   if (!open) {
     stopPlayback()
     playbackFrames.value = []
+    playbackScope.value = null
     frameIndex.value = 0
   }
 })
