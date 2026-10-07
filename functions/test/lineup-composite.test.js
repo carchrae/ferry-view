@@ -7,6 +7,8 @@ import {
   compositeStable,
   greyToJpeg,
   extractCompositeFeatures,
+  sameExposureWindow,
+  meanLuminance,
   FEATURE_LENGTH,
 } from '../lib/lineup-features.js'
 
@@ -48,13 +50,28 @@ describe('composite helpers', () => {
     expect([meta.width, meta.height]).toEqual([640, 360])
     const f = await extractCompositeFeatures([small, big, small])
     expect(f.length).toBe(FEATURE_LENGTH)
-    // Flat frames at 128 / 64 / 128: the range (64) exceeds tau, so the
-    // stable composite takes the window MINIMUM (64 → 0.25), not the median.
-    expect(f[0]).toBeGreaterThan(0.2)
-    expect(f[0]).toBeLessThan(0.3)
-    // With a flat window the stable composite is the median (two of three).
-    const fm = await extractCompositeFeatures([small, small, big], { tau: 255 })
-    expect(fm[0]).toBeGreaterThan(0.45)
-    expect(fm[0]).toBeLessThan(0.55)
+    // Flat frames at 128 / 64 / 128: the 64 frame differs by 0.25 in mean
+    // luminance from the judged frame — an exposure-mode change — so it is
+    // dropped and the two 128 frames composite (mean of two = 128).
+    expect(f.framesUsed).toBe(2)
+    expect(f[0]).toBeGreaterThan(0.45)
+    expect(f[0]).toBeLessThan(0.55)
+    // Same-exposure frames composite normally: judged frame 64, neighbours 128
+    // are dropped; judged frame 128 with 128 neighbours keeps all three.
+    const fb = await extractCompositeFeatures([small, small, big])
+    expect(fb.framesUsed).toBe(1)
+    expect(fb[0]).toBeLessThan(0.3)
+    const fs = await extractCompositeFeatures([small, small, small])
+    expect(fs.framesUsed).toBe(3)
+  })
+
+  it('sameExposureWindow drops frames from another exposure mode, never the judged frame', () => {
+    const dark = Buffer.alloc(100, 40) // 0.157
+    const bright = Buffer.alloc(100, 120) // 0.47
+    const darkish = Buffer.alloc(100, 50) // 0.196
+    expect(meanLuminance(dark)).toBeCloseTo(40 / 255, 3)
+    expect(sameExposureWindow([bright, darkish, dark])).toEqual([darkish, dark])
+    expect(sameExposureWindow([dark, dark, bright])).toEqual([bright])
+    expect(sameExposureWindow([dark, darkish, dark], 0.01)).toEqual([dark, dark])
   })
 })

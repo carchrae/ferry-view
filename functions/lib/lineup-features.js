@@ -82,6 +82,9 @@ export const COMPOSITE = {
   tau: 24,
   // Frames further apart than this can't share a window (a capture gap).
   maxGapMs: 7 * 60 * 1000,
+  // Frames whose mean luminance differs from the judged frame's by more than
+  // this are from another exposure mode (colour vs infrared) and are dropped.
+  maxLuminanceDelta: 0.12,
 }
 
 export async function toCanonicalGrey(buf, { width = COMPOSITE.width, height = COMPOSITE.height } = {}) {
@@ -146,13 +149,38 @@ export async function greyToJpeg(grey, { width = COMPOSITE.width, height = COMPO
   return sharp(grey, { raw: { width, height, channels: 1 } }).jpeg({ quality }).toBuffer()
 }
 
+// Mean grey level (0..1) of a canonical grey buffer.
+export function meanLuminance(grey) {
+  let sum = 0
+  for (let i = 0; i < grey.length; i++) sum += grey[i]
+  return sum / (grey.length * 255)
+}
+
+// Frames of a window that share the judged frame's exposure. The community
+// cam switches between colour and infrared modes at dusk/dawn (Tom,
+// 2026-10-07: 2026-09-04 20:50 is infrared, its 20:40 neighbour colour);
+// a window spanning the switch composites two different exposures and
+// ghosts the earlier frame's cars into the later one. A frame whose mean
+// luminance differs from the judged (last) frame's by more than maxDelta
+// is dropped from the window; the judged frame always stays.
+export function sameExposureWindow(greys, maxDelta = COMPOSITE.maxLuminanceDelta) {
+  const last = greys[greys.length - 1]
+  const ref = meanLuminance(last)
+  return greys.filter((g, i) => i === greys.length - 1 || Math.abs(meanLuminance(g) - ref) <= maxDelta)
+}
+
 // JPEG buffers of a trailing window (oldest first, the frame being judged
-// last) → the night model's features: canonical grey each, stable composite,
-// JPEG q80, then the same crop/downscale as the day features.
+// last) → the night model's features: canonical grey each, drop frames from
+// a different exposure mode, stable composite, JPEG q80, then the same
+// crop/downscale as the day features. Returns the features and how many
+// frames actually went into the composite (1 = no usable neighbours).
 export async function extractCompositeFeatures(jpegs, { tau = COMPOSITE.tau } = {}) {
   const greys = []
   for (const j of jpegs) greys.push(await toCanonicalGrey(j))
-  return extractFeatures(await greyToJpeg(compositeStable(greys, tau)))
+  const used = sameExposureWindow(greys)
+  const features = await extractFeatures(await greyToJpeg(compositeStable(used, tau)))
+  features.framesUsed = used.length
+  return features
 }
 
 // Tag→label semantics live in lineup-labels.js (shared with the app's
