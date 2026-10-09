@@ -205,7 +205,7 @@ function computeTimeInfo(time, rawDates) {
     if (bounds && d.lateness !== null && Math.abs(d.lateness - bounds.med) > bounds.spread) {
       d.isException = true
       const typical = Math.round(bounds.med)
-      d.exceptionReason = `departed ${fmtMin(d.lateness)} vs typical ${fmtMin(typical)}`
+      d.exceptionReason = `departed ${fmtMin(d.lateness)} vs average ${fmtMin(typical)}`
     }
   }
 

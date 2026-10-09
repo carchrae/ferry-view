@@ -1,6 +1,8 @@
 <template>
   <q-card flat bordered>
+    <!-- Swipe the photo on a phone: left = next frame, right = previous. -->
     <q-img
+      v-touch-swipe.left.right="onSwipe"
       :src="current.imageUrl"
       :ratio="16 / 9"
       no-transition
@@ -17,10 +19,10 @@
       </div>
       <div v-if="darkGated && currentIsDark" class="absolute-top-right owl-badge">
         🦉
-        <q-tooltip>
+        <AppTip>
           Night frame — too dark for the robot, so it doesn't auto-classify it. Your eyes (and
           tags) still count.
-        </q-tooltip>
+        </AppTip>
       </div>
     </q-img>
     <q-card-actions class="q-py-sm q-px-xs items-center no-wrap">
@@ -86,6 +88,7 @@
 </template>
 
 <script setup>
+import AppTip from 'src/components/AppTip.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
@@ -209,6 +212,12 @@ function step(delta) {
   index.value = (index.value + delta + n) % n
 }
 
+// Swipe on the photo: the same steps as the arrow buttons.
+function onSwipe({ direction }) {
+  if (direction === 'left') step(1)
+  else if (direction === 'right') step(-1)
+}
+
 // Tapping the frame opens it in the pinch/scroll-zoomable fullscreen viewer
 // (same as the single arrival/departure photos). Pause first so the frame
 // doesn't change underneath the zoomed view.
@@ -265,5 +274,8 @@ onUnmounted(pause)
   padding: 2px 8px;
   font-size: 1.1rem;
   line-height: 1.4;
+}
+.owl-badge :deep(.app-tip) {
+  color: #fff;
 }
 </style>

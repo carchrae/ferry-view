@@ -32,7 +32,7 @@
         >
           <div v-if="arrival.arrivalTs && isDarkAt(arrival.arrivalTs)" class="absolute-top-right owl-badge">
             🦉
-            <q-tooltip>Night photo — too dark for the robot to auto-classify.</q-tooltip>
+            <AppTip>Night photo — too dark for the robot to auto-classify.</AppTip>
           </div>
           <template v-slot:error>
             <div class="absolute-full flex flex-center bg-grey-3 text-grey-7">
@@ -43,17 +43,18 @@
         <q-card-actions class="q-py-sm q-px-sm column items-stretch">
           <div class="text-subtitle2 q-mb-xs row items-center">
             <span>Arrival{{ arrival.timeLabel ? ` — ${arrival.timeLabel}` : '' }}</span>
-            <q-badge
-              v-if="arrival.crosswalkFullAt"
-              rounded
-              color="deep-orange"
-              class="q-ml-sm"
-              :class="{ 'robot-badge': arrival.crosswalkSource === 'robot' }"
-              dense
-            >
-              crosswalk {{ crosswalkLabel(arrival.crosswalkFullAt) }}
-              <q-tooltip>Lineup reached the crosswalk at {{ crosswalkLabel(arrival.crosswalkFullAt) }}</q-tooltip>
-            </q-badge>
+            <template v-if="arrival.crosswalkFullAt">
+              <q-badge
+                rounded
+                color="deep-orange"
+                class="q-ml-sm"
+                :class="{ 'robot-badge': arrival.crosswalkSource === 'robot' }"
+                dense
+              >
+                crosswalk {{ crosswalkLabel(arrival.crosswalkFullAt) }}
+              </q-badge>
+              <AppTip>Lineup reached the crosswalk at {{ crosswalkLabel(arrival.crosswalkFullAt) }}</AppTip>
+            </template>
             <q-badge
               v-if="arrival.currentCapacity"
               rounded
@@ -63,22 +64,22 @@
             >
               {{ capacityFullLabel(arrival.currentCapacity) }}
             </q-badge>
-            <q-icon
-              v-if="arrival.currentCapacity && arrival.capacitySource === 'user'"
-              name="person"
-              size="14px"
-              class="q-ml-xs text-grey-7"
-            >
-              <q-tooltip>Reported by a rider</q-tooltip>
-            </q-icon>
-            <q-icon
-              v-if="arrival.currentCapacity && arrival.capacitySource === 'robot'"
-              name="smart_toy"
-              size="14px"
-              class="q-ml-xs text-indigo"
-            >
-              <q-tooltip>Recorded by the robot — tag to overwrite</q-tooltip>
-            </q-icon>
+            <template v-if="arrival.currentCapacity && arrival.capacitySource === 'user'">
+              <q-icon
+                name="person"
+                size="14px"
+                class="q-ml-xs text-grey-7"
+              />
+              <AppTip>Reported by a rider</AppTip>
+            </template>
+            <template v-if="arrival.currentCapacity && arrival.capacitySource === 'robot'">
+              <q-icon
+                name="smart_toy"
+                size="14px"
+                class="q-ml-xs text-indigo"
+              />
+              <AppTip>Recorded by the robot — tag to overwrite</AppTip>
+            </template>
           </div>
           <!-- Terse one-line-per-button wording on phones so no description wraps. -->
           <div v-if="brief" class="text-caption text-grey-7 q-mb-sm">
@@ -197,22 +198,22 @@
             >
               {{ capacityFullLabel(departure.currentCapacity) }}
             </q-badge>
-            <q-icon
-              v-if="departure.currentCapacity && departure.capacitySource === 'user'"
-              name="person"
-              size="14px"
-              class="q-ml-xs text-grey-7"
-            >
-              <q-tooltip>Reported by a rider</q-tooltip>
-            </q-icon>
-            <q-icon
-              v-if="departure.currentCapacity && departure.capacitySource === 'robot'"
-              name="smart_toy"
-              size="14px"
-              class="q-ml-xs text-indigo"
-            >
-              <q-tooltip>Recorded by the robot — tag to overwrite</q-tooltip>
-            </q-icon>
+            <template v-if="departure.currentCapacity && departure.capacitySource === 'user'">
+              <q-icon
+                name="person"
+                size="14px"
+                class="q-ml-xs text-grey-7"
+              />
+              <AppTip>Reported by a rider</AppTip>
+            </template>
+            <template v-if="departure.currentCapacity && departure.capacitySource === 'robot'">
+              <q-icon
+                name="smart_toy"
+                size="14px"
+                class="q-ml-xs text-indigo"
+              />
+              <AppTip>Recorded by the robot — tag to overwrite</AppTip>
+            </template>
           </div>
           <div v-if="departure.live" class="text-caption text-grey-7 q-mb-sm">
             Live view of the Bowen terminal — the departure photo will appear here after this
@@ -251,6 +252,7 @@
 </template>
 
 <script setup>
+import AppTip from 'src/components/AppTip.vue'
 import { ref, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { getDeckColor, capacityFullLabel } from 'src/composables/useCapacityDisplay'
@@ -342,5 +344,9 @@ const crosswalkLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
   padding: 2px 8px;
   font-size: 1.1rem;
   line-height: 1.4;
+}
+/* The owl's note, printed on phones: white on the dark strip. */
+.owl-badge :deep(.app-tip) {
+  color: #fff;
 }
 </style>

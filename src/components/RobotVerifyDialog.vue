@@ -4,6 +4,7 @@
        otherwise dismiss it on that change. -->
   <q-dialog
     class="robot-verify-dialog"
+    position="top"
     no-route-dismiss
     :model-value="modelValue"
     @update:model-value="emit('update:modelValue', $event)"
@@ -23,15 +24,35 @@
              dialog image is hard to judge cars by. The overlay shows where the
              robot looks (and dims what it ignores), so the per-frame question
              below is about the same pixels the model reads. -->
-        <div class="verify-img-wrap">
-          <div class="roi-host">
+        <!-- Swipe the photo on a phone: left = next frame, right = previous
+             (the same wrap-around as the arrows below). -->
+        <div v-touch-swipe.left.right="onSwipe" class="verify-img-wrap">
+          <!-- Until the photo is on screen the host holds a 16:9 placeholder
+               (spinner, or "unavailable" when the fetch failed) so the dialog
+               keeps its shape and the chips have something to sit on. The
+               <img> stays mounted while hidden so it keeps loading. -->
+          <div class="roi-host" :class="{ 'roi-host--pending': imgStatus !== 'ok' }">
             <img
+              v-show="imgStatus === 'ok'"
               :src="frame.imageUrl"
               class="verify-img cursor-pointer"
               alt=""
+              @load="imgLoaded(frame)"
+              @error="imgFailed(frame)"
               @click="openZoom(frame.imageUrl)"
             />
-            <RoiOverlay :regions="roi.regions" :masks="roi.masks" :show="tagging && showRoi" />
+            <div v-if="imgStatus !== 'ok'" class="frame-placeholder text-grey-6">
+              <template v-if="imgStatus === 'error'">
+                <q-icon name="broken_image" size="32px" />
+                <div class="text-caption">Photo unavailable</div>
+              </template>
+              <q-spinner v-else size="28px" />
+            </div>
+            <RoiOverlay
+              :regions="roi.regions"
+              :masks="roi.masks"
+              :show="tagging && showRoi && imgStatus === 'ok'"
+            />
             <!-- Chips on the photo, top right, so nothing below reflows: the
                  robot's read of THIS frame and, once given, the rider's answer. -->
             <div class="frame-chips">
@@ -68,11 +89,18 @@
             </div>
           </div>
         </div>
+        <!-- The question, in a few words, with the frame's time in it, right
+             over the Yes / No it asks for. The time visibly changing after an
+             answer tells the rider the view has moved on to the next frame. -->
+        <div v-if="tagging" class="text-caption text-weight-medium text-center q-mt-xs">
+          {{ kind === 'fullness' ? 'Cars waiting or loading' : 'Lineup past the crosswalk' }} at
+          {{ frame.timeLabel }}?
+        </div>
         <!-- Step arrows at the edges; between them the answer for THIS frame
              (fullness) — a tap row directly under the photo, nothing to read
              first. At either end the step button becomes a wrap-around: the
              far end of the sequence, instead of a dead disabled arrow. -->
-        <div class="row items-center justify-between q-mt-xs no-wrap">
+        <div class="row items-center justify-between no-wrap" :class="tagging ? '' : 'q-mt-xs'">
           <q-btn
             flat
             dense
@@ -99,7 +127,7 @@
               :disable="savingLabel && pendingAnswer !== true"
               @click="labelFrame(true)"
             >
-              <q-tooltip v-if="said === true"
+              <q-tooltip v-if="said === true && !inlineTips"
                 >You said yes<template v-if="priorAnswer?.when"> on {{ priorAnswer.when }}</template>
                 — tap to answer again</q-tooltip
               >
@@ -117,7 +145,7 @@
               :disable="savingLabel && pendingAnswer !== false"
               @click="labelFrame(false)"
             >
-              <q-tooltip v-if="said === false"
+              <q-tooltip v-if="said === false && !inlineTips"
                 >You said no<template v-if="priorAnswer?.when"> on {{ priorAnswer.when }}</template>
                 — tap to answer again</q-tooltip
               >
@@ -135,6 +163,16 @@
             @click="step(index >= frames.length - 1 ? 0 : index + 1)"
           />
         </div>
+        <!-- The Yes / No buttons' "you said" tooltip, as a line on phones.
+             Always there (blank before an answer) so the answer doesn't push
+             everything below it down. -->
+        <div v-if="tagging && inlineTips" class="text-caption text-grey-7 text-center said-line">
+          <template v-if="said != null">
+            You said {{ said ? 'yes' : 'no'
+            }}<template v-if="priorAnswer?.when"> on {{ priorAnswer.when }}</template> — tap to
+            answer again
+          </template>
+        </div>
         <!-- Viewing first (the sailing dialog's photo tiles land here): no
              boxes, no question, no buttons — one button turns tagging on. -->
         <q-btn
@@ -148,86 +186,27 @@
           class="full-width q-mt-xs"
           @click="tagging = true"
         />
-        <template v-if="tagging && kind === 'fullness'">
-          <!-- Which frame is on screen, and the sailing's progress: how many
-               frames are tagged and how many answers the robot still needs
-               before the tail decides it. The time visibly changing after an
-               answer tells the rider the view has moved on to the next frame. -->
-          <div class="row items-center text-caption frame-progress">
-            <span class="text-weight-medium text-grey-9">
-              <q-icon name="schedule" size="14px" class="q-mr-xs" />{{ frame.timeLabel }}
-            </span>
-            <q-btn
-              flat
-              dense
-              size="sm"
-              :icon="showRoi ? 'grid_off' : 'grid_on'"
-              :color="showRoi ? 'amber-8' : 'grey-6'"
-              :aria-pressed="showRoi"
-              aria-label="Toggle the robot's boxes"
-              class="q-ml-xs"
-              @click="showRoi = !showRoi"
-            >
-              <q-tooltip>{{ showRoi ? 'Hide' : 'Show' }} where the robot looks</q-tooltip>
-            </q-btn>
-            <q-space />
-            <span class="text-grey-7">{{ progressLine(progress, { scoresReady }) }}</span>
+        <template v-if="tagging">
+          <!-- The sailing's progress: how many frames are tagged and how many
+               answers the robot still needs before the tail decides it. -->
+          <div class="text-caption text-grey-7 text-center frame-progress">
+            {{ kind === 'fullness' ? progressLine(progress, { scoresReady }) : progressLine(progress) }}
           </div>
-          <!-- The question the Yes / No above answer: the one the terminal
-               classifier actually predicts, asked about the highlighted boxes
-               only — cars outside them are invisible to the model, and
-               tagging them taught it nothing (or the wrong thing) — and only
-               about vehicles heading TO the ferry: the frame often also shows
-               cars leaving in the other lane, which are not a lineup. -->
-          <div class="text-caption text-grey-8 text-weight-medium q-mt-xs">
-            Any vehicles waiting or loading for the ferry inside the highlighted boxes?
-          </div>
-          <div class="text-caption text-grey-6">
-            Only vehicles heading to the ferry count — ignore cars leaving in the other lane, and
-            anything outside the boxes.<template v-if="!user">
-              Sign in to save your answers.</template
-            >
+          <!-- What counts, in one sentence. Fullness: the question the terminal
+               classifier actually predicts — vehicles heading TO the ferry,
+               inside the bright boxes (cars outside them are invisible to the
+               model, and the other lane is traffic leaving). Crosswalk: the
+               sailing's mark is the first Yes with a No on the frame before. -->
+          <div class="text-caption text-grey-6 text-center">
+            <template v-if="kind === 'fullness'">
+              Count only vehicles heading to the ferry inside the bright boxes.
+            </template>
+            <template v-else>
+              Yes on the first frame the lineup reaches the crosswalk box, No on the frame before.
+            </template>
+            <template v-if="!user"> Sign in to save your answers.</template>
           </div>
         </template>
-        <template v-else-if="tagging">
-          <div class="row items-center text-caption frame-progress">
-            <span class="text-weight-medium text-grey-9">
-              <q-icon name="schedule" size="14px" class="q-mr-xs" />{{ frame.timeLabel }}
-            </span>
-            <q-btn
-              flat
-              dense
-              size="sm"
-              :icon="showRoi ? 'grid_off' : 'grid_on'"
-              :color="showRoi ? 'amber-8' : 'grey-6'"
-              :aria-pressed="showRoi"
-              aria-label="Toggle the robot's boxes"
-              class="q-ml-xs"
-              @click="showRoi = !showRoi"
-            >
-              <q-tooltip>{{ showRoi ? 'Hide' : 'Show' }} where the robot looks</q-tooltip>
-            </q-btn>
-            <q-space />
-            <span class="text-grey-7">{{ progressLine(progress) }}</span>
-          </div>
-          <!-- The crosswalk question: the sailing's mark is the first frame
-               answered Yes with a No on the frame before it, so the walk
-               after each answer heads for whichever frame pins that down. -->
-          <div class="text-caption text-grey-8 text-weight-medium q-mt-xs">
-            Does the lineup reach the crosswalk (the highlighted box) in this frame?
-          </div>
-          <div class="text-caption text-grey-6">
-            Vehicles waiting for the ferry, back to the crosswalk. Yes on the first frame it gets
-            there, No on the frame before, and the time is pinned.<template v-if="!user">
-              Sign in to save your answers.</template
-            >
-          </div>
-        </template>
-        <div v-if="tagging && showRoi" class="text-caption text-grey-6 roi-caption">
-          Bright boxes = where the robot looks. Dimmed = ignored<template v-if="roi.masks.length">
-            (incl. the sign-pole strip)</template
-          >.
-        </div>
         <!-- Always rendered while the robot has a frame in the list — one
              constant-size button, so landing on the robot's frame doesn't
              resize the dialog. -->
@@ -241,7 +220,7 @@
           icon="my_location"
           :label="
             frame.ts === robotAt
-              ? 'This is the robot\'s frame'
+              ? 'This is when the robot thinks it happened'
               : `Jump to the robot's frame (${timeLabel(robotAt)})`
           "
           class="q-mt-xs"
@@ -249,35 +228,9 @@
         />
       </template>
       <!-- The robot's claim (or lack of one), below the photos — viewers who
-           only came for the pictures can stop reading at the image. -->
-      <p v-if="kind === 'crosswalk' && robotAt != null" class="text-caption q-my-sm">
-        These are the frames the robot judged. It thinks the lineup first shows
-        past the crosswalk at <strong>{{ timeLabel(robotAt) }}</strong> — make
-        sure to actually verify, the robot has poor eyesight.<template v-if="tagging">
-          Your answers on that frame and the one before settle it.</template>
-      </p>
-      <p v-else-if="kind === 'crosswalk'" class="text-caption q-my-sm">
-        The lineup photos for this sailing.<template v-if="tagging">
-          Answer the crosswalk question frame by frame and the time the lineup
-          reached it falls out — the robot learns from it.</template>
-      </p>
-      <p v-else-if="claim === 'full'" class="text-caption q-my-sm">
-        These are the terminal frames the robot judged. It thinks the ferry left
-        <strong>full</strong> — cars were still waiting right up to departure.
-        Make sure to actually verify, the robot has poor eyesight.
-      </p>
-      <p v-else-if="claim == null" class="text-caption q-my-sm">
-        The robot looked at these terminal frames but couldn't tell whether the
-        ferry left full.<template v-if="tagging">
-          Answer the box question on the last few frames and it will decide —
-          and learn from your eyes.</template>
-      </p>
-      <p v-else class="text-caption q-my-sm">
-        These are the terminal frames the robot judged. It thinks everyone
-        waiting got on<template v-if="robotAt != null">
-          — terminal empty at <strong>{{ timeLabel(robotAt) }}</strong></template>.
-        Make sure to actually verify, the robot has poor eyesight.
-      </p>
+           only came for the pictures can stop reading at the image. While
+           tagging it lives in the "What counts?" fold above. -->
+      <p v-if="!tagging" class="text-caption q-my-sm">{{ claimText }}</p>
       <p v-if="!frame" class="text-caption text-italic">
         The frames are no longer available to view — trust your memory, not the robot's.
       </p>
@@ -287,8 +240,33 @@
            frame) pins it. The panel says what and briefly why; a verdict a
            rider's tags produced is saved as the sailing's report
            automatically. -->
+        <!-- Every frame answered (fullness): ask the sailing's question
+             outright and stop — the verdict panel below is for the partial
+             case, where the tail decided before the rider finished. -->
+        <div v-if="tagging && frame && kind === 'fullness' && allTagged" class="done-panel q-mt-md">
+          <template v-if="!fullAnswer">
+            <div class="text-subtitle2 text-center q-mb-xs">Was it full?</div>
+            <div class="row q-gutter-sm">
+              <q-btn dense no-caps unelevated color="deep-orange" class="col" label="Yes" @click="answerFull('Full')" />
+              <q-btn dense no-caps unelevated color="indigo" class="col" label="No" @click="answerFull('Not Full')" />
+              <q-btn dense no-caps outline color="grey-7" class="col" label="Not sure" @click="answerFull('unsure')" />
+            </div>
+          </template>
+          <div
+            v-else
+            class="text-caption text-center"
+            :class="fullAnswer === 'unsure' ? 'text-grey-7' : savedClass"
+          >
+            <q-icon :name="user ? 'check' : 'warning'" size="14px" />
+            {{
+              fullAnswer === 'unsure'
+                ? 'No worries — your frame tags still help.'
+                : savedText(`Saved: ${fullAnswer}.`)
+            }}
+          </div>
+        </div>
         <div
-          v-if="tagging && frame && scoresReady && progress.enough"
+          v-else-if="tagging && frame && scoresReady && progress.enough"
           class="done-panel q-mt-md text-body2"
         >
           <div class="row no-wrap items-start">
@@ -301,9 +279,9 @@
             <div class="col">
               <div>{{ verdictText }}</div>
               <div class="text-caption text-grey-7">{{ reasonText }}</div>
-              <div v-if="savedVerdict && savedVerdict === verdictKey" class="text-caption text-positive">
-                <q-icon name="check" size="14px" />
-                {{ kind === 'fullness' ? "Saved as this sailing's capacity." : "Saved as this sailing's crosswalk time." }}
+              <div v-if="savedVerdict && savedVerdict === verdictKey" class="text-caption" :class="savedClass">
+                <q-icon :name="user ? 'check' : 'warning'" size="14px" />
+                {{ savedText(kind === 'fullness' ? "Saved as this sailing's capacity." : "Saved as this sailing's crosswalk time.") }}
               </div>
               <!-- Vehicles on the departure frame but the lineup never reached
                    the crosswalk: probably late arrivals, not a full ferry — the
@@ -328,15 +306,27 @@
                   @click="confirmCapacity('Not Full')"
                 />
               </div>
-              <div v-else-if="confirmedLate" class="text-caption text-positive">
-                <q-icon name="check" size="14px" /> Saved: {{ confirmedLate }}.
+              <div v-else-if="confirmedLate" class="text-caption" :class="savedClass">
+                <q-icon :name="user ? 'check' : 'warning'" size="14px" />
+                {{ savedText(`Saved: ${confirmedLate}.`) }}
               </div>
             </div>
           </div>
         </div>
+        <!-- Close leaves tagging for the plain photo view first; a second
+             Close (or Back) dismisses the dialog. -->
         <div class="row items-center q-mt-sm">
           <q-space />
-          <q-btn v-close-popup outline dense no-caps color="grey-7" label="Close" />
+          <q-btn
+            v-if="tagging"
+            outline
+            dense
+            no-caps
+            color="grey-7"
+            label="Close"
+            @click="tagging = false"
+          />
+          <q-btn v-else v-close-popup outline dense no-caps color="grey-7" label="Close" />
         </div>
       <ZoomableImageDialog v-model="zoomOpen" :src="zoomSrc" />
     </q-card>
@@ -344,6 +334,7 @@
 </template>
 
 <script setup>
+import { inlineTips } from 'src/composables/useInlineTips'
 import { ref, computed, watch } from 'vue'
 import { dayjs, TZ } from '../../functions/lib/time.js'
 import {
@@ -392,7 +383,7 @@ const props = defineProps({
   labels: { type: [Object, Map], default: null },
   // Open in tagging mode (boxes, question, Yes / No) or just showing the
   // photos, with a button to switch tagging on — the sailing dialog's photo
-  // tiles open the plain view; the robot badges and help nudges open tagging.
+  // tiles open the plain view; its help panel and the robot badges open tagging.
   startTagging: { type: Boolean, default: true },
   // Dialog title parts: the sailing's scheduled time label ("7:30 am") and,
   // when the departure was logged, the actual time it left.
@@ -411,6 +402,13 @@ const emit = defineEmits([
 
 const { user, loadMyFrameLabels } = useFrameLabel()
 
+// Every save goes through the parent, which refuses (and opens the sign-in
+// dialog) when nobody is signed in — but the answer still shows here, as "by
+// your tags…". So each "Saved" line says plainly when it wasn't.
+const savedClass = computed(() => (user.value ? 'text-positive' : 'text-warning'))
+const savedText = (saved) =>
+  user.value ? saved : "Not saved — you're not signed in. Sign in and answer again to count."
+
 const index = ref(0)
 const robotIndex = computed(() => props.frames.findIndex((f) => f.ts === props.robotAt))
 const frame = computed(() => props.frames[index.value] || null)
@@ -427,7 +425,8 @@ const roi = computed(() =>
     ? { regions: terminalRegions, masks: terminalMasks }
     : { regions: lineupRegions, masks: [] },
 )
-// Boxes on by default; the toggle persists while the dialog stays mounted.
+// The robot's boxes are always drawn while tagging (the toggle is gone — one
+// less control; the overlay is what the question is about).
 const showRoi = ref(true)
 // Tagging on, or the plain photo view; set from the prop on each open and
 // whenever the parent flips it while open (the URL's tag flag).
@@ -454,6 +453,7 @@ watch(
     pendingAnswer.value = null
     savedVerdict.value = null
     confirmedLate.value = null
+    fullAnswer.value = null
     labelled.value = new Map()
     mine.value = new Map()
     scores.value = new Map()
@@ -485,8 +485,65 @@ function step(to) {
   navigated.value = true
   index.value = to
 }
+// Swipe on the photo — the same wrap-around steps as the arrow buttons.
+function onSwipe({ direction }) {
+  const n = props.frames.length
+  if (n < 2) return
+  if (direction === 'left') step(index.value >= n - 1 ? 0 : index.value + 1)
+  else if (direction === 'right') step(index.value <= 0 ? n - 1 : index.value - 1)
+}
 
 const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
+
+// The robot's claim for this sailing (or its lack of one), as one sentence or
+// two — the intro under the photos in the plain view, folded away in tagging.
+const claimText = computed(() => {
+  const verify = 'Make sure to actually verify, the robot has poor eyesight.'
+  if (props.kind === 'crosswalk') {
+    if (props.robotAt != null)
+      return (
+        `These are the frames the robot judged. It thinks the lineup first shows past the ` +
+        `crosswalk at ${timeLabel(props.robotAt)} — make sure to actually verify, the robot has ` +
+        `poor eyesight.${tagging.value ? ' Your answers on that frame and the one before settle it.' : ''}`
+      )
+    return (
+      'The lineup photos for this sailing.' +
+      (tagging.value
+        ? ' Answer the crosswalk question frame by frame and the time the lineup reached it falls out — the robot learns from it.'
+        : '')
+    )
+  }
+  if (props.claim === 'full')
+    return `These are the terminal frames the robot judged. It thinks the ferry left full — cars were still waiting right up to departure. ${verify}`
+  if (props.claim == null)
+    return (
+      "The robot looked at these terminal frames but couldn't tell whether the ferry left full." +
+      (tagging.value
+        ? ' Answer the box question on the last few frames and it will decide — and learn from your eyes.'
+        : '')
+    )
+  return (
+    `These are the terminal frames the robot judged. It thinks everyone waiting got on` +
+    `${props.robotAt != null ? ` — terminal empty at ${timeLabel(props.robotAt)}` : ''}. ${verify}`
+  )
+})
+
+// --- photo load state --------------------------------------------------------
+// Per frame path: 'ok' once the <img> has painted it, 'error' when the fetch
+// failed (Storage down, offline, deleted by the 14-day cleanup), else loading.
+// Keyed by path so stepping back to a frame already shown is instant — no
+// placeholder flash.
+const imgState = ref(new Map()) // framePath -> 'ok' | 'error'
+const imgStatus = computed(() =>
+  frame.value ? (imgState.value.get(frame.value.path) ?? 'loading') : 'loading',
+)
+function setImgState(f, state) {
+  const m = new Map(imgState.value)
+  m.set(f.path, state)
+  imgState.value = m
+}
+const imgLoaded = (f) => setImgState(f, 'ok')
+const imgFailed = (f) => setImgState(f, 'error')
 
 // --- per-frame labelling (fullness only) ------------------------------------
 // The classifier's read of each frame, scored lazily on open. These frames are
@@ -638,6 +695,14 @@ function confirmCapacity(capacity) {
   confirmedLate.value = capacity
   emit('capacity', capacity)
 }
+// Every frame answered: the sailing's question, asked outright. Yes / No file
+// a capacity report; Not sure files nothing — the frame tags already help.
+const allTagged = computed(() => progress.value.total > 0 && progress.value.labelled >= progress.value.total)
+const fullAnswer = ref(null) // 'Full' | 'Not Full' | 'unsure'
+function answerFull(answer) {
+  fullAnswer.value = answer
+  if (answer !== 'unsure') emit('capacity', answer)
+}
 // Fullness → a capacity report; crosswalk → a mark on the pinned frame
 // ('agree' when it is the robot's own frame, so the training flags say so),
 // or a refute when the lineup never got there. Each distinct answer once.
@@ -753,6 +818,7 @@ const zoomSrc = ref(null)
 const zoomOpen = ref(false)
 
 function openZoom(url) {
+  if (imgStatus.value !== 'ok') return
   zoomSrc.value = url
   zoomOpen.value = true
 }
@@ -787,8 +853,32 @@ function openZoom(url) {
   max-width: 100%;
 }
 
+/* No photo on screen yet: the host becomes a full-width 16:9 box (the
+   webcams' frame shape) so the dialog doesn't collapse and reflow between
+   frames; the overlay is hidden meanwhile, its boxes mean nothing here. */
+.roi-host--pending {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: rgba(128, 128, 128, 0.12);
+}
+.frame-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  line-height: normal;
+}
+
 .frame-progress {
   min-height: 20px;
+}
+.said-line {
+  min-height: 1.3em;
+  line-height: 1.3;
 }
 
 .replay-flip :deep(.q-icon) {
@@ -820,11 +910,6 @@ function openZoom(url) {
 }
 .chip-pending {
   background: rgba(60, 60, 60, 0.75);
-}
-
-.roi-caption {
-  line-height: 1.2;
-  margin-top: 2px;
 }
 
 /* Phones: the card takes the whole viewport width (the dialog wrapper's own

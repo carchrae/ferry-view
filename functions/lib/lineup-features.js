@@ -15,13 +15,13 @@ import sharp from 'sharp'
 // Any region change invalidates trained weights; retrain.
 export const REGIONS = [
   {
-    name: 'left lane',
+    name: 'on the hill',
     roi: { left: 0.002, top: 0.45, width: 0.567, height: 0.244 },
     width: 48,
     height: 27,
   },
   {
-    name: 'crosswalk',
+    name: 'past crosswalk',
     roi: { left: 0.578, top: 0.424, width: 0.349, height: 0.153 },
     width: 24,
     height: 14,

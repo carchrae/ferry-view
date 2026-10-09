@@ -105,7 +105,11 @@ arrival" rule shifted a late ferry's photo onto the *next* sailing, splitting
 it from its timelapse. Deduplicated per arrival via the
 `snapshots/latestBowenArrival` singleton; skipped when the **arrival event**
 is more than 10 minutes old (stale poll guard — gating on the sailing's
-scheduled time instead would skip any ferry running >10 min late).
+scheduled time instead would skip any ferry running >10 min late). The log's
+times are dateless: after midnight, last night's final arrival is resolved to
+*yesterday* (`logTimeToDate`), so it is neither "recent" nor a candidate to be
+stamped onto the day's first sailing — which is how a 6:15 used to show the
+previous night's photo.
 
 ### 2. Departure photo — terminal cam, one shot per departure
 
@@ -121,8 +125,17 @@ departure to a schedule entry. Skipped when the sailing already has a
 - at least **15 minutes** have passed since the previous Bowen departure
   (before that the lot is mostly empty; sailings that fill up do so early, so
   the window opens well before the lineup peaks). Falls back to the last past
-  *scheduled* time when the activity log has no departure; no departure or
-  past sailing yet today → no capture (kills overnight frames).
+  *scheduled* time when the activity log has no departure.
+  **First sailing of the day:** nothing has departed yet today — the log is
+  empty, or its newest Bowen departure is last night's (the log's times are
+  dateless; `logTimeToDate` in `functions/lib/time.js` resolves a time that
+  sits hours ahead of now to yesterday, where it used to land hours in the
+  *future* and keep this gate shut all morning, so the 6:15 never got a
+  frame). Then the window opens **60 minutes before** the sailing's
+  scheduled time instead (`LINEUP_FIRST_SAILING_LEAD_MIN`) — no capture and
+  no probe earlier in the night — and the overnight "docked at Bowen" signal
+  is not treated as this cycle's arrival (next bullet): the boat has sat at
+  the dock all night while the lineup builds;
   **Classify-first probe:** during that 15-minute wait (on the same 5-minute
   cadence, all other conditions holding, model enabled) the frame is still
   fetched and run through the crosswalk classifier *without saving*; a

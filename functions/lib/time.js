@@ -39,8 +39,20 @@ export function timeToDate(str) {
   return dayjs.tz(`${today} ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, TZ)
 }
 
-export function isRecent(str, maxAgeMs) {
+// A time from the live activity log ("Departed Bowen 10:30 pm"), as a date.
+// The log carries no dates and timeToDate binds every HH:mm to TODAY — so
+// after midnight, last night's events land hours in the FUTURE, where they
+// read as "recent" and as "still to come". An event can't be in the future
+// (beyond a few minutes of clock skew): anything further ahead of `now` than
+// `slackMin` happened yesterday.
+export function logTimeToDate(str, now = nowInVancouver(), slackMin = 5) {
   const t = timeToDate(str)
+  if (!t) return null
+  return t.diff(now, 'minute') > slackMin ? t.subtract(1, 'day') : t
+}
+
+export function isRecent(str, maxAgeMs) {
+  const t = logTimeToDate(str)
   if (!t) return false
   return (Date.now() - t.valueOf()) < maxAgeMs
 }

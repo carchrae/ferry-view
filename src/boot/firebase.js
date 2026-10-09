@@ -60,6 +60,13 @@ const firebaseConfig = usingProductionData ? prodConfig : stagingConfig
 // images are served as https://storage.googleapis.com/{storageBucket}/{path}
 export const storageBucket = firebaseConfig.storageBucket
 
+// The bucket the webcam PHOTOS are read from: always the production one.
+// Staging's functions are dormant, so its bucket holds no photos, while its
+// restored Firestore references the production filenames — every photo would
+// 403 from the staging bucket. The dev /webcam proxy (quasar.config.js) makes
+// the same choice for the classifiers.
+export const photoBucket = prodConfig.storageBucket
+
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 // Persistent (IndexedDB) cache: listener re-attaches after a reload only bill

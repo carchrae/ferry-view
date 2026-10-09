@@ -28,24 +28,25 @@
       />
       <!-- Crosswalk: human already marked → verdict chip; tap to reopen the
            frame-check dialog and weigh in yourself. -->
-      <q-chip
-        v-else-if="autoAt != null"
-        dense
-        square
-        outline
-        clickable
-        :color="verdictAgrees ? 'indigo' : 'deep-orange'"
-        icon="directions_walk"
-        class="verdict-chip"
-        @click="openVerify"
-      >
-        {{ verdictText }}{{ autoProb != null ? ` · ${certaintyLabel(autoProb)}` : '' }}
-        <q-tooltip>
+      <template v-else-if="autoAt != null">
+        <q-chip
+          dense
+          square
+          outline
+          clickable
+          :color="verdictAgrees ? 'indigo' : 'deep-orange'"
+          icon="directions_walk"
+          class="verdict-chip"
+          @click="openVerify"
+        >
+          {{ verdictText }}{{ autoProb != null ? ` · ${certaintyLabel(autoProb)}` : '' }}
+        </q-chip>
+        <AppTip>
           {{ autoProb != null
             ? `The robot is ${Math.round(autoProb * 100)}% sure the lineup was past the crosswalk in its detection frame. `
             : '' }}See the frames the robot judged — agree or disagree
-        </q-tooltip>
-      </q-chip>
+        </AppTip>
+      </template>
       <!-- Fullness: no capacity report yet → verify-then-confirm button;
            otherwise a verdict chip in the same section. -->
       <q-btn
@@ -59,108 +60,114 @@
         :label="`Not full${emptyWhen}${notFullProb != null ? ` — ${certaintyLabel(notFullProb)}` : ''} — confirm?`"
         @click="openFullnessVerify"
       />
-      <q-chip
-        v-else-if="fullnessText"
-        dense
-        square
-        outline
-        clickable
-        :color="latestCapacity?.capacity === 'Full' ? 'deep-orange' : 'indigo'"
-        icon="directions_boat"
-        class="verdict-chip"
-        @click="openFullnessVerify"
-      >
-        {{ fullnessText }}{{ notFullProb != null ? ` · ${certaintyLabel(notFullProb)}` : '' }}
-        <q-tooltip>
+      <template v-else-if="fullnessText">
+        <q-chip
+          dense
+          square
+          outline
+          clickable
+          :color="latestCapacity?.capacity === 'Full' ? 'deep-orange' : 'indigo'"
+          icon="directions_boat"
+          class="verdict-chip"
+          @click="openFullnessVerify"
+        >
+          {{ fullnessText }}{{ notFullProb != null ? ` · ${certaintyLabel(notFullProb)}` : '' }}
+        </q-chip>
+        <AppTip>
           {{ notFullProb != null
             ? `The robot is ${Math.round(notFullProb * 100)}% sure the terminal was empty in the confirming frame. `
             : '' }}See the frames the robot judged — agree or disagree
-        </q-tooltip>
-      </q-chip>
+        </AppTip>
+      </template>
       <!-- Fullness: robot thinks it left FULL (cars ran through the window's
            end + crosswalk reached) → confirm button / verdict chip. -->
-      <q-btn
-        v-else-if="fullVisible && !latestCapacity"
-        dense
-        no-caps
-        outline
-        color="deep-orange"
-        size="sm"
-        icon="directions_boat"
-        :label="`Looks full${fullProb != null ? ` — ${certaintyLabel(fullProb)}` : ''} — agree?`"
-        @click="openFullnessVerify"
-      >
-        <q-tooltip>
+      <template v-else-if="fullVisible && !latestCapacity">
+        <q-btn
+          dense
+          no-caps
+          outline
+          color="deep-orange"
+          size="sm"
+          icon="directions_boat"
+          :label="`Looks full${fullProb != null ? ` — ${certaintyLabel(fullProb)}` : ''} — agree?`"
+          @click="openFullnessVerify"
+        >
+        </q-btn>
+        <AppTip>
           {{ fullProb != null
             ? `The robot is ${Math.round(fullProb * 100)}% sure cars were still waiting at departure. `
             : '' }}See the frames the robot judged — agree or disagree
-        </q-tooltip>
-      </q-btn>
-      <q-chip
-        v-else-if="fullText"
-        dense
-        square
-        outline
-        clickable
-        :color="latestCapacity?.capacity === 'Full' ? 'indigo' : 'deep-orange'"
-        icon="directions_boat"
-        class="verdict-chip"
-        @click="openFullnessVerify"
-      >
-        {{ fullText }}{{ fullProb != null ? ` · ${certaintyLabel(fullProb)}` : '' }}
-        <q-tooltip>
+        </AppTip>
+      </template>
+      <template v-else-if="fullText">
+        <q-chip
+          dense
+          square
+          outline
+          clickable
+          :color="latestCapacity?.capacity === 'Full' ? 'indigo' : 'deep-orange'"
+          icon="directions_boat"
+          class="verdict-chip"
+          @click="openFullnessVerify"
+        >
+          {{ fullText }}{{ fullProb != null ? ` · ${certaintyLabel(fullProb)}` : '' }}
+        </q-chip>
+        <AppTip>
           {{ fullProb != null
             ? `The robot is ${Math.round(fullProb * 100)}% sure cars were still waiting at departure. `
             : '' }}See the frames the robot judged — agree or disagree
-        </q-tooltip>
-      </q-chip>
+        </AppTip>
+      </template>
       <!-- Fullness: robot has NO verdict for this sailing → own up to it.
            The same dialog opens so a rider can answer per-frame "cars
            waiting?" and teach the classifier the exact frames it fumbled. -->
-      <q-btn
-        v-else-if="fullnessUnsure"
-        dense
-        no-caps
-        outline
-        color="grey-7"
-        size="sm"
-        icon="directions_boat"
-        label="not sure if it left full — take a look?"
-        @click="openFullnessVerify"
-      >
-        <q-tooltip>
+      <template v-else-if="fullnessUnsure">
+        <q-btn
+          dense
+          no-caps
+          outline
+          color="grey-7"
+          size="sm"
+          icon="directions_boat"
+          label="not sure if it left full — take a look?"
+          @click="openFullnessVerify"
+        >
+        </q-btn>
+        <AppTip>
           The robot couldn't tell whether this ferry left full — step through the
           terminal frames and teach it
-        </q-tooltip>
-      </q-btn>
+        </AppTip>
+      </template>
       <!-- Certainty: computed on demand (loads this sailing's frames only),
            then the same slot becomes a details button. -->
-      <q-btn
-        v-if="showComputeBtn"
-        dense
-        no-caps
-        outline
-        size="sm"
-        color="indigo"
-        label="question robot"
-        :loading="computingProb"
-        @click="requestCertainty"
-      >
-        <q-tooltip>How sure is the robot? Checks this sailing's frames</q-tooltip>
-      </q-btn>
-      <q-btn
-        v-else-if="showDetailsBtn"
-        dense
-        no-caps
-        outline
-        size="sm"
-        color="indigo"
-        icon="insights"
-        label="show details"
-        @click="emit('show-details')"
-      >
-        <q-tooltip>Every frame the robot judged, with its score</q-tooltip>
-      </q-btn>
+      <template v-if="showComputeBtn">
+        <q-btn
+          dense
+          no-caps
+          outline
+          size="sm"
+          color="indigo"
+          label="question robot"
+          :loading="computingProb"
+          @click="requestCertainty"
+        >
+        </q-btn>
+        <AppTip>How sure is the robot? Checks this sailing's frames</AppTip>
+      </template>
+      <template v-else-if="showDetailsBtn">
+        <q-btn
+          dense
+          no-caps
+          outline
+          size="sm"
+          color="indigo"
+          icon="insights"
+          label="show details"
+          @click="emit('show-details')"
+        >
+        </q-btn>
+        <AppTip>Every frame the robot judged, with its score</AppTip>
+      </template>
       </div>
     </div>
 
@@ -231,6 +238,7 @@
 </template>
 
 <script setup>
+import AppTip from 'src/components/AppTip.vue'
 import { ref, computed, watch } from 'vue'
 import { formatReporterName } from 'src/composables/useLeaderboard'
 import { CROSSWALK_BUCKET_MS, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'

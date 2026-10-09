@@ -266,7 +266,7 @@
                         :design="sailingDesign"
                         :help="helpHint(row.l)"
                         @open="openHistory(row.l.scheduledTime, row.l.label, row.l)"
-                        @help="openRobotVerify('fullness', row.l.scheduledTime)"
+                        @help="openHistory(row.l.scheduledTime, row.l.label)"
                       />
                     </div>
                     <div>
@@ -278,7 +278,7 @@
                         :design="sailingDesign"
                         :help="helpHint(row.r)"
                         @open="openHistory(row.r.scheduledTime, row.r.label, row.r)"
-                        @help="openRobotVerify('fullness', row.r.scheduledTime)"
+                        @help="openHistory(row.r.scheduledTime, row.r.label)"
                       />
                     </div>
                   </template>
@@ -608,7 +608,12 @@
       transition-show="fade"
       transition-hide="fade"
     >
-      <div class="fullscreen-viewer bg-black" @click="fullscreen = false">
+      <!-- Swipe on a phone: left = next camera, right = previous. -->
+      <div
+        v-touch-swipe.left.right="onViewerSwipe"
+        class="fullscreen-viewer bg-black"
+        @click="fullscreen = false"
+      >
         <img v-if="viewerSrc" :src="viewerSrc" class="fullscreen-img" />
         <div class="absolute-top-right q-pa-md" style="z-index: 2">
           <q-btn
@@ -722,8 +727,8 @@
             :aria-label="dreaming ? 'Show lateness and fullness' : 'Just the schedule'"
             @click="dreaming = !dreaming"
           >
-            <q-tooltip>{{ dreaming ? 'Back to reality' : 'Just the schedule' }}</q-tooltip>
           </q-btn>
+          <AppTip>{{ dreaming ? 'Back to reality' : 'Just the schedule' }}</AppTip>
           <div class="col text-h6 text-center ellipsis">Today's Sailings</div>
           <q-btn flat dense round icon="close" aria-label="Close" @click="showFullDialog = false" />
         </q-card-section>
@@ -762,7 +767,7 @@
                   :design="sailingDesign"
                   :help="helpHint(row.l)"
                   @open="openHistory(row.l.scheduledTime, row.l.label, row.l)"
-                  @help="openRobotVerify('fullness', row.l.scheduledTime)"
+                  @help="openHistory(row.l.scheduledTime, row.l.label)"
                 />
                 <div
                   v-else-if="!allPastBowen.length && i === 0"
@@ -779,7 +784,7 @@
                   :design="sailingDesign"
                   :help="helpHint(row.r)"
                   @open="openHistory(row.r.scheduledTime, row.r.label, row.r)"
-                  @help="openRobotVerify('fullness', row.r.scheduledTime)"
+                  @help="openHistory(row.r.scheduledTime, row.r.label)"
                 />
                 <div
                   v-else-if="!allPastHSB.length && i === 0"
@@ -903,10 +908,57 @@
       </q-card>
     </q-dialog>
 
+    <!-- Before every "Was it overloaded?" answer, Yes or No. -->
+    <q-dialog v-model="showOverloadConfirm" position="top">
+      <q-card style="width: 26rem; max-width: 95vw">
+        <q-card-section class="q-pb-xs">
+          <div class="text-subtitle1">
+            {{
+              pendingOverload.yes
+                ? 'Overloaded means cars were left behind'
+                : 'Not full means everyone waiting got on'
+            }}
+          </div>
+        </q-card-section>
+        <q-card-section v-if="pendingOverload.yes" class="q-pt-none text-body2">
+          Before you say yes, make sure that:
+          <ul class="q-my-xs q-pl-md">
+            <li>more than a few cars were still waiting when the ferry left, and</li>
+            <li>they weren't just late — the lineup had reached the crosswalk.</li>
+          </ul>
+          Not sure? Check the frames — a few yes / no answers settle it.
+        </q-card-section>
+        <q-card-section v-else class="q-pt-none text-body2">
+          Before you say no, make sure no vehicles heading to the ferry were still waiting when it
+          left. Not sure? Check the frames — a few yes / no answers settle it.
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Cancel" @click="showOverloadConfirm = false" />
+          <q-btn
+            outline
+            no-caps
+            color="indigo"
+            icon="school"
+            label="Check the frames"
+            @click="checkFramesInstead"
+          />
+          <q-btn
+            unelevated
+            no-caps
+            :color="pendingOverload.yes ? 'deep-orange' : 'indigo'"
+            :label="pendingOverload.yes ? 'Yes, overloaded' : 'No, it had room'"
+            @click="confirmOverloaded"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
     <q-dialog v-model="showTypicalDialog" position="top" no-route-dismiss>
+      <!-- A fixed width on desktop: sized to its content, the card jumped
+           wider whenever an explainer or the history table was expanded. -->
       <q-card
         :style="{
-          minWidth: $q.screen.gt.xs ? '400px' : '95vw',
+          width: $q.screen.gt.xs ? '560px' : '95vw',
           maxWidth: '95vw',
           maxHeight: '90vh',
         }"
@@ -914,43 +966,44 @@
         <q-card-section class="row items-start q-pb-none">
           <div class="col">
             <div class="text-subtitle1">{{ selectedTypical?.title }}</div>
-            <div class="text-caption text-grey-6">Status and recent history</div>
+            <!-- The sailing's status, spelled out, right under the title —
+                 this is what most riders opened the dialog to learn. One
+                 wrapping row: on a phone the departure and the fullness fit
+                 side by side, so the photos start higher. -->
+            <div v-if="typicalStatus.length" class="row items-center status-row">
+              <div
+                v-for="(line, i) in typicalStatus"
+                :key="i"
+                class="col-auto row items-center no-wrap q-py-xs text-body2"
+              >
+                <q-icon :name="line.icon" size="18px" :color="line.color" class="q-mr-xs" />
+                <span>{{ line.text }}</span>
+                <!-- Same source markers as the sailing rows, so riders learn
+                     them here instead of from a legend. -->
+                <q-icon
+                  v-if="line.source === 'robot'"
+                  name="smart_toy"
+                  size="16px"
+                  color="indigo"
+                  class="q-ml-xs"
+                />
+                <q-icon
+                  v-else-if="line.source === 'user'"
+                  name="person"
+                  size="16px"
+                  color="grey-7"
+                  class="q-ml-xs"
+                />
+              </div>
+            </div>
+            <div v-else class="text-caption text-grey-6 q-py-xs">
+              Nothing recorded for this sailing yet.
+            </div>
           </div>
           <q-btn flat dense icon="close" aria-label="Close" @click="showTypicalDialog = false" />
         </q-card-section>
-        <q-separator class="q-mt-sm" />
-        <q-card-section class="q-pa-sm" style="overflow-y: auto">
-          <!-- The sailing's status, spelled out — this is what most riders
-               opened the dialog to learn; history tables come after. -->
-          <div v-if="typicalStatus.length">
-            <div
-              v-for="(line, i) in typicalStatus"
-              :key="i"
-              class="row items-center q-py-xs text-body2"
-            >
-              <q-icon :name="line.icon" size="18px" :color="line.color" class="q-mr-sm" />
-              <span class="col">{{ line.text }}</span>
-              <!-- Same source markers as the sailing rows, so riders learn
-                   them here instead of from a legend. -->
-              <q-icon
-                v-if="line.source === 'robot'"
-                name="smart_toy"
-                size="16px"
-                color="indigo"
-                class="q-ml-xs"
-              />
-              <q-icon
-                v-else-if="line.source === 'user'"
-                name="person"
-                size="16px"
-                color="grey-7"
-                class="q-ml-xs"
-              />
-            </div>
-          </div>
-          <div v-else class="text-caption text-grey-6 q-py-xs">
-            Nothing recorded for this sailing yet.
-          </div>
+        <!-- No rule or top padding: the photos sit right under the status. -->
+        <q-card-section class="q-pa-sm q-pt-none" style="overflow-y: auto">
           <DepartureEstimateExplainer
             v-if="selectedEstimate !== undefined"
             :timings="estimateTimings"
@@ -963,9 +1016,15 @@
                doesn't). A camera with no frames yet keeps the plain button.
                The NEXT sailing shows the live cameras instead — its lineup
                is building right now. Later sailings show no photos. -->
-          <div v-if="selectedTypical?.mode === 'past'" class="q-mt-sm">
+          <div v-if="selectedTypical?.mode === 'past'">
+            <!-- Side by side on wide screens; stacked on phones, where two
+                 across is too small to make anything out. -->
             <div class="row q-col-gutter-sm">
-              <div v-for="tile in dialogTiles" :key="tile.kind" class="col-6">
+              <div
+                v-for="tile in dialogTiles"
+                :key="tile.kind"
+                :class="$q.screen.xs ? 'col-12' : 'col-6'"
+              >
                 <template v-if="tile.frame">
                   <div class="dialog-tile cursor-pointer" @click="openRobotFromTypical(tile.kind)">
                     <img :src="tile.frame.imageUrl" alt="" />
@@ -974,62 +1033,78 @@
                     {{ tile.caption }}
                   </div>
                 </template>
-                <q-btn
-                  v-else
-                  outline
-                  no-caps
-                  color="indigo"
-                  icon="photo_camera"
-                  :label="tile.label"
-                  class="full-width app-btn"
-                  @click="openRobotFromTypical(tile.kind)"
-                />
+                <!-- No frame for this camera: say so, in the photo's place —
+                     never another sailing's photo, and no button into an
+                     empty dialog. -->
+                <template v-else>
+                  <div class="dialog-tile-empty bg-grey-3 text-grey-6">
+                    <q-icon name="no_photography" size="24px" />
+                    <div class="text-caption">No photo</div>
+                  </div>
+                  <div class="text-caption text-grey-7 text-center ellipsis">{{ tile.label }}</div>
+                </template>
               </div>
             </div>
-            <!-- No fullness on record: the browser classifier's read of the
-                 terminal frames, and the rider's say. Either answer files a
-                 capacity report; "help it learn" opens the frame tagging. -->
-            <div v-if="dialogOpinion" class="q-mt-sm text-center">
-              <div class="text-body2 q-mb-xs">
-                <q-icon name="smart_toy" color="indigo" size="16px" class="q-mr-xs" />{{
-                  dialogOpinion.text
-                }}
-              </div>
-              <div class="row justify-center q-gutter-sm">
+            <!-- No fullness on record: the ask, up front — the row's "help tag
+                 it" nudge lands here, and the button opens the frame tagging.
+                 Shown as soon as the sailing is known taggable (the nudge's own
+                 test), before its frames are in. Under it, once they are: the
+                 browser classifier's read of the terminal frames and the
+                 rider's quick say — either answer files a capacity report. -->
+            <div v-if="dialogHelp || dialogOpinion" class="help-tag-panel q-mt-sm">
+              <div class="row items-center no-wrap">
+                <div class="col text-subtitle2 text-indigo-10">
+                  <q-icon name="directions_boat" size="18px" class="q-mr-xs" />Was it overloaded?
+                </div>
                 <q-btn
                   dense
                   no-caps
                   unelevated
                   color="deep-orange"
-                  label="Full"
-                  class="q-px-sm"
-                  @click="saveCapacityFor(dialogFrames.sailingKey, 'Full')"
+                  label="Yes"
+                  class="col-auto q-px-sm"
+                  :disable="!dialogFrames?.sailingKey"
+                  @click="answerOverloaded(dialogFrames.sailingKey, true)"
                 />
                 <q-btn
                   dense
                   no-caps
                   unelevated
                   color="indigo"
-                  label="Not Full"
-                  class="q-px-sm"
-                  @click="saveCapacityFor(dialogFrames.sailingKey, 'Not Full')"
+                  label="No"
+                  class="col-auto q-px-sm q-ml-sm"
+                  :disable="!dialogFrames?.sailingKey"
+                  @click="answerOverloaded(dialogFrames.sailingKey, false)"
                 />
+              </div>
+              <!-- The robot's lean (its read of the terminal frames) and the
+                   way to check for yourself: the frame-tagging dialog. -->
+              <div class="row items-center no-wrap text-caption text-grey-8">
+                <span class="col">
+                  <q-icon name="smart_toy" color="indigo" size="14px" class="q-mr-xs" />{{
+                    dialogOpinion ? dialogOpinion.robot : 'Loading the frames…'
+                  }}
+                </span>
                 <q-btn
+                  flat
                   dense
                   no-caps
-                  outline
                   color="indigo"
                   icon="school"
-                  label="Help it learn"
-                  class="q-px-sm app-btn"
+                  label="Help tag"
+                  class="col-auto"
                   @click="openRobotFromTypical('fullness', true)"
                 />
               </div>
             </div>
           </div>
-          <div v-else-if="selectedTypical?.mode === 'next'" class="q-mt-sm">
+          <div v-else-if="selectedTypical?.mode === 'next'">
             <div class="row q-col-gutter-sm">
-              <div v-for="cam in liveTiles" :key="cam.index" class="col-6">
+              <div
+                v-for="cam in liveTiles"
+                :key="cam.index"
+                :class="$q.screen.xs ? 'col-12' : 'col-6'"
+              >
                 <div class="dialog-tile cursor-pointer" @click="openLiveFromTypical(cam.index)">
                   <img v-if="cam.src" :src="cam.src" alt="" @error="handleCamError(cam.index)" />
                   <div v-else class="dialog-tile-pending bg-grey-3 text-grey-6 flex flex-center">
@@ -1125,6 +1200,7 @@
 </template>
 
 <script setup>
+import AppTip from 'src/components/AppTip.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
@@ -1623,7 +1699,7 @@ const dialogTiles = computed(() => {
       label: 'At crosswalk',
       frame: lineup,
       caption: lineup
-        ? `At crosswalk · ${lineup.timeLabel}${isDarkAt(lineup.ts) ? ' · 🦉 night' : ''}`
+        ? `At crosswalk · ${lineup.timeLabel}${isDarkAt(lineup.ts) ? ' · 🦉 dark' : ''}`
         : '',
     },
     {
@@ -1662,10 +1738,10 @@ const dialogOpinion = computed(() => {
   if (!d?.sailingKey || d.departureCount < 2) return null
   if (selectedTypical.value?.entry?.lastCapacity || d.lastCapacity) return null
   const v = dialogVerdict.value
-  if (v === undefined) return { text: 'The robot is checking the terminal frames…' }
-  if (v?.kind === 'notFull') return { text: 'The robot thinks this one left with room — agree?' }
-  if (v?.kind === 'full') return { text: 'The robot thinks this one left full — agree?' }
-  return { text: "The robot isn't sure this one left full — what do you think?" }
+  if (v === undefined) return { robot: 'Robot: checking the frames…' }
+  if (v?.kind === 'notFull') return { robot: 'Robot: thinks it had room' }
+  if (v?.kind === 'full') return { robot: 'Robot: thinks it was overloaded' }
+  return { robot: "Robot: isn't sure" }
 })
 
 
@@ -1726,12 +1802,7 @@ const typicalStatus = computed(() => {
     })
   }
   const cap = e.lastCapacity
-  const capSrc =
-    e.capacitySource === 'robot'
-      ? ' (robot predicted)'
-      : e.capacitySource === 'user'
-        ? ' (rider reported)'
-        : ''
+  // Who said so is the icon beside the line (robot / rider), not words.
   // When we know WHEN it filled (automated fill events), say so — the
   // table's "Filled by" column, for the current sailing.
   const filledTime =
@@ -1741,14 +1812,14 @@ const typicalStatus = computed(() => {
       icon: 'directions_boat',
       color: 'deep-orange',
       source: e.capacitySource,
-      text: `The ferry left full${filledTime ? ` — full by ${filledTime}` : ''}${capSrc}.`,
+      text: `Left full${filledTime ? ` — full by ${filledTime}` : ''}.`,
     })
   } else if (cap === 'Not Full') {
     lines.push({
       icon: 'directions_boat',
       color: 'positive',
       source: e.capacitySource,
-      text: `The ferry left with room${capSrc}.`,
+      text: 'Left with room.',
     })
   } else if (cap) {
     const n = parseInt(cap)
@@ -1756,9 +1827,7 @@ const typicalStatus = computed(() => {
       icon: 'directions_boat',
       color: 'grey-8',
       source: e.capacitySource,
-      text: isNaN(n)
-        ? `Capacity: ${cap}${capSrc}.`
-        : `The ferry left about ${100 - n}% full${capSrc}.`,
+      text: isNaN(n) ? `Capacity: ${cap}.` : `Left about ${100 - n}% full.`,
     })
   } else if (e.deckSpace) {
     lines.push({
@@ -1772,14 +1841,11 @@ const typicalStatus = computed(() => {
       e.crosswalkFullAt === 'user_reported'
         ? null
         : dayjs(e.crosswalkFullAt).tz(TZ).format('h:mm a')
-    const src = e.crosswalkSource === 'robot' ? 'robot predicted' : 'rider reported'
     lines.push({
       icon: 'directions_walk',
       color: 'grey-8',
       source: e.crosswalkSource === 'robot' ? 'robot' : 'user',
-      text: at
-        ? `Lineup reached the crosswalk at ${at} (${src}).`
-        : `Lineup reached the crosswalk (${src}).`,
+      text: at ? `Lineup reached the crosswalk at ${at}.` : 'Lineup reached the crosswalk.',
     })
   }
   return lines
@@ -1788,8 +1854,8 @@ function openTypical(s) {
   openHistory(s.shortTime, s.label, s)
 }
 
-// From the typical dialog's robot section into the frame-check dialog.
-// Photo tiles open the plain photo view; "help it learn" opens tagging.
+// From the typical dialog into the frame-check dialog. Photo tiles open the
+// plain photo view; the help panel's "Help tag it" opens tagging.
 function openRobotFromTypical(kind, tag = false) {
   pushDialogQuery({ robot: kind, tag: tag ? '1' : undefined })
 }
@@ -1826,10 +1892,6 @@ const robotVerify = ref({
   departedLabel: null,
 })
 
-function openRobotVerify(kind, time) {
-  if (!time) return
-  pushDialogQuery({ sailing: normalizeTime(time), dir: 'bowen', robot: kind, tag: '1' })
-}
 async function loadRobotVerify(kind, time) {
   const t = normalizeTime(time)
   // Still wanted once the frames are in? Back may have been pressed meanwhile.
@@ -2008,6 +2070,25 @@ function onRobotVerifyCapacity(capacity) {
 // A rider's whole-sailing answer, from the verify dialog or the typical
 // dialog's opinion row. A rejected save (not signed in) opens the sign-in
 // dialog via the needsSignIn watcher.
+// "Was it overloaded?" — every answer, Yes or No, goes through a check first
+// (overloaded means cars left behind, not one late arrival; not full means
+// everyone waiting got on), with the frames one tap away for the unsure.
+const showOverloadConfirm = ref(false)
+const pendingOverload = ref({ sailingKey: null, yes: null })
+function answerOverloaded(sailingKey, yes) {
+  pendingOverload.value = { sailingKey, yes }
+  showOverloadConfirm.value = true
+}
+function confirmOverloaded() {
+  showOverloadConfirm.value = false
+  const { sailingKey, yes } = pendingOverload.value
+  saveCapacityFor(sailingKey, yes ? 'Full' : 'Not Full')
+}
+function checkFramesInstead() {
+  showOverloadConfirm.value = false
+  openRobotFromTypical('fullness', true)
+}
+
 function saveCapacityFor(sailingKey, capacity) {
   if (!sailingKey) return
   saveRating(sailingKey, capacity, null)
@@ -2177,6 +2258,9 @@ function helpHint(s) {
   if (!s || s.label !== 'Bowen' || s.skipped || s.diffText == null || s.lastCapacity) return null
   return taggableTimes.value.has(normalizeTime(s.scheduledTime)) ? HELP_HINT : null
 }
+// Tapping the nudge opens the sailing dialog; this is the same test for the
+// sailing on show there, so its help panel is up before the frames load.
+const dialogHelp = computed(() => Boolean(helpHint(selectedTypical.value?.entry)))
 const lastSailing = computed(() => {
   const hsb = recentPastHSB.value
   const bowen = recentPastBowen.value
@@ -2515,6 +2599,10 @@ function refreshFullscreen() {
   frameIndex.value = Math.max(0, viewerFrames.value.length - 1)
 }
 
+function onViewerSwipe({ direction }) {
+  if (direction === 'left') nextCam()
+  else if (direction === 'right') prevCam()
+}
 function nextCam() {
   fullscreenIndex.value = (fullscreenIndex.value + 1) % allCamUrls.length
   loadCamPlayback(fullscreenIndex.value)
@@ -2913,6 +3001,26 @@ onUnmounted(() => {
 .dialog-tile-pending {
   aspect-ratio: 16 / 9;
   line-height: normal;
+}
+.dialog-tile-empty {
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+/* The sailing dialog's ask for tags — tinted so it reads as the one thing
+   to do here, not another line of status. */
+.status-row {
+  column-gap: 12px;
+}
+.help-tag-panel {
+  background: rgba(63, 81, 181, 0.08);
+  border: 1px solid rgba(63, 81, 181, 0.25);
+  border-radius: 8px;
+  padding: 6px 10px;
 }
 
 .today-dialog {

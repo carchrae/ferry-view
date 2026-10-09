@@ -13,73 +13,75 @@
       Reports: <q-icon name="info_outline" size="13px" />
     </span>
     <div class="col chips-col">
-    <q-chip
-      v-if="disagreement"
-      dense
-      square
-      color="warning"
-      text-color="dark"
-      icon="sports_mma"
-      class="report-chip"
-    >
-      Disagreement
-      <q-tooltip>
+    <template v-if="disagreement">
+      <q-chip
+        dense
+        square
+        color="warning"
+        text-color="dark"
+        icon="sports_mma"
+        class="report-chip"
+      >
+        Disagreement
+      </q-chip>
+      <AppTip>
         Riders disagree on this sailing — another report will settle it.
-      </q-tooltip>
-    </q-chip>
-    <q-chip
-      v-for="r in capacityChips"
-      :key="r.userUid + r.recordedAt"
-      dense
-      square
-      :color="getDeckColor(r.capacity)"
-      text-color="white"
-      :icon="capacityResolvedWin ? 'emoji_events' : undefined"
-      :removable="r.userUid === meUid"
-      class="report-chip"
-      :class="{ 'winner-chip': capacityResolvedWin }"
-      @remove="emit('delete-report', r)"
-    >
-      {{ formatReporterName(r.userName) }} · {{ capacityFullLabel(r.capacity) }} ·
-      +{{ creditFor(r.userUid) }}
-      <q-tooltip>
+      </AppTip>
+    </template>
+    <template v-for="r in capacityChips" :key="r.userUid + r.recordedAt">
+      <q-chip
+        dense
+        square
+        :color="getDeckColor(r.capacity)"
+        text-color="white"
+        :icon="capacityResolvedWin ? 'emoji_events' : undefined"
+        :removable="r.userUid === meUid"
+        class="report-chip"
+        :class="{ 'winner-chip': capacityResolvedWin }"
+        @remove="emit('delete-report', r)"
+      >
+        {{ formatReporterName(r.userName) }} · {{ capacityFullLabel(r.capacity) }} ·
+        +{{ creditFor(r.userUid) }}
+      </q-chip>
+      <AppTip>
         <template v-if="capacityResolvedWin">
           This result won a disagreement — most riders reported it this way.
         </template>
         {{ creditFor(r.userUid) }} leaderboard {{ creditFor(r.userUid) === 1 ? 'point' : 'points' }}
-      </q-tooltip>
-    </q-chip>
-    <q-chip
-      v-for="r in crosswalkChips"
-      :key="'cw' + r.userUid + r.recordedAt"
-      dense
-      square
-      :color="r.notYet ? 'blue-grey-7' : 'deep-orange'"
-      text-color="white"
-      :icon="r.notYet ? 'block' : 'directions_walk'"
-      :removable="r.userUid === meUid"
-      class="report-chip"
-      :class="{ 'winner-chip': crosswalkResolvedWin }"
-      @remove="emit('delete-crosswalk', r)"
-    >
-      {{ formatReporterName(r.userName) }} ·
-      {{ r.notYet ? 'not past yet' : 'crosswalk @ ' + timeLabel(r.crosswalkAt) }} ·
-      +{{ cwCreditFor(r.userUid) }}
-      <q-tooltip>
+      </AppTip>
+    </template>
+    <template v-for="r in crosswalkChips" :key="'cw' + r.userUid + r.recordedAt">
+      <q-chip
+        dense
+        square
+        :color="r.notYet ? 'blue-grey-7' : 'deep-orange'"
+        text-color="white"
+        :icon="r.notYet ? 'block' : 'directions_walk'"
+        :removable="r.userUid === meUid"
+        class="report-chip"
+        :class="{ 'winner-chip': crosswalkResolvedWin }"
+        @remove="emit('delete-crosswalk', r)"
+      >
+        {{ formatReporterName(r.userName) }} ·
+        {{ r.notYet ? 'not past yet' : 'crosswalk @ ' + timeLabel(r.crosswalkAt) }} ·
+        +{{ cwCreditFor(r.userUid) }}
+      </q-chip>
+      <AppTip>
         <template v-if="crosswalkResolvedWin">
           This time won a disagreement — most riders marked around it.
         </template>
         {{ cwCreditFor(r.userUid) }} leaderboard
         {{ cwCreditFor(r.userUid) === 1 ? 'point' : 'points' }} · reported
         {{ timeLabel(r.recordedAt) }}
-      </q-tooltip>
-    </q-chip>
+      </AppTip>
+    </template>
     </div>
     <ScoringExplainDialog v-model="showScoring" />
   </div>
 </template>
 
 <script setup>
+import AppTip from 'src/components/AppTip.vue'
 import { ref, computed } from 'vue'
 import { useAuth } from 'src/composables/useAuth'
 import { formatReporterName } from 'src/composables/useLeaderboard'

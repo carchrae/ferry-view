@@ -1,5 +1,5 @@
 import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore'
-import { db, storageBucket } from 'src/boot/firebase'
+import { db, photoBucket } from 'src/boot/firebase'
 import {
   nowInVancouver,
   dayjs,
@@ -16,7 +16,7 @@ export const BOWEN_TERMINAL_CAM_URL =
   'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jpg'
 
 function imageUrl(path) {
-  return `https://storage.googleapis.com/${storageBucket}/${path}`
+  return `https://storage.googleapis.com/${photoBucket}/${path}`
 }
 
 function dayLabel(dateIso, todayIso) {

@@ -4,7 +4,7 @@
   "version": 4,
   "regions": [
     {
-      "name": "left lane",
+      "name": "on the hill",
       "roi": {
         "left": 0.002,
         "top": 0.45,
@@ -15,7 +15,7 @@
       "height": 27
     },
     {
-      "name": "crosswalk",
+      "name": "past crosswalk",
       "roi": {
         "left": 0.578,
         "top": 0.424,

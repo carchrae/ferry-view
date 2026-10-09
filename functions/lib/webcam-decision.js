@@ -1,4 +1,4 @@
-import { timeToDate, dayjs, TZ } from './time.js'
+import { timeToDate, logTimeToDate, dayjs, TZ } from './time.js'
 import { scheduleWindowEnd } from './matching.js'
 
 // Pure decision logic for the Bowen webcam capture pipeline — no Firestore,
@@ -7,16 +7,17 @@ import { scheduleWindowEnd } from './matching.js'
 // to show exactly what the server would decide right now, for verifying
 // sailing/photo attribution without waiting for a real capture).
 
-// Last Bowen departure today: the atberth/AIS log is newest-first. When it
-// has no Bowen departure (stale log, early morning), fall back to the most
-// recent *scheduled* time already in the past — close enough for a 30-min
-// buffer. Returns a dayjs, or null when nothing has departed today
-// (overnight / before the first sailing).
+// Last Bowen departure: the atberth/AIS log is newest-first. When it has no
+// Bowen departure (stale log, early morning), fall back to the most recent
+// *scheduled* time already in the past — close enough for a 30-min buffer.
+// Returns a dayjs — last NIGHT's departure when nothing has left yet today
+// (the log's dateless times resolve to yesterday, see logTimeToDate) — or
+// null when there is nothing at all.
 export function lastBowenDeparture(data, now) {
   const depEntry = (data.recentActivity || []).find(
     (e) => e.action === 'Departed' && e.location === 'Bowen',
   )
-  let lastDep = depEntry ? timeToDate(depEntry.time) : null
+  let lastDep = depEntry ? logTimeToDate(depEntry.time, now) : null
   if (!lastDep) {
     for (const s of data.bowenSchedule || []) {
       const t = timeToDate(s.time)
@@ -47,7 +48,7 @@ export function bowenArrivalForCurrentCycle(data, now) {
     (e) => e.action === 'Arrived' && e.location === 'Bowen',
   )
   if (arr) {
-    const t = timeToDate(arr.time)
+    const t = logTimeToDate(arr.time, now)
     const lastDep = lastBowenDeparture(data, now)
     if (t && (!lastDep || t >= lastDep)) return t
   }
@@ -82,15 +83,18 @@ export function arrivalSignalAvailable(data) {
 //   - departures scheduled at/after 9 pm never capture unconditionally;
 //     their WHOLE cycle is classify-first instead, so a late busy evening
 //     boat still gets frames from first detection until arrival,
-//   - attributed to the next upcoming Bowen departure.
+//   - attributed to the next upcoming Bowen departure,
+//   - the day's FIRST sailing has no previous departure today: its window
+//     opens LINEUP_FIRST_SAILING_LEAD_MIN before its scheduled time instead
+//     (nothing to see, and no probe, earlier in the night), and the overnight
+//     "docked at Bowen" signal doesn't count as this cycle's arrival — the
+//     boat has sat at the dock all night while the lineup builds.
 const LINEUP_WAIT_AFTER_DEP_MIN = 15
 const LINEUP_STOP_AFTER_ARRIVAL_MIN = 10
+const LINEUP_FIRST_SAILING_LEAD_MIN = 60
 
 export function timelapseDecision(data, now) {
   if (now.minute() % 5 !== 0) return { capture: false }
-
-  const lastDep = lastBowenDeparture(data, now)
-  if (!lastDep) return { capture: false }
 
   // The lineup is building for the earliest sailing that hasn't departed yet —
   // NOT `first scheduled time > now`. When a sailing is boarding past its
@@ -109,6 +113,20 @@ export function timelapseDecision(data, now) {
     return t && now.isBefore(scheduleWindowEnd(schedule, i))
   })
   if (!nextDep) return { capture: false }
+
+  // Nothing has departed yet today (the log is empty, or its newest Bowen
+  // departure is last night's): this is the day's first sailing. Before the
+  // fix the night's departure resolved to TODAY's date — hours in the future
+  // — so the wait gate never opened and the 6:15 never got a lineup frame.
+  const lastDep = lastBowenDeparture(data, now)
+  const today = now.format('YYYY-MM-DD')
+  if (!lastDep || lastDep.format('YYYY-MM-DD') !== today) {
+    const t = timeToDate(nextDep.time)
+    if (now.isBefore(t.subtract(LINEUP_FIRST_SAILING_LEAD_MIN, 'minute'))) {
+      return { capture: false }
+    }
+    return { capture: true, sailingTime: nextDep.time }
+  }
 
   // Ferry has been back at the dock for a while: the lineup finished
   // draining onto the boat and the terminal camera has taken over. The first

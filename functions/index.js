@@ -43,7 +43,7 @@ import { functionsActive } from './lib/control.js'
 import { ensureClassifierModelDocs } from './lib/classifier-models.js'
 import { refreshServiceNotices } from './lib/service-notices.js'
 import { isValidLineupReport } from './lib/lineup-labels.js'
-import { nowInVancouver, timeToDate, TZ } from './lib/time.js'
+import { nowInVancouver, TZ, logTimeToDate } from './lib/time.js'
 
 const VAPID_PRIVATE_KEY = defineSecret('VAPID_PRIVATE_KEY')
 const VAPID_PUBLIC_KEY = defineSecret('VAPID_PUBLIC_KEY')
@@ -250,8 +250,11 @@ function captureWebcams(bowenPast, data) {
   )
   if (bowenArrivals.length > 0) {
     const latest = bowenArrivals[0]
-    const latestTime = timeToDate(latest.time)
-    const nextDep = latestTime ? arrivalLineupTarget(data, latestTime, nowInVancouver()) : null
+    const now = nowInVancouver()
+    // Dateless log time: after midnight last night's arrival would otherwise
+    // read as tonight's and be stamped onto the day's first sailing.
+    const latestTime = logTimeToDate(latest.time, now)
+    const nextDep = latestTime ? arrivalLineupTarget(data, latestTime, now) : null
     if (!nextDep) {
       logger.error('No upcoming Bowen departure for community webcam capture')
       return

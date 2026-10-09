@@ -14,13 +14,14 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="d in info.dates" :key="d.dateIso" :class="d.isException ? 'exception-row' : ''">
+        <template v-for="d in info.dates" :key="d.dateIso">
+        <tr :class="d.isException ? 'exception-row' : ''">
           <td class="exception-cell">
             <q-icon v-if="d.isException" name="warning" size="xs" color="amber-8">
-              <q-tooltip>Exception — excluded from averages ({{ d.exceptionReason }})</q-tooltip>
+              <q-tooltip v-if="!inlineTips">Ignored: {{ d.exceptionReason }}</q-tooltip>
             </q-icon>
           </td>
-          <td>{{ d.dateIso }}</td>
+          <td class="text-no-wrap">{{ dateLabel(d.dateIso) }}</td>
           <td>{{ d.actualDep || '—' }}</td>
           <td :class="d.lateness === null ? 'text-grey-5' : d.lateness <= 0 ? 'text-positive' : d.lateness <= 5 ? 'text-warning' : 'text-negative'">
             {{ d.lateness === null ? '—' : (d.lateness >= 0 ? '+' : '') + d.lateness }}
@@ -28,11 +29,22 @@
           <td>
             {{ capacityLabel(d.capacity) }}
             <q-icon v-if="d.capacity && d.capacitySource === 'user'" name="person" size="xs" color="grey-7">
-              <q-tooltip>Reported by a rider</q-tooltip>
+              <q-tooltip v-if="!inlineTips">Reported by a rider</q-tooltip>
             </q-icon>
           </td>
           <td>{{ slotLabel(d) }}</td>
         </tr>
+        <!-- The icons' tooltips, as a note right under the row on phones
+             (no hover there) — the row above already says which date. -->
+        <tr v-if="inlineTips && (d.isException || riderReported(d))" class="note-row">
+          <td></td>
+          <td colspan="5" class="text-grey-7">
+            <span v-if="d.isException">Ignored: {{ d.exceptionReason }}</span>
+            <span v-if="d.isException && riderReported(d)"> · </span>
+            <span v-if="riderReported(d)">Full: reported by a rider</span>
+          </td>
+        </tr>
+        </template>
       </tbody>
     </table>
   </div>
@@ -41,6 +53,8 @@
 <script setup>
 import { computed } from 'vue'
 import { minutesToLabel } from 'src/composables/useHistoricalStats'
+import { dayjs } from '../../functions/lib/time.js'
+import { inlineTips } from 'src/composables/useInlineTips'
 import TypicalHintExplainer from 'src/components/TypicalHintExplainer.vue'
 
 const props = defineProps({
@@ -52,6 +66,12 @@ const props = defineProps({
 })
 
 const isBowen = computed(() => props.panel === 'bowen')
+
+// "Mon Sep 28" — the day of the week is the point of this table (it is
+// grouped by it); the year never is.
+const dateLabel = (iso) => dayjs(iso).format('ddd MMM D')
+
+const riderReported = (d) => Boolean(d.capacity && d.capacitySource === 'user')
 
 // Per-date capacity shown as "% full" (stored value is % available/free).
 function capacityLabel(raw) {
@@ -119,6 +139,12 @@ const detailSummary = computed(() => {
   border-bottom: 1px solid #f0f0f0;
 }
 .exception-cell { width: 18px; text-align: center; padding: 2px 2px; }
+.note-row td {
+  border-top: 0;
+  padding-top: 0;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
 .exception-row td { color: #b0a06a; }
 .exception-row td:nth-child(4) { text-decoration: line-through; }
 </style>

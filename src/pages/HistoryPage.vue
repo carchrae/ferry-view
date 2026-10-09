@@ -145,6 +145,10 @@
                         <div v-if="!rowFacts(info, panel).length" class="text-body2 text-grey-5">
                           ● not enough history
                         </div>
+                        <!-- The warning icon's tooltip, as a line here on phones. -->
+                        <div v-if="inlineTips && info.exceptionCount" class="text-body2 text-amber-9">
+                          ● {{ exceptionTooltip(info) }}
+                        </div>
                       </q-item-section>
                       <q-item-section side>
                         <div class="row items-center no-wrap">
@@ -155,7 +159,7 @@
                             color="amber-8"
                             class="q-mr-xs"
                           >
-                            <q-tooltip>{{ exceptionTooltip(info) }}</q-tooltip>
+                            <q-tooltip v-if="!inlineTips">{{ exceptionTooltip(info) }}</q-tooltip>
                           </q-icon>
                           <q-icon :name="isExpanded(panel, day.key, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
                         </div>
@@ -231,6 +235,10 @@
                       <div v-if="!rowFacts(info, panel).length" class="text-body2 text-grey-5">
                         ● not enough history
                       </div>
+                      <!-- The warning icon's tooltip, as a line here on phones. -->
+                      <div v-if="inlineTips && info.exceptionCount" class="text-body2 text-amber-9">
+                        ● {{ exceptionTooltip(info) }}
+                      </div>
                     </q-item-section>
                     <q-item-section side>
                       <div class="row items-center no-wrap">
@@ -241,7 +249,7 @@
                           color="amber-8"
                           class="q-mr-xs"
                         >
-                          <q-tooltip>{{ exceptionTooltip(info) }}</q-tooltip>
+                          <q-tooltip v-if="!inlineTips">{{ exceptionTooltip(info) }}</q-tooltip>
                         </q-icon>
                         <q-icon :name="isExpanded(panel, selectedDay, time) ? 'expand_less' : 'expand_more'" size="xs" color="grey-5" />
                       </div>
@@ -264,6 +272,7 @@
 </template>
 
 <script setup>
+import { inlineTips } from 'src/composables/useInlineTips'
 import { ref, computed, onMounted, reactive, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { formatTime12h } from '../../functions/lib/time.js'

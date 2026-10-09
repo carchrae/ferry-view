@@ -102,6 +102,63 @@ describe('timelapseDecision', () => {
     expect(timelapseDecision(morning, at('14:00'))).toEqual({ capture: false })
   })
 
+  describe('the first sailing of the day', () => {
+    // Overnight: today's schedule, nothing departed yet. The log may still
+    // carry last night's events (dateless — they used to resolve to TODAY,
+    // hours in the future) or be empty.
+    const DAWN = ['06:15', '07:00', '08:00']
+    const lastNight = () =>
+      data({
+        bowenSchedule: sched(DAWN),
+        recentActivity: [
+          { action: 'Arrived', location: 'Bowen', time: '22:50' },
+          departed('22:31'),
+        ],
+        aisLocation: 'Bowen',
+        aisLocationSince: at('22:50').subtract(1, 'day').valueOf(),
+      })
+
+    it('captures from an hour before it, with last night still in the log', () => {
+      expect(timelapseDecision(lastNight(), at('05:15'))).toEqual({
+        capture: true,
+        sailingTime: '06:15',
+      })
+      expect(timelapseDecision(lastNight(), at('06:10'))).toEqual({
+        capture: true,
+        sailingTime: '06:15',
+      })
+    })
+
+    it('captures from an hour before it, with an empty log', () => {
+      const d = data({ bowenSchedule: sched(DAWN), recentActivity: [] })
+      expect(timelapseDecision(d, at('05:15'))).toEqual({ capture: true, sailingTime: '06:15' })
+    })
+
+    it('does nothing — not even a probe — earlier in the night', () => {
+      expect(timelapseDecision(lastNight(), at('00:05'))).toEqual({ capture: false })
+      expect(timelapseDecision(lastNight(), at('05:10'))).toEqual({ capture: false })
+    })
+
+    it('ignores the overnight "docked at Bowen" signal as this cycle\'s arrival', () => {
+      // AIS has said Bowen since 22:50 last night; that must not read as
+      // "arrived 6+ hours ago, lineup drained" and stop the window.
+      expect(timelapseDecision(lastNight(), at('05:30')).capture).toBe(true)
+    })
+
+    it('goes back to the normal cadence once the first sailing has left', () => {
+      const d = data({
+        bowenSchedule: sched(DAWN, '06:15'),
+        recentActivity: [departed('06:17'), departed('22:31')],
+      })
+      expect(timelapseDecision(d, at('06:25'))).toEqual({
+        capture: false,
+        classifyFirst: true,
+        sailingTime: '07:00',
+      })
+      expect(timelapseDecision(d, at('06:35'))).toEqual({ capture: true, sailingTime: '07:00' })
+    })
+  })
+
   it('does not probe while a stale AIS "docked" signal lingers after departure', () => {
     // AIS still says Bowen (docked since 12:25) but the ferry departed at
     // 12:36 — the arrival stop (checked before the wait gate) wins, so the

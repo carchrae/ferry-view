@@ -179,7 +179,8 @@ const props = defineProps({
   hint: { type: Object, default: null }, // typicalHints() result, upcoming only
   // Past Bowen rows with no fullness and taggable frames: a {text, color}
   // nudge rendered in the hint's slot, tapping it emits 'help' (opens the
-  // tagging dialog) instead of 'typical'. The hint wins when both are set.
+  // sailing dialog, whose help panel leads to tagging) instead of 'typical'.
+  // The hint wins when both are set.
   help: { type: Object, default: null },
   // First row in its column: drops the top gap, since the column header (or
   // section divider) above already provides the separation.

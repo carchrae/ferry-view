@@ -99,18 +99,19 @@
           Lineup building for the {{ formatTime12h(upcomingLineup.sailingTime) }} sailing
         </div>
         <q-space />
-        <q-badge
-          v-if="upcomingLineup.crosswalkFullAt"
-          rounded
-          color="deep-orange"
-          :class="{ 'robot-badge': upcomingLineup.crosswalkSource === 'robot' }"
-          dense
-        >
-          crosswalk {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
-          <q-tooltip>
+        <template v-if="upcomingLineup.crosswalkFullAt">
+          <q-badge
+            rounded
+            color="deep-orange"
+            :class="{ 'robot-badge': upcomingLineup.crosswalkSource === 'robot' }"
+            dense
+          >
+            crosswalk {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
+          </q-badge>
+          <AppTip>
             Lineup reached the crosswalk at {{ crosswalkAtLabel(upcomingLineup.crosswalkFullAt) }}
-          </q-tooltip>
-        </q-badge>
+          </AppTip>
+        </template>
       </q-card-section>
       <q-separator />
       <q-card-section class="q-pa-sm">
@@ -296,6 +297,7 @@
 </template>
 
 <script setup>
+import AppTip from 'src/components/AppTip.vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'

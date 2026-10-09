@@ -17,13 +17,13 @@
 
         <q-toolbar-title class="cursor-pointer" @click="showAttributions = true">
           {{ isStaging ? 'Staging Bowen LIFT' : 'Bowen LIFT' }}
-          <q-badge v-if="productionDataOverride" color="white" text-color="negative" class="q-ml-sm">
-            PROD DATA
-            <q-tooltip>
+          <template v-if="productionDataOverride">
+            <q-badge color="white" text-color="negative" class="q-ml-sm">PROD DATA</q-badge>
+            <AppTip>
               Reading and writing the live production database (pnpm dev:prod) — anything you tag
               here is real.
-            </q-tooltip>
-          </q-badge>
+            </AppTip>
+          </template>
         </q-toolbar-title>
 
         <!-- Desktop nav tabs -->
@@ -180,6 +180,7 @@
 </template>
 
 <script setup>
+import AppTip from 'src/components/AppTip.vue'
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useInstall } from 'src/composables/useInstall'
