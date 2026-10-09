@@ -229,14 +229,10 @@
             on-time
           </template>
         </div>
-        <div
-          v-if="holidayContext.impacted"
-          class="text-center text-caption text-deep-orange q-mb-xs"
-        >
-          <q-icon name="celebration" size="xs" />
-          {{ holidayContext.onHoliday ? holidayContext.name : `${holidayContext.name} weekend` }}
-          — expect heavier traffic than usual
-        </div>
+        <!-- Holiday notice, new BC Ferries notices and today's rider reports
+             on one line (a scrolling feed when longer); tap opens the
+             notices menu. -->
+        <NoticeTicker @sign-in="showSignInDialog = true" />
 
         <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col-12">
@@ -1231,7 +1227,6 @@ import {
 } from 'src/composables/useHistoricalStats'
 import { DEFAULT_HISTORY_WEEKS, minutesToLabel } from 'src/lib/historical-stats.js'
 import { useToday } from 'src/composables/useToday'
-import { getHolidayContext } from '../../functions/lib/holidays.js'
 import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
 import {
   loadBowenSailings,
@@ -1266,6 +1261,7 @@ import {
 import DepartureEstimateExplainer from 'src/components/DepartureEstimateExplainer.vue'
 import { getUpcomingLateColor } from '../../functions/lib/constants.js'
 import ServiceNoticeButton from 'src/components/ServiceNoticeButton.vue'
+import NoticeTicker from 'src/components/NoticeTicker.vue'
 import RideShareButton from 'src/components/RideShareButton.vue'
 import { bcfSafeSrc, isBcferriesUrl } from 'src/lib/bcferries-images.js'
 import { CHAMPION_SLOGANS, RIDE_CHAMPION_SLOGANS } from 'src/lib/champion-slogans.js'
@@ -1448,13 +1444,12 @@ function delayDepartures() {
 
 // Historical "typical" stats, used to hint that an upcoming sailing is normally
 // late or full. Day-of-week specific; holiday-impacted dates are excluded from
-// the baseline (and flagged separately via holidayContext).
+// the baseline (and flagged separately — see NoticeTicker / useHolidayNotice).
 const { byDayOfWeek: historyByDayOfWeek, fetchStats: fetchHistory } = useHistoricalStats()
 
 // Reactive across midnight — see useToday for why the obvious
 // computed(() => nowInVancouver()...) silently isn't.
 const { todayIso, todayDow } = useToday()
-const holidayContext = computed(() => getHolidayContext(todayIso.value))
 
 // The 8-week baseline window is relative to today, and yesterday's sailings
 // only join it once the day rolls over — so refetch rather than re-slicing
