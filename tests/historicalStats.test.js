@@ -317,11 +317,51 @@ describe('minutesToLabel', () => {
 })
 
 describe('predictionCheck', () => {
-  it('lists each call with what was predicted and what happened', () => {
-    const calls = predictionCheck({ info: info({ fullPct: 80 }), lateMins: 6, full: false })
-    assert.deepEqual(calls, [
-      { kind: 'late', predicted: false, actual: true, right: false },
-      { kind: 'full', predicted: true, actual: false, right: false },
-    ])
+  const check = (over, sailing) => predictionCheck({ info: info(over), ...sailing })
+
+  it('scores lateness as right within 5 minutes of what happened', () => {
+    const call = (over, lateMins) => check(over, { lateMins })[0]
+    const onTime = {}
+    const few = { avgLateness: 4, latePct: 65 }
+    const late = { avgLateness: 16, latePct: 65 }
+    assert.deepEqual(call(onTime, 0), { kind: 'late', said: 'on time', right: true, exact: true })
+    assert.equal(call(onTime, -3).right, true) // early counts as on time
+    assert.equal(call(onTime, 5).right, true)
+    assert.equal(call(onTime, 6).right, false)
+    assert.deepEqual(call(few, 0), { kind: 'late', said: '+4m', right: true, exact: false })
+    assert.equal(call(few, 4).exact, true)
+    assert.equal(call(few, 9).right, true)
+    assert.equal(call(few, 15).right, false)
+    assert.deepEqual(call(late, 4), { kind: 'late', said: '+16m', right: false, exact: false })
+    assert.equal(call(late, 12).right, true)
+    assert.equal(call(late, 25).right, false)
+  })
+
+  it('calls full only at "usually full", and scores it against a Full tag', () => {
+    const late0 = { lateMins: 0 }
+    assert.deepEqual(check({ fullPct: 65 }, { ...late0, capacity: 'Full' })[1], {
+      kind: 'full',
+      said: 'full',
+      right: true,
+    })
+    assert.deepEqual(check({ fullPct: 65 }, { ...late0, capacity: '21%' })[1], {
+      kind: 'full',
+      said: 'full',
+      right: false,
+    })
+    // "often full" is odds, not a call.
+    assert.equal(check({ fullPct: 40 }, { ...late0, capacity: 'Full' }).length, 1)
+  })
+
+  it('scores a busy warning against 70% full', () => {
+    const busy = { avgCapacityPct: 25, reportedCount: 0, fullPct: null }
+    assert.deepEqual(check(busy, { capacity: '21%' }), [{ kind: 'full', said: 'busy', right: true }])
+    assert.deepEqual(check(busy, { capacity: '40%' }), [{ kind: 'full', said: 'busy', right: false }])
+  })
+
+  it('scores "rarely full" as room, and skips fullness with no reading', () => {
+    assert.deepEqual(check({}, { capacity: '50%' }), [{ kind: 'full', said: 'room', right: true }])
+    assert.deepEqual(check({}, { crosswalk: true }), [{ kind: 'full', said: 'room', right: false }])
+    assert.deepEqual(check({}, {}), [])
   })
 })

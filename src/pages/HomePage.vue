@@ -2482,17 +2482,14 @@ function predictionInput(s) {
     info: viewDayIsPast.value ? pastDayTypical(s) : sailingTypical(s),
     panel: labelToPanel(s.label),
     lateMins: s._latenessMins ?? null,
-    full: s.lastCapacity ? s.lastCapacity === 'Full' : s.crosswalkFullAt ? true : null,
+    capacity: s.lastCapacity || null,
+    crosswalk: Boolean(s.crosswalkFullAt),
   }
 }
 // The Today dialog's check button (today and past days): each departed
 // sailing gets a line saying what its prediction was and whether it held
-// ("✓ said late · ✗ said room").
+// ("✗ said room" on the left, "✓ said +7m" on the right).
 const showPredictionCheck = ref(false)
-const CALL_WORDS = {
-  late: ['said on time', 'said late'],
-  full: ['said room', 'said full'],
-}
 // How a past day's forecast did overall, for the "forecast in grey" line.
 const pastDayScore = computed(() => {
   if (!viewDayIsPast.value) return null
@@ -2509,12 +2506,15 @@ function predictionHint(s) {
   const input = predictionInput(s)
   if (!input) return null
   const calls = predictionCheck(input)
-  if (!calls.length) return { text: 'no prediction', color: 'grey-6' }
-  const right = calls.filter((c) => c.right).length
-  return {
-    text: calls.map((c) => `${c.right ? '✓' : '✗'} ${CALL_WORDS[c.kind][+c.predicted]}`).join(' · '),
-    color: right === calls.length ? 'positive' : right ? 'orange-8' : 'negative',
+  if (!calls.length) return { full: { text: 'no prediction', color: 'grey-6' }, late: null }
+  const part = (kind) => {
+    const c = calls.find((x) => x.kind === kind)
+    if (!c) return null
+    // A near miss on lateness is still right, but says so instead of "said +7m".
+    const text = c.right && c.exact === false ? '✓ within 5m' : `${c.right ? '✓' : '✗'} said ${c.said}`
+    return { text, color: c.right ? 'positive' : 'negative' }
   }
+  return { full: part('full'), late: part('late') }
 }
 const lastSailing = computed(() => {
   const hsb = recentPastHSB.value

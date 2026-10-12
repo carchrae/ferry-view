@@ -612,28 +612,60 @@ export function typicalHints(info, compact = false, panel = null) {
 // Each departed sailing is scored on the two questions the hints answer — late?
 // full? — wherever the hint made a call AND we know what happened. A miss and a
 // false alarm are both wrong. Fullness is often unknown (nobody tagged the Bowen
-// side), so it is only scored when `full` is true or false, never null.
+// side), so it is only scored when there is a capacity reading or crosswalk mark.
 // ---------------------------------------------------------------------------
 
-const FULL_KINDS = new Set(['full', 'crosswalk', 'busy'])
+// A lateness forecast held if it was within this many minutes of what
+// happened (early counts as 0). +3m vs on time and +7m vs +4m held; +16m vs
+// +4m, +4m vs +15m and +10m vs on time didn't.
+export const CHECK_LATE_MIN = 5
+// "Usually full" (freqWord's 60%) is a call that it fills; "often" and
+// "sometimes" full are odds, not a call, and aren't scored.
+export const CHECK_FULL_PCT = 60
+// A "usually ~X% full" warning held if the sailing left at least this full.
+export const CHECK_BUSY_PCT = 70
 
-// One departed sailing's calls: [{ kind: 'late'|'full', predicted, actual,
-// right }], one per question the hint answered and we know the outcome of.
-// sailing: { info, panel, lateMins, full } — info as for typicalHints,
-// lateMins the actual minutes behind (null if unknown), full true/false/null.
+// How full a capacity reading says the sailing left (percent), or null.
+// Readings are percent AVAILABLE ("21%"), or 'Full' / 'Not Full'.
+function fullPctOf(capacity) {
+  if (capacity === 'Full') return 100
+  const pct = parseInt(capacity)
+  return isNaN(pct) ? null : 100 - pct
+}
+
+// One departed sailing's calls: [{ kind: 'late'|'full', said, right }] (late
+// calls also carry `exact`: right to the minute, not just within 5), one
+// per question the hint made a call on and we know the outcome of. `said` is
+// the call in a word: 'on time' / '+7m', or 'full' / 'busy' / 'room'.
+// sailing: { info, panel, lateMins, capacity, crosswalk } — info as for
+// typicalHints, lateMins the actual minutes behind (null if unknown),
+// capacity the lastCapacity reading (or null), crosswalk whether the lineup
+// reached the crosswalk.
 export function predictionCheck(s) {
-  const late = s.lateMins != null ? s.lateMins >= LATE_MIN_WARN : null
   const facts = typicalFacts(s.info, s.panel)
   const lateFact = facts.find((f) => f.kind === 'late' || f.kind === 'onTime')
   const fullFact = facts.find((f) => f.kind !== 'late' && f.kind !== 'onTime')
   const calls = []
-  if (lateFact && late != null) {
-    const predicted = lateFact.kind === 'late'
-    calls.push({ kind: 'late', predicted, actual: late, right: predicted === late })
+
+  if (lateFact && s.lateMins != null) {
+    const mins = lateFact.kind === 'late' ? Math.round(lateFact.minutes) : 0
+    const off = Math.abs(mins - Math.max(0, s.lateMins))
+    // Exact: the same minute, or "on time" for a sailing that was (isOnTime).
+    const exact = mins ? off === 0 : s.lateMins < 2
+    calls.push({ kind: 'late', said: mins ? `+${mins}m` : 'on time', right: off <= CHECK_LATE_MIN, exact })
   }
-  if (fullFact && s.full != null) {
-    const predicted = FULL_KINDS.has(fullFact.kind)
-    calls.push({ kind: 'full', predicted, actual: s.full, right: predicted === s.full })
+
+  const known = s.capacity != null || s.crosswalk
+  if (fullFact && known) {
+    const filled = s.capacity === 'Full' || Boolean(s.crosswalk)
+    const pct = filled ? 100 : fullPctOf(s.capacity)
+    let call = null
+    if ((fullFact.kind === 'full' && fullFact.pct >= CHECK_FULL_PCT) || fullFact.kind === 'crosswalk')
+      call = { said: 'full', right: filled }
+    else if (fullFact.kind === 'busy' && pct != null)
+      call = { said: 'busy', right: pct >= CHECK_BUSY_PCT }
+    else if (fullFact.kind === 'rarelyFull') call = { said: 'room', right: !filled }
+    if (call) calls.push({ kind: 'full', ...call })
   }
   return calls
 }

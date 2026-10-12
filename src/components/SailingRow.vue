@@ -32,7 +32,7 @@
       </div>
     </div>
     <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
-    <HintLine v-if="check" :hint="check" />
+    <CheckLine v-if="check" :check="check" />
   </div>
 
   <!-- Cards: bordered tile with a fullness-colored left rail; time up top,
@@ -73,7 +73,7 @@
           </span>
           <HintLine v-if="lineHint" :hint="cardHint" inline @click="onHintClick" />
         </div>
-        <HintLine v-if="check" :hint="check" />
+        <CheckLine v-if="check" :check="check" />
       </div>
     </div>
   </div>
@@ -125,7 +125,7 @@
       </div>
     </div>
     <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
-    <HintLine v-if="check" :hint="check" />
+    <CheckLine v-if="check" :check="check" />
   </div>
 
   <!-- Board: departure-board typography — big time, plain colored text
@@ -163,7 +163,7 @@
       </div>
     </div>
     <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
-    <HintLine v-if="check" :hint="check" />
+    <CheckLine v-if="check" :check="check" />
   </div>
 </template>
 
@@ -186,8 +186,9 @@ const props = defineProps({
   // sailing dialog, whose help panel leads to tagging) instead of 'typical'.
   // The hint wins when both are set.
   help: { type: Object, default: null },
-  // Past only: how this sailing's prediction held up ({text, color}, from the
-  // Today dialog's check button), on a line of its own under everything else.
+  // Past only: how this sailing's prediction held up, from the Today dialog's
+  // check button — { full, late }, each {text, color} or null — on a line of
+  // its own under everything else: fullness left, lateness right, as on the card.
   check: { type: Object, default: null },
   // First row in its column: drops the top gap, since the column header (or
   // section divider) above already provides the separation.
@@ -494,6 +495,13 @@ const HintLine = (p, { emit }) =>
     },
     p.hint.text,
   )
+const CheckLine = (p) =>
+  h('div', { class: 'typical-hint text-caption row no-wrap justify-between' }, [
+    h('span', { class: p.check.full && `text-${p.check.full.color}` }, p.check.full?.text),
+    h('span', { class: ['q-ml-xs', p.check.late && `text-${p.check.late.color}`] }, p.check.late?.text),
+  ])
+CheckLine.props = { check: { type: Object, required: true } }
+
 HintLine.props = {
   hint: { type: Object, required: true },
   inline: { type: Boolean, default: false },
