@@ -605,3 +605,35 @@ export function typicalHints(info, compact = false, panel = null) {
 
   return { text, color: severityColor(severity) }
 }
+
+// ---------------------------------------------------------------------------
+// How a day's predictions held up
+//
+// Each departed sailing is scored on the two questions the hints answer — late?
+// full? — wherever the hint made a call AND we know what happened. A miss and a
+// false alarm are both wrong. Fullness is often unknown (nobody tagged the Bowen
+// side), so it is only scored when `full` is true or false, never null.
+// ---------------------------------------------------------------------------
+
+const FULL_KINDS = new Set(['full', 'crosswalk', 'busy'])
+
+// One departed sailing's calls: [{ kind: 'late'|'full', predicted, actual,
+// right }], one per question the hint answered and we know the outcome of.
+// sailing: { info, panel, lateMins, full } — info as for typicalHints,
+// lateMins the actual minutes behind (null if unknown), full true/false/null.
+export function predictionCheck(s) {
+  const late = s.lateMins != null ? s.lateMins >= LATE_MIN_WARN : null
+  const facts = typicalFacts(s.info, s.panel)
+  const lateFact = facts.find((f) => f.kind === 'late' || f.kind === 'onTime')
+  const fullFact = facts.find((f) => f.kind !== 'late' && f.kind !== 'onTime')
+  const calls = []
+  if (lateFact && late != null) {
+    const predicted = lateFact.kind === 'late'
+    calls.push({ kind: 'late', predicted, actual: late, right: predicted === late })
+  }
+  if (fullFact && s.full != null) {
+    const predicted = FULL_KINDS.has(fullFact.kind)
+    calls.push({ kind: 'full', predicted, actual: s.full, right: predicted === s.full })
+  }
+  return calls
+}

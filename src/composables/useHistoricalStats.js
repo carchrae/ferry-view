@@ -17,6 +17,7 @@ export {
   aggregateSailings,
   getTypical,
   typicalHints,
+  predictionCheck,
 } from '../lib/historical-stats.js'
 
 // ---------------------------------------------------------------------------

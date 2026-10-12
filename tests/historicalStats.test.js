@@ -13,6 +13,7 @@ import {
   minutesToLabel,
   freqWord,
   weeksOfData,
+  predictionCheck,
   EXCEPTION_MIN_SAMPLES,
   FULL_PCT_WARN,
   LATE_PCT_WARN,
@@ -312,5 +313,15 @@ describe('minutesToLabel', () => {
     assert.equal(minutesToLabel(839.4), '1:59 pm')
     assert.equal(minutesToLabel(719.7), '12:00 pm')
     assert.equal(minutesToLabel(0), '12:00 am')
+  })
+})
+
+describe('predictionCheck', () => {
+  it('lists each call with what was predicted and what happened', () => {
+    const calls = predictionCheck({ info: info({ fullPct: 80 }), lateMins: 6, full: false })
+    assert.deepEqual(calls, [
+      { kind: 'late', predicted: false, actual: true, right: false },
+      { kind: 'full', predicted: true, actual: false, right: false },
+    ])
   })
 })

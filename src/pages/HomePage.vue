@@ -800,8 +800,24 @@
             >
               <q-icon v-if="viewDayTypeLine.holiday" name="celebration" /> {{ viewDayTypeLine.text }}
             </div>
-            <div v-if="viewDayIsPast" class="text-center text-caption text-grey-6 q-mb-xs">
-              forecast in grey
+            <div
+              v-if="viewDayIsPast"
+              class="relative-position text-center text-caption text-grey-6 q-mb-xs"
+            >
+              forecast in grey<template v-if="pastDayScore">
+                · {{ pastDayScore.right }} of {{ pastDayScore.calls }} calls right</template
+              >
+              <q-btn
+                flat
+                round
+                dense
+                size="sm"
+                icon="fact_check"
+                :color="showPredictionCheck ? 'primary' : 'grey-6'"
+                :aria-label="showPredictionCheck ? 'Hide prediction checks' : 'Check the predictions'"
+                class="absolute-right"
+                @click="showPredictionCheck = !showPredictionCheck"
+              />
             </div>
             <div class="sailing-grid">
               <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
@@ -819,6 +835,7 @@
                       kind="past"
                       :design="sailingDesign"
                       :hint="pastForecastHint(row.l)"
+                      :check="predictionHint(row.l)"
                       @open="openHistory(row.l.time, row.l.label)"
                     />
                   </div>
@@ -829,6 +846,7 @@
                       kind="past"
                       :design="sailingDesign"
                       :hint="pastForecastHint(row.r)"
+                      :check="predictionHint(row.r)"
                       @open="openHistory(row.r.time, row.r.label)"
                     />
                   </div>
@@ -862,7 +880,7 @@
         <q-card-section v-else class="q-pa-sm" style="overflow-y: auto">
           <div
             v-if="lastSailing && !lastSailing.skipped"
-            class="text-center text-caption text-grey-7 q-mb-xs dream-fade dream-collapse"
+            class="relative-position text-center text-caption text-grey-7 q-mb-xs dream-fade dream-collapse"
           >
             <template v-if="lastSailing.diffText && lastSailing.diffText !== '✓'">
               last sailing
@@ -874,6 +892,17 @@
               <q-badge rounded color="positive" class="badge-gap" dense> ✓ </q-badge>
               on-time
             </template>
+            <q-btn
+              flat
+              round
+              dense
+              size="sm"
+              icon="fact_check"
+              :color="showPredictionCheck ? 'primary' : 'grey-6'"
+              :aria-label="showPredictionCheck ? 'Hide prediction checks' : 'Check today\'s predictions'"
+              class="absolute-right"
+              @click="showPredictionCheck = !showPredictionCheck"
+            />
           </div>
           <!-- Rows, not two independent stacks, so a card and the one beside
                it are the same row and read left-to-right in time order (see
@@ -892,6 +921,7 @@
                   :sailing="row.l"
                   kind="past"
                   :design="sailingDesign"
+                  :check="predictionHint(row.l)"
                   :help="helpHint(row.l)"
                   @open="openHistory(row.l.scheduledTime, row.l.label, row.l)"
                   @help="openHistory(row.l.scheduledTime, row.l.label)"
@@ -909,6 +939,7 @@
                   :sailing="row.r"
                   kind="past"
                   :design="sailingDesign"
+                  :check="predictionHint(row.r)"
                   :help="helpHint(row.r)"
                   @open="openHistory(row.r.scheduledTime, row.r.label, row.r)"
                   @help="openHistory(row.r.scheduledTime, row.r.label)"
@@ -1363,6 +1394,7 @@ import {
   useHistoricalStats,
   getTypical,
   typicalHints,
+  predictionCheck,
   labelToPanel,
   loadHolidayRecords,
   holidayRecords,
@@ -2441,6 +2473,49 @@ function helpHint(s) {
 // Tapping the nudge opens the sailing dialog; this is the same test for the
 // sailing on show there, so its help panel is up before the frames load.
 const dialogHelp = computed(() => !viewDay.value && Boolean(helpHint(selectedTypical.value?.entry)))
+// A departed sailing as predictionCheck takes it, or null when it has no
+// outcome to judge (skipped, or no known departure time). Judged against
+// the forecast shown for its day: today's live one, or a past day's.
+function predictionInput(s) {
+  if (!s || s.skipped || s.unknownDeparture || s.diffText == null) return null
+  return {
+    info: viewDayIsPast.value ? pastDayTypical(s) : sailingTypical(s),
+    panel: labelToPanel(s.label),
+    lateMins: s._latenessMins ?? null,
+    full: s.lastCapacity ? s.lastCapacity === 'Full' : s.crosswalkFullAt ? true : null,
+  }
+}
+// The Today dialog's check button (today and past days): each departed
+// sailing gets a line saying what its prediction was and whether it held
+// ("✓ said late · ✗ said room").
+const showPredictionCheck = ref(false)
+const CALL_WORDS = {
+  late: ['said on time', 'said late'],
+  full: ['said room', 'said full'],
+}
+// How a past day's forecast did overall, for the "forecast in grey" line.
+const pastDayScore = computed(() => {
+  if (!viewDayIsPast.value) return null
+  const calls = pastDayPairs.value
+    .flatMap((row) => [row.l, row.r])
+    .map(predictionInput)
+    .filter(Boolean)
+    .flatMap(predictionCheck)
+  if (!calls.length) return null
+  return { right: calls.filter((c) => c.right).length, calls: calls.length }
+})
+function predictionHint(s) {
+  if (!showPredictionCheck.value) return null
+  const input = predictionInput(s)
+  if (!input) return null
+  const calls = predictionCheck(input)
+  if (!calls.length) return { text: 'no prediction', color: 'grey-6' }
+  const right = calls.filter((c) => c.right).length
+  return {
+    text: calls.map((c) => `${c.right ? '✓' : '✗'} ${CALL_WORDS[c.kind][+c.predicted]}`).join(' · '),
+    color: right === calls.length ? 'positive' : right ? 'orange-8' : 'negative',
+  }
+}
 const lastSailing = computed(() => {
   const hsb = recentPastHSB.value
   const bowen = recentPastBowen.value
@@ -2809,6 +2884,7 @@ const pastDayPairs = computed(() => {
       sortTime: timeToDate(time),
       dangerousCargo,
       ...formatLateness(late),
+      _latenessMins: late,
       _depDisplay: dep,
       skipped: !dep,
       lastCapacity: r?.lastCapacity ?? null,
@@ -2832,13 +2908,16 @@ const pastDayBaseline = computed(() => {
     historyDocs.value.filter((r) => r.dateIso !== viewDay.value && !excluded.has(r.dateIso)),
   )
 })
+function pastDayTypical(s) {
+  const panel = labelToPanel(s.label)
+  return pastDayBaseline.value
+    ? getTypical(pastDayBaseline.value, panel, dayjs(viewDay.value).format('dddd'), s.time)
+    : typicalForDate(viewDay.value, panel, s.time)
+}
 function pastForecastHint(s) {
   if (s.cancelled) return null
   const panel = labelToPanel(s.label)
-  const info = pastDayBaseline.value
-    ? getTypical(pastDayBaseline.value, panel, dayjs(viewDay.value).format('dddd'), s.time)
-    : typicalForDate(viewDay.value, panel, s.time)
-  const h = typicalHints(info, $q.screen.xs, panel)
+  const h = typicalHints(pastDayTypical(s), $q.screen.xs, panel)
   // Phones drop the "forecast:" prefix to keep room for the forecast itself.
   return h ? { text: $q.screen.xs ? h.text : `forecast: ${h.text}`, color: 'grey-7' } : null
 }

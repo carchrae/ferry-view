@@ -32,6 +32,7 @@
       </div>
     </div>
     <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
+    <HintLine v-if="check" :hint="check" />
   </div>
 
   <!-- Cards: bordered tile with a fullness-colored left rail; time up top,
@@ -72,6 +73,7 @@
           </span>
           <HintLine v-if="lineHint" :hint="cardHint" inline @click="onHintClick" />
         </div>
+        <HintLine v-if="check" :hint="check" />
       </div>
     </div>
   </div>
@@ -123,6 +125,7 @@
       </div>
     </div>
     <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
+    <HintLine v-if="check" :hint="check" />
   </div>
 
   <!-- Board: departure-board typography — big time, plain colored text
@@ -160,6 +163,7 @@
       </div>
     </div>
     <HintLine v-if="lineHint" :hint="lineHint" @click="onHintClick" />
+    <HintLine v-if="check" :hint="check" />
   </div>
 </template>
 
@@ -182,6 +186,9 @@ const props = defineProps({
   // sailing dialog, whose help panel leads to tagging) instead of 'typical'.
   // The hint wins when both are set.
   help: { type: Object, default: null },
+  // Past only: how this sailing's prediction held up ({text, color}, from the
+  // Today dialog's check button), on a line of its own under everything else.
+  check: { type: Object, default: null },
   // First row in its column: drops the top gap, since the column header (or
   // section divider) above already provides the separation.
   first: { type: Boolean, default: false },
