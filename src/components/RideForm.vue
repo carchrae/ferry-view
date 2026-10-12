@@ -71,11 +71,24 @@
             />
             <q-btn
               v-bind="choiceProps(form.recurring === true)"
-              label="Recurring"
+              label="Repeating"
               @click="form.recurring = true"
             />
           </div>
           <div v-if="showMissing('recurring')" class="form-error-msg">Please choose one</div>
+
+          <div class="form-q">Details</div>
+          <q-input
+            v-model="form.description"
+            v-bind="fieldProps"
+            type="textarea"
+            autogrow
+            rows="1"
+            :error="showMissing('description')"
+            error-message="Please add some details"
+            placeholder="Where are you headed?"
+            class="q-mb-md"
+          />
 
           <div v-if="form.recurring !== null" class="form-q">When?</div>
           <template v-if="form.recurring === true">
@@ -148,19 +161,6 @@
             class="q-mb-md"
           />
 
-          <div class="form-q">Details</div>
-          <q-input
-            v-model="form.description"
-            v-bind="fieldProps"
-            type="textarea"
-            autogrow
-            rows="1"
-            :error="showMissing('description')"
-            error-message="Please add some details"
-            placeholder="Where are you headed?"
-            class="q-mb-md"
-          />
-
           <div class="form-q">How should people contact you?</div>
           <div
             class="row q-gutter-sm"
@@ -190,7 +190,7 @@
             v-bind="fieldProps"
             :error="showMissing('contactInfo')"
             error-message="Please add how to reach you"
-            placeholder="e.g. @username, Signal, etc."
+            placeholder="e.g. Blue Subaru, or red jacket on upper deck"
             class="q-mb-md"
           />
 

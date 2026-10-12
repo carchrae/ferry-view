@@ -74,7 +74,7 @@ const kindText = computed(
 // shown as typed.
 const whenText = computed(() => {
   const r = props.ride
-  if (r.recurring) return { time: r.schedule || 'Recurring', date: '' }
+  if (r.recurring) return { time: r.schedule || 'Repeating', date: '' }
   const time = r.sailing ? (timeToDate(r.sailing) ? formatTime12h(r.sailing) : r.sailing) : ''
   return { time, date: r.date ? formatDate(r.date) : '' }
 })
