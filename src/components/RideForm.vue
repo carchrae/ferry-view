@@ -48,7 +48,7 @@
         </div>
 
         <template v-if="form.type">
-          <div class="form-q">Where will you be?</div>
+          <div class="form-q">{{ form.type === 'offer' ? 'Where are you offering the ride?' : 'Where do you need the ride?' }}</div>
           <div class="row q-gutter-sm q-mb-md">
             <q-btn
               v-for="o in DIRECTION_OPTIONS"
