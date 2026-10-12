@@ -21,6 +21,7 @@ if (!OUT_DIR) {
   console.error('  e.g. node backup-db.js --path backup/bowen-ferry           # last 30 days (default)')
   console.error('       node backup-db.js --path backup/bowen-ferry --days 14')
   console.error('       node backup-db.js --path backup/bowen-ferry --full    # everything')
+  console.error('       node backup-db.js --path backup/bowen-ferry --since <epochMs>  # what changed since then')
   process.exit(1)
 }
 
@@ -33,6 +34,18 @@ const daysFlag = process.argv.indexOf('--days')
 const WINDOW_DAYS = daysFlag !== -1 ? Number(process.argv[daysFlag + 1]) : DEFAULT_WINDOW_DAYS
 if (!FULL && (!Number.isFinite(WINDOW_DAYS) || WINDOW_DAYS <= 0)) {
   console.error(`--days must be a positive number, got: ${process.argv[daysFlag + 1]}`)
+  process.exit(1)
+}
+
+// --since <epochMs>: only what's new since an earlier copy (the staging
+// refresh passes the time its last copy started). Goes back SINCE_OVERLAP_DAYS
+// further, because a day's sailingStatus docs keep changing for a day or two
+// afterwards (late departures, tags, crosswalk labels). --days / --full win.
+const SINCE_OVERLAP_DAYS = 2
+const sinceFlag = process.argv.indexOf('--since')
+const SINCE_MS = sinceFlag !== -1 && daysFlag === -1 ? Number(process.argv[sinceFlag + 1]) : null
+if (SINCE_MS != null && !(SINCE_MS > 0)) {
+  console.error(`--since must be epoch milliseconds, got: ${process.argv[sinceFlag + 1]}`)
   process.exit(1)
 }
 
@@ -53,7 +66,8 @@ function serializeData(data) {
 // The cutoff expressed for one collection's date-field type (see
 // COLLECTION_WINDOW_FIELDS), or null for a full scan.
 function windowCutoff(type) {
-  const ms = Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000
+  const day = 24 * 60 * 60 * 1000
+  const ms = SINCE_MS != null ? SINCE_MS - SINCE_OVERLAP_DAYS * day : Date.now() - WINDOW_DAYS * day
   if (type === 'dateIso') return new Date(ms).toISOString().slice(0, 10)
   if (type === 'timestamp') return Timestamp.fromMillis(ms)
   return ms // epochMs
@@ -71,7 +85,11 @@ async function backupCollection(name) {
 
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true })
-  const mode = FULL ? 'full' : `last ${WINDOW_DAYS} days of dated collections`
+  const mode = FULL
+    ? 'full'
+    : SINCE_MS != null
+      ? `dated collections since ${new Date(SINCE_MS - SINCE_OVERLAP_DAYS * 86400000).toISOString().slice(0, 10)}`
+      : `last ${WINDOW_DAYS} days of dated collections`
   console.log(`Backing up project: ${projectId} → ${OUT_DIR}/ (${mode})`)
   let total = 0
   for (const name of BACKUP_COLLECTIONS) {
