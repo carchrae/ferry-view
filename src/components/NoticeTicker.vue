@@ -1,6 +1,6 @@
 <template>
   <!-- The home page's notice line. Always the holiday notice when there is
-       one; alongside it, BC Ferries notices this device hasn't opened yet and
+       one, and the sailings BC Ferries' schedule skips today; alongside them, BC Ferries notices this device hasn't opened yet and
        riders' reports from today. Fits on one line when it can; longer than
        that it becomes a newsroom feed, scrolling left. Tapping it opens the
        notices menu, same as the megaphone button. -->
@@ -38,17 +38,48 @@ import { useServiceNotices } from 'src/composables/useServiceNotices'
 import { useUserReports } from 'src/composables/useUserReports'
 import { useHolidayNotice } from 'src/composables/useHolidayNotice'
 import ServiceNoticeMenu from 'src/components/ServiceNoticeMenu.vue'
+import { formatTime12h, dayjs } from '../../functions/lib/time.js'
 
+const props = defineProps({
+  // Sailings BC Ferries' schedule skips today and tomorrow (ferryStatus
+  // scheduleCancellations: [{dateIso, location, time, note}]). Today's are
+  // already dropped from the schedule server-side, so this line is the only
+  // place they show; tomorrow's give a day's warning.
+  cancellations: { type: Array, default: () => [] },
+})
 const emit = defineEmits(['sign-in'])
 
 const { notices, isNew } = useServiceNotices()
 const { reportDays } = useUserReports()
 const { todayIso, holidayText } = useHolidayNotice()
 
+// One line per day: "Not running today: 5:15am from Bowen", or for
+// tomorrow "Not running tomorrow (Tue Oct 13): ...". A stale entry for a
+// day already past is ignored.
+const cancelledLines = computed(() => {
+  const byDay = new Map()
+  for (const c of props.cancellations || []) {
+    if (!c.dateIso || c.dateIso < todayIso.value) continue
+    if (!byDay.has(c.dateIso)) byDay.set(c.dateIso, [])
+    byDay.get(c.dateIso).push(c)
+  }
+  return [...byDay.keys()].sort().map((dateIso) => {
+    const when =
+      dateIso === todayIso.value ? 'today' : `tomorrow (${dayjs(dateIso).format('ddd MMM D')})`
+    const items = byDay
+      .get(dateIso)
+      .sort((a, b) => a.time.localeCompare(b.time))
+      .map((c) => `${formatTime12h(c.time)} from ${c.location}`)
+    return { dateIso, text: `Not running ${when} (BC Ferries schedule): ${items.join(', ')}` }
+  })
+})
+
 const segments = computed(() => {
   const out = []
   if (holidayText.value)
     out.push({ key: 'holiday', icon: 'celebration', cls: 'seg-holiday', text: holidayText.value })
+  for (const c of cancelledLines.value)
+    out.push({ key: `cancelled-${c.dateIso}`, icon: 'event_busy', cls: 'seg-cancelled', text: c.text })
   for (const n of notices.value)
     if (isNew(n)) out.push({ key: `n${n.code}`, icon: 'campaign', cls: 'seg-notice', text: n.title })
   const today = reportDays.value.find((g) => g.day === todayIso.value)
@@ -115,6 +146,9 @@ watch(box, (el) => {
 /* One colour per kind of message. */
 .seg-holiday {
   color: #e64a19; /* deep-orange-7 */
+}
+.seg-cancelled {
+  color: #c62828; /* red-8 */
 }
 .seg-notice {
   color: #1565c0; /* blue-8 */

@@ -42,6 +42,11 @@ import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings
 import { functionsActive } from './lib/control.js'
 import { ensureClassifierModelDocs } from './lib/classifier-models.js'
 import { refreshServiceNotices } from './lib/service-notices.js'
+import {
+  refreshSeasonalSchedule,
+  loadSeasonalSchedule,
+  applySeasonalSchedule,
+} from './lib/seasonal-schedule.js'
 import { isValidLineupReport } from './lib/lineup-labels.js'
 import { nowInVancouver, TZ, logTimeToDate } from './lib/time.js'
 
@@ -63,6 +68,17 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   if (!data) return null
 
   const now = nowInVancouver()
+
+  // BC Ferries' seasonal schedule (scraped nightly) is the source of truth
+  // for which sailings run today: bowenferry.ca lists the regular weekday
+  // schedule even when BC Ferries skips a sailing (e.g. the 5:15 am from
+  // Bowen on holiday Mondays). Swapped in before anything matches against the
+  // schedule; skipped sailings go on scheduleCancellations for the client.
+  try {
+    applySeasonalSchedule(data, await loadSeasonalSchedule(db, data.dateIso))
+  } catch (e) {
+    logger.error('Seasonal schedule load failed — keeping bowenferry.ca schedule:', e.message || e)
+  }
 
   // Detect a stalled departure log up front and record it on the doc, so the frontend
   // can switch to fallback display (unknown-time '?' for unrecoverable sailings) and
@@ -652,6 +668,25 @@ export const pollServiceNotices = onSchedule(
       await refreshServiceNotices(db)
     } catch (e) {
       logger.error('Service notice poll failed:', e.message || e)
+    }
+  },
+)
+
+// BC Ferries' seasonal schedule → the next two weeks of per-date sailings
+// (holiday "Except ..." notes applied) in snapshots/seasonalSchedule, which
+// the poll uses in place of bowenferry.ca's schedule. A failed night is
+// covered by the previous runs' lookahead.
+export const refreshSeasonalScheduleDaily = onSchedule(
+  {
+    schedule: 'every day 00:05',
+    timeZone: TZ,
+  },
+  async () => {
+    if (!(await functionsActive())) return
+    try {
+      await refreshSeasonalSchedule(db, nowInVancouver().format('YYYY-MM-DD'))
+    } catch (e) {
+      logger.error('Seasonal schedule refresh failed:', e.message || e)
     }
   },
 )

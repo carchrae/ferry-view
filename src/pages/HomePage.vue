@@ -229,10 +229,13 @@
             on-time
           </template>
         </div>
-        <!-- Holiday notice, new BC Ferries notices and today's rider reports
-             on one line (a scrolling feed when longer); tap opens the
-             notices menu. -->
-        <NoticeTicker @sign-in="showSignInDialog = true" />
+        <!-- Holiday notice, sailings the schedule skips today, new BC
+             Ferries notices and today's rider reports on one line (a
+             scrolling feed when longer); tap opens the notices menu. -->
+        <NoticeTicker
+          :cancellations="ferryData?.scheduleCancellations"
+          @sign-in="showSignInDialog = true"
+        />
 
         <div class="row q-mb-sm q-col-gutter-sm">
           <div class="col-12">
