@@ -93,11 +93,6 @@
           @click="openFullnessVerify"
         >
         </q-btn>
-        <AppTip>
-          {{ fullProb != null
-            ? `The robot is ${Math.round(fullProb * 100)}% sure cars were still waiting at departure. `
-            : '' }}See the frames the robot judged — agree or disagree
-        </AppTip>
       </template>
       <template v-else-if="fullText">
         <q-chip
@@ -133,10 +128,6 @@
           @click="openFullnessVerify"
         >
         </q-btn>
-        <AppTip>
-          The robot couldn't tell whether this ferry left full — step through the
-          terminal frames and teach it
-        </AppTip>
       </template>
       <!-- Certainty: computed on demand (loads this sailing's frames only),
            then the same slot becomes a details button. -->
@@ -152,7 +143,6 @@
           @click="requestCertainty"
         >
         </q-btn>
-        <AppTip>How sure is the robot? Checks this sailing's frames</AppTip>
       </template>
       <template v-else-if="showDetailsBtn">
         <q-btn
@@ -166,7 +156,6 @@
           @click="emit('show-details')"
         >
         </q-btn>
-        <AppTip>Every frame the robot judged, with its score</AppTip>
       </template>
       </div>
     </div>

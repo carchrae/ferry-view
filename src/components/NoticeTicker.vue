@@ -38,7 +38,7 @@ import { useServiceNotices } from 'src/composables/useServiceNotices'
 import { useUserReports } from 'src/composables/useUserReports'
 import { useHolidayNotice } from 'src/composables/useHolidayNotice'
 import ServiceNoticeMenu from 'src/components/ServiceNoticeMenu.vue'
-import { formatTime12h, dayjs } from '../../functions/lib/time.js'
+import { formatTime12h, timeToDate } from '../../functions/lib/time.js'
 
 const props = defineProps({
   // Sailings BC Ferries' schedule skips today and tomorrow (ferryStatus
@@ -53,24 +53,42 @@ const { notices, isNew } = useServiceNotices()
 const { reportDays } = useUserReports()
 const { todayIso, holidayText } = useHolidayNotice()
 
-// One line per day: "Not running today: 5:15am from Bowen", or for
-// tomorrow "Not running tomorrow (Tue Oct 13): ...". A stale entry for a
-// day already past is ignored.
+// Today's skipped sailing stops being news a while after its time: by then
+// nobody is planning around it.
+const SHOW_AFTER_SKIPPED_MS = 2 * 60 * 60 * 1000
+const nowMs = ref(Date.now())
+let clock = null
+onMounted(() => {
+  clock = setInterval(() => (nowMs.value = Date.now()), 60 * 1000)
+})
+onBeforeUnmount(() => clearInterval(clock))
+function stillNews(c) {
+  if (c.dateIso !== todayIso.value) return true
+  const at = timeToDate(c.time)
+  return !at || nowMs.value < at.valueOf() + SHOW_AFTER_SKIPPED_MS
+}
+
+// "No 5:15am sailing from Bowen today" / "... tomorrow" — one line per day
+// and terminal. A stale entry for a day already past is ignored, and today's
+// drop out two hours after their time.
 const cancelledLines = computed(() => {
-  const byDay = new Map()
+  const groups = new Map()
   for (const c of props.cancellations || []) {
-    if (!c.dateIso || c.dateIso < todayIso.value) continue
-    if (!byDay.has(c.dateIso)) byDay.set(c.dateIso, [])
-    byDay.get(c.dateIso).push(c)
+    if (!c.dateIso || c.dateIso < todayIso.value || !stillNews(c)) continue
+    const key = `${c.dateIso}|${c.location}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(c)
   }
-  return [...byDay.keys()].sort().map((dateIso) => {
-    const when =
-      dateIso === todayIso.value ? 'today' : `tomorrow (${dayjs(dateIso).format('ddd MMM D')})`
-    const items = byDay
-      .get(dateIso)
-      .sort((a, b) => a.time.localeCompare(b.time))
-      .map((c) => `${formatTime12h(c.time)} from ${c.location}`)
-    return { dateIso, text: `Not running ${when} (BC Ferries schedule): ${items.join(', ')}` }
+  return [...groups.keys()].sort().map((key) => {
+    const [dateIso, location] = key.split('|')
+    const times = groups
+      .get(key)
+      .map((c) => c.time)
+      .sort()
+      .map(formatTime12h)
+    const when = dateIso === todayIso.value ? 'today' : 'tomorrow'
+    const what = times.length > 1 ? 'sailings' : 'sailing'
+    return { key, text: `No ${times.join(', ')} ${what} from ${location} ${when}` }
   })
 })
 
@@ -79,7 +97,7 @@ const segments = computed(() => {
   if (holidayText.value)
     out.push({ key: 'holiday', icon: 'celebration', cls: 'seg-holiday', text: holidayText.value })
   for (const c of cancelledLines.value)
-    out.push({ key: `cancelled-${c.dateIso}`, icon: 'event_busy', cls: 'seg-cancelled', text: c.text })
+    out.push({ key: `cancelled-${c.key}`, icon: 'event_busy', cls: 'seg-cancelled', text: c.text })
   for (const n of notices.value)
     if (isNew(n)) out.push({ key: `n${n.code}`, icon: 'campaign', cls: 'seg-notice', text: n.title })
   const today = reportDays.value.find((g) => g.day === todayIso.value)

@@ -283,7 +283,7 @@
                   </template>
                 </div>
                 <div class="section-divider text-caption text-grey-7 q-my-xs">
-                  upcoming forecast
+                  {{ todayType.type === 'ordinary' ? 'upcoming' : 'holiday' }} forecast
                 </div>
                 <div class="sailing-grid sailing-grid--even">
                   <template v-for="(row, i) in homeUpcomingPairs" :key="'u' + i">
@@ -701,37 +701,165 @@
     <!-- no-route-dismiss: toggling dreamer mode changes the route (/today ↔
          /today/dream), which would otherwise dismiss the dialog. Back still
          closes it, because the model reads the route. -->
-    <q-dialog v-model="showFullDialog" no-route-dismiss>
+    <q-dialog v-model="showFullDialog" position="top" no-route-dismiss>
       <q-card
         class="today-dialog"
         :class="{ dreaming }"
-        :style="{
-          minWidth: $q.screen.gt.xs ? '600px' : '95vw',
-          maxWidth: '95vw',
-          maxHeight: '90vh',
-        }"
+        :style="
+          $q.screen.gt.xs
+            ? { minWidth: '600px', maxWidth: '95vw', maxHeight: '90vh' }
+            : { width: '100vw', maxWidth: '100vw', maxHeight: '100dvh' }
+        "
       >
-        <!-- Two same-size round buttons either side keep the title centred. -->
-        <q-card-section class="row items-center no-wrap q-pb-none">
-          <!-- Dreamer mode: the lateness and fullness fade away and only the
-               timetable is left — the day as the schedule dreams it. -->
-          <q-btn
-            flat
-            dense
-            round
-            icon="looks"
-            class="dreamer-btn"
-            :class="{ 'dreamer-btn--on': dreaming }"
-            :aria-pressed="dreaming"
-            :aria-label="dreaming ? 'Show lateness and fullness' : 'Just the schedule'"
-            @click="dreaming = !dreaming"
-          >
-          </q-btn>
-          <AppTip>{{ dreaming ? 'Back to reality' : 'Just the schedule' }}</AppTip>
-          <div class="col text-h6 text-center ellipsis">Today's Sailings</div>
-          <q-btn flat dense round icon="close" aria-label="Close" @click="showFullDialog = false" />
+        <q-card-section class="today-dialog-header q-pb-none q-px-sm">
+          <div class="row items-center no-wrap">
+            <!-- Dreamer mode: the lateness and fullness fade away and only the
+                 timetable is left — the day as the schedule dreams it. -->
+            <q-btn
+              flat
+              dense
+              round
+              icon="looks"
+              class="dreamer-btn"
+              :class="{ 'dreamer-btn--on': dreaming }"
+              :aria-pressed="dreaming"
+              :aria-label="dreaming ? 'Show lateness and fullness' : 'Just the schedule'"
+              @click="dreaming = !dreaming"
+            >
+            </q-btn>
+            <q-btn flat dense round icon="event" aria-label="Show another day">
+              <q-popup-proxy
+                ref="dayPicker"
+                cover
+                transition-show="scale"
+                transition-hide="scale"
+                @before-show="loadSeasonal"
+              >
+                <q-date
+                  :model-value="viewDay || todayIso"
+                  mask="YYYY-MM-DD"
+                  minimal
+                  @update:model-value="pickDay"
+                />
+              </q-popup-proxy>
+            </q-btn>
+          </div>
+          <div class="row items-center no-wrap">
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="chevron_left"
+              aria-label="Previous day"
+              @click="stepDay(-1)"
+            />
+            <div class="text-h6 text-center ellipsis today-dialog-title">{{ fullDialogTitle }}</div>
+            <q-btn
+              flat
+              dense
+              round
+              size="sm"
+              icon="chevron_right"
+              aria-label="Next day"
+              @click="stepDay(1)"
+            />
+          </div>
+          <div class="row items-center no-wrap justify-end">
+            <q-btn flat dense round icon="close" aria-label="Close" @click="showFullDialog = false" />
+          </div>
         </q-card-section>
-        <q-card-section class="q-pa-sm" style="overflow-y: auto">
+        <q-card-section v-if="viewDay" class="q-pa-sm" style="overflow-y: auto">
+          <div
+            v-if="viewDaySchedule === undefined || (viewDayIsPast && dayRecords === undefined)"
+            class="text-center q-pa-md"
+          >
+            <q-spinner color="primary" size="md" />
+          </div>
+          <div
+            v-else-if="viewDayIsPast && !pastDayPairs.length"
+            class="text-center text-body2 text-grey-7 q-pa-md"
+          >
+            No sailings were recorded for {{ viewDayLong }}.
+          </div>
+          <div
+            v-else-if="!viewDayIsPast && viewDaySchedule === null"
+            class="text-center text-body2 text-grey-7 q-pa-md"
+          >
+            <div>No BC Ferries schedule for {{ viewDayLong }}.</div>
+            <div v-if="seasonalRangeText" class="q-mt-xs">
+              Schedules are available for {{ seasonalRangeText }}.
+            </div>
+            <div v-else class="q-mt-xs">BC Ferries' schedule isn't available right now.</div>
+          </div>
+          <template v-else>
+            <div
+              v-if="viewDayTypeLine"
+              class="text-center text-caption q-mb-xs"
+              :class="viewDayTypeLine.holiday ? 'text-deep-orange-8 text-weight-medium' : 'text-grey-7'"
+            >
+              <q-icon v-if="viewDayTypeLine.holiday" name="celebration" /> {{ viewDayTypeLine.text }}
+            </div>
+            <div v-if="viewDayIsPast" class="text-center text-caption text-grey-6 q-mb-xs">
+              forecast in grey
+            </div>
+            <div class="sailing-grid">
+              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
+                to Horseshoe Bay
+              </div>
+              <div class="text-center text-caption text-weight-bold text-grey-6 q-mb-xs">
+                to Bowen
+              </div>
+              <template v-if="viewDayIsPast">
+                <template v-for="(row, i) in pastDayPairs" :key="'pd' + i">
+                  <div>
+                    <SailingRow
+                      v-if="row.l"
+                      :sailing="row.l"
+                      kind="past"
+                      :design="sailingDesign"
+                      :hint="pastForecastHint(row.l)"
+                      @open="openHistory(row.l.time, row.l.label)"
+                    />
+                  </div>
+                  <div>
+                    <SailingRow
+                      v-if="row.r"
+                      :sailing="row.r"
+                      kind="past"
+                      :design="sailingDesign"
+                      :hint="pastForecastHint(row.r)"
+                      @open="openHistory(row.r.time, row.r.label)"
+                    />
+                  </div>
+                </template>
+              </template>
+              <template v-for="(row, i) in viewDayIsPast ? [] : viewDayPairs" :key="'d' + i">
+                <div>
+                  <SailingRow
+                    v-if="row.l"
+                    :sailing="row.l"
+                    kind="upcoming"
+                    :design="sailingDesign"
+                    :hint="viewDayHints(row.l)"
+                    @open="openHistory(row.l.shortTime, row.l.label)"
+                  />
+                </div>
+                <div>
+                  <SailingRow
+                    v-if="row.r"
+                    :sailing="row.r"
+                    kind="upcoming"
+                    :design="sailingDesign"
+                    :hint="viewDayHints(row.r)"
+                    @open="openHistory(row.r.shortTime, row.r.label)"
+                  />
+                </div>
+              </template>
+            </div>
+          </template>
+        </q-card-section>
+        <q-card-section v-else class="q-pa-sm" style="overflow-y: auto">
           <div
             v-if="lastSailing && !lastSailing.skipped"
             class="text-center text-caption text-grey-7 q-mb-xs dream-fade dream-collapse"
@@ -795,7 +923,8 @@
             </template>
           </div>
           <div class="text-center text-grey-8 q-my-sm">
-            upcoming<span class="dream-fade dream-shrink"> forecast</span>
+            {{ todayType.type === 'ordinary' ? 'upcoming' : 'holiday'
+            }}<span class="dream-fade dream-shrink"> forecast</span>
           </div>
           <div class="sailing-grid">
             <template v-for="(row, i) in upcomingPairs" :key="'u' + i">
@@ -841,7 +970,7 @@
           </div>
         </q-card-section>
         <!-- Not in the dream: the photos are the day as it really went. -->
-        <q-card-section v-if="!dreaming" class="q-py-sm text-center">
+        <q-card-section v-if="!dreaming && !viewDay" class="q-py-sm text-center">
           <q-btn
             flat
             dense
@@ -852,7 +981,7 @@
             to="/bowen-departures"
           />
         </q-card-section>
-        <q-card-section class="q-py-sm text-center">
+        <q-card-section v-if="!viewDay" class="q-py-sm text-center">
           <q-btn
             flat
             dense
@@ -1132,6 +1261,15 @@
           >
             {{ typicalHintLine.text }}
           </div>
+          <div
+            v-if="selectedTypical?.info?.basis"
+            class="text-caption text-deep-orange-8 text-center q-mb-xs"
+          >
+            <q-icon name="celebration" /> Holiday forecast from {{ selectedTypical.info.basis
+            }}<template v-if="selectedTypical.info.latenessBasis">
+              · lateness from {{ selectedTypical.info.latenessBasis }}</template
+            >
+          </div>
           <SailingHistoryDetail
             v-if="selectedTypical?.info"
             :info="selectedTypical.info"
@@ -1199,7 +1337,6 @@
 </template>
 
 <script setup>
-import AppTip from 'src/components/AppTip.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useRoute, useRouter } from 'vue-router'
@@ -1227,9 +1364,18 @@ import {
   getTypical,
   typicalHints,
   labelToPanel,
+  loadHolidayRecords,
+  holidayRecords,
+  loadDaySailings,
+  aggregateSailings,
 } from 'src/composables/useHistoricalStats'
+import { formatLateness } from '../../functions/lib/constants.js'
+import { holidayForecast, holidayTypical } from 'src/lib/holiday-forecast.js'
+import { dayType } from '../../functions/lib/holidays.js'
 import { DEFAULT_HISTORY_WEEKS, minutesToLabel } from 'src/lib/historical-stats.js'
 import { useToday } from 'src/composables/useToday'
+import { useSeasonalSchedule } from 'src/composables/useSeasonalSchedule'
+import { scheduleOn } from '../../functions/lib/seasonal-rules.js'
 import { scheduleAttributionDebug } from '../../functions/lib/webcam-decision.js'
 import {
   loadBowenSailings,
@@ -1448,7 +1594,12 @@ function delayDepartures() {
 // Historical "typical" stats, used to hint that an upcoming sailing is normally
 // late or full. Day-of-week specific; holiday-impacted dates are excluded from
 // the baseline (and flagged separately — see NoticeTicker / useHolidayNotice).
-const { byDayOfWeek: historyByDayOfWeek, fetchStats: fetchHistory } = useHistoricalStats()
+const {
+  byDayOfWeek: historyByDayOfWeek,
+  docs: historyDocs,
+  impactedDates: historyExcluded,
+  fetchStats: fetchHistory,
+} = useHistoricalStats()
 
 // Reactive across midnight — see useToday for why the obvious
 // computed(() => nowInVancouver()...) silently isn't.
@@ -1461,10 +1612,33 @@ watch(todayIso, () => fetchHistory({ weeksBack: DEFAULT_HISTORY_WEEKS, excludeHo
   immediate: true,
 })
 
-// Typical stats for an upcoming sailing (day-of-week specific), or null.
+// Typical stats for one sailing on a date, or null. Ordinary days use the
+// same-weekday baseline; holidays and long-weekend days are forecast from
+// past holidays (src/lib/holiday-forecast.js), whose history is read only
+// when such a day is on show.
+const todayType = computed(() => dayType(todayIso.value))
+const forecastCache = new Map()
+function forecastFor(dateIso) {
+  if (!holidayRecords.value) return null
+  const key = `${dateIso}|${holidayRecords.value.length}`
+  if (!forecastCache.has(key)) forecastCache.set(key, holidayForecast(dateIso, holidayRecords.value))
+  return forecastCache.get(key)
+}
+function typicalForDate(dateIso, panel, time) {
+  const t = dateIso === todayIso.value ? todayType.value : dayType(dateIso)
+  if (t.type !== 'ordinary') {
+    const f = forecastFor(dateIso)
+    // Until the holiday history arrives, the fallback ordinary pattern.
+    if (f) return holidayTypical(f, historyByDayOfWeek.value, panel, time)
+    const day = t.type === 'holiday' ? 'Sunday' : dayjs(dateIso).format('dddd')
+    return getTypical(historyByDayOfWeek.value, panel, day, time)
+  }
+  return getTypical(historyByDayOfWeek.value, panel, dayjs(dateIso).format('dddd'), time)
+}
+
+// Typical stats for an upcoming sailing today, or null.
 function sailingTypical(s) {
-  const panel = labelToPanel(s.label)
-  return getTypical(historyByDayOfWeek.value, panel, todayDow.value, s.shortTime)
+  return typicalForDate(todayIso.value, labelToPanel(s.label), s.shortTime)
 }
 
 // Typical-history hints for an upcoming sailing (null when unremarkable).
@@ -1581,14 +1755,18 @@ function openHistory(time, label) {
   pushDialogQuery({ sailing: normalizeTime(time), dir: label === 'HSB' ? 'hsb' : 'bowen' })
 }
 function showTypical(time, label, entry = null) {
-  const panel = labelToPanel(label)
-  const info = getTypical(historyByDayOfWeek.value, panel, todayDow.value, time)
+  const info = dialogTypical(label, time)
   const dir = label === 'HSB' ? 'to Bowen' : 'to Horseshoe Bay'
+  const dayWord = viewDay.value
+    ? dayjs(viewDay.value).format('ddd MMM D')
+    : todayType.value.type === 'holiday'
+      ? todayType.value.name
+      : todayDow.value
   selectedTypical.value = {
     info,
     time,
     label,
-    title: `${todayDow.value} ${formatTime12h(time)} ${dir}`,
+    title: `${dayWord} ${formatTime12h(time)} ${dir}`,
     // The clicked schedule entry itself — the dialog's status section reads
     // it (see typicalStatus).
     entry,
@@ -1599,7 +1777,12 @@ function showTypical(time, label, entry = null) {
     // Which photos the dialog shows (Bowen only): 'past' = archived frames
     // of a departed sailing, 'next' = the live cameras for the sailing now
     // boarding, 'later' = none (nothing to see yet).
-    mode: dialogModeFor(label, entry),
+    // Another day: archived photos for a past Bowen sailing, nothing live.
+    mode: viewDay.value
+      ? label === 'Bowen' && entry && viewDayIsPast.value
+        ? 'past'
+        : null
+      : dialogModeFor(label, entry),
   }
   showTypicalDialog.value = true
   dialogFrames.value = null
@@ -1643,10 +1826,10 @@ function nearestFrame(frames, ts) {
 }
 
 async function loadDialogFrames(time) {
-  const todayIso = nowInVancouver().format('YYYY-MM-DD')
+  const dateIso = viewDay.value || nowInVancouver().format('YYYY-MM-DD')
   let raw = null
   try {
-    raw = await loadSailingFrames(todayIso, time)
+    raw = await loadSailingFrames(dateIso, time)
   } catch (err) {
     console.error('Failed to load the dialog frames:', err)
   }
@@ -2119,9 +2302,7 @@ function sailingFullness(loc, hhmm) {
   const live = bandFromCapacity(item?.lastCapacity) || bandFromCapacity(item?.deckSpace)
   if (live) return live
   if (item?.crosswalkFullAt) return 'busy'
-  return bandFromHistory(
-    getTypical(historyByDayOfWeek.value, labelToPanel(label), todayDow.value, hhmm),
-  )
+  return bandFromHistory(typicalForDate(todayIso.value, labelToPanel(label), hhmm))
 }
 
 const departureEstimates = computed(() => {
@@ -2166,7 +2347,8 @@ const estimateTimings = computed(() => {
 // it. undefined = no estimate (past sailing, or nothing logged yet today).
 const selectedEstimate = computed(() => {
   const e = selectedTypical.value?.entry
-  if (!e?.shortTime || 'diffText' in e) return undefined
+  // The live estimate is about today's boats only.
+  if (viewDay.value || !e?.shortTime || 'diffText' in e) return undefined
   const list = e.label === 'HSB' ? allUpcomingHSB.value : allUpcomingBowen.value
   const i = list.findIndex((s) => s.shortTime === e.shortTime)
   const loc = e.label === 'HSB' ? 'Horseshoe Bay' : 'Bowen'
@@ -2258,7 +2440,7 @@ function helpHint(s) {
 }
 // Tapping the nudge opens the sailing dialog; this is the same test for the
 // sailing on show there, so its help panel is up before the frames load.
-const dialogHelp = computed(() => Boolean(helpHint(selectedTypical.value?.entry)))
+const dialogHelp = computed(() => !viewDay.value && Boolean(helpHint(selectedTypical.value?.entry)))
 const lastSailing = computed(() => {
   const hsb = recentPastHSB.value
   const bowen = recentPastBowen.value
@@ -2272,9 +2454,50 @@ const lastSailing = computed(() => {
 // The dialog's side-by-side lists as rows (pairColumns): Bowen departures
 // ("to Horseshoe Bay") left, HSB departures ("to Bowen") right.
 const bySortTime = (e) => e.sortTime
-const pastPairs = computed(() => pairColumns(allPastBowen.value, allPastHSB.value, bySortTime))
+// Sailings BC Ferries' schedule skips (server-side they're dropped from the
+// schedule, listed on scheduleCancellations / the stored day's `cancelled`)
+// as struck-through "Cancelled" rows in their time slot, so the gap reads as
+// a cancellation rather than a missing sailing. Dialog only — the home page's
+// three-row lists stay about boats that run.
+function cancelledEntries(list) {
+  return (list || []).map((c) => ({
+    time: c.time,
+    shortTime: c.time,
+    scheduledTime: c.time,
+    label: c.location === 'Bowen' ? 'Bowen' : 'HSB',
+    sortTime: timeToDate(c.time),
+    cancelled: true,
+    note: c.note,
+  }))
+}
+function withCancelled(entries, cancelled, label) {
+  const extra = cancelled.filter((c) => c.label === label)
+  return extra.length ? [...entries, ...extra].sort((a, b) => a.sortTime - b.sortTime) : entries
+}
+const todayCancelled = computed(() =>
+  cancelledEntries(
+    (ferryData.value?.scheduleCancellations || []).filter((c) => c.dateIso === todayIso.value),
+  ),
+)
+const todayCancelledPast = computed(() =>
+  todayCancelled.value.filter((c) => c.sortTime && c.sortTime.valueOf() <= nowTick.value),
+)
+const todayCancelledUpcoming = computed(() =>
+  todayCancelled.value.filter((c) => c.sortTime && c.sortTime.valueOf() > nowTick.value),
+)
+const pastPairs = computed(() =>
+  pairColumns(
+    withCancelled(allPastBowen.value, todayCancelledPast.value, 'Bowen'),
+    withCancelled(allPastHSB.value, todayCancelledPast.value, 'HSB'),
+    bySortTime,
+  ),
+)
 const upcomingPairs = computed(() =>
-  pairColumns(allUpcomingBowen.value, allUpcomingHSB.value, bySortTime),
+  pairColumns(
+    withCancelled(allUpcomingBowen.value, todayCancelledUpcoming.value, 'Bowen'),
+    withCancelled(allUpcomingHSB.value, todayCancelledUpcoming.value, 'HSB'),
+    bySortTime,
+  ),
 )
 // The home page shows three rows each way: the last three recent-past
 // sailings per column and the next three upcoming, paired. When the gap
@@ -2461,7 +2684,195 @@ const showFullDialog = computed({
 })
 const dreaming = computed({
   get: () => route.params.dream === 'dream',
-  set: (on) => router.replace(on ? '/today/dream' : '/today'),
+  // Keeps the query, so the picked day (?day=) stays put.
+  set: (on) => router.replace({ path: on ? '/today/dream' : '/today', query: route.query }),
+})
+
+// The dialog's day picker: today (the live view) or any other date, carried
+// as ?day=YYYY-MM-DD so it's linkable. Other days are worked out from the
+// stored weekly timetable (snapshots/seasonalSchedule), read only once a
+// rider opens the calendar or steps off today. A date outside BC Ferries'
+// published range says so and names the range it does cover.
+const { timetable: seasonalTimetable, loaded: seasonalLoaded, load: loadSeasonal } =
+  useSeasonalSchedule()
+const viewDay = computed(() => {
+  const d = route.query.day
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null
+  return d !== todayIso.value && dayjs(d).isValid() ? d : null
+})
+watch(viewDay, (d) => d && loadSeasonal(), { immediate: true })
+// Holiday history, only when today or the day on show is a holiday or
+// long-weekend day.
+watch(
+  () => [todayType.value.type, viewDay.value && dayType(viewDay.value).type],
+  (types) => {
+    if (types.some((x) => x && x !== 'ordinary')) loadHolidayRecords()
+  },
+  { immediate: true },
+)
+const fullDialogTitle = computed(() => {
+  if (!viewDay.value) return 'Today'
+  return dayjs(viewDay.value).format('ddd MMM D')
+})
+const dayPicker = ref(null)
+function pickDay(iso) {
+  dayPicker.value?.hide()
+  if (!iso) return
+  router.replace(dialogRoute({ day: iso === todayIso.value ? null : iso }))
+}
+function stepDay(n) {
+  pickDay(dayjs(viewDay.value || todayIso.value).add(n, 'day').format('YYYY-MM-DD'))
+}
+// undefined while the timetable loads; null when it doesn't cover the day.
+const viewDaySchedule = computed(() => {
+  if (!viewDay.value) return null
+  if (!seasonalLoaded.value) return undefined
+  return scheduleOn(seasonalTimetable.value, viewDay.value)
+})
+const viewDayLong = computed(() =>
+  viewDay.value ? dayjs(viewDay.value).format('ddd MMM D, YYYY') : '',
+)
+// What the "no schedule" message says the timetable does cover.
+const seasonalRangeText = computed(() => {
+  const r = seasonalTimetable.value?.range
+  if (!r?.start || !r?.end) return null
+  return `${dayjs(r.start).format('MMM D, YYYY')} to ${dayjs(r.end).format('MMM D, YYYY')}`
+})
+const viewDayEntries = (list, label) =>
+  (list || []).map((s) => ({ ...s, label, shortTime: s.time, sortTime: timeToDate(s.time) }))
+const viewDayPairs = computed(() => {
+  const d = viewDaySchedule.value
+  if (!d) return []
+  const cancelled = cancelledEntries(d.cancelled)
+  return pairColumns(
+    withCancelled(viewDayEntries(d.bowenSchedule, 'Bowen'), cancelled, 'Bowen'),
+    withCancelled(viewDayEntries(d.hsbSchedule, 'HSB'), cancelled, 'HSB'),
+    bySortTime,
+  )
+})
+// A past day: what actually happened, from the 8-week history the page
+// already holds (no extra read), or one query for that date when older.
+// undefined while loading.
+const viewDayIsPast = computed(() => Boolean(viewDay.value) && viewDay.value < todayIso.value)
+const dayRecords = ref(undefined)
+watch(
+  [viewDay, historyDocs],
+  async ([d, docs]) => {
+    if (!d || d >= todayIso.value) return (dayRecords.value = undefined)
+    const windowStart = dayjs(todayIso.value).subtract(DEFAULT_HISTORY_WEEKS, 'week').format('YYYY-MM-DD')
+    if (d >= windowStart) {
+      dayRecords.value = docs.length ? docs.filter((r) => r.dateIso === d) : undefined
+      return
+    }
+    dayRecords.value = undefined
+    const recs = await loadDaySailings(d)
+    if (viewDay.value === d) dayRecords.value = recs
+  },
+  { immediate: true },
+)
+// Rows for a past day: the timetable's slots (cancelled ones included) and
+// any recorded sailing outside it (a repositioning run), each filled in with
+// its actual departure, fullness and crosswalk mark. One record per slot —
+// the best-filled, as older days carry duplicates.
+const pastDayPairs = computed(() => {
+  const recs = dayRecords.value
+  if (!recs) return []
+  const best = new Map()
+  for (const r of recs) {
+    const time = normalizeTime(r.sailingTime)
+    const label = r.direction === 'To HSB' ? 'Bowen' : r.direction === 'To Bowen' ? 'HSB' : null
+    if (!label || !time) continue
+    const key = `${label}|${time}`
+    const score = (r.actualDepartureTime ? 1 : 0) + (r.lastCapacity ? 1 : 0) + (r.crosswalkFullAt ? 1 : 0)
+    if (!best.has(key) || score > best.get(key).score) best.set(key, { r, score })
+  }
+  const day = viewDaySchedule.value
+  const slots = new Map()
+  for (const [list, label] of [
+    [day?.bowenSchedule, 'Bowen'],
+    [day?.hsbSchedule, 'HSB'],
+  ])
+    for (const x of list || []) slots.set(`${label}|${x.time}`, { label, time: x.time, dangerousCargo: x.dangerousCargo })
+  for (const key of best.keys()) {
+    const [label, time] = key.split('|')
+    if (!slots.has(key)) slots.set(key, { label, time })
+  }
+  const entries = [...slots.values()].map(({ label, time, dangerousCargo }) => {
+    const r = best.get(`${label}|${time}`)?.r
+    const dep = r?.actualDepartureTime ? normalizeTime(r.actualDepartureTime) : null
+    const late = dep ? timeToDate(dep).diff(timeToDate(time), 'minute') : null
+    return {
+      label,
+      time,
+      scheduledTime: time,
+      shortTime: time,
+      sortTime: timeToDate(time),
+      dangerousCargo,
+      ...formatLateness(late),
+      _depDisplay: dep,
+      skipped: !dep,
+      lastCapacity: r?.lastCapacity ?? null,
+      capacitySource: r?.capacitySource ?? null,
+      filledAt: r?.filledAt ?? null,
+      crosswalkFullAt: r?.crosswalkFullAt ?? null,
+      crosswalkSource: r?.crosswalkSource ?? null,
+    }
+  })
+  const cancelled = cancelledEntries(day?.cancelled)
+  const col = (label) => withCancelled(entries.filter((e) => e.label === label).sort((a, b) => a.sortTime - b.sortTime), cancelled, label)
+  return pairColumns(col('Bowen'), col('HSB'), bySortTime)
+})
+// What the forecast said for a past day, under its actual result. Ordinary
+// days are re-forecast from the history without that day, so it isn't
+// compared against itself; holiday forecasts only ever use earlier holidays.
+const pastDayBaseline = computed(() => {
+  if (!viewDayIsPast.value || dayType(viewDay.value).type !== 'ordinary') return null
+  const excluded = new Set(historyExcluded.value)
+  return aggregateSailings(
+    historyDocs.value.filter((r) => r.dateIso !== viewDay.value && !excluded.has(r.dateIso)),
+  )
+})
+function pastForecastHint(s) {
+  if (s.cancelled) return null
+  const panel = labelToPanel(s.label)
+  const info = pastDayBaseline.value
+    ? getTypical(pastDayBaseline.value, panel, dayjs(viewDay.value).format('dddd'), s.time)
+    : typicalForDate(viewDay.value, panel, s.time)
+  const h = typicalHints(info, $q.screen.xs, panel)
+  // Phones drop the "forecast:" prefix to keep room for the forecast itself.
+  return h ? { text: $q.screen.xs ? h.text : `forecast: ${h.text}`, color: 'grey-7' } : null
+}
+
+// The forecast the sailing dialog shows for the day on show: today's live
+// baseline, a future day's, or what a past day's forecast was.
+function dialogTypical(label, time) {
+  const panel = labelToPanel(label)
+  if (viewDay.value && pastDayBaseline.value)
+    return getTypical(pastDayBaseline.value, panel, dayjs(viewDay.value).format('dddd'), time)
+  return typicalForDate(viewDay.value || todayIso.value, panel, time)
+}
+// The history behind the dialog (and the holiday history, read on demand)
+// can land after it opened — a shared link, a reload — so refresh its numbers
+// when any of it arrives rather than leaving "No recent history" up.
+watch([historyByDayOfWeek, holidayRecords, pastDayBaseline], () => {
+  const cur = selectedTypical.value
+  if (!showTypicalDialog.value || !cur) return
+  selectedTypical.value = { ...cur, info: dialogTypical(cur.label, cur.time) }
+})
+
+// Typical lateness/fullness for the picked day's weekday, not today's.
+function viewDayHints(s) {
+  const panel = labelToPanel(s.label)
+  return typicalHints(typicalForDate(viewDay.value, panel, s.shortTime), $q.screen.xs, panel)
+}
+// The line above another day's timetable: an ordinary day, or a holiday /
+// long-weekend day whose hints come from past holidays.
+const viewDayTypeLine = computed(() => {
+  if (!viewDay.value) return null
+  const t = dayType(viewDay.value)
+  if (t.type === 'holiday') return { text: `${t.name} · holiday forecast`, holiday: true }
+  if (t.type === 'long-weekend') return { text: `${t.name} long weekend · holiday forecast`, holiday: true }
+  return { text: `Typical ${dayjs(viewDay.value).format('dddd')}`, holiday: false }
 })
 
 const fullscreenSrc = computed(
@@ -2674,6 +3085,13 @@ const dialogQuery = computed(() => {
 // upcoming rows shortTime. Null until the schedule has loaded (the dialog
 // then fills in when it does).
 function findScheduleEntry(label, time) {
+  // Another day's dialog: that day's rows.
+  if (viewDay.value) {
+    const pairs = viewDayIsPast.value ? pastDayPairs.value : viewDayPairs.value
+    for (const row of pairs)
+      for (const e of [row.l, row.r]) if (e && e.label === label && normalizeTime(e.time || e.shortTime) === time) return e
+    return null
+  }
   const lists =
     label === 'HSB'
       ? [allPastHSB.value, allUpcomingHSB.value]
@@ -3052,6 +3470,18 @@ onUnmounted(() => {
       max-width 0.4s ease,
       opacity 0.4s ease;
   }
+}
+// Equal side columns, so the title (with its day arrows) sits in the
+// middle of the dialog whatever the buttons either side.
+.today-dialog-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+// Fixed width (fits the widest date, e.g. "Wed Sep 30") so the day arrows
+// either side don't shift as the date changes.
+.today-dialog-title {
+  width: 6em;
 }
 .today-dialog.dreaming {
   .dream-shrink {

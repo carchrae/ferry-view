@@ -16,7 +16,9 @@ import { onMounted, ref } from 'vue'
 import { inlineTips } from 'src/composables/useInlineTips'
 
 // A tooltip that works on phones. Use it as the SIBLING right after the chip,
-// button, badge or icon it explains (not inside it, as q-tooltip would be):
+// badge or icon it explains (not inside it, as q-tooltip would be). Never on
+// buttons: a button's label says what it does, and on phones the tip prints
+// as text beside it.
 //
 //   <q-chip>Disagreement</q-chip>
 //   <AppTip>Riders disagree on this sailing — another report will settle it.</AppTip>

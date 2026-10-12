@@ -1,22 +1,23 @@
 import { load } from 'cheerio'
 import { logger } from 'firebase-functions/logger'
 import { dayjs, normalizeTime } from './time.js'
+import { WEEKDAYS, scheduleOn } from './seasonal-rules.js'
+
+export { parseDateRule, scheduleOn } from './seasonal-rules.js'
 
 // BC Ferries' seasonal schedule is the source of truth for which sailings run
 // on a given date. It lists the sailings per weekday, with date exceptions
 // printed under them in red — e.g. the Monday 5:15 am from Bowen carries
 // "Except Aug 3, Sep 7, Oct 12, Feb 15, Mar 29" (holiday Mondays) — which
-// bowenferry.ca's schedule feed ignores. A daily scrape materialises the next
-// LOOKAHEAD_DAYS dates into snapshots/seasonalSchedule; the 1-minute poll
-// replaces bowenferry.ca's schedule with the day's entry
-// (applySeasonalSchedule). One page carries both directions: "Onward"
-// (Horseshoe Bay → Bowen) and "Return" (Bowen → Horseshoe Bay).
+// bowenferry.ca's schedule feed ignores. A daily scrape stores that weekly
+// timetable, notes and all (~10 KB), in snapshots/seasonalSchedule; any date
+// in the page's range is worked out from it (seasonal-rules.js) — by the
+// 1-minute poll, which swaps it in for bowenferry.ca's schedule
+// (applySeasonalSchedule), and by the client's day picker. One page carries
+// both directions: "Onward" (Horseshoe Bay → Bowen) and "Return" (Bowen →
+// Horseshoe Bay).
 export const SEASONAL_SCHEDULE_URL = 'https://www.bcferries.com/routes-fares/schedules/seasonal/HSB-BOW'
 export const SEASONAL_SCHEDULE_DOC = 'seasonalSchedule'
-
-// How many days ahead (including today) the stored doc covers, so failed
-// scrapes (e.g. the waiting room actually queuing) still leave today covered.
-const LOOKAHEAD_DAYS = 14
 
 // Same reason as bcferries-departures.js: non-200 without a browser UA.
 const USER_AGENT =
@@ -30,12 +31,7 @@ const SECTIONS = [
   { id: 'ReturnSchedule', location: 'Bowen' },
 ]
 
-const WEEKDAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays']
-
 const RANGE_RE = /([A-Z][a-z]{2} \d{1,2}, \d{4}) - ([A-Z][a-z]{2} \d{1,2}, \d{4})/
-
-// "No passengers permitted - DG Sailing only. Dangerous goods only"
-const DANGEROUS_GOODS_RE = /dangerous goods|DG sailing/i
 
 /**
  * Parse the seasonal schedule page. Pure, so it can be tested against a fixture.
@@ -101,93 +97,13 @@ function parseLongDate(str) {
   return d.isValid() ? d.format('YYYY-MM-DD') : null
 }
 
-// "Mar 29" carries no year: take the one that puts it nearest the date being
-// checked, so a Jan 1 exception read in December lands in the coming January.
-function resolveMonthDay(str, nearIso) {
-  const near = dayjs(nearIso)
-  let best = null
-  for (const year of [near.year() - 1, near.year(), near.year() + 1]) {
-    const d = dayjs(`${str.trim()} ${year}`, ['MMM D YYYY', 'MMMM D YYYY'], true)
-    if (!d.isValid()) continue
-    if (!best || Math.abs(d.diff(near, 'day')) < Math.abs(best.diff(near, 'day'))) best = d
-  }
-  return best?.format('YYYY-MM-DD') ?? null
-}
-
-/**
- * Read a red note as a date rule: "Except Aug 3, Sep 7, Oct 12", "Except on
- * Dec 25 & Jan 1", "Only on Dec 24". Dates resolve to the year nearest `nearIso`.
- * @returns {{kind: 'except'|'only', dates: string[]}|null} null for notes that
- *   aren't date rules (e.g. "No passengers permitted - DG Sailing only").
- */
-export function parseDateRule(note, nearIso) {
-  const m = note?.match(/^\s*(Except|Only)\s+(?:on\s+)?(.+)$/i)
-  if (!m) return null
-  const parts = m[2].split(/,|&|\band\b/i).map((s) => s.trim()).filter(Boolean)
-  const dates = parts.map((p) => resolveMonthDay(p, nearIso))
-  // Every piece must be a date — anything else isn't a rule we understand.
-  if (!dates.length || dates.some((d) => !d)) return null
-  return { kind: m[1].toLowerCase(), dates }
-}
-
-function runsOn(notes, dateIso) {
-  for (const note of notes) {
-    const rule = parseDateRule(note, dateIso)
-    if (!rule) continue
-    const listed = rule.dates.includes(dateIso)
-    if ((rule.kind === 'except' && listed) || (rule.kind === 'only' && !listed)) return { runs: false, note }
-  }
-  return { runs: true }
-}
-
-/**
- * The schedule for one date: the sailings that run, in the poll's entry shape,
- * plus the listed sailings a date rule skips that day.
- * @returns {{bowenSchedule: Array<{time, dangerousCargo}>, hsbSchedule: Array<{time, dangerousCargo}>,
- *   cancelled: Array<{location, time, note}>}|null} null outside the page's seasonal range.
- */
-export function scheduleOn(parsed, dateIso) {
-  if (!parsed) return null
-  const { range } = parsed
-  if (range?.start && dateIso < range.start) return null
-  if (range?.end && dateIso > range.end) return null
-  const weekday = WEEKDAYS[dayjs(dateIso).day()]
-  const out = { bowenSchedule: [], hsbSchedule: [], cancelled: [] }
-  for (const [location, byDay] of Object.entries(parsed.sailings)) {
-    const key = location === 'Bowen' ? 'bowenSchedule' : 'hsbSchedule'
-    for (const { time, notes } of byDay[weekday] || []) {
-      const { runs, note } = runsOn(notes, dateIso)
-      if (!runs) {
-        out.cancelled.push({ location, time, note })
-        continue
-      }
-      out[key].push({ time, dangerousCargo: notes.some((n) => DANGEROUS_GOODS_RE.test(n)) })
-    }
-  }
-  return out
-}
-
-/**
- * Per-date schedules for `days` dates starting at `startIso`; dates outside
- * the page's seasonal range are left out.
- */
-export function scheduleByDate(parsed, startIso, days = LOOKAHEAD_DAYS) {
-  const out = {}
-  for (let i = 0; i < days; i++) {
-    const iso = dayjs(startIso).add(i, 'day').format('YYYY-MM-DD')
-    const day = scheduleOn(parsed, iso)
-    if (day) out[iso] = day
-  }
-  return out
-}
-
 /**
  * Fetch the seasonal schedule page. The schedules section sits behind a
  * queue-it waiting room; outside peak demand it runs in "safetynet" mode and
  * hands back a token straight away after a JS redirect, which we follow by
  * hand (redirects, the JS hop's decoded URL, and cookies along the way). If
- * a real queue is up there is no token and this throws — the lookahead from
- * an earlier run covers it.
+ * a real queue is up there is no token and this throws — the timetable from
+ * an earlier run still covers its whole range.
  * @param {typeof fetch} [fetchImpl] injectable for testing.
  */
 export async function fetchSeasonalScheduleHtml(fetchImpl = fetch) {
@@ -221,27 +137,40 @@ export async function fetchSeasonalScheduleHtml(fetchImpl = fetch) {
   throw new Error('Seasonal schedule: too many redirects')
 }
 
-// Once a day. No clients listen to the doc (they get the day's schedule via
-// ferryStatus/current), so it's written unconditionally.
+// Once a day. No clients listen to the doc (the poll hands them today's and
+// tomorrow's cancellations via ferryStatus/current; the day picker reads it
+// once, on demand), so it's written unconditionally.
 export async function refreshSeasonalSchedule(db, todayIso, fetchImpl = fetch) {
   const parsed = parseSeasonalSchedule(await fetchSeasonalScheduleHtml(fetchImpl))
   if (!parsed) throw new Error('Seasonal schedule page had no schedule tables — layout changed?')
-  const days = scheduleByDate(parsed, todayIso)
-  if (!days[todayIso]) throw new Error(`Seasonal schedule range ${JSON.stringify(parsed.range)} doesn't cover ${todayIso}`)
+  if (!scheduleOn(parsed, todayIso))
+    throw new Error(`Seasonal schedule range ${JSON.stringify(parsed.range)} doesn't cover ${todayIso}`)
   await db.collection('snapshots').doc(SEASONAL_SCHEDULE_DOC).set({
-    days,
-    fromDate: todayIso,
     range: parsed.range,
+    sailings: parsed.sailings,
     sourceUrl: SEASONAL_SCHEDULE_URL,
     fetchedAt: Date.now(),
   })
-  const skipped = Object.entries(days)
-    .filter(([, d]) => d.cancelled.length)
-    .map(([iso, d]) => `${iso}: ${d.cancelled.map((c) => `${c.location} ${c.time}`).join(', ')}`)
+  const skipped = skippedDates(parsed, todayIso)
   logger.log(
-    `Seasonal schedule stored for ${Object.keys(days).length} days from ${todayIso}; skipped: ${skipped.join(' | ') || 'none'}`,
+    `Seasonal schedule stored (${parsed.range?.start} – ${parsed.range?.end}); skipped from ${todayIso}: ` +
+      (skipped.map((d) => `${d.dateIso}: ${d.cancelled.map((c) => `${c.location} ${c.time}`).join(', ')}`).join(' | ') ||
+        'none'),
   )
-  return { days }
+  return { parsed, skipped }
+}
+
+// Every date from `fromIso` to the end of the range with a skipped sailing.
+export function skippedDates(parsed, fromIso) {
+  const out = []
+  const end = parsed.range?.end
+  if (!end) return out
+  for (let d = dayjs(fromIso); d.format('YYYY-MM-DD') <= end; d = d.add(1, 'day')) {
+    const iso = d.format('YYYY-MM-DD')
+    const day = scheduleOn(parsed, iso)
+    if (day?.cancelled.length) out.push({ dateIso: iso, cancelled: day.cancelled })
+  }
+  return out
 }
 
 /**
@@ -249,17 +178,19 @@ export async function refreshSeasonalSchedule(db, todayIso, fetchImpl = fetch) {
  * list today's and tomorrow's skipped sailings on `data.scheduleCancellations`
  * (each tagged with its dateIso) so the client can announce them a day ahead.
  * Keeps bowenferry.ca's per-sailing deck space, and its repositioning runs
- * (non-public boat moves BC Ferries doesn't list). When the stored doc has no
- * entry for today (scrape failing past the lookahead, or before the first
- * run) the bowenferry.ca schedule stays. Mutates `data`.
+ * (non-public boat moves BC Ferries doesn't list). When there's no stored
+ * timetable covering today (before the first scrape, or past the end of BC
+ * Ferries' published range) the bowenferry.ca schedule stays. Mutates `data`.
+ * @param {{range, sailings}|null} timetable the stored snapshots/seasonalSchedule.
  * @returns {boolean} whether BC Ferries' schedule was applied.
  */
-export function applySeasonalSchedule(data, days) {
-  const today = days?.[data.dateIso]
+export function applySeasonalSchedule(data, timetable) {
+  const today = scheduleOn(timetable, data.dateIso)
   const tomorrowIso = dayjs(data.dateIso).add(1, 'day').format('YYYY-MM-DD')
+  const tomorrow = scheduleOn(timetable, tomorrowIso)
   data.scheduleCancellations = [
     ...(today?.cancelled || []).map((c) => ({ ...c, dateIso: data.dateIso })),
-    ...(days?.[tomorrowIso]?.cancelled || []).map((c) => ({ ...c, dateIso: tomorrowIso })),
+    ...(tomorrow?.cancelled || []).map((c) => ({ ...c, dateIso: tomorrowIso })),
   ]
   data.scheduleSource = today ? 'bcferries' : 'bowenferry'
   if (!today) return false
@@ -273,26 +204,34 @@ export function applySeasonalSchedule(data, days) {
       repositioning: false,
       deckSpace: deckSpaceAt.get(s.time) ?? null,
     })),
-    ...feedHsb.filter((s) => s.repositioning && !listed.has(s.time)),
+    // A repositioning run only brings the boat across for the day's first
+    // Bowen departure; when the first sailing leaves HSB instead (e.g. the
+    // 5:15 from Bowen skipped on a holiday) there isn't one.
+    ...(firstFromBowen(today) ? feedHsb.filter((s) => s.repositioning && !listed.has(s.time)) : []),
   ].sort((a, b) => a.time.localeCompare(b.time))
-  data.bowenSchedule = today.bowenSchedule.map((s) => ({ ...s }))
+  data.bowenSchedule = today.bowenSchedule
   return true
 }
 
+function firstFromBowen(day) {
+  const bowen = day.bowenSchedule[0]?.time
+  const hsb = day.hsbSchedule[0]?.time
+  return Boolean(bowen) && (!hsb || bowen < hsb)
+}
+
 // Instances don't share memory and any of them may run a poll, so each one
-// reads the stored doc once — on its first poll, and again when the date
-// rolls over. The doc covers two weeks ahead, so an instance that read it
-// just before the nightly scrape still holds a correct entry for today. Only
-// when the doc it read has NO entry for today (first deploy before the first
-// scrape, or scrapes failing for two weeks) does it look again, hourly, so a
-// manual run is picked up without a read every minute.
+// reads the stored timetable once — on its first poll, and again when the
+// date rolls over (to pick up the nightly scrape). Only when what it read
+// doesn't cover today (first deploy before the first scrape) does it look
+// again, hourly, so a manual run is picked up without a read every minute.
 const MISSING_RETRY_MS = 60 * 60 * 1000
 let cache = null
 
 export async function loadSeasonalSchedule(db, dateIso, nowMs = Date.now()) {
-  if (cache?.dateIso === dateIso && (cache.days[dateIso] || nowMs - cache.at < MISSING_RETRY_MS))
-    return cache.days
+  const covered = cache && scheduleOn(cache.timetable, dateIso)
+  if (cache?.dateIso === dateIso && (covered || nowMs - cache.at < MISSING_RETRY_MS)) return cache.timetable
   const snap = await db.collection('snapshots').doc(SEASONAL_SCHEDULE_DOC).get()
-  cache = { dateIso, at: nowMs, days: snap.exists ? snap.data().days || {} : {} }
-  return cache.days
+  const data = snap.exists ? snap.data() : null
+  cache = { dateIso, at: nowMs, timetable: data?.sailings ? { range: data.range, sailings: data.sailings } : null }
+  return cache.timetable
 }

@@ -37,7 +37,7 @@ import { arrivalLineupTarget } from './lib/webcam-decision.js'
 import { applyUserCapacityReport } from './lib/user-capacity.js'
 import { applyLineupReport, rederiveCrosswalkAfterDelete } from './lib/user-lineup.js'
 import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-aggregate.js'
-import { recomputeHistoricalStats } from './lib/history-aggregate.js'
+import { recomputeHistoricalStats, recomputeHolidayStats } from './lib/history-aggregate.js'
 import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
 import { functionsActive } from './lib/control.js'
 import { ensureClassifierModelDocs } from './lib/classifier-models.js'
@@ -598,6 +598,13 @@ export const refreshHistoryAggregate = onSchedule(
   async () => {
     if (!(await functionsActive())) return
     await recomputeHistoricalStats(db)
+    // Holiday forecasts' history — only rebuilds the day after a holiday or
+    // long-weekend day (or when missing), so most nights this is one read.
+    try {
+      await recomputeHolidayStats(db)
+    } catch (e) {
+      logger.error('holidayStats rebuild failed:', e)
+    }
   },
 )
 

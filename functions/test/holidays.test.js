@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getBcHolidays, getImpactedDates, getHolidayContext } from '../lib/holidays.js'
+import { getBcHolidays, getImpactedDates, getHolidayContext, dayType, getHolidayDates, holidayKind } from '../lib/holidays.js'
 
 describe('getBcHolidays', () => {
   it('computes 2026 holidays', () => {
@@ -77,5 +77,47 @@ describe('getHolidayContext', () => {
     expect(getHolidayContext('2026-07-30').impacted).toBe(false) // Thursday before
     expect(getHolidayContext('2026-08-05').impacted).toBe(false) // Wednesday after
     expect(getHolidayContext('2026-07-22').impacted).toBe(false) // ordinary Wednesday
+  })
+})
+
+describe('Truth and Reconciliation Day', () => {
+  it('is a holiday from 2023 on', () => {
+    expect(getBcHolidays(2026).get('2026-09-30')).toBe('Truth and Reconciliation Day')
+    expect(getBcHolidays(2022).has('2022-09-30')).toBe(false)
+  })
+})
+
+describe('dayType', () => {
+  it('splits a long weekend into the holiday and its weekend days; the weekdays around stay ordinary', () => {
+    expect(dayType('2026-10-09')).toEqual({ type: 'ordinary', name: null }) // Friday before
+    expect(dayType('2026-10-10')).toEqual({ type: 'long-weekend', name: 'Thanksgiving' })
+    expect(dayType('2026-10-11')).toEqual({ type: 'long-weekend', name: 'Thanksgiving' })
+    expect(dayType('2026-10-12')).toEqual({ type: 'holiday', name: 'Thanksgiving' })
+    expect(dayType('2026-10-13')).toEqual({ type: 'ordinary', name: null }) // Tuesday after
+  })
+
+  it('treats a midweek holiday alone and an ordinary weekend as ordinary', () => {
+    expect(dayType('2026-07-01')).toEqual({ type: 'holiday', name: 'Canada Day' })
+    expect(dayType('2026-07-04')).toEqual({ type: 'ordinary', name: null })
+  })
+
+  it('lists holiday and long-weekend dates in a range', () => {
+    expect(getHolidayDates('2026-09-01', '2026-10-01').map((h) => `${h.dateIso} ${h.type}`)).toEqual([
+      '2026-09-05 long-weekend',
+      '2026-09-06 long-weekend',
+      '2026-09-07 holiday',
+      '2026-09-30 holiday',
+    ])
+  })
+})
+
+describe('holidayKind', () => {
+  it('groups family-travel long weekends, days off and Christmas season', () => {
+    expect(holidayKind('Thanksgiving', '2026-10-12')).toBe('family')
+    expect(holidayKind('Truth and Reconciliation Day', '2026-09-30')).toBe('day-off')
+    expect(holidayKind('Remembrance Day', '2026-11-11')).toBe('day-off')
+    expect(holidayKind('Christmas Day', '2026-12-25')).toBe('christmas')
+    expect(holidayKind('Canada Day', '2026-07-01')).toBe('day-off') // a Wednesday
+    expect(holidayKind('Canada Day', '2030-07-01')).toBe('family') // a Monday
   })
 })

@@ -2,7 +2,7 @@ import { ref, computed } from 'vue'
 import { collection, query, where, getDocs, doc, getDoc, limit } from 'firebase/firestore'
 import { db } from 'boot/firebase'
 import { dayjs, nowInVancouver } from '../../functions/lib/time.js'
-import { getImpactedDates } from '../../functions/lib/holidays.js'
+import { getHolidayDates } from '../../functions/lib/holidays.js'
 import { aggregateSailings } from '../lib/historical-stats.js'
 
 // The pure half of this module now lives in src/lib/historical-stats.js so it
@@ -42,23 +42,79 @@ async function fetchFromAggregate(start, end) {
     // up to the grace window before declaring the aggregate unusable.
     const graceEnd = dayjs(end).subtract(STALE_GRACE_DAYS, 'day').format('YYYY-MM-DD')
     if (!Array.isArray(agg.sailings) || agg.start > start || agg.end < graceEnd) return null
-    return agg.sailings
-      .filter((r) => r.d >= start && r.d <= end)
-      .map((r) => ({
-        dateIso: r.d,
-        sailingTime: r.t,
-        direction: r.dir,
-        actualDepartureTime: r.dep,
-        lastCapacity: r.cap,
-        capacitySource: r.src,
-        filledAt: r.fa,
-        crosswalkFullAt: r.cw,
-      }))
+    return expandRecords(agg.sailings.filter((r) => r.d >= start && r.d <= end))
   } catch (e) {
     console.warn('[useHistoricalStats] aggregate read failed, falling back:', e)
     return null
   }
 }
+
+// Aggregate records (short keys, see functions/lib/history-aggregate.js) back
+// to sailingStatus field names.
+function expandRecords(records) {
+  return records.map((r) => ({
+    dateIso: r.d,
+    sailingTime: r.t,
+    direction: r.dir,
+    actualDepartureTime: r.dep,
+    lastCapacity: r.cap,
+    capacitySource: r.src,
+    filledAt: r.fa,
+    crosswalkFullAt: r.cw,
+    crosswalkSource: r.cws,
+  }))
+}
+
+// One past day's sailings, for the Today dialog's look at a date older than
+// the 8-week aggregate (newer dates come from the aggregate the page already
+// holds). One small query (~32 docs) per date, only when a rider opens it;
+// cached for the page. Timestamps flattened to epoch ms like the aggregates.
+const dayCache = new Map()
+const toMs = (v) => (typeof v?.toMillis === 'function' ? v.toMillis() : v)
+export function loadDaySailings(dateIso) {
+  if (!dayCache.has(dateIso)) {
+    const q = query(collection(db, 'sailingStatus'), where('dateIso', '==', dateIso), limit(80))
+    dayCache.set(
+      dateIso,
+      getDocs(q)
+        .then((snap) => {
+          const out = []
+          snap.forEach((d) => {
+            const r = d.data()
+            out.push({ ...r, filledAt: toMs(r.filledAt), crosswalkFullAt: toMs(r.crosswalkFullAt) })
+          })
+          return out
+        })
+        .catch((e) => {
+          console.warn('[useHistoricalStats] day read failed:', e)
+          dayCache.delete(dateIso)
+          return []
+        }),
+    )
+  }
+  return dayCache.get(dateIso)
+}
+
+// Every sailing on a holiday or long-weekend day over the last three years
+// (aggregates/holidayStats), for holiday forecasts (src/lib/holiday-forecast.js).
+// Read only when the day being shown is a holiday or long-weekend day, once
+// per page load.
+const holidayRecords = ref(null) // null until loaded; [] when missing
+let holidayPending = null
+export function loadHolidayRecords() {
+  if (holidayRecords.value || holidayPending) return holidayPending
+  holidayPending = getDoc(doc(db, 'aggregates', 'holidayStats'))
+    .then((snap) => {
+      const agg = snap.exists() ? snap.data() : null
+      holidayRecords.value = Array.isArray(agg?.sailings) ? expandRecords(agg.sailings) : []
+    })
+    .catch((e) => {
+      console.warn('[useHistoricalStats] holidayStats read failed:', e)
+      holidayRecords.value = []
+    })
+  return holidayPending
+}
+export { holidayRecords }
 
 // Degraded-mode fallback when the aggregate is missing or long-stale. Bounded
 // by a hard doc cap: a 52-week HistoryPage request could otherwise scan ~11k
@@ -135,9 +191,11 @@ export function useHistoricalStats() {
     try {
       const start = nowInVancouver().subtract(weeksBack, 'week').format('YYYY-MM-DD')
       const end = nowInVancouver().subtract(1, 'day').format('YYYY-MM-DD')
-      // Always compute the impacted set so the holiday toggle can be flipped
+      // Always compute the excluded set so the holiday toggle can be flipped
       // without refetching — exclusion happens reactively in byDayOfWeek.
-      impactedDates.value = [...getImpactedDates(start, end)].sort()
+      // Holidays and long-weekend Saturdays/Sundays only: the weekdays either
+      // side of a holiday look like ordinary weekdays, so they stay in.
+      impactedDates.value = getHolidayDates(start, end).map((h) => h.dateIso)
       docs.value = await loadHistoryDocs(start, end)
     } catch (e) {
       console.error('[useHistoricalStats] fetch failed:', e)

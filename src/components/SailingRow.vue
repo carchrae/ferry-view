@@ -1,8 +1,8 @@
 <template>
   <!-- Classic: the original chip row — time + q-badge chips, shrunk to fit. -->
   <div v-if="design === 'classic'" :class="first ? '' : 'q-mt-xs'">
-    <div class="row items-center no-wrap cursor-pointer" @click="$emit('open')">
-      <div class="text-body2 text-weight-bold text-no-wrap clip-time">{{ timeText }}</div>
+    <div class="row items-center no-wrap cursor-pointer" @click="onOpen">
+      <div class="text-body2 text-weight-bold text-no-wrap clip-time" :class="timeClass">{{ timeText }}</div>
       <div v-fit-scale class="row items-center no-wrap col badge-fit">
         <q-badge v-if="skipped" rounded color="grey" class="badge-gap" dense>?</q-badge>
         <q-badge v-else-if="late" rounded :color="late.color" class="badge-gap sr-late" dense>{{
@@ -40,11 +40,11 @@
        time line instead, so the typical-history hint gets the whole second
        line; the fact clips before the lateness on its right does. -->
   <div v-else-if="design === 'cards'" :class="first ? '' : 'q-mt-xs'">
-    <div class="sr-card row no-wrap cursor-pointer" @click="$emit('open')">
+    <div class="sr-card row no-wrap cursor-pointer" @click="onOpen">
       <div class="sr-rail" :class="'bg-' + railColor"></div>
       <div class="sr-card-body">
         <div class="row items-baseline no-wrap">
-          <div class="sr-time">{{ timeText }}</div>
+          <div class="sr-time" :class="timeClass">{{ timeText }}</div>
           <span v-if="factOnTop" class="sr-fact-now sr-fact-top text-caption ellipsis q-ml-xs">
             <NowFact />
           </span>
@@ -78,9 +78,9 @@
 
   <!-- Meter: time + status on one line, a thin fullness bar beneath it. -->
   <div v-else-if="design === 'meter'" :class="first ? '' : 'q-mt-sm'">
-    <div class="cursor-pointer" @click="$emit('open')">
+    <div class="cursor-pointer" @click="onOpen">
       <div class="row items-baseline no-wrap">
-        <div class="sr-time">{{ timeText }}</div>
+        <div class="sr-time" :class="timeClass">{{ timeText }}</div>
         <span
           v-if="late || skipped"
           class="sr-late q-ml-xs text-caption text-no-wrap"
@@ -118,7 +118,7 @@
         </template>
         <template v-if="typeBadge">
           <span v-if="crosswalk" class="text-grey-5"> · </span>
-          <span class="text-orange-9">{{ typeBadge.text }}</span>
+          <span :class="'text-' + typeBadge.color">{{ typeBadge.text }}</span>
         </template>
       </div>
     </div>
@@ -128,9 +128,9 @@
   <!-- Board: departure-board typography — big time, plain colored text
        underneath, no chips or chrome. -->
   <div v-else :class="first ? '' : 'q-mt-sm'">
-    <div class="cursor-pointer" @click="$emit('open')">
+    <div class="cursor-pointer" @click="onOpen">
       <div class="row items-baseline no-wrap">
-        <div class="sr-time-lg">{{ timeText }}</div>
+        <div class="sr-time-lg" :class="timeClass">{{ timeText }}</div>
         <span
           v-if="late || skipped"
           class="sr-late q-ml-xs text-caption text-weight-medium text-no-wrap"
@@ -155,7 +155,7 @@
         </template>
         <template v-if="typeBadge">
           <span v-if="capacity || crosswalk" class="text-grey-5"> · </span>
-          <span class="text-orange-9">{{ typeBadge.text }}</span>
+          <span :class="'text-' + typeBadge.color">{{ typeBadge.text }}</span>
         </template>
       </div>
     </div>
@@ -192,15 +192,42 @@ const props = defineProps({
 
 const emit = defineEmits(['open', 'typical', 'help'])
 
-// Whatever occupies the hint line — the typical-history hint, else the
-// help-tag nudge — and where a tap on it goes.
-const lineHint = computed(() => props.hint || props.help)
+// Whatever occupies the hint line — why a past sailing shows "?", else the
+// typical-history (or, on a past day, forecast) hint, else the help-tag
+// nudge — and where a tap on it goes.
+const lineHint = computed(() => {
+  if (cancelled.value) return null
+  // On a past sailing what's unknown about it outranks a forecast line.
+  if (isPast.value && unknownReason.value) return unknownReason.value
+  return props.hint || unknownReason.value || props.help
+})
 const onHintClick = () => emit(props.hint ? 'typical' : 'help')
+
+// A sailing BC Ferries' schedule skips that day (sailing.cancelled): the time
+// struck through with a "Cancelled" badge, nothing else, and no sailing
+// dialog to open — there's no sailing behind it.
+const cancelled = computed(() => Boolean(props.sailing.cancelled))
+const timeClass = computed(() => (cancelled.value ? 'text-strike text-grey-6' : null))
+const onOpen = () => {
+  if (!cancelled.value) emit('open')
+}
 
 const $q = useQuasar()
 
 const isPast = computed(() => props.kind === 'past')
 const skipped = computed(() => isPast.value && props.sailing.skipped)
+
+// The "?" badge alone doesn't say what's unknown. matching.js sets `skipped`
+// when no departure matched a sailing although a later one did, and
+// `unknownDeparture` (diffText '?') in fallback mode, when the departure log
+// stalled and the sailing ran but its time wasn't recovered.
+const unknownReason = computed(() => {
+  if (!isPast.value) return null
+  if (skipped.value) return { text: 'No departure detected', color: 'grey-7' }
+  if (props.sailing.unknownDeparture || props.sailing.diffText === '?')
+    return { text: 'Departure time not recorded', color: 'grey-7' }
+  return null
+})
 
 const timeText = computed(() =>
   formatTime12h(isPast.value ? props.sailing.scheduledTime : props.sailing.shortTime),
@@ -216,6 +243,7 @@ function shortLate(text) {
 }
 
 const late = computed(() => {
+  if (cancelled.value) return null
   if (!isPast.value && props.estimate !== undefined) {
     const e = props.estimate
     return e && { text: $q.screen.xs ? e.short : e.text, color: e.color }
@@ -300,6 +328,7 @@ const crosswalk = computed(() => {
 })
 
 const typeBadge = computed(() => {
+  if (cancelled.value) return { text: 'Cancelled', color: 'negative' }
   if (props.sailing.dangerousCargo) return { text: 'Cargo', color: 'orange-9' }
   if (props.sailing.repositioning) return { text: 'Reposition', color: 'orange-9' }
   return null
@@ -436,7 +465,7 @@ const NowFact = () => {
   }
   if (tb) {
     if (c || cw) out.push(dot)
-    out.push(h('span', { class: 'text-orange-9' }, tb.text))
+    out.push(h('span', { class: `text-${tb.color}` }, tb.text))
   }
   return out
 }

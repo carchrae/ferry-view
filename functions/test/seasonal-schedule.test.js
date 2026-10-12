@@ -6,7 +6,7 @@ import {
   parseSeasonalSchedule,
   parseDateRule,
   scheduleOn,
-  scheduleByDate,
+  skippedDates,
   fetchSeasonalScheduleHtml,
   applySeasonalSchedule,
   SEASONAL_SCHEDULE_URL,
@@ -75,7 +75,18 @@ describe('seasonal-schedule', () => {
 
   it('knows nothing outside the seasonal range', () => {
     expect(scheduleOn(parsed, '2027-04-05')).toBeNull()
-    expect(Object.keys(scheduleByDate(parsed, '2027-03-30', 4))).toEqual(['2027-03-30', '2027-03-31'])
+    expect(scheduleOn(parsed, '2027-03-31')).not.toBeNull()
+  })
+
+  it('lists every skipped date through the end of the range', () => {
+    // Thanksgiving and Family Day/Good Friday-style Mondays, plus Christmas and New Year's.
+    expect(skippedDates(parsed, '2026-10-12').map((d) => d.dateIso)).toEqual([
+      '2026-10-12',
+      '2026-12-25',
+      '2027-01-01',
+      '2027-02-15',
+      '2027-03-29',
+    ])
   })
 
   it('follows the queue-it safetynet hop with cookies to the schedule page', async () => {
@@ -119,7 +130,6 @@ describe('seasonal-schedule', () => {
     await expect(fetchSeasonalScheduleHtml(fakeFetch)).rejects.toThrow(/queuing/)
   })
 
-  const days = () => scheduleByDate(parsed, '2026-10-11', 3)
 
   it('replaces the feed schedule with BC Ferries\' for the day', () => {
     const data = {
@@ -130,23 +140,33 @@ describe('seasonal-schedule', () => {
         { time: '05:45', dangerousCargo: false, repositioning: false, deckSpace: '97%' },
       ],
     }
-    expect(applySeasonalSchedule(data, days())).toBe(true)
+    expect(applySeasonalSchedule(data, parsed)).toBe(true)
     expect(data.scheduleSource).toBe('bcferries')
     expect(data.bowenSchedule[0]).toEqual({ time: '06:15', dangerousCargo: false })
     expect(data.bowenSchedule).toHaveLength(15)
-    // Feed's repositioning run kept; feed deck space carried onto the listed sailing.
-    expect(data.hsbSchedule.slice(0, 2)).toEqual([
-      { time: '04:40', dangerousCargo: false, repositioning: true, deckSpace: null },
-      { time: '05:45', dangerousCargo: false, repositioning: false, deckSpace: '97%' },
-    ])
+    // The 5:15 from Bowen is skipped, so the day starts from HSB and the
+    // feed's 4:40 repositioning run doesn't happen; feed deck space is carried
+    // onto the listed sailing.
+    expect(data.hsbSchedule[0]).toEqual({ time: '05:45', dangerousCargo: false, repositioning: false, deckSpace: '97%' })
     expect(data.scheduleCancellations).toEqual([
       { location: 'Bowen', time: '05:15', note: 'Except Aug 3, Sep 7, Oct 12, Feb 15, Mar 29', dateIso: '2026-10-12' },
     ])
   })
 
+  it('keeps the repositioning run when the day starts from Bowen', () => {
+    const data = {
+      dateIso: '2026-10-19',
+      bowenSchedule: [],
+      hsbSchedule: [{ time: '04:40', dangerousCargo: false, repositioning: true, deckSpace: null }],
+    }
+    applySeasonalSchedule(data, parsed)
+    expect(data.bowenSchedule[0].time).toBe('05:15')
+    expect(data.hsbSchedule[0]).toEqual({ time: '04:40', dangerousCargo: false, repositioning: true, deckSpace: null })
+  })
+
   it('announces tomorrow\'s skipped sailings the day before', () => {
     const data = { dateIso: '2026-10-11', bowenSchedule: [], hsbSchedule: [] }
-    applySeasonalSchedule(data, days())
+    applySeasonalSchedule(data, parsed)
     expect(data.scheduleCancellations).toEqual([
       { location: 'Bowen', time: '05:15', note: 'Except Aug 3, Sep 7, Oct 12, Feb 15, Mar 29', dateIso: '2026-10-12' },
     ])
@@ -162,16 +182,18 @@ describe('seasonal-schedule', () => {
 })
 
 describe('loadSeasonalSchedule', () => {
+  const parsed = parseSeasonalSchedule(fixture)
+
   it('reads the doc once per day, re-checking hourly only while today is missing', async () => {
     const { loadSeasonalSchedule } = await import('../lib/seasonal-schedule.js')
     let reads = 0
-    let stored = {}
+    let stored = null
     const db = {
       collection: () => ({
         doc: () => ({
           get: async () => {
             reads++
-            return { exists: true, data: () => ({ days: stored }) }
+            return { exists: Boolean(stored), data: () => stored }
           },
         }),
       }),
@@ -181,7 +203,7 @@ describe('loadSeasonalSchedule', () => {
     await loadSeasonalSchedule(db, '2026-10-12', t0)
     await loadSeasonalSchedule(db, '2026-10-12', t0 + 30 * 60000)
     expect(reads).toBe(1)
-    stored = { '2026-10-12': { bowenSchedule: [], hsbSchedule: [], cancelled: [] } }
+    stored = { range: parsed.range, sailings: parsed.sailings }
     await loadSeasonalSchedule(db, '2026-10-12', t0 + 61 * 60000)
     expect(reads).toBe(2)
     // Today present: no more reads all day.

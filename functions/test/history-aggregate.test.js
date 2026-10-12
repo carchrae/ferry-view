@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { recomputeHistoricalStats, HISTORY_WEEKS } from '../lib/history-aggregate.js'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { recomputeHistoricalStats, recomputeHolidayStats, HISTORY_WEEKS } from '../lib/history-aggregate.js'
 import { nowInVancouver } from '../lib/time.js'
 
 // Fake supporting the two surfaces used: a range query on sailingStatus and a
@@ -106,5 +106,47 @@ describe('recomputeHistoricalStats', () => {
     ])
     await recomputeHistoricalStats(db)
     expect(db.writes[0].payload.sailings[0].fa).toBe(1752300000000)
+  })
+})
+
+describe('recomputeHolidayStats', () => {
+  // Pinned to the day after Thanksgiving 2026, so "yesterday" is a holiday.
+  const at = (iso) => vi.setSystemTime(new Date(`${iso}T19:00:00Z`))
+  const sailing = (dateIso, t = '10:35') => ({ dateIso, sailingTime: t, direction: 'To Bowen', lastCapacity: '40%' })
+  const docs = [
+    sailing('2026-09-05'), sailing('2026-09-06'), sailing('2026-09-07'), // Labour Day weekend
+    sailing('2026-09-08'), // Tuesday after: ordinary
+    sailing('2026-09-30'), // Truth and Reconciliation Day
+    sailing('2026-10-11'), sailing('2026-10-12'), // Thanksgiving Sun + Mon
+    sailing('2026-10-13'), // today: not yet
+  ]
+  afterEach(() => vi.useRealTimers())
+
+  it('collects only holiday and long-weekend sailings, one query per long weekend', async () => {
+    vi.useFakeTimers()
+    at('2026-10-13')
+    const db = makeDb(docs)
+    const r = await recomputeHolidayStats(db)
+    const { payload } = db.writes.find((w) => w.key === 'aggregates/holidayStats')
+    expect(payload.sailings.map((s) => s.d).sort()).toEqual([
+      '2026-09-05', '2026-09-06', '2026-09-07', '2026-09-30', '2026-10-11', '2026-10-12',
+    ])
+    expect(payload.dates.find((d) => d.d === '2026-10-12')).toEqual({ d: '2026-10-12', type: 'holiday', name: 'Thanksgiving' })
+    expect(payload.dates.find((d) => d.d === '2026-10-11').type).toBe('long-weekend')
+    expect(r.count).toBe(6)
+  })
+
+  it('skips an ordinary night when the doc already exists', async () => {
+    vi.useFakeTimers()
+    at('2026-10-15') // yesterday was an ordinary Wednesday
+    const db = makeDb(docs)
+    const orig = db.collection.bind(db)
+    db.collection = (name) => {
+      const c = orig(name)
+      if (name !== 'aggregates') return c
+      return { doc: (id) => ({ ...c.doc(id), get: async () => ({ exists: true }) }) }
+    }
+    expect(await recomputeHolidayStats(db)).toEqual({ skipped: true })
+    expect(db.writes).toHaveLength(0)
   })
 })

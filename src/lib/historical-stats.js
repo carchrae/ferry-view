@@ -137,11 +137,22 @@ export function minutesToLabel(mins) {
 //
 // Returns { hsb: { [dayKey]: { [time]: info } }, bowen: {...} }
 export function aggregateSailings(docs) {
+  return aggregateGrouped(docs, (doc) => DOW_MAP[dayjs.tz(doc.dateIso, TZ).day()], DAY_KEYS)
+}
+
+// The same per-sailing stats with every date pooled regardless of weekday —
+// for forecasts built from a hand-picked set of days (holidays).
+// Returns { hsb: { [time]: info }, bowen: {...} }
+export function aggregateByTime(docs) {
+  const g = aggregateGrouped(docs, () => 'All', ['All'])
+  return { hsb: g.hsb.All || {}, bowen: g.bowen.All || {} }
+}
+
+function aggregateGrouped(docs, keyOf, keys) {
   const groups = { hsb: {}, bowen: {} }
 
   for (const doc of docs) {
-    const dow = dayjs.tz(doc.dateIso, TZ).day()
-    const dayKey = DOW_MAP[dow]
+    const dayKey = keyOf(doc)
     if (!dayKey) continue
 
     const dir = directionToPanel(doc.direction)
@@ -180,7 +191,7 @@ export function aggregateSailings(docs) {
 
   const result = { hsb: {}, bowen: {} }
   for (const dir of ['hsb', 'bowen']) {
-    for (const dayKey of DAY_KEYS) {
+    for (const dayKey of keys) {
       const grp = groups[dir][dayKey]
       if (!grp) continue
       result[dir][dayKey] = {}
@@ -377,7 +388,7 @@ export function latenessFact(info) {
   }
   // No warning is not the same as good news: only claim punctuality when
   // enough departures were actually recorded to back it.
-  if (info.latenessCount >= EXCEPTION_MIN_SAMPLES && info.latePct !== null) {
+  if (info.latenessCount >= minSamples(info) && info.latePct !== null) {
     return {
       kind: 'onTime',
       freq: null,
@@ -542,10 +553,18 @@ export function factExplanation(fact) {
   }
 }
 
+// Days of history needed before a sailing's stats are worded at all. An
+// ordinary weekday has eight weeks to draw on; a holiday forecast
+// (src/lib/holiday-forecast.js sets minSamples) only ever has a handful of
+// past holidays, and they still beat the wrong kind of day.
+function minSamples(info) {
+  return info.minSamples ?? EXCEPTION_MIN_SAMPLES
+}
+
 // Every fact for a sailing, in display order. The history page renders one row
 // per fact; the explainer walks the same list.
 export function typicalFacts(info, panel = null) {
-  if (!info || info.count < EXCEPTION_MIN_SAMPLES) return []
+  if (!info || info.count < minSamples(info)) return []
   return [latenessFact(info), fullnessFact(info, panel)].filter(Boolean)
 }
 

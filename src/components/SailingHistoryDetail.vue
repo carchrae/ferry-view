@@ -14,7 +14,7 @@
         </tr>
       </thead>
       <tbody>
-        <template v-for="d in info.dates" :key="d.dateIso">
+        <template v-for="d in datesNewestFirst" :key="d.dateIso">
         <tr :class="d.isException ? 'exception-row' : ''">
           <td class="exception-cell">
             <q-icon v-if="d.isException" name="warning" size="xs" color="amber-8">
@@ -64,6 +64,12 @@ const props = defineProps({
   // instead of "Filled by".
   panel: { type: String, default: 'hsb' },
 })
+
+// Most recent first. info.dates is oldest first (historical-stats sorts it
+// that way for its exception/trend math), so reverse a copy for display.
+const datesNewestFirst = computed(() =>
+  [...(props.info?.dates || [])].sort((a, b) => b.dateIso.localeCompare(a.dateIso)),
+)
 
 const isBowen = computed(() => props.panel === 'bowen')
 
