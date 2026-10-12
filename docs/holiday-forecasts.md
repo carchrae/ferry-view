@@ -48,6 +48,13 @@ Holiday-sourced hints are worded from as few as 1 past day (ordinary days need
 4); the app labels them "holiday forecast" and the sailing dialog says which
 days they came from.
 
+**Home-page notice** (`holidayTraffic`, `holidayNoticeText`), shown on holiday
+and long-weekend days only: per direction, the share of busy sailings (Full
+leaving HSB; lineup to the crosswalk leaving Bowen) from the sources above vs
+the ordinary same weekday. At least 1.25× is "busier" and at most 0.8× is
+"quieter", e.g. "Thanksgiving — quieter from Horseshoe Bay, busier leaving
+Bowen". With no past holiday data it says "— holiday schedule".
+
 ## Evidence
 
 Method: hide each holiday-period day, predict every sailing from a candidate
@@ -142,3 +149,6 @@ restore; refresh staging first) and update this note:
 - [ ] after Family Day and Easter 2027 (first winter/spring family holidays)
 - [ ] after a full year (May 2027): same-holiday-last-year (rule 1) starts
   applying; compare it against the pooled rules
+
+Each time, also check the home-page notice against what happened: did
+"busier"/"quieter" match the day, and are the 1.25× / 0.8× thresholds right?

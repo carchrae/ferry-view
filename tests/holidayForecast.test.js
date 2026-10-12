@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { holidayForecast, holidayTypical } from '../src/lib/holiday-forecast.js'
+import {
+  holidayForecast,
+  holidayTypical,
+  holidayTraffic,
+  holidayNoticeText,
+} from '../src/lib/holiday-forecast.js'
 import { aggregateSailings, typicalHints } from '../src/lib/historical-stats.js'
 
 // One HSB departure ("To Bowen") at 10:35 per date, with a lateness and capacity.
@@ -88,3 +93,44 @@ describe('holidayForecast', () => {
     assert.equal(info.basis, 'Labour Day, BC Day')
   })
 })
+
+describe('holiday notice', () => {
+  // Leaving HSB: 10:35 full on both past holiday Mondays; Bowen 15:15 lineup
+  // to the crosswalk on neither. Ordinary Mondays: HSB rarely full, Bowen
+  // always lined up.
+  const hsb = (dateIso, cap) => ({ dateIso, sailingTime: '10:35', direction: 'To Bowen', actualDepartureTime: '10:35', lastCapacity: cap })
+  const bowen = (dateIso, cw) => ({ dateIso, sailingTime: '15:15', direction: 'To HSB', actualDepartureTime: '15:15', crosswalkFullAt: cw })
+  const at = (iso, hhmm) => Date.parse(`${iso}T${hhmm}:00-07:00`)
+  const holidays = [hsb('2026-08-03', 'Full'), hsb('2026-09-07', 'Full'), bowen('2026-08-03', null), bowen('2026-09-07', null)]
+  const mondays = aggregateSailings([
+    hsb('2026-09-28', '50%'), hsb('2026-10-05', 'Full'),
+    bowen('2026-09-28', at('2026-09-28', '14:50')), bowen('2026-10-05', at('2026-10-05', '14:55')),
+  ])
+
+  it('says how each direction compares with a usual day of that weekday', () => {
+    const t = holidayTraffic(holidayForecast('2026-10-12', holidays), mondays)
+    assert.deepEqual(t, { weekday: 'Monday', fromHolidays: true, hsb: 'busier', bowen: 'quieter' })
+    assert.equal(
+      holidayNoticeText('holiday', 'Thanksgiving', t),
+      'Thanksgiving — busier from Horseshoe Bay, quieter leaving Bowen',
+    )
+  })
+
+  it('words agreeing directions, usual traffic and no history', () => {
+    const base = { weekday: 'Monday', fromHolidays: true }
+    assert.equal(
+      holidayNoticeText('holiday', 'Remembrance Day', { ...base, hsb: 'quieter', bowen: 'quieter' }),
+      'Remembrance Day — expect quieter sailings than a usual Monday',
+    )
+    assert.equal(
+      holidayNoticeText('long-weekend', 'BC Day', { ...base, hsb: 'usual', bowen: 'usual' }),
+      'BC Day weekend — traffic like a usual Monday',
+    )
+    assert.equal(
+      holidayNoticeText('holiday', 'Thanksgiving', { ...base, hsb: 'quieter', bowen: 'usual' }),
+      'Thanksgiving — quieter from Horseshoe Bay, as usual leaving Bowen',
+    )
+    assert.equal(holidayNoticeText('holiday', 'Christmas Day', { weekday: 'Friday', fromHolidays: false }), 'Christmas Day — holiday schedule')
+  })
+})
+

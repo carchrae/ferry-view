@@ -141,3 +141,71 @@ export function holidayTypical(forecast, byDayOfWeek, panel, time) {
   const info = getTypical(byDayOfWeek, panel, forecast.fallbackDay, time)
   return info ? { ...withOrdinaryLateness(info), basis: `ordinary ${forecast.fallbackDay}s` } : null
 }
+
+// Crosswalk lineups were only tracked from this date: earlier days can't
+// count as "no lineup".
+const CROSSWALK_TRACKED_FROM = '2026-07-13'
+// A direction is "busier"/"quieter" when its share of busy sailings is at
+// least this far from an ordinary day's.
+const BUSIER = 1.25
+const QUIETER = 0.8
+
+// How often a sailing's past days were busy: full (leaving HSB), or the
+// lineup reached the crosswalk (leaving Bowen). null without data.
+function busyShare(info, panel) {
+  const dates = info?.dates || []
+  if (panel === 'hsb') {
+    const reported = dates.filter((d) => d.capacity)
+    return reported.length ? reported.filter((d) => d.capacity === 'Full').length / reported.length : null
+  }
+  const tracked = dates.filter((d) => d.dateIso >= CROSSWALK_TRACKED_FROM)
+  return tracked.length ? tracked.filter((d) => d.crosswalkMinutes != null).length / tracked.length : null
+}
+
+/**
+ * How a holiday / long-weekend day's traffic compares with an ordinary day of
+ * the same weekday, per direction, from the same sources as the sailing hints.
+ * @returns {{hsb: 'busier'|'quieter'|'usual'|null, bowen: …, weekday, fromHolidays: boolean}|null}
+ *   null for an ordinary day; a direction is null when there's nothing to
+ *   compare; fromHolidays is false when no past holiday data was used.
+ */
+export function holidayTraffic(forecast, byDayOfWeek) {
+  if (!forecast) return null
+  const weekday = forecast.latenessDay
+  const out = { weekday, fromHolidays: forecast.tiers.length > 0 }
+  for (const panel of ['hsb', 'bowen']) {
+    const times = Object.keys(byDayOfWeek?.[panel]?.[weekday] || {})
+    let day = 0, ordinary = 0, n = 0
+    for (const time of times) {
+      const h = busyShare(holidayTypical(forecast, byDayOfWeek, panel, time), panel)
+      const o = busyShare(getTypical(byDayOfWeek, panel, weekday, time), panel)
+      if (h == null || o == null) continue
+      day += h
+      ordinary += o
+      n++
+    }
+    if (!n) out[panel] = null
+    else if (ordinary === 0) out[panel] = day > 0 ? 'busier' : 'usual'
+    else out[panel] = day / ordinary >= BUSIER ? 'busier' : day / ordinary <= QUIETER ? 'quieter' : 'usual'
+  }
+  return out
+}
+
+/**
+ * The home page's one-line holiday notice: the day and how its traffic is
+ * expected to compare with an ordinary one.
+ */
+export function holidayNoticeText(type, name, traffic) {
+  const day = type === 'holiday' ? name : `${name} weekend`
+  if (!traffic?.fromHolidays) return `${day} — holiday schedule`
+  const { hsb, bowen, weekday } = traffic
+  const usual = `a usual ${weekday}`
+  if (hsb === bowen || !hsb || !bowen) {
+    const w = hsb && bowen ? hsb : hsb || bowen
+    if (!w) return `${day} — holiday schedule`
+    if (w === 'usual') return `${day} — traffic like ${usual}`
+    return `${day} — expect ${w === 'busier' ? 'busier' : 'quieter'} sailings than ${usual}`
+  }
+  const part = (w, where) => (w === 'usual' ? `as usual ${where}` : `${w} ${where}`)
+  return `${day} — ${part(hsb, 'from Horseshoe Bay')}, ${part(bowen, 'leaving Bowen')}`
+}
