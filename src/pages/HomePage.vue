@@ -1809,12 +1809,7 @@ function showTypical(time, label, entry = null) {
     // Which photos the dialog shows (Bowen only): 'past' = archived frames
     // of a departed sailing, 'next' = the live cameras for the sailing now
     // boarding, 'later' = none (nothing to see yet).
-    // Another day: archived photos for a past Bowen sailing, nothing live.
-    mode: viewDay.value
-      ? label === 'Bowen' && entry && viewDayIsPast.value
-        ? 'past'
-        : null
-      : dialogModeFor(label, entry),
+    mode: dialogModeFor(label, entry),
   }
   showTypicalDialog.value = true
   dialogFrames.value = null
@@ -1824,6 +1819,8 @@ function showTypical(time, label, entry = null) {
 
 function dialogModeFor(label, entry) {
   if (label !== 'Bowen' || !entry) return null
+  // Another day: archived photos for a past Bowen sailing, nothing live.
+  if (viewDay.value) return viewDayIsPast.value ? 'past' : null
   const upcoming = allUpcomingBowen.value
   if (upcoming[0] === entry) return 'next'
   if (upcoming.includes(entry)) return 'later'
@@ -3189,13 +3186,26 @@ watch(
     const typicalOnTop = q.time != null && !q.robot && q.cam == null
     if (typicalOnTop) {
       const cur = selectedTypical.value
+      // Rebuilt whenever the sailing's photo mode has moved on — it departs
+      // while the dialog is open, or the dialog is reopened later (the last
+      // one stays in selectedTypical after closing, so a reopened sailing
+      // kept its live cameras long after it left). Otherwise just take the
+      // current row, so the status lines stay live without reloading frames.
       if (
         !cur ||
         normalizeTime(cur.time) !== q.time ||
         cur.label !== q.label ||
-        (!cur.entry && q.entry)
+        (!cur.entry && q.entry) ||
+        cur.mode !== dialogModeFor(q.label, q.entry)
       )
         showTypical(q.time, q.label, q.entry)
+      else if (q.entry && cur.entry !== q.entry)
+        selectedTypical.value = {
+          ...cur,
+          entry: q.entry,
+          robotCrosswalk: q.entry.crosswalkSource === 'robot',
+          robotCapacity: q.entry.capacitySource === 'robot',
+        }
       showTypicalDialog.value = true
     } else showTypicalDialog.value = false
     if (q.robot) {
