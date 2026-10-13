@@ -129,6 +129,8 @@ const ENRICHMENT_FIELDS = [
   'lastCapacity',
   'filledAt',
   'crosswalkFullAt',
+  'capacitySource',
+  'crosswalkSource',
 ]
 
 function stripEnrichmentFields(schedule) {
@@ -140,12 +142,25 @@ function stripEnrichmentFields(schedule) {
   })
 }
 
+// Live vessel telemetry and feed clocks: they move on nearly every poll but
+// nothing the enrichment derives (schedule matches, capacity, crosswalk marks)
+// depends on them. A poll where only these changed patches them onto the saved
+// doc (liveFields) instead of re-running the ~160-read enrichment.
+const LIVE_FIELDS = ['speed', 'heading', 'position', 'isFresh', 'lastUpdate', 'fetchedAt']
+
+function liveFields(data) {
+  const out = {}
+  for (const f of LIVE_FIELDS) if (data[f] !== undefined) out[f] = data[f]
+  return out
+}
+
 function sanitizeForCompare(data) {
-  // `position` is high-frequency lat/lon telemetry (changes every poll while moving),
-  // like speed; exclude it from the change diff. `aisLocationSince` is a derived timestamp
-  // that only moves in lockstep with `aisLocation`, so exclude it too. `aisLocation` (the
-  // terminal token) is low-frequency and meaningful, so it stays and can trigger a persist.
-  const { fetchedAt, lastUpdate, recentActivity, position, aisLocationSince, ...rest } = data
+  // Live fields are excluded (see LIVE_FIELDS). `aisLocationSince` is a derived
+  // timestamp that only moves in lockstep with `aisLocation`, so exclude it too.
+  // `aisLocation` (the terminal token) is low-frequency and meaningful, so it
+  // stays and can trigger a persist.
+  const { recentActivity, aisLocationSince, ...rest } = data
+  for (const f of LIVE_FIELDS) delete rest[f]
   return {
     ...rest,
     bowenSchedule: stripEnrichmentFields(rest.bowenSchedule),
@@ -153,8 +168,17 @@ function sanitizeForCompare(data) {
   }
 }
 
+// True when `data` would save exactly what ferryStatus/current already holds
+// (fetchedAt aside — it is stamped on every fetch). The JSON round trip drops
+// undefined fields, which Firestore never stores.
+function sameAsSaved(data, saved) {
+  if (!saved) return false
+  const plain = ({ fetchedAt, ...rest }) => JSON.parse(JSON.stringify(rest))
+  return diff(plain(data), plain(saved)).length === 0
+}
+
 // parseFerryData is exported for tests: it's the single source of truth for
 // the API's shape (notably normalizeTime on every time field). tests/ used to
 // keep its own copy, which silently drifted when times were normalized and
 // left the whole suite asserting against a format the app no longer produces.
-export { checkDataChanged, sanitizeForCompare, parseFerryData }
+export { checkDataChanged, sanitizeForCompare, sameAsSaved, liveFields, parseFerryData }

@@ -10,7 +10,7 @@ import {
 } from 'firebase-functions/v2/firestore'
 import { defineSecret } from 'firebase-functions/params'
 
-import { fetchFerryData, checkDataChanged, sanitizeForCompare } from './lib/api.js'
+import { fetchFerryData, checkDataChanged, sanitizeForCompare, sameAsSaved, liveFields } from './lib/api.js'
 import { configureWebPush } from './lib/notify.js'
 import { checkLatenessAndNotify } from './lib/lateness.js'
 import {
@@ -235,9 +235,22 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   // Re-match for the frontend response (picks up any backfilled events)
   const { hsbPast: hsbPast2, bowenPast: bowenPast2 } = matchDepartures(data, now)
 
-  // Save the fully-enriched data to Firestore
+  // Save the fully-enriched data to Firestore — unless it is identical to the
+  // saved doc, since every write also costs each listening client a read.
   if (dataChanged) {
-    await db.collection('ferryStatus').doc('current').set(data)
+    if (sameAsSaved(data, existingData)) {
+      logger.log('Enriched status matches the saved doc, skipping write')
+    } else {
+      await db.collection('ferryStatus').doc('current').set(data)
+    }
+  } else if (existingData) {
+    // Nothing the enrichment depends on changed: patch just the live fields
+    // (speed, heading, position, feed clock) onto the saved, already-enriched
+    // doc. lastUpdate is among them, which keeps the client's stale check fed.
+    const live = liveFields(data)
+    if (!sameAsSaved(live, liveFields(existingData))) {
+      await db.collection('ferryStatus').doc('current').update(live)
+    }
   }
 
   return { data, hsbPast: hsbPast2, bowenPast: bowenPast2, dataChanged }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkDataChanged, sanitizeForCompare, parseApiDate } from '../lib/api.js'
+import { checkDataChanged, sanitizeForCompare, sameAsSaved, liveFields, parseApiDate } from '../lib/api.js'
 
 describe('api.js', () => {
   describe('parseApiDate', () => {
@@ -63,9 +63,54 @@ describe('api.js', () => {
     })
 
     it('keeps other fields', () => {
-      const data = { foo: 'bar', speed: 10, fetchedAt: 123 }
+      const data = { foo: 'bar', aisLocation: 'Bowen', fetchedAt: 123 }
       const result = sanitizeForCompare(data)
-      expect(result).toEqual({ foo: 'bar', speed: 10 })
+      expect(result).toEqual({ foo: 'bar', aisLocation: 'Bowen' })
+    })
+
+    // Patched separately (liveFields), so they never trigger the enrichment.
+    it('removes live telemetry', () => {
+      const data = { foo: 'bar', speed: 10, heading: 270, position: { lat: 1, lon: 2 }, isFresh: true }
+      expect(sanitizeForCompare(data)).toEqual({ foo: 'bar' })
+    })
+
+    // The saved doc carries these source markers from enrichment; the fresh
+    // fetch never does. Left in, every poll after the first tag read as changed.
+    it('strips enrichment source markers from schedule entries', () => {
+      const saved = sanitizeForCompare({
+        bowenSchedule: [{ time: '16:40', crosswalkFullAt: 1, crosswalkSource: 'robot' }],
+        hsbSchedule: [{ time: '17:00', lastCapacity: 'Full', capacitySource: 'user' }],
+      })
+      const fresh = sanitizeForCompare({ bowenSchedule: [{ time: '16:40' }], hsbSchedule: [{ time: '17:00' }] })
+      expect(checkDataChanged(fresh, saved)).toBe(false)
+    })
+  })
+
+  describe('liveFields', () => {
+    it('picks only the live fields that are set', () => {
+      const data = { speed: 10, heading: undefined, lastUpdate: '16:10', bowenSchedule: [] }
+      expect(liveFields(data)).toEqual({ speed: 10, lastUpdate: '16:10' })
+    })
+  })
+
+  describe('sameAsSaved', () => {
+    const saved = { speed: 10, lastUpdate: '16:10', fetchedAt: 1, bowenSchedule: [{ time: '16:40', crosswalkSource: 'robot' }] }
+
+    it('is false with no saved doc', () => {
+      expect(sameAsSaved({ speed: 10 }, null)).toBe(false)
+    })
+
+    it('ignores fetchedAt and undefined fields', () => {
+      expect(sameAsSaved({ ...saved, fetchedAt: 2, extra: undefined }, saved)).toBe(true)
+    })
+
+    it('sees a changed lastUpdate', () => {
+      expect(sameAsSaved({ ...saved, lastUpdate: '16:11' }, saved)).toBe(false)
+    })
+
+    it('sees a changed enrichment field', () => {
+      const next = { ...saved, bowenSchedule: [{ time: '16:40', crosswalkSource: 'user' }] }
+      expect(sameAsSaved(next, saved)).toBe(false)
     })
   })
 })
