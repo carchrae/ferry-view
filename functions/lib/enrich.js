@@ -24,6 +24,8 @@ export async function augmentRecentActivity(db, data) {
         if (typeof s.crosswalkFullAt === 'number') {
           entry.crosswalkFullAt = s.crosswalkFullAt
           entry.crosswalkSource = s.crosswalkSource || 'user'
+          // The robot's call is still being checked with extra photos.
+          if (s.crosswalkChecking && s.crosswalkSource === 'robot') entry.crosswalkChecking = true
         }
         // Robot 'Not Full' fills the capacity gap; augmentFromCapacityHistory
         // runs after this and lets any user record overwrite the robot copy.

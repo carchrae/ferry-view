@@ -14,6 +14,8 @@ import { isValidLineupReport, effectiveCrosswalk } from './lineup-labels.js'
 // A refute clears the sailing's crosswalk claim (whoever made it) and arms
 // crosswalkNotYetAt, which blocks the robot from re-filling its own detection
 // unless that detection is fresher than the refute (see robotMayFillCrosswalk).
+// Every write clears crosswalkChecking (the robot's "still checking" mark,
+// see crosswalk-robot.js): once a rider has spoken, that's the call shown.
 
 const KEY_RE = /^(\d{4}-\d{2}-\d{2})_(.+)_(To\s.+)$/
 
@@ -40,6 +42,7 @@ export async function applyLineupReport(db, r) {
         ...base,
         crosswalkFullAt: FieldValue.delete(),
         crosswalkSource: FieldValue.delete(),
+        crosswalkChecking: FieldValue.delete(),
         crosswalkNotYetAt: r.recordedAt || Date.now(),
       },
       { merge: true },
@@ -55,6 +58,7 @@ export async function applyLineupReport(db, r) {
         // Human marks always overwrite a robot-recorded crosswalk time; the
         // robot's own crosswalkFullAtAuto stays untouched for comparison.
         crosswalkSource: 'user',
+        crosswalkChecking: FieldValue.delete(),
         // A newer positive mark supersedes any earlier refute.
         crosswalkNotYetAt: FieldValue.delete(),
       },
@@ -88,6 +92,7 @@ export async function rederiveCrosswalkAfterDelete(db, sailingKey) {
       {
         crosswalkFullAt: eff.at,
         crosswalkSource: 'user',
+        crosswalkChecking: FieldValue.delete(),
         crosswalkNotYetAt: FieldValue.delete(),
       },
       { merge: true },
@@ -101,6 +106,7 @@ export async function rederiveCrosswalkAfterDelete(db, sailingKey) {
       {
         crosswalkFullAt: FieldValue.delete(),
         crosswalkSource: FieldValue.delete(),
+        crosswalkChecking: FieldValue.delete(),
         crosswalkNotYetAt: eff.recordedAt,
       },
       { merge: true },
@@ -119,6 +125,7 @@ export async function rederiveCrosswalkAfterDelete(db, sailingKey) {
         {
           crosswalkFullAt: autoAt,
           crosswalkSource: 'robot',
+          crosswalkChecking: FieldValue.delete(),
           crosswalkNotYetAt: FieldValue.delete(),
         },
         { merge: true },
@@ -131,6 +138,7 @@ export async function rederiveCrosswalkAfterDelete(db, sailingKey) {
         {
           crosswalkFullAt: FieldValue.delete(),
           crosswalkSource: FieldValue.delete(),
+          crosswalkChecking: FieldValue.delete(),
           crosswalkNotYetAt: FieldValue.delete(),
         },
         { merge: true },

@@ -93,8 +93,12 @@ const LINEUP_WAIT_AFTER_DEP_MIN = 15
 const LINEUP_STOP_AFTER_ARRIVAL_MIN = 10
 const LINEUP_FIRST_SAILING_LEAD_MIN = 60
 
-export function timelapseDecision(data, now) {
-  if (now.minute() % 5 !== 0) return { capture: false }
+// offCadence: answer for any minute — used for the crosswalk robot's 1-minute
+// check photos (see crosswalk-robot.js), which run between the 5-min frames.
+// `arrived` tells the robot the ferry is back and loading, so a shorter
+// lineup no longer means its call was wrong.
+export function timelapseDecision(data, now, { offCadence = false } = {}) {
+  if (!offCadence && now.minute() % 5 !== 0) return { capture: false }
 
   // The lineup is building for the earliest sailing that hasn't departed yet —
   // NOT `first scheduled time > now`. When a sailing is boarding past its
@@ -143,15 +147,17 @@ export function timelapseDecision(data, now) {
   // Post-9pm departures never capture unconditionally, but a late busy ferry
   // is exactly when frames matter — the whole cycle is classify-first (the
   // wait gate is irrelevant when every frame is classifier-gated anyway).
+  // Only present when true, so callers can treat it as a flag.
+  const arrived = arrivedAt ? { arrived: true } : {}
   if (parseInt(nextDep.time.split(':')[0], 10) >= 21) {
-    return { capture: false, classifyFirst: true, sailingTime: nextDep.time }
+    return { capture: false, classifyFirst: true, sailingTime: nextDep.time, ...arrived }
   }
 
   if (now.diff(lastDep, 'minute') < LINEUP_WAIT_AFTER_DEP_MIN) {
-    return { capture: false, classifyFirst: true, sailingTime: nextDep.time }
+    return { capture: false, classifyFirst: true, sailingTime: nextDep.time, ...arrived }
   }
 
-  return { capture: true, sailingTime: nextDep.time }
+  return { capture: true, sailingTime: nextDep.time, ...arrived }
 }
 
 // Which sailing does an arrival at `arrivalTime` serve? The first schedule

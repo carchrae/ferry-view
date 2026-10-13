@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto'
 import { getStorage } from 'firebase-admin/storage'
 import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
-import { isRecent, nowInVancouver, timeToDate, dayjs } from './time.js'
+import { isRecent, nowInVancouver, timeToDate, dayjs, TZ } from './time.js'
 import { classifyLineup, lineupModelVersion, modelUsable } from './lineup-classifier.js'
 import { isDarkAt } from './daylight.js'
 import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import { updateSailingStatus } from './helpers.js'
+import { crosswalkRobotStep, MAX_GAP_MS } from './crosswalk-robot.js'
 import {
   robotMayFillCrosswalk,
   MIN_ALL_EMPTY_FRAMES,
@@ -51,11 +52,6 @@ const WEBCAM_URL = 'https://ccimg.bcferries.com/cc/support/terminals/cam1_bow.jp
 const COMMUNITY_WEBCAM_URL = 'https://ferrycamera.bowencommunitycentre.com/snapshot.jpg'
 const SAMPLE_COUNT = 3
 const SAMPLE_DELAY_MS = 1000
-// A crosswalkAutoPending may only be confirmed by the NEXT timelapse frame
-// (one 5-min cadence step, plus jitter). Older pendings can't promote:
-// intervening frames may have been negative without a trace (classify-first
-// probes discard non-sticky negatives without a write; webcam fetches fail).
-const PENDING_CONFIRM_MAX_MS = 7 * 60 * 1000
 // The terminal equivalent, for the departure timelapse's 1-minute cadence.
 // Every terminal rule ("two consecutive empty frames", "FULL_TAIL_FRAMES
 // confidently-cars frames") means consecutive *in time*, but the streaming
@@ -262,9 +258,28 @@ export async function captureBowenCommunityWebcam(db, sailingTime, dateIso, arri
   logger.log(`Saved community webcam snapshot: ${blobPath} (${best.length}B, ${samples.length} samples)`)
 }
 
+// The crosswalk robot's next check photo (see crosswalk-robot.js): set when a
+// frame leaves its call open, taken on the next poll instead of waiting for
+// the 5-min frame. In memory only — a cold start just drops it, and the open
+// check then finishes on the regular 5-min frames (within MAX_GAP_MS).
+let lineupCheck = null
+export function _resetLineupCheck() {
+  lineupCheck = null
+}
+
 export async function captureLineupTimelapse(db, data) {
   const now = nowInVancouver()
-  const decision = timelapseDecision(data, now)
+  let decision = timelapseDecision(data, now)
+  if (!decision.capture && !decision.classifyFirst && lineupCheck) {
+    const d = timelapseDecision(data, now, { offCadence: true })
+    const key = d.sailingTime && `${data.dateIso}_${d.sailingTime}_To HSB`
+    if (key === lineupCheck.snapshotKey && now.valueOf() < lineupCheck.until) {
+      // Saved whatever it shows: the check frames are the robot's evidence.
+      decision = { ...d, capture: true, classifyFirst: false, check: true }
+    } else {
+      lineupCheck = null
+    }
+  }
   if (!decision.capture && !decision.classifyFirst) return
   // Classify-first probe (wait gate after the previous departure, or the
   // whole cycle of a post-9pm sailing): the frame is only worth saving if
@@ -313,6 +328,8 @@ export async function captureLineupTimelapse(db, data) {
   // accumulating. Unconditional captures still save (frames stay taggable,
   // and they build the dark archive a future night model needs).
   const verdict = isDarkAt(timestamp) ? null : await classifyLineup(best)
+  // No verdict, no check: an unclassified frame can't settle anything.
+  if (!verdict) lineupCheck = null
 
   const snapshotKey = `${data.dateIso}_${decision.sailingTime}_To HSB`
   // At most ONE sailingStatus read per invocation: shared by the sticky
@@ -324,12 +341,12 @@ export async function captureLineupTimelapse(db, data) {
   }
 
   if (decision.classifyFirst && !verdict?.fullToCrosswalk) {
-    // Sticky detection: once the classifier has CONFIRMED the crosswalk full
-    // for this sailing (crosswalkFullAtAuto — permanent, survives a human
-    // refute; rider tags land post-sailing so they can't be a live trigger),
-    // every 5-min frame keeps saving until the arrival stop, negatives
-    // included. A non-sticky negative probe is discarded: 1 read, no writes.
-    if (!cur.crosswalkFullAtAuto) return
+    // Sticky detection: once the robot has a call on this sailing (open or
+    // confirmed — crosswalkRobot; crosswalkFullAtAuto / crosswalkAutoPending
+    // on pre-deploy docs), every frame keeps saving until the arrival stop,
+    // negatives included — they are what withdraws a wrong call. A
+    // non-sticky negative probe is discarded: 1 read, no writes.
+    if (!cur.crosswalkRobot && !cur.crosswalkFullAtAuto && !cur.crosswalkAutoPending) return
   } else if (decision.classifyFirst) {
     logger.log(
       `Lineup probe positive (p=${verdict.probability.toFixed(2)}) — capturing frame for ${decision.sailingTime}`,
@@ -348,52 +365,23 @@ export async function captureLineupTimelapse(db, data) {
   await file.makePublic()
 
   // Automated crosswalk detection (no-op until a trained model is committed —
-  // see lib/lineup-classifier.js). The auto fields are permanent: a later
-  // human mark overwrites the report fields but never removes these, so
-  // human-vs-robot agreement stays measurable per model version. Streaming
-  // form of firstSustainedPositiveTs() (lineup-labels.js): a positive frame
-  // only becomes crosswalkFullAtAuto once the NEXT frame is also positive —
-  // a lone positive is noise, so it parks as crosswalkAutoPending and a
-  // negative frame clears it. The stamped time is the FIRST frame of the
-  // confirmed pair — and the pair must be CONSECUTIVE: a pending older than
-  // one cadence step (plus jitter) can't confirm, because the frames between
-  // may have been negative without us seeing it (a classify-first probe
-  // discards non-sticky negative frames without a write, and webcam fetches
-  // can fail); a stale pending is replaced by the current frame instead.
-  // A confirmed verdict is also recorded as a robot REPORT
-  // (crosswalkFullAt + crosswalkSource:'robot') when no human mark exists and
-  // no fresher human "not yet" refute blocks it (robotMayFillCrosswalk) —
-  // humans always overwrite or refute it (see user-lineup.js).
-  const autoFields = {}
-  let robotReported = false
-  if (verdict) {
-    if (!cur.crosswalkFullAtAuto) {
-      if (verdict.fullToCrosswalk) {
-        if (
-          cur.crosswalkAutoPending &&
-          timestamp - cur.crosswalkAutoPending.ts <= PENDING_CONFIRM_MAX_MS
-        ) {
-          autoFields.crosswalkFullAtAuto = cur.crosswalkAutoPending.ts
-          autoFields.crosswalkAutoProb = cur.crosswalkAutoPending.prob
-          autoFields.crosswalkAutoPending = FieldValue.delete()
-          const modelVersion = lineupModelVersion()
-          if (modelVersion != null) autoFields.crosswalkAutoModel = modelVersion
-          if (robotMayFillCrosswalk(cur, cur.crosswalkAutoPending.ts)) {
-            autoFields.crosswalkFullAt = cur.crosswalkAutoPending.ts
-            autoFields.crosswalkSource = 'robot'
-            robotReported = true
-          }
-        } else {
-          autoFields.crosswalkAutoPending = {
-            ts: timestamp,
-            prob: Math.round(verdict.probability * 1000) / 1000,
-          }
-        }
-      } else if (cur.crosswalkAutoPending) {
-        autoFields.crosswalkAutoPending = FieldValue.delete()
-      }
-    }
-  }
+  // see lib/lineup-classifier.js): the robot reports on the first positive
+  // frame, then checks itself with 1-minute photos and confirms or withdraws
+  // — and keeps correcting itself until the ferry is back at Bowen. All the
+  // rules are in crosswalk-robot.js. Its report (crosswalkFullAt +
+  // crosswalkSource:'robot') is only filed when no rider mark exists and no
+  // fresher rider "not yet" refute blocks it (robotMayFillCrosswalk), and it
+  // only ever withdraws its own report — riders always overwrite or refute
+  // it (see user-lineup.js). crosswalkFullAtAuto follows the robot's
+  // confirmed call; crosswalkRobotLog keeps every change for scoring.
+  const step = crosswalkRobotStep(cur || {}, verdict, timestamp, {
+    arrived: Boolean(decision.arrived),
+    mayFill: robotMayFillCrosswalk,
+    DELETE: FieldValue.delete(),
+    model: lineupModelVersion(),
+  })
+  if (step.event) step.fields.crosswalkRobotLog = FieldValue.arrayUnion(step.event)
+  lineupCheck = step.check ? { snapshotKey, until: timestamp + MAX_GAP_MS } : null
 
   await db.collection('sailingStatus').doc(snapshotKey).set(
     {
@@ -402,26 +390,30 @@ export async function captureLineupTimelapse(db, data) {
       direction: 'To HSB',
       dateIso: data.dateIso,
       lineupTimelapsePaths: FieldValue.arrayUnion(blobPath),
-      ...autoFields,
+      ...step.fields,
     },
     { merge: true },
   )
+  // The robot's confirmed call (cwa/cwp) feeds the departures page's "Robot
+  // says…" agree-tag; its report (cw/cws) fills the gap when no rider marked.
   await upsertBowenSailing(db, {
     dateIso: data.dateIso,
     sailingTime: decision.sailingTime,
     addLineupTs: timestamp,
-    // Confirmed auto-detection → surface it to the client aggregate so the
-    // departures page can show the "Robot says…" agree-tag, plus the robot
-    // report (cw/cws) when it filled the gap.
-    ...(autoFields.crosswalkFullAtAuto
-      ? { cwa: autoFields.crosswalkFullAtAuto, cwp: autoFields.crosswalkAutoProb }
-      : {}),
-    ...(robotReported ? { cw: autoFields.crosswalkFullAt, cws: 'robot' } : {}),
+    ...step.agg.set,
+    ...(step.agg.clear.length ? { clearKeys: step.agg.clear } : {}),
   })
 
   logAttribution('Lineup timelapse', decision, now)
-  logger.log(`Saved lineup timelapse frame: ${blobPath} (${best.length}B)`)
-  return { robotReported }
+  if (step.event) {
+    const e = step.event
+    logger.log(
+      `Crosswalk robot ${e.ev} for ${decision.sailingTime} (p=${e.p}${decision.check ? ', check photo' : ''}` +
+        `${e.at ? `, call ${dayjs(e.at).tz(TZ).format('HH:mm:ss')}` : ''})`,
+    )
+  }
+  logger.log(`Saved lineup timelapse frame: ${blobPath} (${best.length}B${decision.check ? ', check photo' : ''})`)
+  return { robotReported: step.changed }
 }
 
 export async function captureDepartureTimelapse(db, data) {

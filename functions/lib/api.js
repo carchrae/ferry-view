@@ -131,6 +131,7 @@ const ENRICHMENT_FIELDS = [
   'crosswalkFullAt',
   'capacitySource',
   'crosswalkSource',
+  'crosswalkChecking',
 ]
 
 function stripEnrichmentFields(schedule) {

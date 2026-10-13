@@ -190,6 +190,7 @@ describe('timelapseDecision', () => {
       capture: false,
       classifyFirst: true,
       sailingTime: '21:30',
+      arrived: true,
     })
     // 15 min after arrival: cycle over.
     expect(timelapseDecision(d, at('21:35'))).toEqual({ capture: false })
@@ -244,7 +245,7 @@ describe('timelapseDecision', () => {
     })
     // 5 min after arrival: still capturing (the lineup draining onto the boat,
     // and late-arriving cars, are worth seeing).
-    expect(timelapseDecision(d, at('13:50'))).toEqual({ capture: true, sailingTime: '13:55' })
+    expect(timelapseDecision(d, at('13:50'))).toEqual({ capture: true, sailingTime: '13:55', arrived: true })
     // 10 min after arrival: done.
     expect(timelapseDecision(d, at('13:55')).capture).toBe(false)
   })
@@ -254,7 +255,7 @@ describe('timelapseDecision', () => {
       aisLocation: 'Bowen',
       aisLocationSince: at('13:45').valueOf(),
     })
-    expect(timelapseDecision(d, at('13:50'))).toEqual({ capture: true, sailingTime: '13:55' })
+    expect(timelapseDecision(d, at('13:50'))).toEqual({ capture: true, sailingTime: '13:55', arrived: true })
     expect(timelapseDecision(d, at('13:55')).capture).toBe(false)
   })
 

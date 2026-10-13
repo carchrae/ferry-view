@@ -320,9 +320,13 @@ const meterStatusText = computed(() => {
   if (!c) return ''
   return c.filledTime ? `${c.text} ${c.filledTime}` : c.text
 })
-const crosswalkText = computed(() =>
-  crosswalk.value ? (crosswalk.value.timeText ? `C ${crosswalk.value.timeText}` : 'C') : '',
-)
+// A trailing "?" while the robot is still checking its call with an extra
+// photo (it can still take the call back).
+const crosswalkText = computed(() => {
+  const cw = crosswalk.value
+  if (!cw) return ''
+  return (cw.timeText ? `C ${cw.timeText}` : 'C') + (cw.checking ? '?' : '')
+})
 
 // Rider-marked (or robot-marked) time the car lineup reached the crosswalk;
 // Bowen sailings only.
@@ -332,6 +336,7 @@ const crosswalk = computed(() => {
   return {
     timeText: at === 'user_reported' ? '' : dayjs(at).tz(TZ).format('h:mm'),
     robot: props.sailing.crosswalkSource === 'robot',
+    checking: Boolean(props.sailing.crosswalkChecking),
   }
 })
 

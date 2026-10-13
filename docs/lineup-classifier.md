@@ -135,16 +135,19 @@ camera, a fixed crop, a binary question. That needs only:
   CPU, ~100 frames/day → effectively free.
 
 Inference is hooked into `captureLineupTimelapse`: every captured frame is
-classified **in capture order**, and the lineup counts as past the crosswalk
-at the first positive frame that the *next* frame confirms (a lone positive
-is noise — the rule is `firstSustainedPositiveTs()` in `lineup-labels.js`;
-the streaming version parks the candidate as `crosswalkAutoPending` and
-stamps `crosswalkFullAtAuto` + `crosswalkAutoProb` with the FIRST frame's
-time once confirmed, clearing the candidate on a negative frame). "Next"
-means strictly consecutive: a pending older than one cadence step
-(`PENDING_CONFIRM_MAX_MS`, 7 min) can't confirm — intervening frames may
-have been negative without a trace — and is replaced by the current frame
-as a fresh candidate. This is
+classified **in capture order** and fed to the robot's live call
+(`crosswalk-robot.js`, 2026-10-13). The robot reports on the FIRST positive
+frame (marked `crosswalkChecking`), then checks itself with extra photos one
+minute apart instead of waiting for the next 5-minute frame: a positive
+check confirms (`crosswalkFullAtAuto` + `crosswalkAutoProb`, stamped with the
+first frame's time), a miss earns one more check photo, and two misses
+withdraw the report. A confirmed call is still corrected until the ferry is
+back at Bowen: a negative frame puts it in doubt and two misses withdraw it
+(after arrival a shorter line is just loading, so negatives are ignored).
+Check frames must be consecutive: an open check whose last frame is older
+than `MAX_GAP_MS` (7 min) restarts or gives up. Every change is appended to
+`crosswalkRobotLog`. The base cadence stays 5 minutes — check photos are
+saved like any frame. This is
 kept **separate** from the
 human `crosswalkFullAt` so agreement can be measured before the automatic
 value is surfaced anywhere. Human tags labeling frames the model got wrong
@@ -155,10 +158,10 @@ after the previous departure — and for the *entire cycle* of post-9pm
 sailings — `timelapseDecision` returns `classifyFirst: true` and the frame
 is fetched + classified without saving; a positive "full to crosswalk"
 verdict starts the save pipeline early (see docs/webcams.md, path 3).
-Detection is **sticky**: once `crosswalkFullAtAuto` is set for the sailing,
-every 5-minute frame saves until the arrival stop, negative verdicts
-included — and since the auto field is permanent, a human "not yet" refute
-doesn't stop the frames (they're cheap and useful for training). A disabled
+Detection is **sticky**: once the robot has a call on the sailing
+(`crosswalkRobot`), every frame saves until the arrival stop, negative
+verdicts included — they are what withdraws a wrong call — and a human "not
+yet" refute doesn't stop the frames (they're cheap and useful for training). A disabled
 model skips the probe entirely — no fetch, no capture, identical to the
 pre-classifier behavior.
 

@@ -334,7 +334,8 @@ export const pollFerryStatus = onSchedule(
     // The captures run AFTER refreshFerryData, so a robot report confirmed
     // this poll would otherwise not reach ferryStatus/current until the next
     // changed poll (enrichment is gated on dataChanged). Force one refresh —
-    // fires at most twice per sailing (once per classifier).
+    // only when the robot's visible call changes (reported, confirmed,
+    // corrected or withdrawn), a few times per sailing at most.
     if (robotReported) {
       try {
         await refreshFerryData(db, { forceUpdate: true })

@@ -51,7 +51,7 @@ vi.mock('../lib/bowen-sailings-aggregate.js', () => ({
   upsertBowenSailing: vi.fn(async () => {}),
 }))
 
-const { captureLineupTimelapse } = await import('../lib/webcam.js')
+const { captureLineupTimelapse, _resetLineupCheck } = await import('../lib/webcam.js')
 const { _resetHealthCache } = await import('../lib/webcam-health.js')
 const { timeToDate } = await import('../lib/time.js')
 
@@ -108,6 +108,7 @@ beforeEach(() => {
   saved.length = 0
   frameCounter = 0
   _resetHealthCache()
+  _resetLineupCheck()
   classifyLineup.mockReset()
   isDarkAt.mockReset()
   queueLiveFrames()
@@ -139,7 +140,7 @@ describe('dark frames and the crosswalk classifier', () => {
 
     expect(saved).toHaveLength(1)
     expect(classifyLineup).toHaveBeenCalledTimes(1)
-    expect(db.docs.sailingStatus[KEY].crosswalkAutoPending).toBeTruthy()
+    expect(db.docs.sailingStatus[KEY].crosswalkRobot).toMatchObject({ state: 'checking' })
   })
 
   it('discards a dark classify-first probe entirely', async () => {
@@ -178,5 +179,75 @@ describe('dark frames and the crosswalk classifier', () => {
     const cur = db.docs.sailingStatus[KEY]
     expect(cur.crosswalkFullAtAuto).toBeUndefined()
     expect(cur.crosswalkAutoPending).toEqual({ ts: pendingTs, prob: 0.9 })
+  })
+})
+
+// The robot's 1-minute check photos (crosswalk-robot.js): between the 5-min
+// frames, a capture only happens while a call is open, and it is saved.
+describe('crosswalk robot check photos', () => {
+  const positive = { probability: 0.9, fullToCrosswalk: true }
+  const negative = { probability: 0.1, fullToCrosswalk: false }
+
+  it('takes no off-cadence photo without an open call', async () => {
+    const db = fakeDb()
+    isDarkAt.mockReturnValue(false)
+    await lineupAt(db, '09:06')
+    expect(saved).toHaveLength(0)
+  })
+
+  it('confirms on the next minute instead of the next 5-min frame', async () => {
+    const db = fakeDb()
+    isDarkAt.mockReturnValue(false)
+    classifyLineup.mockResolvedValue(positive)
+
+    const first = await lineupAt(db, '09:05')
+    expect(first.robotReported).toBe(true)
+    expect(db.docs.sailingStatus[KEY]).toMatchObject({
+      crosswalkSource: 'robot',
+      crosswalkChecking: true,
+    })
+
+    const check = await lineupAt(db, '09:06')
+    expect(saved).toHaveLength(2)
+    expect(check.robotReported).toBe(true)
+    const cur = db.docs.sailingStatus[KEY]
+    expect(cur.crosswalkFullAtAuto).toBe(cur.crosswalkFullAt)
+    expect(cur.crosswalkChecking).toBe(DELETED)
+
+    // Settled: the next off-cadence minute takes no photo.
+    await lineupAt(db, '09:07')
+    expect(saved).toHaveLength(2)
+  })
+
+  it('takes a second check photo after a miss, then withdraws', async () => {
+    const db = fakeDb()
+    isDarkAt.mockReturnValue(false)
+    classifyLineup.mockResolvedValueOnce(positive)
+    await lineupAt(db, '09:05')
+    classifyLineup.mockResolvedValue(negative)
+    await lineupAt(db, '09:06')
+    const last = await lineupAt(db, '09:07')
+    expect(saved).toHaveLength(3)
+    expect(last.robotReported).toBe(true)
+    expect(db.docs.sailingStatus[KEY]).toMatchObject({
+      crosswalkFullAt: DELETED,
+      crosswalkSource: DELETED,
+      crosswalkRobot: DELETED,
+    })
+    await lineupAt(db, '09:08')
+    expect(saved).toHaveLength(3)
+  })
+
+  it('saves negative probe frames while a call is open', async () => {
+    // 08:50 is inside the classify-first wait gate: a negative probe is
+    // normally discarded, but it is evidence against an open call.
+    const db = fakeDb().seed(KEY, {
+      crosswalkRobot: { state: 'checking', ts: timeToDate('08:49').valueOf(), misses: 0 },
+    })
+    isDarkAt.mockReturnValue(false)
+    classifyLineup.mockResolvedValue(negative)
+    await lineupAt(db, '08:50')
+    expect(saved).toHaveLength(1)
+    expect(db.docs.sailingStatus[KEY].crosswalkRobot).toMatchObject({ misses: 1 })
   })
 })

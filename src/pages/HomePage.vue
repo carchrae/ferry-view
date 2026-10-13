@@ -2055,7 +2055,13 @@ const typicalStatus = computed(() => {
       icon: 'directions_walk',
       color: 'grey-8',
       source: e.crosswalkSource === 'robot' ? 'robot' : 'user',
-      text: at ? `Lineup reached the crosswalk at ${at}.` : 'Lineup reached the crosswalk.',
+      // The robot reports on its first sighting, then checks it with an
+      // extra photo a minute later — and takes the call back if it was wrong.
+      text: e.crosswalkChecking
+        ? `Lineup may have reached the crosswalk at ${at} (checking).`
+        : at
+          ? `Lineup reached the crosswalk at ${at}.`
+          : 'Lineup reached the crosswalk.',
     })
   }
   return lines
