@@ -12,7 +12,11 @@ description: How to build, run, and drive the Bowen Lift ferry app to verify cha
   "App URL" line from the output.
 - Router is **hash mode**: pages are `http://localhost:<port>/#/`, `/#/bowen-departures`,
   `/#/status`, `/#/rides`, `/#/map`.
-- Drive with Playwright headless. Gotchas:
+- Drive with Playwright headless. It is NOT an app dependency: `npm run
+  playwright:install` (Tom runs it) puts it in the gitignored `scratchpad/`, so import
+  `<repo>/scratchpad/node_modules/playwright/index.mjs` by path (or run `node` from
+  inside `scratchpad/`). If that directory is missing, ask for the install — don't
+  install it yourself. Gotchas:
   - `waitUntil: 'networkidle'` never fires (persistent Firestore connection) — use
     `domcontentloaded` plus a few seconds' wait for Firestore data.
   - Quasar renders hidden mobile-drawer nav items in the DOM; scope selectors to

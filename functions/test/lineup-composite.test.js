@@ -9,6 +9,9 @@ import {
   extractCompositeFeatures,
   sameExposureWindow,
   meanLuminance,
+  colourSaturation,
+  isInfrared,
+  compositeWindow,
   FEATURE_LENGTH,
 } from '../lib/lineup-features.js'
 
@@ -73,5 +76,28 @@ describe('composite helpers', () => {
     expect(sameExposureWindow([bright, darkish, dark])).toEqual([darkish, dark])
     expect(sameExposureWindow([dark, dark, bright])).toEqual([bright])
     expect(sameExposureWindow([dark, darkish, dark], 0.01)).toEqual([dark, dark])
+  })
+
+  it('never composites an infrared frame with a colour one, even at equal luminance', async () => {
+    // Same mean luminance (~0.5): a pure grey frame (the camera's infrared
+    // output) and a saturated colour frame. The luminance guard cannot tell
+    // them apart; saturation can.
+    const ir = await sharp({ create: { width: 320, height: 180, channels: 3, background: '#808080' } }).jpeg().toBuffer()
+    const colour = await sharp({ create: { width: 320, height: 180, channels: 3, background: { r: 200, g: 128, b: 56 } } }).jpeg().toBuffer()
+    expect(await colourSaturation(ir)).toBeLessThan(1)
+    expect(await colourSaturation(colour)).toBeGreaterThan(100)
+    expect(await isInfrared(ir)).toBe(true)
+    expect(await isInfrared(colour)).toBe(false)
+    // Luminance alone would have kept all three.
+    expect(sameExposureWindow([await toCanonicalGrey(ir), await toCanonicalGrey(ir), await toCanonicalGrey(colour)])).toHaveLength(3)
+    // Judged frame colour, neighbours infrared → window of one.
+    const w1 = await compositeWindow([ir, ir, colour])
+    expect(w1.greys).toHaveLength(1)
+    expect(w1.infrared).toBe(false)
+    // Judged frame infrared, one infrared neighbour and one colour → two.
+    const w2 = await compositeWindow([colour, ir, ir])
+    expect(w2.greys).toHaveLength(2)
+    expect(w2.infrared).toBe(true)
+    expect((await extractCompositeFeatures([ir, ir, colour])).framesUsed).toBe(1)
   })
 })

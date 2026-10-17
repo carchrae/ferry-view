@@ -197,6 +197,23 @@ for (const [key, list] of reportsBySailing) {
   const at = effectiveCrosswalkAt(list)
   if (at != null) crosswalkBySailing.set(key, at)
 }
+// Hand crosswalk marks (training-data/lineup-crosswalk-hand.json, written by
+// scripts/apply-dark-label-review.mjs from the night labelling page) win over
+// rider marks for that sailing: { sailingKey: epochMs | null }. null means a
+// reviewer judged the lineup never reached the crosswalk, which — like a
+// rider's notYet refute — leaves the sailing's frames unlabelled rather than
+// inventing negatives the app's own rule would not produce.
+const handPath = join(ROOT, 'lineup-crosswalk-hand.json')
+if (existsSync(handPath)) {
+  let overrides = 0
+  for (const [key, ts] of Object.entries(JSON.parse(readFileSync(handPath, 'utf8')))) {
+    if (ts === null) crosswalkBySailing.delete(key)
+    else if (Number.isFinite(Number(ts))) crosswalkBySailing.set(key, Number(ts))
+    else continue
+    overrides++
+  }
+  console.log(`hand crosswalk marks: ${overrides} sailing(s) overridden from lineup-crosswalk-hand.json`)
+}
 console.log(
   `lineupReports: ${reports.length} live tags on ${crosswalkBySailing.size} sailings (${archive.size} archived)`,
 )

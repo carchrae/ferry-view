@@ -83,8 +83,15 @@ export const COMPOSITE = {
   // Frames further apart than this can't share a window (a capture gap).
   maxGapMs: 7 * 60 * 1000,
   // Frames whose mean luminance differs from the judged frame's by more than
-  // this are from another exposure mode (colour vs infrared) and are dropped.
+  // this are from another exposure (auto-exposure jump) and are dropped.
   maxLuminanceDelta: 0.12,
+  // Colour vs infrared is decided by colour SATURATION, not luminance: the
+  // camera's infrared frames are pure grey (mean |R−G|+|G−B| of 0.0 per
+  // pixel) and its colour frames score 30–40, while their mean luminance can
+  // match within 0.02 (2026-09-26 06:35 IR vs 06:40 colour) — which is how
+  // the luminance-only guard let an IR frame ghost into a colour composite
+  // and turn an empty road into a 0.64 "queue". Anything under this is IR.
+  maxInfraredSaturation: 4,
 }
 
 export async function toCanonicalGrey(buf, { width = COMPOSITE.width, height = COMPOSITE.height } = {}) {
@@ -169,17 +176,49 @@ export function sameExposureWindow(greys, maxDelta = COMPOSITE.maxLuminanceDelta
   return greys.filter((g, i) => i === greys.length - 1 || Math.abs(meanLuminance(g) - ref) <= maxDelta)
 }
 
+// Mean per-pixel colour saturation (|R−G| + |G−B|, 0..510) of a frame,
+// measured on a 64×36 downscale — enough to tell the camera's infrared
+// output (exactly 0) from colour (30+), cheap enough to run per frame.
+export async function colourSaturation(buf) {
+  const { data, info } = await sharp(buf).resize(64, 36, { fit: 'fill' }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+  if (info.channels < 3) return 0
+  let sat = 0
+  for (let i = 0; i < data.length; i += info.channels) {
+    sat += Math.abs(data[i] - data[i + 1]) + Math.abs(data[i + 1] - data[i + 2])
+  }
+  return sat / (data.length / info.channels)
+}
+
+export async function isInfrared(buf, threshold = COMPOSITE.maxInfraredSaturation) {
+  return (await colourSaturation(buf)) < threshold
+}
+
+// The usable window for a judged frame: canonical greys of the frames that
+// share the judged (last) frame's exposure MODE (infrared vs colour, by
+// saturation) and roughly its exposure level (sameExposureWindow). The
+// judged frame always stays. One implementation for the trainer, the
+// labelling page and the server's night path.
+// `width`/`height` pick the canonical grey size (the community cam's 640×360
+// by default; the 4:3 terminal cam composites at its native 320×240).
+export async function compositeWindow(jpegs, { width = COMPOSITE.width, height = COMPOSITE.height } = {}) {
+  const last = jpegs.length - 1
+  const modes = []
+  for (const j of jpegs) modes.push(await isInfrared(j))
+  const sameMode = jpegs.filter((_, i) => i === last || modes[i] === modes[last])
+  const greys = []
+  for (const j of sameMode) greys.push(await toCanonicalGrey(j, { width, height }))
+  return { greys: sameExposureWindow(greys), offered: jpegs.length, infrared: modes[last] }
+}
+
 // JPEG buffers of a trailing window (oldest first, the frame being judged
-// last) → the night model's features: canonical grey each, drop frames from
-// a different exposure mode, stable composite, JPEG q80, then the same
+// last) → the night model's features: drop frames from a different exposure
+// mode or level (compositeWindow), stable composite, JPEG q80, then the same
 // crop/downscale as the day features. Returns the features and how many
 // frames actually went into the composite (1 = no usable neighbours).
 export async function extractCompositeFeatures(jpegs, { tau = COMPOSITE.tau } = {}) {
-  const greys = []
-  for (const j of jpegs) greys.push(await toCanonicalGrey(j))
-  const used = sameExposureWindow(greys)
-  const features = await extractFeatures(await greyToJpeg(compositeStable(used, tau)))
-  features.framesUsed = used.length
+  const { greys } = await compositeWindow(jpegs)
+  const features = await extractFeatures(await greyToJpeg(compositeStable(greys, tau)))
+  features.framesUsed = greys.length
   return features
 }
 
