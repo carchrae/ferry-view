@@ -24,6 +24,8 @@ import { isDarkAt } from '../../functions/lib/daylight.js'
 // and long-cached, so refetches are usually free.
 
 const THRESHOLD = model.threshold ?? 0.7
+// The per-frame cut, for callers that show the robot's read of one frame.
+export const lineupThreshold = THRESHOLD
 
 export const browserClassifierReady = Boolean(
   model?.enabled && Array.isArray(model.weights) && Array.isArray(model.regions),
@@ -82,6 +84,14 @@ function score(features) {
   let z = model.bias || 0
   for (let i = 0; i < model.weights.length; i++) z += model.weights[i] * features[i]
   return 1 / (1 + Math.exp(-z))
+}
+
+// One frame's read: { ts, p, positive } — the same model and cut the
+// sequence rule below uses, exposed so the tagging dialog can show what the
+// robot thinks of each frame it asks the rider about. Dark frames are the
+// caller's business (the robot never looks at them — isDarkAt).
+export async function classifyLineupFrame(path) {
+  return classifyFrame(path)
 }
 
 async function classifyFrame(path) {

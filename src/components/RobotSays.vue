@@ -170,6 +170,7 @@
       :frames="frames"
       :sailing-label="sailingLabel"
       :departed-label="departedLabel"
+      :boarding="boarding"
       @agree="emit('agree')"
       @mark="emit('mark', $event)"
       @refute="emit('refute')"
@@ -188,7 +189,7 @@
       :sailing-label="sailingLabel"
       :departed-label="departedLabel"
       :claim="fullVisible ? 'full' : fullnessVisible ? 'notFull' : null"
-      :crosswalk-ok="autoAt != null || Boolean(humanRef && !humanRef.notYet)"
+      :crosswalk-ok="humanRef ? !humanRef.notYet : autoAt != null"
       @capacity="emit('capacity', $event)"
       @frame-label="emit('frame-label', $event)"
     />
@@ -276,6 +277,9 @@ const props = defineProps({
   // Verify-dialog titles: scheduled time label and actual departure label.
   sailingLabel: { type: String, default: null },
   departedLabel: { type: String, default: null },
+  // The sailing is still boarding (the lineup card): the crosswalk dialog
+  // words a "not yet" as not yet, not never.
+  boarding: { type: Boolean, default: false },
 })
 // agree: robot's crosswalk time confirmed · mark: rider disagreed and marks
 // the viewed frame's ts instead · refute: rider says the lineup has NOT

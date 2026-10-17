@@ -6,6 +6,7 @@ import {
   taggingProgress,
   progressLine,
   crosswalkProgress,
+  impliedCrosswalk,
 } from '../src/lib/tagging-progress.js'
 
 // Frames one minute apart; scores keyed by path. `ps` is the robot's p per
@@ -232,4 +233,28 @@ test('crosswalkProgress: only noes — decided by a no on the last frame, else t
   // progressLine copy is shared with the fullness dialog.
   assert.equal(progressLine(open), '1 of 4 frames tagged — 1 more to decide')
   assert.equal(progressLine(notYet), '2 of 4 frames tagged — enough to decide')
+})
+
+test('impliedCrosswalk: a pinned crossing implies not-yet before it and at-crosswalk from it on', () => {
+  const p = crosswalkProgress(frames(5), { f1: false, f2: true })
+  assert.equal(p.verdict, 'at')
+  const ts = (i) => 1000 + i * 60000
+  assert.equal(impliedCrosswalk(p, ts(0)), false)
+  // The rider's own answers imply nothing — they are answers.
+  assert.equal(impliedCrosswalk(p, ts(1)), null)
+  assert.equal(impliedCrosswalk(p, ts(2)), null)
+  assert.equal(impliedCrosswalk(p, ts(3)), true)
+  assert.equal(impliedCrosswalk(p, ts(4)), true)
+})
+
+test('impliedCrosswalk: a No on the last frame implies not-yet on every earlier frame; nothing without a verdict', () => {
+  const notYet = crosswalkProgress(frames(4), { f3: false })
+  assert.equal(notYet.verdict, 'notYet')
+  assert.equal(impliedCrosswalk(notYet, 1000), false)
+  assert.equal(impliedCrosswalk(notYet, 1000 + 2 * 60000), false)
+  assert.equal(impliedCrosswalk(notYet, 1000 + 3 * 60000), null)
+  const open = crosswalkProgress(frames(4), { f1: false })
+  assert.equal(impliedCrosswalk(open, 1000), null)
+  assert.equal(impliedCrosswalk(null, 1000), null)
+  assert.equal(impliedCrosswalk(notYet, undefined), null)
 })

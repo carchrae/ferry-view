@@ -1258,19 +1258,58 @@
             </div>
           </div>
           <div v-else-if="selectedTypical?.mode === 'next'">
+            <!-- The sailing now boarding. Its lineup frames so far sit on the
+                 crosswalk tile — tapping steps through them and the crossing
+                 can be tagged right now, no need to wait for the ferry to
+                 leave (the departures page allows the same). The terminal
+                 tile stays live: its frames only mean something once the
+                 ferry has gone. Before the first lineup frame lands the
+                 crosswalk tile is live too. -->
             <div class="row q-col-gutter-sm">
               <div
-                v-for="cam in liveTiles"
+                v-for="cam in nextTiles"
                 :key="cam.index"
                 :class="$q.screen.xs ? 'col-12' : 'col-6'"
               >
-                <div class="dialog-tile cursor-pointer" @click="openLiveFromTypical(cam.index)">
+                <div
+                  v-if="cam.frame"
+                  class="dialog-tile cursor-pointer"
+                  @click="openRobotFromTypical('crosswalk')"
+                >
+                  <img :src="cam.frame.imageUrl" alt="" />
+                </div>
+                <div v-else class="dialog-tile cursor-pointer" @click="openLiveFromTypical(cam.index)">
                   <img v-if="cam.src" :src="cam.src" alt="" @error="handleCamError(cam.index)" />
                   <div v-else class="dialog-tile-pending bg-grey-3 text-grey-6 flex flex-center">
                     <q-icon name="videocam" size="24px" />
                   </div>
                 </div>
                 <div class="text-caption text-grey-7 text-center ellipsis">{{ cam.caption }}</div>
+              </div>
+            </div>
+            <!-- The crosswalk ask, while the lineup builds: the robot's
+                 current call and the way to check it frame by frame. -->
+            <div v-if="dialogFrames?.lineup" class="help-tag-panel q-mt-sm">
+              <div class="row items-center no-wrap">
+                <div class="col text-subtitle2 text-indigo-10">
+                  <q-icon name="directions_walk" size="18px" class="q-mr-xs" />Is the lineup past the
+                  crosswalk?
+                </div>
+                <q-btn
+                  flat
+                  dense
+                  no-caps
+                  color="indigo"
+                  icon="school"
+                  label="Help tag"
+                  class="col-auto"
+                  @click="openRobotFromTypical('crosswalk', true)"
+                />
+              </div>
+              <div class="text-caption text-grey-8">
+                <q-icon name="smart_toy" color="indigo" size="14px" class="q-mr-xs" />{{
+                  dialogCrosswalkOpinion
+                }}
               </div>
             </div>
           </div>
@@ -1357,6 +1396,7 @@
       :crosswalk-ok="robotVerify.crosswalkOk"
       :sailing-label="robotVerify.sailingLabel"
       :departed-label="robotVerify.departedLabel"
+      :boarding="robotVerify.boarding"
       @agree="onRobotVerifyAgree"
       @mark="onRobotVerifyMark"
       @refute="onRobotVerifyRefute"
@@ -1814,7 +1854,8 @@ function showTypical(time, label, entry = null) {
   showTypicalDialog.value = true
   dialogFrames.value = null
   dialogVerdict.value = undefined
-  if (selectedTypical.value.mode === 'past') loadDialogFrames(time)
+  const mode = selectedTypical.value.mode
+  if (mode === 'past' || mode === 'next') loadDialogFrames(time)
 }
 
 function dialogModeFor(label, entry) {
@@ -1854,11 +1895,11 @@ function nearestFrame(frames, ts) {
   return best
 }
 
-async function loadDialogFrames(time) {
+async function loadDialogFrames(time, force = false) {
   const dateIso = viewDay.value || nowInVancouver().format('YYYY-MM-DD')
   let raw = null
   try {
-    raw = await loadSailingFrames(dateIso, time)
+    raw = await loadSailingFrames(dateIso, time, force)
   } catch (err) {
     console.error('Failed to load the dialog frames:', err)
   }
@@ -1869,8 +1910,29 @@ async function loadDialogFrames(time) {
     dialogVerdict.value = null
     return
   }
+  // The sailing now boarding: the newest lineup frame (the lineup as it is
+  // right now) and nothing from the terminal — its departure frames, when
+  // any exist yet, can't say whether it left full before it has left.
+  if (selectedTypical.value?.mode === 'next') {
+    dialogFrames.value = {
+      lineup: raw.lineup[raw.lineup.length - 1] || null,
+      lineupFrames: raw.lineup,
+      lineupCount: raw.lineup.length,
+      crosswalkAt: raw.crosswalkAt,
+      terminal: null,
+      sailingKey: raw.sailingKey,
+      crosswalkOk: raw.crosswalkOk,
+      departureCount: 0,
+      lastCapacity: null,
+    }
+    dialogVerdict.value = null
+    return
+  }
   dialogFrames.value = {
     lineup: nearestFrame(raw.lineup, raw.crosswalkAt ?? raw.arrivalTs),
+    lineupFrames: raw.lineup,
+    crosswalkAt: raw.crosswalkAt,
+    arrivalTs: raw.arrivalTs,
     terminal: raw.departure[raw.departure.length - 1] || null,
     sailingKey: raw.sailingKey,
     crosswalkOk: raw.crosswalkOk,
@@ -1899,9 +1961,45 @@ async function loadDialogFrames(time) {
   }
 }
 
+// A crosswalk mark or refute saved from the verify dialog this session, keyed
+// by the sailing's time (today only — that dialog is today-only). The tiles
+// and the crosswalk panel show it at once: the enriched status is a poll
+// away (the lineupReports trigger forces one, but it is still up to a minute),
+// and until then the dialog would keep showing the robot's story over the
+// rider's own tag.
+const localCrosswalk = ref(new Map()) // time → { at: ts | null, notYet }
+function noteLocalCrosswalk(at, notYet = false) {
+  const m = new Map(localCrosswalk.value)
+  m.set(robotVerify.value.time, { at, notYet })
+  localCrosswalk.value = m
+}
+const myCrosswalk = computed(() =>
+  selectedTypical.value?.time && !viewDay.value
+    ? localCrosswalk.value.get(normalizeTime(selectedTypical.value.time)) || null
+    : null,
+)
+// When the lineup reached the crosswalk, as far as this page knows: a mark
+// made here first (a refute clears it), else the frames' record, else the
+// schedule entry's enriched value.
+// While the sailing is boarding the live status is the truth: the frames'
+// record also carries the robot's sticky detection, which a rider's "not
+// yet" (or the robot's own second look) may since have overruled — that
+// shows as the entry having no crosswalk at all.
+const crosswalkMark = computed(() => {
+  const mine = myCrosswalk.value
+  if (mine) return mine.notYet ? null : mine.at
+  const d = dialogFrames.value
+  if (selectedTypical.value?.mode !== 'next' && typeof d?.crosswalkAt === 'number') return d.crosswalkAt
+  const e = selectedTypical.value?.entry?.crosswalkFullAt
+  return typeof e === 'number' ? e : null
+})
 const dialogTiles = computed(() => {
   const d = dialogFrames.value
-  const lineup = d?.lineup || null
+  // The frame at the crosswalk mark when there is one, else the one nearest
+  // the ferry's arrival (the peak lineup).
+  const lineup = d?.lineupFrames?.length
+    ? nearestFrame(d.lineupFrames, crosswalkMark.value ?? d.arrivalTs)
+    : d?.lineup || null
   const terminal = d?.terminal || null
   return [
     {
@@ -1940,6 +2038,51 @@ const liveTiles = computed(() =>
 function openLiveFromTypical(index) {
   pushDialogQuery({ cam: String(index) })
 }
+// The boarding sailing's tiles: the crosswalk tile carries its newest lineup
+// frame once there is one (tap → the frame-stepping dialog), the rest live.
+const nextTiles = computed(() => {
+  const d = dialogFrames.value
+  if (!d?.lineup) return liveTiles.value
+  // Marked (here, or on record): the frame the mark points at — the one the
+  // rider tagged. Otherwise the newest frame, the lineup as it is now.
+  const mark = crosswalkMark.value
+  const lineup = mark != null ? nearestFrame(d.lineupFrames, mark) : d.lineup
+  const note =
+    mark != null
+      ? myCrosswalk.value
+        ? 'your mark'
+        : 'crosswalk mark'
+      : `${d.lineupCount} frame${d.lineupCount === 1 ? '' : 's'} so far`
+  return liveTiles.value.map((t) =>
+    t.index === 5 ? { ...t, frame: lineup, caption: `At crosswalk · ${lineup.timeLabel} · ${note}` } : t,
+  )
+})
+// The crosswalk line under the boarding sailing's tiles: who says the
+// lineup reached it (and whether the robot is still checking), or that
+// nobody has yet.
+const dialogCrosswalkOpinion = computed(() => {
+  const mine = myCrosswalk.value
+  if (mine)
+    return mine.notYet
+      ? "You said the lineup hasn't reached the crosswalk yet."
+      : `You marked the lineup past the crosswalk at ${dayjs(mine.at).tz(TZ).format('h:mm a')}.`
+  const e = selectedTypical.value?.entry
+  if (!e?.crosswalkFullAt) {
+    // The record still holds the robot's detection, the live status doesn't:
+    // the call was overruled (a rider's "not yet", or the robot's own second
+    // look) — say so rather than claiming the robot saw nothing.
+    const auto = dialogFrames.value?.crosswalkAt
+    return typeof auto === 'number'
+      ? `Robot saw the lineup at the crosswalk at ${dayjs(auto).tz(TZ).format('h:mm a')}, but that call was overruled (a rider said not yet, or the robot took it back).`
+      : "Robot: hasn't seen the lineup at the crosswalk yet."
+  }
+  const at =
+    e.crosswalkFullAt === 'user_reported' ? null : dayjs(e.crosswalkFullAt).tz(TZ).format('h:mm a')
+  if (e.crosswalkSource !== 'robot') return `A rider marked the lineup past the crosswalk${at ? ` at ${at}` : ''}.`
+  return e.crosswalkChecking
+    ? `Robot: may have reached the crosswalk at ${at} — checking with another photo.`
+    : `Robot: lineup reached the crosswalk at ${at}.`
+})
 
 // The opinion line, or null when fullness is already on record (either the
 // schedule entry's or the aggregate's) or there are too few frames to judge.
@@ -2106,6 +2249,7 @@ const robotVerify = ref({
   crosswalkOk: false,
   sailingLabel: null,
   departedLabel: null,
+  boarding: false,
 })
 
 async function loadRobotVerify(kind, time) {
@@ -2136,7 +2280,11 @@ async function loadRobotVerify(kind, time) {
     // plain photo browser with a "mark the frame" action, fullness with
     // claim null asks the per-frame question without defending a verdict.
     const rawCw = s.crosswalkFullAtAuto ?? s.crosswalkFullAt ?? null
-    const crosswalkOk = s.crosswalkFullAt != null || s.crosswalkFullAtAuto != null
+    // The EFFECTIVE mark only: the robot's detection is copied into it when
+    // it stands, and a rider's "not yet" clears it — a detection without a
+    // mark was overruled (verified against every such sailing on record,
+    // 2026-10-17), so it must not count as the lineup having got there.
+    const crosswalkOk = s.crosswalkFullAt != null
     // Fullness claim: the server's flags first; failing those, the browser
     // classifier's cached verdict for this sailing (the dialog's own tiles
     // may just have computed it) — so the intro can defend or own up.
@@ -2190,6 +2338,10 @@ async function loadRobotVerify(kind, time) {
       crosswalkOk,
       sailingLabel: formatTime12h(s.sailingTime),
       departedLabel: s.actualDepartureTime ? formatTime12h(s.actualDepartureTime) : null,
+      // Still boarding: the sailing is one of today's upcoming rows.
+      boarding:
+        !s.actualDepartureTime &&
+        allUpcomingBowen.value.some((e) => normalizeTime(e.scheduledTime || e.shortTime) === t),
     }
   } catch (err) {
     console.error('Failed to open robot verification:', err)
@@ -2209,6 +2361,7 @@ function saveHomeCrosswalk(ts, extra) {
         showSignInDialog.value = true
         return
       }
+      noteLocalCrosswalk(ts)
       $q.notify({
         type: 'positive',
         message: `Full to crosswalk recorded at ${dayjs(ts).tz(TZ).format('h:mm a')} — thanks!`,
@@ -2253,6 +2406,7 @@ function onRobotVerifyRefute() {
         showSignInDialog.value = true
         return
       }
+      noteLocalCrosswalk(null, true)
       $q.notify({
         type: 'positive',
         message: 'Recorded: lineup has not reached the crosswalk yet — thanks!',
@@ -3235,6 +3389,11 @@ watch(
   () => robotVerify.value.open,
   (open) => {
     if (!open && dialogQuery.value.robot) leaveDialogQuery(['robot', 'tag'])
+    // Back over the boarding sailing: its lineup has grown meanwhile (the
+    // verify dialog may have shown frames newer than the cached set), so
+    // the tile the rider just tagged must be in the list — one doc read.
+    const cur = selectedTypical.value
+    if (!open && cur?.mode === 'next' && showTypicalDialog.value) loadDialogFrames(cur.time, true)
   },
 )
 watch(fullscreen, (open) => {

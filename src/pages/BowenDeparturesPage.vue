@@ -134,6 +134,7 @@
               :crosswalk-reports="crosswalkByKey.get(upcomingLineup.sailingKey) || []"
               :human-at="humanCrosswalkAt(upcomingLineup)"
               :frames="upcomingLineup.timelapse"
+              boarding
               :auto-open="robotTarget?.key === upcomingLineup.sailingKey ? robotTarget.kind : null"
               @agree="onAgreeUpcoming"
               @mark="onUpcomingRobotMark"
@@ -570,8 +571,7 @@ function queueBrowserPredictions(sailings) {
     // Certainty computed on an earlier pass (or a click) survives aggregate
     // snapshot rebuilds via the composable's localStorage cache — re-apply
     // it here, no network involved.
-    const cachedCrosswalkOk =
-      sailing.crosswalkFullAtAuto != null || sailing.crosswalkFullAt != null
+    const cachedCrosswalkOk = crosswalkReached(sailing)
     if (sailing.ferryNotFullAuto != null && sailing.terminalEmptyProb == null) {
       const cached = cachedTerminal(sailing.sailingKey, { crosswalkOk: cachedCrosswalkOk })
       if (cached?.kind === 'notFull' && cached.prob != null)
@@ -613,8 +613,7 @@ function queueBrowserPredictions(sailings) {
         if (wantTerminal) {
           // Crosswalk evidence gates the full verdict — include a detection
           // the crosswalk step above may have just produced.
-          const crosswalkOk =
-            sailing.crosswalkFullAtAuto != null || sailing.crosswalkFullAt != null
+          const crosswalkOk = crosswalkReached(sailing)
           const verdict = await predictTerminal(
             sailing.sailingKey,
             sailing.departureTimelapsePaths,
@@ -653,7 +652,7 @@ async function onComputeCertainty(sailing, done) {
     const verdict = await predictTerminal(sailing.sailingKey, sailing.departureTimelapsePaths, {
       final,
       force: true,
-      crosswalkOk: sailing.crosswalkFullAtAuto != null || sailing.crosswalkFullAt != null,
+      crosswalkOk: crosswalkReached(sailing),
     })
     if (verdict?.prob != null) {
       if (verdict.kind === 'full') sailing.terminalFullProb = verdict.prob
@@ -755,6 +754,18 @@ async function loadSailings(force = false) {
 // "agree?" invitation stays up until a rider actually confirms.
 function humanCrosswalkAt(x) {
   return x?.crosswalkSource === 'robot' ? null : (x?.crosswalkFullAt ?? null)
+}
+// Whether the lineup reached the crosswalk — the veto on any "full" verdict
+// (no lineup to the crosswalk = cars at the end were probably late arrivals).
+// The effective mark decides: the server copies the robot's detection into
+// it when the call stands and a rider's "not yet" clears it, so a server
+// detection WITHOUT a mark was overruled (true of every such sailing on
+// record, 2026-10-17). A detection the browser classifier made here counts,
+// unless the riders' latest word is a refute.
+function crosswalkReached(sailing) {
+  if (sailing.crosswalkFullAt != null) return true
+  if (effectiveCrosswalk(sailing.crosswalkReports || [])?.notYet) return false
+  return sailing.crosswalkAutoSource === 'browser' && sailing.crosswalkFullAtAuto != null
 }
 
 // Crosswalk mark from the upcoming (boarding) lineup timelapse — the rider

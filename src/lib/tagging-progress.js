@@ -250,3 +250,21 @@ export function crosswalkProgress(frames, labels) {
     enough: verdict != null,
   }
 }
+
+// What a crosswalk verdict says about a frame the rider did NOT answer. Once
+// the crossing is pinned the rest follows (true nearly every time — a
+// lineup that reached the crosswalk stays past it until the ferry loads):
+// frames before it show the lineup short of the crosswalk, frames at/after
+// it show it there — the same rule labelForTimestamp applies when the mark
+// becomes training labels. A "not yet" verdict (No on the last frame)
+// implies every earlier frame is not yet either. Returns true (at the
+// crosswalk), false (not yet) or null (nothing implied: no verdict, or the
+// rider answered this frame themselves).
+export function impliedCrosswalk(progress, ts) {
+  if (!progress?.verdict || typeof ts !== 'number') return null
+  const own = progress.seq?.find((f) => f.ts === ts)
+  if (own && own.at !== null) return null
+  if (progress.verdict === 'at') return ts >= progress.crossingTs
+  const last = progress.seq?.[progress.total - 1]
+  return last && ts <= last.ts ? false : null
+}

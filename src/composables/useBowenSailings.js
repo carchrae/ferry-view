@@ -367,9 +367,11 @@ export async function loadSailingFrames(dateIso, sailingTime, force = false) {
     // ask the browser classifier about the sailing (home-page dialog).
     sailingKey: r.sailingKey,
     arrivalTs: arrivalTsOf(r),
-    // The lineup demonstrably reached the crosswalk (human mark or robot
-    // detection) — the veto input for any "full" verdict.
-    crosswalkOk: r.crosswalkFullAt != null || r.crosswalkFullAtAuto != null,
+    // The lineup demonstrably reached the crosswalk — the veto input for any
+    // "full" verdict. The effective mark only: the robot's detection lands
+    // in it when it stands, and a rider's "not yet" clears it, so a
+    // detection without a mark was overruled and must not count.
+    crosswalkOk: r.crosswalkFullAt != null,
     // When the lineup reached the crosswalk: the human mark (a frame's ts)
     // first, else the robot's detection frame; null when neither.
     crosswalkAt:

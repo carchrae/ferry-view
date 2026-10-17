@@ -56,13 +56,23 @@
             <!-- Chips on the photo, top right, so nothing below reflows: the
                  robot's read of THIS frame and, once given, the rider's answer. -->
             <div class="frame-chips">
+              <!-- The rider's answers (and what they imply) stay on the frames
+                   after tagging is closed — the plain view must not fall
+                   back to the robot's story once the rider has corrected it. -->
               <q-badge
-                v-if="tagging && labelled.get(frame.path) !== undefined"
+                v-if="labelled.get(frame.path) !== undefined"
                 :color="labelled.get(frame.path) ? 'positive' : 'negative'"
                 class="frame-chip"
               >
                 <q-icon name="check" size="12px" class="q-mr-xs" />
                 {{ answerWord(labelled.get(frame.path)) }}
+              </q-badge>
+              <!-- Crosswalk, once the rider's tags pin the crossing: what that
+                   says about a frame they did NOT answer (before it = not
+                   yet, after it = at the crosswalk). Answering overrides. -->
+              <q-badge v-else-if="impliedHere != null" class="frame-chip chip-implied">
+                <q-icon name="subdirectory_arrow_right" size="12px" class="q-mr-xs" />
+                {{ answerWord(impliedHere) }} · implied
               </q-badge>
               <template v-if="kind === 'fullness'">
                 <!-- The robot chip is never silently absent: scored, still
@@ -80,12 +90,28 @@
                   {{ scoresReady ? 'no read' : 'looking…' }}
                 </q-badge>
               </template>
-              <!-- Crosswalk: the robot judges the sailing from one frame, so
-                   the chip appears on that frame only. -->
-              <q-badge v-else-if="robotAt != null && frame.ts === robotAt" class="frame-chip chip-cars">
-                <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
-                at crosswalk{{ robotProb != null ? ` ${robotProb.toFixed(2)}` : '' }}
-              </q-badge>
+              <!-- Crosswalk: the browser runs the lineup model over every
+                   frame, so the rider sees what the robot thinks of the very
+                   frame it is asking about; the robot's own call (the
+                   server's detection frame) is named on that frame. Night
+                   frames get no score — the robot doesn't look at them. -->
+              <template v-else>
+                <q-badge v-if="currentScore?.band === 'dark'" class="frame-chip chip-pending">
+                  🦉 too dark for the robot
+                </q-badge>
+                <q-badge
+                  v-else-if="currentScore || frame.ts === robotAt"
+                  class="frame-chip"
+                  :class="crosswalkChipClass"
+                >
+                  <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
+                  {{ crosswalkChipText }}
+                </q-badge>
+                <q-badge v-else class="frame-chip chip-pending">
+                  <q-icon name="smart_toy" size="12px" class="q-mr-xs" />
+                  {{ scoresReady ? 'no read' : 'looking…' }}
+                </q-badge>
+              </template>
             </div>
           </div>
         </div>
@@ -190,7 +216,7 @@
           <!-- The sailing's progress: how many frames are tagged and how many
                answers the robot still needs before the tail decides it. -->
           <div class="text-caption text-grey-7 text-center frame-progress">
-            {{ kind === 'fullness' ? progressLine(progress, { scoresReady }) : progressLine(progress) }}
+            {{ kind === 'fullness' ? progressLine(progress, { scoresReady }) : crosswalkLine }}
           </div>
           <!-- What counts, in one sentence. Fullness: the question the terminal
                classifier actually predicts — vehicles heading TO the ferry,
@@ -220,7 +246,9 @@
           icon="my_location"
           :label="
             frame.ts === robotAt
-              ? 'This is when the robot thinks it happened'
+              ? humanDisagrees
+                ? 'The robot picked this frame — your tags say otherwise'
+                : 'This is when the robot thinks it happened'
               : `Jump to the robot's frame (${timeLabel(robotAt)})`
           "
           class="q-mt-xs"
@@ -240,10 +268,10 @@
            frame) pins it. The panel says what and briefly why; a verdict a
            rider's tags produced is saved as the sailing's report
            automatically. -->
-        <!-- Every frame answered (fullness): ask the sailing's question
-             outright and stop — the verdict panel below is for the partial
-             case, where the tail decided before the rider finished. -->
-        <div v-if="tagging && frame && kind === 'fullness' && allTagged" class="done-panel q-mt-md">
+        <!-- Every frame answered (fullness) and the tags decided nothing:
+             ask the sailing's question outright. When they did decide, the
+             verdict panel below says so — no second ask. -->
+        <div v-if="tagging && frame && kind === 'fullness' && askOutright" class="done-panel q-mt-md">
           <template v-if="!fullAnswer">
             <div class="text-subtitle2 text-center q-mb-xs">Was it full?</div>
             <div class="row q-gutter-sm">
@@ -265,23 +293,29 @@
             }}
           </div>
         </div>
+        <!-- A verdict the rider's tags produced shows as soon as it exists;
+             the robot's own read waits for the scores it is built on. -->
         <div
-          v-else-if="tagging && frame && scoresReady && progress.enough"
-          class="done-panel q-mt-md text-body2"
+          v-else-if="
+            frame &&
+            progress.enough &&
+            (tagging ? scoresReady || progress.decidedBy === 'human' : progress.decidedBy === 'human')
+          "
+          class="done-panel q-mt-md"
         >
           <div class="row no-wrap items-start">
-            <q-icon
-              :name="progress.verdict ? 'check_circle' : 'help_outline'"
-              :color="progress.verdict ? (progress.decidedBy === 'human' ? 'positive' : 'indigo') : 'grey-7'"
-              size="18px"
-              class="q-mr-xs q-mt-xs"
-            />
+            <q-icon :name="verdictIcon" :color="verdictColor" size="20px" class="q-mr-xs q-mt-xs" />
             <div class="col">
-              <div>{{ verdictText }}</div>
-              <div class="text-caption text-grey-7">{{ reasonText }}</div>
+              <!-- The result first, in a few words — what the tags add up to
+                   and whose doing it is — then why, in one sentence. -->
+              <div class="text-subtitle2 verdict-headline" :class="`text-${verdictColor}`">
+                {{ verdictHeadline }}
+              </div>
+              <div class="text-caption text-grey-8">{{ reasonText }}</div>
+              <div v-if="impliedLine" class="text-caption text-grey-7">{{ impliedLine }}</div>
               <div v-if="savedVerdict && savedVerdict === verdictKey" class="text-caption" :class="savedClass">
                 <q-icon :name="user ? 'check' : 'warning'" size="14px" />
-                {{ savedText(kind === 'fullness' ? "Saved as this sailing's capacity." : "Saved as this sailing's crosswalk time.") }}
+                {{ savedText(savedLine) }}
               </div>
               <!-- Vehicles on the departure frame but the lineup never reached
                    the crosswalk: probably late arrivals, not a full ferry — the
@@ -344,9 +378,20 @@ import {
   terminalRegions,
   terminalMasks,
 } from 'src/composables/useTerminalClassifier'
-import { lineupRegions } from 'src/composables/useLineupClassifier'
+import {
+  lineupRegions,
+  browserClassifierReady,
+  classifyLineupFrame,
+  lineupThreshold,
+} from 'src/composables/useLineupClassifier'
+import { isDarkAt } from '../../functions/lib/daylight.js'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
-import { taggingProgress, crosswalkProgress, progressLine } from 'src/lib/tagging-progress.js'
+import {
+  taggingProgress,
+  crosswalkProgress,
+  progressLine,
+  impliedCrosswalk,
+} from 'src/lib/tagging-progress.js'
 import ZoomableImageDialog from 'src/components/ZoomableImageDialog.vue'
 import RoiOverlay from 'src/components/RoiOverlay.vue'
 
@@ -389,6 +434,10 @@ const props = defineProps({
   // when the departure was logged, the actual time it left.
   sailingLabel: { type: String, default: null },
   departedLabel: { type: String, default: null },
+  // The sailing hasn't left yet (crosswalk: the lineup is still building and
+  // new frames keep arriving) — the verdict wording says "not yet" rather
+  // than "never", and a saved "not yet" invites a later look.
+  boarding: { type: Boolean, default: false },
 })
 // frame-label: { framePath, sailingKey, carsWaiting, autoP } for the frame on screen.
 const emit = defineEmits([
@@ -497,8 +546,32 @@ const timeLabel = (ts) => dayjs(ts).tz(TZ).format('h:mm a')
 
 // The robot's claim for this sailing (or its lack of one), as one sentence or
 // two — the intro under the photos in the plain view, folded away in tagging.
+// Did the rider's tags land somewhere other than the robot's claim? (Crosswalk:
+// a different frame, or no crossing at all; fullness: the other verdict.)
+const humanDisagrees = computed(() => {
+  const p = progress.value
+  if (p.decidedBy !== 'human' || !p.verdict) return false
+  if (props.kind === 'crosswalk') return props.robotAt != null && p.crossingTs !== props.robotAt
+  return props.claim != null && p.verdict !== props.claim
+})
 const claimText = computed(() => {
   const verify = 'Make sure to actually verify, the robot has poor eyesight.'
+  const p = progress.value
+  // Tagged in this session: the intro is about the rider's answer now, with
+  // the robot's claim only as what it was.
+  if (p.decidedBy === 'human' && p.verdict) {
+    if (props.kind === 'crosswalk') {
+      const robot = props.robotAt != null ? ` The robot had said ${timeLabel(props.robotAt)}.` : ''
+      if (p.verdict === 'notYet')
+        return `By your tags the lineup ${props.boarding ? "hasn't reached" : 'never reached'} the crosswalk.${robot}`
+      if (p.crossingTs === props.robotAt)
+        return `You agreed with the robot: the lineup first shows past the crosswalk at ${timeLabel(p.crossingTs)}.`
+      return `By your tags the lineup first shows past the crosswalk at ${timeLabel(p.crossingTs)}.${robot}`
+    }
+    const said = p.verdict === 'full' ? 'full' : 'with room (not full)'
+    if (props.claim == null || props.claim === p.verdict) return `By your tags the ferry left ${said}.`
+    return `By your tags the ferry left ${said}. The robot had thought ${props.claim === 'full' ? 'it left full' : 'everyone got on'}.`
+  }
   if (props.kind === 'crosswalk') {
     if (props.robotAt != null)
       return (
@@ -507,14 +580,27 @@ const claimText = computed(() => {
         `poor eyesight.${tagging.value ? ' Your answers on that frame and the one before settle it.' : ''}`
       )
     return (
-      'The lineup photos for this sailing.' +
+      (props.boarding
+        ? 'The lineup building for this sailing so far — a new frame lands every five minutes until the ferry is back.'
+        : 'The lineup photos for this sailing.') +
       (tagging.value
         ? ' Answer the crosswalk question frame by frame and the time the lineup reached it falls out — the robot learns from it.'
         : '')
     )
   }
-  if (props.claim === 'full')
+  if (props.claim === 'full') {
+    // A full call without the lineup ever reaching the crosswalk breaks
+    // Tom's rule (no lineup to the crosswalk = not likely full): the cars
+    // at the end were probably late arrivals. Say so, and ask for tags —
+    // this is exactly the case the rider's eyes settle.
+    if (!props.crosswalkOk)
+      return (
+        'The robot read cars waiting right up to departure, but the lineup never reached the ' +
+        'crosswalk — so they were probably late arrivals and the ferry had room. Your tags settle ' +
+        'it: were cars really waiting on the last frames?'
+      )
     return `These are the terminal frames the robot judged. It thinks the ferry left full — cars were still waiting right up to departure. ${verify}`
+  }
   if (props.claim == null)
     return (
       "The robot looked at these terminal frames but couldn't tell whether the ferry left full." +
@@ -564,6 +650,20 @@ let settleTimer = null
 
 const currentScore = computed(() => (frame.value ? scores.value.get(frame.value.path) : null))
 const bandWord = (band) => (band === 'cars' ? 'cars' : band === 'empty' ? 'empty' : 'not sure')
+// Crosswalk chip: the robot's call on its detection frame (the server's
+// certainty, when it shipped one), else the browser's read of this frame.
+const crosswalkChipClass = computed(() => {
+  if (frame.value?.ts === props.robotAt) return 'chip-cars'
+  return currentScore.value?.band === 'at' ? 'chip-cars' : 'chip-empty'
+})
+const crosswalkChipText = computed(() => {
+  const sc = currentScore.value
+  if (frame.value?.ts === props.robotAt) {
+    const p = props.robotProb ?? sc?.p
+    return `robot's call${typeof p === 'number' ? ` ${p.toFixed(2)}` : ''}`
+  }
+  return `${sc.band === 'at' ? 'at crosswalk' : 'not yet'} ${sc.p.toFixed(2)}`
+})
 // The rider's answer, as the chip words it for this camera's question.
 const answerWord = (yes) =>
   props.kind === 'fullness'
@@ -634,41 +734,72 @@ const verdictKey = computed(() => {
   return props.kind === 'fullness' ? p.verdict : p.verdict === 'at' ? `at:${p.crossingTs}` : 'notYet'
 })
 
-// What the tagged tail says, and briefly why — the frames' own answer to
-// "did it leave full?", which this dialog never asks directly.
-const verdictText = computed(() => {
+// Crosswalk: what the pinned verdict implies for the frame on screen when
+// the rider hasn't answered it (null otherwise).
+const impliedHere = computed(() =>
+  props.kind === 'crosswalk' && frame.value ? impliedCrosswalk(progress.value, frame.value.ts) : null,
+)
+// Crosswalk progress line: the count, and while one specific frame still
+// decides it, which one and why.
+const crosswalkLine = computed(() => {
   const p = progress.value
+  const i = p.needed[0]
+  if (i === undefined) return progressLine(p)
+  const head = `${p.labelled} of ${p.total} frame${p.total === 1 ? '' : 's'} tagged`
+  const at = timeLabel(p.seq[i].ts)
+  if (p.reason === 'need-before') return `${head} — now ${at}, the frame before your first Yes: is it there yet?`
+  return `${head} — now the ${props.boarding ? 'latest' : 'last'} frame (${at}): No there means not yet`
+})
+
+// The result, in a few words: what the tags (or the robot's read) add up to
+// and whose doing it is — the frames' own answer to the sailing's question,
+// which this dialog never asks directly (except with every frame tagged and
+// nothing decided).
+const verdictHeadline = computed(() => {
+  const p = progress.value
+  const who = p.decidedBy === 'human' ? 'inferred from your tags' : "the robot's read"
   if (props.kind === 'crosswalk') {
-    if (p.verdict === 'at') return `By your tags, the lineup reached the crosswalk at ${timeLabel(p.crossingTs)}.`
-    return 'By your tags, the lineup never reached the crosswalk.'
+    if (p.verdict === 'at') return `At the crosswalk from ${timeLabel(p.crossingTs)} — ${who}`
+    return `${props.boarding ? 'Not at the crosswalk yet' : 'Never reached the crosswalk'} — ${who}`
   }
-  const who = p.decidedBy === 'human' ? 'By your tags' : 'By the robot\'s read'
-  if (p.verdict === 'notFull') return `${who}, the ferry left with room (not full).`
-  if (p.verdict === 'full') return `${who}, the ferry left full — vehicles were still waiting.`
-  if (p.reason === 'human-cars-last-noxwalk')
-    return 'You saw vehicles on the last frame, but the lineup never reached the crosswalk — did the ferry leave full?'
-  if (p.vetoed) return "Cars to the very end, but the lineup never reached the crosswalk, so the robot won't call it full."
-  return "The last frames are tagged but the pattern is mixed — nothing decides it."
+  if (p.verdict === 'notFull') return `Not full — ${who}`
+  if (p.verdict === 'full') return `Full — ${who}`
+  if (p.reason === 'human-cars-last-noxwalk') return 'Vehicles at departure, but no lineup to the crosswalk — was it full?'
+  if (p.vetoed) return "Cars to the very end, but no lineup to the crosswalk — the robot won't call it full"
+  return 'Nothing decided yet'
+})
+const verdictColor = computed(() => {
+  const p = progress.value
+  if (p.verdict === 'notFull') return 'positive'
+  if (p.verdict === 'full' || p.verdict === 'at') return 'deep-orange'
+  if (p.verdict === 'notYet') return 'indigo'
+  return 'grey-8'
+})
+const verdictIcon = computed(() => {
+  const p = progress.value
+  if (!p.verdict) return 'help_outline'
+  return p.decidedBy === 'human' ? 'check_circle' : 'smart_toy'
 })
 const reasonText = computed(() => {
   const p = progress.value
   const t = (ts) => (typeof ts === 'number' ? timeLabel(ts) : '')
   const prev = p.seq?.[p.total - 2]
+  const lastWord = props.boarding ? 'latest' : 'last'
   switch (p.reason) {
     case 'pinned': {
       const i = p.seq.findIndex((f) => f.ts === p.crossingTs)
-      return `No at ${t(p.seq[i - 1]?.ts)}, Yes at ${t(p.crossingTs)} — the first frame showing the lineup at the crosswalk${
+      return `You said not yet at ${t(p.seq[i - 1]?.ts)} and at the crosswalk at ${t(p.crossingTs)} — so that is the first frame with the lineup there${
         p.crossingTs === props.robotAt ? ', the same frame the robot picked' : ''
       }.`
     }
     case 'first-frame':
-      return `Yes on the earliest frame (${t(p.crossingTs)}) — the lineup was already there when the photos start.`
+      return `You said the lineup was already at the crosswalk on the earliest frame (${t(p.crossingTs)}) — the photos start after it got there.`
     case 'last-no':
-      return `No on the last frame (${t(p.seq[p.total - 1]?.ts)}) with no Yes before it.`
+      return `You said not yet on the ${lastWord} frame (${t(p.seq[p.total - 1]?.ts)}), and no earlier frame had the lineup there either.`
     case 'human-cars-last':
       return `You said vehicles were waiting on the last frame (${t(p.verdictTs)}) — the one taken as the ferry left.`
     case 'human-empty-pair':
-      return `You said the last frame (${t(p.verdictTs)}) was empty, and the one before${prev ? ` (${t(prev.ts)})` : ''} was too.`
+      return `You said the last frame (${t(p.verdictTs)}) was empty, and the one before${prev ? ` (${t(prev.ts)})` : ''} was too — nobody was left waiting when the ferry left.`
     case 'robot-empty-pair':
       return `Two empty frames in a row after the last cars, from ${t(p.verdictTs)} — nothing came back after.`
     case 'robot-cars-tail':
@@ -677,11 +808,43 @@ const reasonText = computed(() => {
       return `Without a lineup back to the crosswalk, the vehicles at ${t(p.verdictTs)} probably rolled up late, after loading closed — then the ferry still had room.`
     case 'vetoed':
       return 'Tag the last frame if you can see vehicles waiting — a rider\'s word on it counts.'
-    case 'mixed':
+    case 'mixed': {
+      // The rider just emptied the departure frame: one more answer (the
+      // frame before it) turns that into a not-full verdict.
+      const last = p.seq[p.total - 1]
+      if (last?.source === 'human' && last.carsPresent === false && prev && prev.source !== 'human')
+        return `You said the last frame (${t(last.ts)}) was empty — now the one before it (${t(prev.ts)}): empty there too means not full.`
       return 'Cars and empties alternate at the end. Re-check the last frame: vehicles waiting means full, empty (with the frame before it) means not full.'
+    }
     default:
       return ''
   }
+})
+
+// Crosswalk: what the verdict says about the frames the rider didn't tag —
+// spelled out once, under the verdict, so the implied chips make sense.
+const impliedLine = computed(() => {
+  const p = progress.value
+  if (props.kind !== 'crosswalk' || !p.verdict) return null
+  if (p.verdict === 'at') {
+    const at = timeLabel(p.crossingTs)
+    return `Frames before ${at} count as not yet, ${at} and later as at the crosswalk — tag any that look wrong.`
+  }
+  const last = p.seq[p.total - 1]
+  return (
+    `Every frame up to ${timeLabel(last?.ts)} counts as not yet.` +
+    (props.boarding ? ' If the lineup gets there later, tag the newer frames.' : '')
+  )
+})
+// The "Saved" line for each verdict — a crosswalk "not yet" is not a time,
+// so it must not say one was saved.
+const savedLine = computed(() => {
+  const p = progress.value
+  if (props.kind === 'fullness') return "Saved as this sailing's capacity."
+  if (p.verdict === 'at') return "Saved as this sailing's crosswalk time."
+  return props.boarding
+    ? 'Saved: lineup not at the crosswalk yet.'
+    : "Saved: this sailing's lineup never reached the crosswalk."
 })
 
 // A verdict that a rider's tag produced is saved as the sailing's capacity
@@ -695,9 +858,14 @@ function confirmCapacity(capacity) {
   confirmedLate.value = capacity
   emit('capacity', capacity)
 }
-// Every frame answered: the sailing's question, asked outright. Yes / No file
-// a capacity report; Not sure files nothing — the frame tags already help.
+// Every frame answered and the tags decided nothing (a mixed tail): the
+// sailing's question, asked outright. Yes / No file a capacity report; Not
+// sure files nothing — the frame tags already help. The late-arrivals case
+// has its own, more specific question in the verdict panel.
 const allTagged = computed(() => progress.value.total > 0 && progress.value.labelled >= progress.value.total)
+const askOutright = computed(
+  () => allTagged.value && !progress.value.verdict && progress.value.reason !== 'human-cars-last-noxwalk',
+)
 const fullAnswer = ref(null) // 'Full' | 'Not Full' | 'unsure'
 function answerFull(answer) {
   fullAnswer.value = answer
@@ -722,32 +890,43 @@ function saveInferred() {
 // after the whole sailing has been fetched, and one frame the proxy can't
 // serve costs only its own chip. A later run (reopen, new frames)
 // supersedes an earlier one still in flight.
+// Crosswalk frames get the same treatment with the lineup model (bands 'at'
+// / 'notYet', or 'dark' for night frames the robot never looks at); those
+// scores only feed the chips — the crosswalk verdict is the rider's alone.
 let scoreRun = 0
 async function scoreFrames() {
   const run = ++scoreRun
   scoresReady.value = false
-  if (props.kind !== 'fullness' || !terminalClassifierReady) {
+  const crosswalk = props.kind === 'crosswalk'
+  if (crosswalk ? !browserClassifierReady : !terminalClassifierReady) {
     scoresReady.value = true
     return
   }
   const current = frame.value
   const queue = props.frames.filter((f) => f.path && !scores.value.has(f.path))
   if (current) queue.sort((a, b) => (a === current ? -1 : b === current ? 1 : 0))
+  const setScore = (path, score) => {
+    const m = new Map(scores.value)
+    m.set(path, score)
+    scores.value = m
+  }
   for (const f of queue) {
+    if (crosswalk && f.ts && isDarkAt(f.ts)) {
+      setScore(f.path, { p: null, band: 'dark' })
+      continue
+    }
     try {
-      const { p } = await classifyTerminalFrame(f.path)
+      const { p } = crosswalk ? await classifyLineupFrame(f.path) : await classifyTerminalFrame(f.path)
       if (run !== scoreRun) return
-      const m = new Map(scores.value)
-      m.set(f.path, { p, band: terminalBand(p) })
-      scores.value = m
+      setScore(f.path, { p, band: crosswalk ? (p >= lineupThreshold ? 'at' : 'notYet') : terminalBand(p) })
     } catch {
       // This frame stays unscored (chip says so); the rest still get read.
       if (run !== scoreRun) return
     }
   }
-  // Scores decide which frame matters most; if the rider hasn't started and
-  // there is no robot frame to defend, start them there.
-  if (robotIndex.value < 0 && labelled.value.size === 0 && !navigated.value) {
+  // Scores decide which frame matters most (fullness); if the rider hasn't
+  // started and there is no robot frame to defend, start them there.
+  if (!crosswalk && robotIndex.value < 0 && labelled.value.size === 0 && !navigated.value) {
     const first = progress.value.walkOrder[0]
     if (first !== undefined) index.value = first
   }
@@ -910,6 +1089,14 @@ function openZoom(url) {
 }
 .chip-pending {
   background: rgba(60, 60, 60, 0.75);
+}
+/* An answer the rider's other tags imply, not one they gave: muted, italic. */
+.chip-implied {
+  background: rgba(60, 60, 60, 0.6);
+  font-style: italic;
+}
+.verdict-headline {
+  line-height: 1.3;
 }
 
 /* Phones: the card takes the whole viewport width (the dialog wrapper's own
