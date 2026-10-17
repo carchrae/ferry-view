@@ -30,7 +30,7 @@
     "terminal:review-claude": "node scripts/review-claude-labels.mjs",
     "terminal:apply-review": "node scripts/apply-label-review.mjs",
     "dev": "quasar dev -m spa",
-    "dev:prod": "PRODUCTION_DATA=true quasar dev -m spa",
+    "dev:prod": "PRODUCTION_DATA=true quasar dev -m spa --port 9200",
     "build": "quasar build -m pwa && node scripts/generate-netlify-redirects.mjs",
     "postinstall": "quasar prepare",
     "staging:start": "bash scripts/staging-refresh.sh",
