@@ -42,6 +42,7 @@ import {
 } from '../functions/lib/lineup-features.js'
 import { isDarkAt } from '../functions/lib/daylight.js'
 import { sameGeometry } from '../functions/lib/model-geometry.js'
+import { scoreWithMembers } from '../functions/lib/model-members.js'
 import { effectiveCrosswalk } from '../functions/lib/lineup-labels.js'
 import { TZ } from '../functions/lib/time.js'
 import {
@@ -378,16 +379,14 @@ function evalHistorical(m) {
   // out of this table and out of champion selection.
   if (!sameGeometry(m.regions, REGIONS)) return null
   const th = m.threshold ?? 0.7
-  const score = (f) => {
-    let z = m.bias || 0
-    for (let i = 0; i < FEATURE_LENGTH; i++) z += m.weights[i] * f[i]
-    return sigmoid(z)
-  }
+  // Band-aware (model-members.js): an archived model with daylight members
+  // is re-scored the way production would run it.
+  const score = (f, ts) => scoreWithMembers(m, f, ts)
   let tp = 0
   let fp = 0
   let fn = 0
   for (const s of test) {
-    const yhat = score(s.features) >= th ? 1 : 0
+    const yhat = score(s.features, s.ts) >= th ? 1 : 0
     if (yhat === 1 && s.y === 1) tp++
     if (yhat === 1 && s.y === 0) fp++
     if (yhat === 0 && s.y === 1) fn++
@@ -396,7 +395,7 @@ function evalHistorical(m) {
     key,
     frames,
     detectedTs: firstSustainedPositiveTs(
-      frames.filter((f) => !f.dark).map((f) => ({ ts: f.ts, positive: score(f.features) >= th })),
+      frames.filter((f) => !f.dark).map((f) => ({ ts: f.ts, positive: score(f.features, f.ts) >= th })),
     ),
     humanTs: frames[0].crosswalkAt,
   }))

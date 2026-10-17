@@ -13,6 +13,7 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 ## Key Decisions
 - Lateness computation lives in `functions/lib/constants.js`; Vue app imports only notification constants.
 - Webcam capture is fire-and-forget (`.catch()` only) so poll latency is not impacted.
+- Classifier models may be **daylight-banded**: `members[]` sub-models per solar-elevation band (`functions/lib/model-members.js`), picked per frame by capture time; top-level weights are the all-band fallback. Terminal trainer makes them by default; both runtimes and the browser mirrors honour them.
 - Classifier models are **published to Firestore, not deployed**: `classifierModels/live` names the version each robot runs (server `refreshLiveModels` per poll; the poll copies the active versions to `ferryStatus/current.classifierModels`, which the browser mirrors read via `useClassifierModels.js` — no extra client read); `npm run models:publish[:production]` after training. Bundled `functions/models/*.json` are only the fallback. A live model whose crop geometry differs from the deployed feature code is refused (`functions/lib/model-geometry.js`).
 - `formatDeckBadge` replaces two separate template functions.
 - Ride request contact info is public (no sign-in), uses `sms:` protocol for SMS method.
@@ -26,8 +27,9 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 ## Agent Environment
 - **Scratchpad**: use `/scratchpad/` (gitignored) for all temporary files — throwaway
   scripts, screenshots, logs, intermediate data. Don't use `/tmp` or the session temp dir.
-  It already has a local `playwright` install (Chromium is in `~/Library/Caches/ms-playwright`)
-  for driving the dev server headless — see `.claude/skills/verify`.
+  `npm run playwright:install` puts a local `playwright` there (Chromium in
+  `~/.cache/ms-playwright` on Linux, `~/Library/Caches/ms-playwright` on macOS) for
+  driving the dev server headless — see `.claude/skills/verify`. Tom runs that install.
 - **Admin scripts**: any local script that connects to Firestore/Storage with admin
   rights must use `connectAdmin(projectId, { storage })` + `detectProjectId()` from
   `functions/script-auth.js` — never call `initializeApp`/`applicationDefault()` directly.

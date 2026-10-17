@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { firstSustainedPositiveTs } from '../../functions/lib/lineup-labels.js'
 import { isDarkAt } from '../../functions/lib/daylight.js'
 import { lineupModel, loadLiveModels } from 'src/composables/useClassifierModels'
+import { scoreWithMembers } from '../../functions/lib/model-members.js'
 
 // Browser-side lineup classifier — phase 1 of automated crosswalk detection.
 //
@@ -89,11 +90,8 @@ function extractFeatures(bitmap, model) {
   return features
 }
 
-function score(features, model) {
-  let z = model.bias || 0
-  for (let i = 0; i < model.weights.length; i++) z += model.weights[i] * features[i]
-  return 1 / (1 + Math.exp(-z))
-}
+// Band-aware (model-members.js), same rule as the server.
+const score = (features, model, ts) => scoreWithMembers(model, features, ts)
 
 // One frame's read: { ts, p, positive } — the same model and cut the
 // sequence rule below uses, exposed so the tagging dialog can show what the
@@ -109,8 +107,9 @@ async function classifyFrame(path) {
   const bitmap = await createImageBitmap(await res.blob())
   try {
     const model = current()
-    const p = score(extractFeatures(bitmap, model), model)
-    return { ts: frameTs(path), p, positive: p >= threshold() }
+    const ts = frameTs(path)
+    const p = score(extractFeatures(bitmap, model), model, ts)
+    return { ts, p, positive: p >= threshold() }
   } finally {
     bitmap.close?.()
   }

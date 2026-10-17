@@ -327,7 +327,7 @@ export async function captureLineupTimelapse(db, data) {
   // classify-first probe saves nothing — junk night frames stop
   // accumulating. Unconditional captures still save (frames stay taggable,
   // and they build the dark archive a future night model needs).
-  const verdict = isDarkAt(timestamp) ? null : await classifyLineup(best)
+  const verdict = isDarkAt(timestamp) ? null : await classifyLineup(best, undefined, { ts: timestamp })
   // No verdict, no check: an unclassified frame can't settle anything.
   if (!verdict) lineupCheck = null
 
@@ -474,7 +474,7 @@ export async function captureDepartureTimelapse(db, data) {
   let fullCleared = false
   let curCapacitySource = null
   let curLastCapacity = null
-  const verdict = await classifyTerminal(best)
+  const verdict = await classifyTerminal(best, undefined, { ts: timestamp })
   if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
     const cur = snap.exists ? snap.data() : {}

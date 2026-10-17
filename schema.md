@@ -273,6 +273,7 @@ attributable to the exact model + training set that produced it. Since
 | `version` | number | Monotonic, bumped by the training script on each successful run |
 | `trainedAt` | string | ISO timestamp of the training run |
 | `type` / `threshold` / `regions` / `weights` / `bias` | | The full model, as shipped in `functions/models/*.json` |
+| `members` | array? | Daylight-banded sub-models (`functions/lib/model-members.js`, since terminal-cars v8): `[{ name, elevation: { min?, max? }, weights, bias }]`, chosen per frame by solar elevation at capture; absent on single models. `bandOverlap` (degrees) records the training overlap |
 | `metrics` | map | `{ train, test, trainFrames, testFrames }` — accuracy/precision/recall on the by-sailing split |
 | `dataset` | map? | Training-set snapshot: `{ from, to }` date range, `frames`, `labeledFrames`, `sailings`. Absent on v1 (predates the field) |
 | `syncedAt` | number | Epoch ms the doc was written |

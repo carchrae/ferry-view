@@ -264,6 +264,65 @@ Order of work when this is picked up: label page over IR composites → ~100+
 positive dark frames → night model → production gate (currently nothing in
 `functions/` loads `lineup-night-classifier.json`).
 
+**Later the same day — the label page exists and the archive is labelled.**
+`npm run lineup:dark-label` builds `training-data/lineup-dark-labeling.html`
+from every dark community frame on disk: raw frame and its stable composite
+side by side (the trainer's exact window rule), day frames of the sailing
+greyed for context, labels edited per sailing ("past crosswalk from frame N" — dark or daylight
+— / "never"; frames before the pick collapse behind a button) and exported
+as `{ frames: {path: 0|1}, crosswalk: {sailingKey: epochMs|null} }` — only
+what changed. `npm run lineup:dark-apply-review -- file.json` folds the
+dark-frame labels into `lineup-dark-labels.json` and the crosswalk times
+into `lineup-crosswalk-hand.json`, which the exporter applies over rider
+marks when it labels the day frames (null = never, which like a rider's
+refute leaves the frames unlabelled). So a dawn/dusk review feeds both
+models.
+Claude labelled all 1,007 dark frames (161 sailings) from contact sheets of
+those pairs into `lineup-dark-labels-claude.json`, which the night trainer
+takes after hand labels and before rider marks (`dataset.labelSources`
+records the mix). Result: 36 positive frames on 14 sailings, 943 negative, 4
+sailings left unsure; all 46 rider-marked dark frames agree. What the pass
+showed: nearly every dark positive is a **pre-dawn 06:15 lineup forming
+05:55–06:20**; the 20:25 boats are almost always empty in the dark (two
+exceptions), the 05:15 / 21:30+ boats always; the composite reliably removes
+headlight sweeps while keeping a standing queue, and the 2026-10-14 rain
+frames show it also removes raindrop streaks. Tom reviewed the whole set the same evening and
+corrected three of the 14 positives — all 06:15 boats where the pick sat on
+the last frame or one too early (commuters arrive in the final minute and
+the last frame shows loading, so the 5-minute cadence is coarse exactly
+where it matters) — and moved one crossing earlier; the rest were promoted
+to hand labels (979, 32 positive, 11 positive sailings) and the confirmed
+crossing times went into `lineup-crosswalk-hand.json`. `lineup:train-night`
+still cannot clear the floor: the split is by sailing and 11 positive
+sailings leave 2 positives held out. The next step is more positive
+sailings — the dusk boats once sunset reaches the 16:xx and 17:xx departures
+in November, plus the 06:15 every clear morning — and two ideas from the
+review: **1-minute frames in the last 15 minutes before a dark departure**
+(the crosswalk robot's off-cadence check photos already exist for this; see
+`timelapseDecision({ offCadence })`), and **composites for the day model
+too**, so stopped cars read differently from moving ones
+(`training-data/experiments/day-composite-cv.mjs`). Result, same 5-fold
+CV and recency weights as the drift experiment, 4,221 daylight frames
+(3,348 with a full 3-frame window at 5-minute spacing):
+
+| day features | P | R | held-out cost | agree | missed | phantoms |
+|---|---|---|---:|---:|---:|---:|
+| raw frames | 0.937 | 0.886 | 177 | 334 | 64 | 1 |
+| stable composite | 0.944 | 0.897 | 192 | 339 | 60 | 3 |
+
+Frame metrics improve a little and four more sailings are caught, but two
+extra phantoms (detections on rider-refuted sailings, weighted 10) make the
+severity cost worse. Tom reviewed all three phantoms: the two composite-only
+ones (2026-08-24 12:35, 2026-09-26 07:30) are real false positives on a
+near-empty lot and an empty infrared twilight scene — the riders were right;
+the one both variants share (2026-08-13 13:55) was a rider looking at one
+row not being full while the line did reach the crosswalk, so it now carries
+a hand mark at 13:50 in `lineup-crosswalk-hand.json` and no longer counts
+against any model — at 5-minute spacing a moving queue is partly erased
+and what survives can look like a standing one. Not adopted for the day
+model as-is; worth re-running if the capture cadence tightens to 1 minute,
+where the composite loses far less of a real lineup.
+
 ### Detection-error severity (2026-09-05)
 
 Not all mistakes are equal: a detection one frame before the rider's mark is
@@ -527,9 +586,43 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   **sunrise (0°, ±6° training overlap)** takes held-out F1 0.906 → 0.928 and
   false cars 98 → 57 (false empties 130 → 117), with the gain almost entirely
   in the below-horizon frames (precision 0.82 → 0.98); gates at 4°/8°/12° do
-  slightly worse. Not built yet — it needs a two-model JSON, the gate in
-  `terminal-classifier.js` and `useTerminalClassifier.js`, and the Firestore
-  model mirror — but it is the next terminal improvement worth the plumbing.
+  slightly worse. **Built the same day as daylight-banded models**
+  (`functions/lib/model-members.js`): a model JSON may carry `members`, one
+  logistic sub-model per solar-elevation band (`{ name, elevation: { min,
+  max }, weights, bias }`, any number of bands), chosen per frame by the
+  sun's elevation at capture time; the top-level `weights`/`bias` (trained
+  on all bands) stay as the fallback and as what old deploys and the report
+  read, and `threshold`/`emptyThreshold`/`regions`/`masks` stay shared so a
+  score means the same thing whichever member produced it. Both runtimes
+  (`classifyTerminal`/`classifyLineup` take `{ ts }`, `webcam.js` passes the
+  capture time; the browser mirrors pass the frame's epoch) and both trainers'
+  history re-scoring are band-aware. `train-terminal-classifier.mjs` trains
+  members by default (`--bands "-90:0,0:90" --band-overlap 6`; `--bands
+  none` for a single model) and prints held-out metrics per band against the
+  single weights. **v8** is the first banded model: held-out F1 0.858 vs
+  v7's 0.82 on the same split, precision 0.74 → 0.83, with twilight
+  precision 0.48 → 1.00 and dark 0.78 → 1.00; the lineup trainer stays
+  single-model (bands did not pay for the crosswalk — §4).
+- **Composites on the terminal cam** (2026-10-17, Tom's follow-up to the day
+  experiment; `training-data/experiments/terminal-composite-cv.mjs`): the
+  departure timelapse runs at ~1-minute spacing, so stable-pixel composites
+  (native 320×240, the shared `compositeWindow` rule with the saturation
+  infrared guard) were tried against raw frames, 5-fold CV by sailing on the
+  1,769 labelled frames. As single models they lose — F1 0.906 raw, 0.896
+  with a 3-frame (~2 min) window, 0.879 with 5 (~4 min). In daylight the
+  movers this camera sees are a mix (cars loading, unloading from the
+  arriving boat, and passing on the road), some of which the label counts
+  as waiting, so the minimum rule erases evidence as often as noise (25°+:
+  false cars 18 → 42); below the horizon the single composite model did
+  better (twilight false cars 28 → 15), because there the movers are mostly
+  headlight sweeps. **Retested inside the banded design (below): once the
+  low-sun band has its own member, raw frames beat composites in every
+  band** — banded raw/raw F1 0.928 (dark P 0.99 R 0.85, twilight P 0.97
+  R 0.78) vs composite-below/raw-above 0.918 (dark P 0.91 R 0.72) and
+  composite-everywhere 0.893. The band split captures what the composite was
+  buying, without the erased-car cost. Composites are therefore not used for
+  the terminal cam; the experiment stays for re-running if the cadence or
+  camera changes.
 - **Tail rule, single threshold** (2026-08-16, second revision of the day):
   cars at `p >= threshold` (0.5), else empty, and the confirming empty pair
   must come **after the last solid cars frame**. A stricter per-frame empty

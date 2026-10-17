@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { logger } from 'firebase-functions/logger'
 import { extractFeatures, FEATURE_LENGTH, REGIONS } from './lineup-features.js'
 import { sameGeometry } from './model-geometry.js'
+import { scoreWithMembers, membersUsable } from './model-members.js'
 
 // Runtime for the "lineup full to crosswalk" classifier. The model is a
 // plain logistic regression trained by scripts/train-lineup-classifier.mjs.
@@ -27,7 +28,12 @@ try {
 let model = bundled
 
 export function modelUsable(m = model) {
-  return Boolean(m?.enabled) && Array.isArray(m.weights) && m.weights.length === FEATURE_LENGTH
+  return (
+    Boolean(m?.enabled) &&
+    Array.isArray(m.weights) &&
+    m.weights.length === FEATURE_LENGTH &&
+    membersUsable(m, FEATURE_LENGTH)
+  )
 }
 
 // May this model run against THIS deploy's feature extraction? Usable, and
@@ -55,20 +61,19 @@ export function lineupModelVersion(m = model) {
   return m?.version ?? null
 }
 
-// Sigmoid of the linear score. Exported for the trainer/tests.
-export function scoreFeatures(features, m = model) {
-  let z = m.bias || 0
-  for (let i = 0; i < m.weights.length; i++) z += m.weights[i] * features[i]
-  return 1 / (1 + Math.exp(-z))
+// Sigmoid of the linear score; `ts` picks a daylight-band member when the
+// model has them (model-members.js). Exported for the trainer/tests.
+export function scoreFeatures(features, m = model, ts = null) {
+  return scoreWithMembers(m, features, ts)
 }
 
 // JPEG buffer → { probability, fullToCrosswalk } or null (disabled / failed).
 // Pure CPU dot product — microseconds per frame.
-export async function classifyLineup(buf, m = model) {
+export async function classifyLineup(buf, m = model, { ts = null } = {}) {
   if (!modelUsable(m)) return null
   try {
     const features = await extractFeatures(buf)
-    const probability = scoreFeatures(features, m)
+    const probability = scoreFeatures(features, m, ts)
     return { probability, fullToCrosswalk: probability >= (m.threshold ?? 0.7) }
   } catch (e) {
     logger.warn('Lineup classification failed:', e.message)

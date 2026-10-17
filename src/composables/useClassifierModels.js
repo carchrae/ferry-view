@@ -38,13 +38,19 @@ import bundledTerminal from '../../functions/models/terminal-cars-classifier.jso
 export const lineupModel = shallowRef(bundledLineup)
 export const terminalModel = shallowRef(bundledTerminal)
 
-const wellFormed = (m) =>
-  Boolean(m?.enabled) &&
-  Array.isArray(m.weights) &&
-  Array.isArray(m.regions) &&
-  m.regions.length > 0 &&
-  m.regions.every((r) => r?.roi && r.width > 0 && r.height > 0) &&
-  m.weights.length === m.regions.reduce((a, r) => a + r.width * r.height, 0)
+const wellFormed = (m) => {
+  if (!m?.enabled || !Array.isArray(m.weights) || !Array.isArray(m.regions) || !m.regions.length) return false
+  if (!m.regions.every((r) => r?.roi && r.width > 0 && r.height > 0)) return false
+  const n = m.regions.reduce((a, r) => a + r.width * r.height, 0)
+  if (m.weights.length !== n) return false
+  // Daylight-band members (model-members.js), when present, each need a
+  // full weight vector and a band.
+  return (
+    m.members == null ||
+    (Array.isArray(m.members) &&
+      m.members.every((x) => Array.isArray(x.weights) && x.weights.length === n && x.elevation))
+  )
+}
 
 const TARGETS = [
   { name: 'lineup', target: lineupModel, bundled: bundledLineup },

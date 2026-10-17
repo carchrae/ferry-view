@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import { terminalEmptyFrameTs, terminalFullAtDeparture } from '../../functions/lib/lineup-labels.js'
 import { terminalModel, loadLiveModels } from 'src/composables/useClassifierModels'
+import { scoreWithMembers } from '../../functions/lib/model-members.js'
 
 // Browser-side terminal-cars classifier — the "ferry left not full" signal.
 // Mirrors useLineupClassifier.js but for the Bowen terminal (departure)
@@ -140,11 +141,9 @@ function extractFeatures(bitmap, model) {
   return features.map((v, i) => (FEATURE_MASK[i] ? v - mean : 0))
 }
 
-function score(features, model) {
-  let z = model.bias || 0
-  for (let i = 0; i < model.weights.length; i++) z += model.weights[i] * features[i]
-  return 1 / (1 + Math.exp(-z))
-}
+// Band-aware (model-members.js): the frame's capture time picks the
+// daylight member when the model has them — the same rule as the server.
+const score = (features, model, ts) => scoreWithMembers(model, features, ts)
 
 async function classifyFrame(path) {
   const res = await fetch(proxyUrl(path))
@@ -152,8 +151,9 @@ async function classifyFrame(path) {
   const bitmap = await createImageBitmap(await res.blob())
   try {
     const model = current()
-    const p = score(extractFeatures(bitmap, model), model)
-    return { ts: frameTs(path), p, carsPresent: terminalState(p) }
+    const ts = frameTs(path)
+    const p = score(extractFeatures(bitmap, model), model, ts)
+    return { ts, p, carsPresent: terminalState(p) }
   } finally {
     bitmap.close?.()
   }

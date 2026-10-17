@@ -9,6 +9,7 @@ import {
   TERMINAL_MASKS,
 } from './terminal-features.js'
 import { sameGeometry, sameMasks } from './model-geometry.js'
+import { scoreWithMembers, membersUsable } from './model-members.js'
 
 // Runtime for the terminal-cars classifier ("are there cars waiting in the
 // Bowen terminal frame?") — independent of the crosswalk classifier but the
@@ -32,7 +33,12 @@ try {
 let model = bundled
 
 export function terminalModelUsable(m = model) {
-  return Boolean(m?.enabled) && Array.isArray(m.weights) && m.weights.length === TERMINAL_FEATURE_LENGTH
+  return (
+    Boolean(m?.enabled) &&
+    Array.isArray(m.weights) &&
+    m.weights.length === TERMINAL_FEATURE_LENGTH &&
+    membersUsable(m, TERMINAL_FEATURE_LENGTH)
+  )
 }
 
 // Usable AND trained on this deploy's crops and masks (terminal features are
@@ -61,10 +67,10 @@ export function terminalModelVersion(m = model) {
   return m?.version ?? null
 }
 
-export function scoreTerminalFeatures(features, m = model) {
-  let z = m.bias || 0
-  for (let i = 0; i < m.weights.length; i++) z += m.weights[i] * features[i]
-  return 1 / (1 + Math.exp(-z))
+// `ts` (capture time, epoch ms) picks the daylight-band member when the model
+// has them (model-members.js); without it the all-band weights score.
+export function scoreTerminalFeatures(features, m = model, ts = null) {
+  return scoreWithMembers(m, features, ts)
 }
 
 // Single threshold again (2026-08-16, second revision): p >= threshold (0.5)
@@ -86,11 +92,11 @@ export function terminalState(probability, m = model) {
 
 // JPEG buffer → { probability, carsPresent: true|false } or null
 // (disabled / failed).
-export async function classifyTerminal(buf, m = model) {
+export async function classifyTerminal(buf, m = model, { ts = null } = {}) {
   if (!terminalModelUsable(m)) return null
   try {
     const features = await extractTerminalFeatures(buf)
-    const probability = scoreTerminalFeatures(features, m)
+    const probability = scoreTerminalFeatures(features, m, ts)
     return { probability, carsPresent: terminalState(probability, m) }
   } catch (e) {
     logger.warn('Terminal-cars classification failed:', e.message)
