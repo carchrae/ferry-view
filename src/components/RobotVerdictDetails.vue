@@ -118,7 +118,7 @@ const nightVerdict = computed(
 // is worth most.
 const stateClass = (f) => terminalBand(f.p)
 const blockOpacity = (f) =>
-  stateClass(f) === 'unsure' ? '1' : Math.max(0.25, f.p >= THRESHOLD ? f.p : 1 - f.p).toFixed(2)
+  stateClass(f) === 'unsure' ? '1' : Math.max(0.25, f.p >= THRESHOLD.value ? f.p : 1 - f.p).toFixed(2)
 const blockTitle = (f) =>
   `${timeLabel(f.ts)} · p ${f.p.toFixed(2)}${f.dark ? ' · dark' : ''} · ${stateClass(f)}`
 

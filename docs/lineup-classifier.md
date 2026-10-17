@@ -248,6 +248,22 @@ the boxed timelapse tagger, plus a hand-label page over composites), a
 separate night model (`--include-dark` / `--night` in the trainer, strong L2),
 then the probe buffer in `captureLineupTimelapse`, flagged off until judged.
 
+**Update 2026-10-17 — the camera is in infrared night mode, not black.** The
+"median luminance 0.16" finding above is now bimodal: since late August the
+dark frames split into near-black ones (p10 ≈ 0.09, deep night / fog) and
+IR-mode frames (p90 ≈ 0.30–0.39, dusk and dawn) in which the lane, the
+crosswalk and the queue are clearly visible — see e.g. the 2026-10-13 20:25
+sailing's 19:35 frame. So the dusk sailings Tom cares about (the 16:xx–17:xx
+Bowen departures are often full and sunset is already before 18:30) are
+*classifiable in principle*; what's missing is labels. The archive now holds
+46 labeled dark frames (9 past the crosswalk) from rider marks — the night
+trainer (`scripts/train-night-classifier.mjs`) runs but can't clear the
+floor on 38 train / 8 test frames, and the hand-label page it expects
+(`build-dark-label-page.mjs` → `lineup-dark-labels.json`) was never built.
+Order of work when this is picked up: label page over IR composites → ~100+
+positive dark frames → night model → production gate (currently nothing in
+`functions/` loads `lineup-night-classifier.json`).
+
 ### Detection-error severity (2026-09-05)
 
 Not all mistakes are equal: a detection one frame before the rider's mark is
@@ -270,6 +286,54 @@ profile: on 5-fold CV it trades +6 agreeing sailings and −2 misses for
 2× the phantoms, so the trainer's `--boundary-weight` flag stays **off**
 by default — re-test when the tagged dataset grows.
 
+### Seasonal drift and recency weighting (2026-10-17)
+
+The light changes faster than the model: v4 (trained 2026-09-06 on July–early
+September frames) scored recall 0.93 on summer frames but **0.70 on the
+autumn frames tagged after it shipped**, down to 0.37 in the week of
+2026-10-12. The misses are not a twilight problem — scored by solar
+elevation (`training-data/experiments/lineup-daylight-bands.mjs`), v4's
+autumn recall is fine below 15° (≈ 0.90) and collapses at **25–35°
+(0.455)**: the 12:00–17:00 sailings, where the autumn sun sits where the
+summer sun never did and the shadows on the hill lane look nothing like
+July. (Its autumn false positives are the opposite case — dim 06:xx frames.)
+
+Fix: retrain, with the newest frames weighted most. 5-fold CV by sailing
+(`training-data/experiments/seasonal-drift-cv.mjs`, held-out severity cost,
+summer / autumn / total):
+
+| training weights                 | summer cost | autumn cost | total | phantoms |
+|----------------------------------|------------:|------------:|------:|---------:|
+| unweighted retrain               | 107         | 97          | 204   | 3        |
+| autumn frames ×2                 | 109         | 79          | 188   | 2        |
+| last 28 days ×3                  | 119         | 70          | 189   | 2        |
+| **1 + 3·e^(−age/21 d)** (default)| 108         | 69          | 177   | 1        |
+
+The trainer now applies that decay by default (`--recent-boost 3
+--recent-scale 21`; `--recent-boost 0` restores the old behaviour), with age
+measured from the newest frame in the dataset so an unchanged dataset still
+reproduces identical weights. v5 is the result: on today's full dataset v4
+re-scores at severity cost 339 (12 phantoms, 77 missed) against v5's 170
+(2 / 58) — v5's own number is train-contaminated, the CV table is the honest
+comparison. Because the nightly job trains with defaults, the live model
+will now follow the season instead of freezing at its training month.
+
+**Per-daylight models were tested and don't pay for the crosswalk.** Gating
+two or three models by solar elevation (`lineup-daylight-bands.mjs`, same
+CV, same recency weights) moves held-out misses from 211 to 197 — within
+noise — and *hurts* twilight (recall 0.50 → 0.34) because each gated model
+sees fewer of the rare twilight frames. The seasonal shift is handled by
+recency; the within-day lighting is not what the single model gets wrong.
+Twilight (−7°…0°) is the one band that is genuinely bad in every variant
+(precision 0.67, recall 0.50 on 125 frames) and that is a labels problem,
+see the night note above.
+
+Also fixed the same day: `evalHistorical` compared the full `regions` JSON
+including the display **names**, which were renamed in October, so every
+archived version had silently dropped out of the comparison table and out
+of nightly champion selection (the "beat every prior version" gate was
+vacuous). Both trainers now compare geometry only.
+
 ## 5. Training workflow
 
 ```bash
@@ -282,14 +346,27 @@ npm run train                     # BOTH classifiers back-to-back (scripts/train
                                   # and the shared report ends with both sections complete
 npm run lineup:train              # just this one — writes functions/models/lineup-classifier.json
                                   # needs functions deps: cd functions && npm install
+                                  # (recency-weighted by default — see §4 "Seasonal drift")
 # Notes: identical retrained weights (unchanged data/config) do NOT mint a new
 # version; every shipped version is archived in functions/models/history/ and
 # a trainer below the 0.8 metric floor exits without writing (reports still
 # regenerate).
 
-# 3. Deploy — the model activates
-npm run deploy:functions
+# 3. Publish — the model activates on the robots' next poll and in the webapp
+#    on its next load; no deploy (classifierModels/live in Firestore, see
+#    schema.md). --dry-run shows what would move; --lineup N / --terminal-cars N
+#    pin or roll back a version from functions/models/history/.
+npm run models:publish              # staging
+npm run models:publish:production
 ```
+
+The bundled `functions/models/*.json` remain the fallback a deploy ships
+(used until a pointer exists, and whenever the pointed-at version is refused),
+so commit them too — but a functions deploy no longer changes which model
+is live. Both runtimes refuse a live model whose crop geometry differs from
+the deployed feature code (`functions/lib/model-geometry.js`), which is what
+makes an ROI change safe: the new code keeps running the old model until a
+model trained on the new crops is published.
 
 The **exporter** archives the raw `lineupReports`, joins them with frame
 timestamps using the app's own latest-wins rule
@@ -371,9 +448,14 @@ decide what's live:
   (`scripts/deploy-classifier-results.sh --production`; needs `gcloud auth`
   on the cron machine) so `/classifier-results` in the app shows each
   night's run — set `FERRY_RESULTS_TARGET=staging` or `skip` to override,
-- the **model** never deploys: the winning weights reach production on the
-  next `npm run deploy:functions:production` (and the browser mirror on the
-  next webapp deploy).
+- the **model** is not published unless asked: set
+  `FERRY_MODELS_TARGET=production` (or `staging`) and the job ends by
+  running `functions/publish-classifier-models.js`, moving
+  `classifierModels/live` to whatever champion selection left in
+  `functions/models/` — the robots switch on their next poll, the webapp on
+  its next load. Default `skip`: a human runs `npm run models:publish:production`
+  after looking at nightly.html. Either way no functions or webapp deploy is
+  involved any more.
 
 ```bash
 crontab -e
@@ -430,6 +512,24 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   cars were seen first. Home-page past Bowen rows
   with frames but no fullness carry a "Was it full? Help tag it" nudge into the same
   dialog, and the per-sailing dialog shows one boxed frame per camera.
+- **Sunrise is where it fails; a sun-up/sun-down pair would fix most of it**
+  (2026-10-17). Scored by solar elevation on the 1,370 rider-labelled frames
+  (`training-data/experiments/terminal-daylight-bands.mjs`), v5's errors
+  were overwhelmingly *false cars* between civil twilight and 8° — 06:00–08:59
+  Vancouver, precision 0.59–0.65 against 0.90–0.95 for the rest of the day
+  and 0.95 at night, where the street lighting is steady. Night itself is
+  fine. Champion selection (`--auto`) then promoted **v7**, the first version
+  trained on hand + rider labels (1,769 frames; held-out F1 0.82 vs v5's
+  0.789 and v6's 0.786 on the same split — the rider frames are the hard
+  "unsure" ones by construction, so these numbers read lower than v5's
+  hand-only 0.93/0.79). Separate models by daylight were tested in 5-fold CV
+  (`terminal-gated-cv.mjs`, `terminal-gate-sweep.mjs`): a pair split at
+  **sunrise (0°, ±6° training overlap)** takes held-out F1 0.906 → 0.928 and
+  false cars 98 → 57 (false empties 130 → 117), with the gain almost entirely
+  in the below-horizon frames (precision 0.82 → 0.98); gates at 4°/8°/12° do
+  slightly worse. Not built yet — it needs a two-model JSON, the gate in
+  `terminal-classifier.js` and `useTerminalClassifier.js`, and the Firestore
+  model mirror — but it is the next terminal improvement worth the plumbing.
 - **Tail rule, single threshold** (2026-08-16, second revision of the day):
   cars at `p >= threshold` (0.5), else empty, and the confirming empty pair
   must come **after the last solid cars frame**. A stricter per-frame empty
@@ -560,6 +660,6 @@ cars were left behind at Horseshoe Bay.
 4. Collect tags for a few weeks; eyeball `training-data/manifest.csv` label
    counts.
 5. Train; review printed metrics and the report's predicted-times section;
-   deploy.
+   `npm run models:publish:production` (no deploy needed).
 6. Compare `crosswalkFullAtAuto` vs human `crosswalkFullAt` for a few weeks
    before showing the auto value in the UI.

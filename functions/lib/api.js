@@ -147,7 +147,18 @@ function stripEnrichmentFields(schedule) {
 // nothing the enrichment derives (schedule matches, capacity, crosswalk marks)
 // depends on them. A poll where only these changed patches them onto the saved
 // doc (liveFields) instead of re-running the ~160-read enrichment.
-const LIVE_FIELDS = ['speed', 'heading', 'position', 'isFresh', 'lastUpdate', 'fetchedAt']
+// `classifierModels` (the versions the robots run, classifier-models.js) rides
+// along the same way: it changes only when a model is published, and the
+// webapp reads it off this doc so it never fetches the pointer itself.
+const LIVE_FIELDS = [
+  'speed',
+  'heading',
+  'position',
+  'isFresh',
+  'lastUpdate',
+  'fetchedAt',
+  'classifierModels',
+]
 
 function liveFields(data) {
   const out = {}

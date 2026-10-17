@@ -1,11 +1,13 @@
-import model from '../../functions/models/lineup-classifier.json'
+import { computed } from 'vue'
 import { firstSustainedPositiveTs } from '../../functions/lib/lineup-labels.js'
 import { isDarkAt } from '../../functions/lib/daylight.js'
+import { lineupModel, loadLiveModels } from 'src/composables/useClassifierModels'
 
 // Browser-side lineup classifier — phase 1 of automated crosswalk detection.
 //
-// Runs the SAME model the server uses (functions/models/lineup-classifier.json,
-// bundled at build time) over a sailing's lineup-timelapse frames, in capture
+// Runs the SAME model the server uses (the version classifierModels/live
+// names, bundled JSON as fallback — useClassifierModels.js) over a sailing's
+// lineup-timelapse frames, in capture
 // order, applying the shared sequence rule (firstSustainedPositiveTs): the
 // lineup passed the crosswalk at the first positive frame confirmed by the
 // next frame. Predictions feed the "Robot says…" agree-tag so riders can
@@ -23,16 +25,23 @@ import { isDarkAt } from '../../functions/lib/daylight.js'
 // headers, so a cross-origin canvas would be tainted. Frames are immutable
 // and long-cached, so refetches are usually free.
 
-const THRESHOLD = model.threshold ?? 0.7
-// The per-frame cut, for callers that show the robot's read of one frame.
-export const lineupThreshold = THRESHOLD
+loadLiveModels()
+// The model in force right now — read at call time, never captured, so a
+// live model arriving after import is what the next frame is scored with.
+const current = () => lineupModel.value
 
-export const browserClassifierReady = Boolean(
-  model?.enabled && Array.isArray(model.weights) && Array.isArray(model.regions),
-)
+const threshold = () => current().threshold ?? 0.7
+// The per-frame cut, for callers that show the robot's read of one frame.
+export const lineupThreshold = computed(() => threshold())
+
+export const browserClassifierReady = computed(() => {
+  const m = current()
+  return Boolean(m?.enabled && Array.isArray(m.weights) && Array.isArray(m.regions))
+})
 
 // The model's regions, for drawing where it looks (RoiOverlay).
-export const lineupRegions = model.regions || []
+export const lineupRegions = computed(() => current().regions || [])
+export const lineupModelVersion = () => current().version ?? null
 
 // webcams/community/<date>/timelapse/<file>.jpg → /webcam/community/…
 function proxyUrl(path) {
@@ -53,7 +62,7 @@ const frameTs = (path) => {
 
 // Mirror of functions/lib/lineup-features.js extractFeatures, on a canvas:
 // per region crop → downscale → grayscale (luma) → normalize → concatenate.
-function extractFeatures(bitmap) {
+function extractFeatures(bitmap, model) {
   const features = []
   for (const { roi, width, height } of model.regions) {
     const canvas = document.createElement('canvas')
@@ -80,7 +89,7 @@ function extractFeatures(bitmap) {
   return features
 }
 
-function score(features) {
+function score(features, model) {
   let z = model.bias || 0
   for (let i = 0; i < model.weights.length; i++) z += model.weights[i] * features[i]
   return 1 / (1 + Math.exp(-z))
@@ -99,8 +108,9 @@ async function classifyFrame(path) {
   if (!res.ok) throw new Error(`frame fetch ${res.status}`)
   const bitmap = await createImageBitmap(await res.blob())
   try {
-    const p = score(extractFeatures(bitmap))
-    return { ts: frameTs(path), p, positive: p >= THRESHOLD }
+    const model = current()
+    const p = score(extractFeatures(bitmap, model), model)
+    return { ts: frameTs(path), p, positive: p >= threshold() }
   } finally {
     bitmap.close?.()
   }
@@ -116,12 +126,15 @@ async function classifyFrame(path) {
 const CACHE_KEY = 'lineupAutoPredictions.v3'
 let cache = null
 function loadCache() {
-  if (cache) return cache
+  const modelId = current().trainedAt
+  // A live model arriving mid-session invalidates the memo too, not just
+  // what localStorage held from a previous visit.
+  if (cache && cache.model === modelId) return cache
   try {
     const stored = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')
-    cache = stored.model === model.trainedAt ? stored : { model: model.trainedAt, sailings: {} }
+    cache = stored.model === modelId ? stored : { model: modelId, sailings: {} }
   } catch {
-    cache = { model: model.trainedAt, sailings: {} }
+    cache = { model: modelId, sailings: {} }
   }
   cache.sailings = cache.sailings || {}
   return cache
@@ -140,7 +153,7 @@ function saveCache() {
 // negative tails aren't fetched. `final` marks a sailing that can gain no
 // more frames — only those cache a null result.
 export async function predictCrosswalk(sailingKey, lineupTimelapsePaths, { final = true } = {}) {
-  if (!browserClassifierReady) return null
+  if (!browserClassifierReady.value) return null
   const c = loadCache()
   const hit = c.sailings[sailingKey]
   if (hit && (hit.ts != null || hit.final)) return hit.ts != null ? { ts: hit.ts, prob: hit.prob } : null

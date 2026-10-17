@@ -32,6 +32,10 @@
 #   FERRY_DAYS             how many days of sailings to scan (default: 45)
 #   FERRY_RESULTS_TARGET   where to publish the results pages:
 #                          production (default) | staging | skip
+#   FERRY_MODELS_TARGET    where to publish the MODELS champion selection left
+#                          live (classifierModels/live in Firestore — the
+#                          robots switch on their next poll, no deploy):
+#                          skip (default) | staging | production
 
 set -euo pipefail
 
@@ -103,6 +107,25 @@ status=0
     *)
       # A typo must never fail OPEN into a production publish.
       echo "Unknown FERRY_RESULTS_TARGET='$TARGET' (use production|staging|skip) — pages NOT published"
+      status=1 ;;
+  esac
+  # Optionally publish the models themselves. Off by default: moving the
+  # live pointer changes what the robots write to sailingStatus, so a human
+  # opts in (FERRY_MODELS_TARGET=production) once the nightly selection has
+  # earned that trust. Publishing is idempotent — an unchanged champion
+  # rewrites the same pointer.
+  MODELS_TARGET="${FERRY_MODELS_TARGET:-skip}"
+  case "$MODELS_TARGET" in
+    skip)
+      echo "--- models NOT published (FERRY_MODELS_TARGET=skip; run npm run models:publish[:production]) ---" ;;
+    staging)
+      echo "--- $(date '+%F %T') publishing models (staging) ---"
+      node "$REPO_DIR/functions/publish-classifier-models.js" --project bowen-ferry-staging || status=1 ;;
+    production)
+      echo "--- $(date '+%F %T') publishing models (production) ---"
+      node "$REPO_DIR/functions/publish-classifier-models.js" --project bowen-ferry || status=1 ;;
+    *)
+      echo "Unknown FERRY_MODELS_TARGET='$MODELS_TARGET' (use production|staging|skip) — models NOT published"
       status=1 ;;
   esac
   echo "=== $(date '+%F %T') nightly train finished (status=$status) ==="

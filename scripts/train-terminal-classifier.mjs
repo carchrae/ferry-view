@@ -40,6 +40,7 @@ import {
   FULL_CONFIDENT_P,
 } from '../functions/lib/lineup-labels.js'
 import { isDarkAt } from '../functions/lib/daylight.js'
+import { sameGeometry } from '../functions/lib/model-geometry.js'
 import {
   buildExamplesPage,
   buildSummaryPage,
@@ -360,7 +361,10 @@ function evalHistoricalTerminal(m) {
   // Length alone can't prove compatibility (an ROI/mask retune can keep the
   // length while changing what every pixel means) — regions AND masks must
   // match before an archived model may be re-scored on today's features.
-  if (JSON.stringify(m.regions) !== JSON.stringify(TERMINAL_REGIONS)) return null
+  // Geometry only (model-geometry.js) — region NAMES are report labels and
+  // were renamed in 2026-10, which silently dropped every archived version
+  // out of this table and out of champion selection.
+  if (!sameGeometry(m.regions, TERMINAL_REGIONS)) return null
   if (JSON.stringify(m.masks ?? null) !== JSON.stringify(TERMINAL_MASKS ?? null)) return null
   const th = m.threshold ?? 0.5
   let tp = 0

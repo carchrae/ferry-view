@@ -318,10 +318,10 @@ import {
   terminalClassifierReady,
   classifyAllTerminalFrames,
   cachedTerminal,
+  terminalModelVersion,
 } from 'src/composables/useTerminalClassifier'
 import RobotVerdictDetails from 'src/components/RobotVerdictDetails.vue'
 import { useFrameLabel } from 'src/composables/useFrameLabel'
-import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import { useLeaderboard } from 'src/composables/useLeaderboard'
 import { scoreSailing, scoreCrosswalk } from '../../functions/lib/leaderboard-score.js'
 import { effectiveCrosswalk } from '../../functions/lib/lineup-labels.js'
@@ -564,7 +564,7 @@ watch(
 const inFlight = new Set()
 let predictionChain = Promise.resolve()
 function queueBrowserPredictions(sailings) {
-  if (!browserClassifierReady && !terminalClassifierReady) return
+  if (!browserClassifierReady.value && !terminalClassifierReady.value) return
   const todayIso = dayjs().tz(TZ).format('YYYY-MM-DD')
   const cutoffIso = dayjs().tz(TZ).subtract(42, 'day').format('YYYY-MM-DD')
   for (const sailing of sailings) {
@@ -583,11 +583,11 @@ function queueBrowserPredictions(sailings) {
     }
     if (sailing.dateIso < cutoffIso) continue // frames aged out of Storage
     const wantCrosswalk =
-      browserClassifierReady &&
+      browserClassifierReady.value &&
       sailing.crosswalkFullAtAuto == null &&
       (sailing.lineupTimelapsePaths?.length ?? 0) >= 2
     const wantTerminal =
-      terminalClassifierReady &&
+      terminalClassifierReady.value &&
       sailing.ferryNotFullAuto == null &&
       sailing.ferryFullAuto == null &&
       (sailing.departureTimelapsePaths?.length ?? 0) >= 2
@@ -686,7 +686,7 @@ async function onFrameLabel(sailing, { framePath, sailingKey, carsWaiting, autoP
     sailingKey: sailingKey || sailing.sailingKey,
     carsWaiting,
     autoP,
-    autoModel: terminalModel.version ?? null,
+    autoModel: terminalModelVersion(),
   })
   if (!saved) showSignInDialog.value = true
   done(saved)
@@ -1018,7 +1018,7 @@ watch(
   () => upcomingLineup.value?.lineupTimelapsePaths?.length,
   async () => {
     const up = upcomingLineup.value
-    if (!browserClassifierReady || !up || up.crosswalkFullAtAuto != null) return
+    if (!browserClassifierReady.value || !up || up.crosswalkFullAtAuto != null) return
     if ((up.lineupTimelapsePaths?.length ?? 0) < 2) return
     try {
       const pred = await predictCrosswalk(up.sailingKey, up.lineupTimelapsePaths, { final: false })

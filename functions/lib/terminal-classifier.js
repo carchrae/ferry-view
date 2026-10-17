@@ -2,29 +2,58 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { logger } from 'firebase-functions/logger'
-import { extractTerminalFeatures, TERMINAL_FEATURE_LENGTH } from './terminal-features.js'
+import {
+  extractTerminalFeatures,
+  TERMINAL_FEATURE_LENGTH,
+  TERMINAL_REGIONS,
+  TERMINAL_MASKS,
+} from './terminal-features.js'
+import { sameGeometry, sameMasks } from './model-geometry.js'
 
 // Runtime for the terminal-cars classifier ("are there cars waiting in the
 // Bowen terminal frame?") — independent of the crosswalk classifier but the
-// same shape: logistic weights trained by scripts/train-terminal-classifier.mjs,
-// shipped as JSON with the functions deploy. Until a trained model with
-// enabled:true is committed, classifyTerminal() returns null and costs
-// nothing.
+// same shape: logistic weights trained by scripts/train-terminal-classifier.mjs.
+// The bundled JSON is the deploy-time fallback; the LIVE model is read from
+// Firestore (classifierModels/live → classifierModels/terminal-cars-v{n}, see
+// classifier-models.js) and installed with setTerminalModel() — no deploy
+// needed. Until some usable model is in place, classifyTerminal() returns
+// null and costs nothing.
 const MODEL_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   '../models/terminal-cars-classifier.json',
 )
 
-let model = { enabled: false }
+let bundled = { enabled: false }
 try {
-  model = JSON.parse(readFileSync(MODEL_PATH, 'utf8'))
+  bundled = JSON.parse(readFileSync(MODEL_PATH, 'utf8'))
 } catch {
   // A missing or corrupt model file simply leaves the classifier disabled.
 }
+let model = bundled
 
 export function terminalModelUsable(m = model) {
   return Boolean(m?.enabled) && Array.isArray(m.weights) && m.weights.length === TERMINAL_FEATURE_LENGTH
 }
+
+// Usable AND trained on this deploy's crops and masks (terminal features are
+// mean-centred over the unmasked cells, so a mask change moves every value).
+export function terminalModelAcceptable(m) {
+  return (
+    terminalModelUsable(m) &&
+    sameGeometry(m.regions, TERMINAL_REGIONS) &&
+    sameMasks(m.masks, TERMINAL_MASKS)
+  )
+}
+
+export function setTerminalModel(m) {
+  const next = m == null ? bundled : m
+  if (m != null && !terminalModelAcceptable(m)) return false
+  model = next
+  return true
+}
+
+export const activeTerminalModel = () => model
+export const bundledTerminalModel = () => bundled
 
 // Version stamped by the training script; null on legacy unversioned models.
 // Recorded on every confirmed verdict so results can be compared per model.

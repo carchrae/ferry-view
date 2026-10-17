@@ -13,6 +13,7 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 ## Key Decisions
 - Lateness computation lives in `functions/lib/constants.js`; Vue app imports only notification constants.
 - Webcam capture is fire-and-forget (`.catch()` only) so poll latency is not impacted.
+- Classifier models are **published to Firestore, not deployed**: `classifierModels/live` names the version each robot runs (server `refreshLiveModels` per poll; the poll copies the active versions to `ferryStatus/current.classifierModels`, which the browser mirrors read via `useClassifierModels.js` — no extra client read); `npm run models:publish[:production]` after training. Bundled `functions/models/*.json` are only the fallback. A live model whose crop geometry differs from the deployed feature code is refused (`functions/lib/model-geometry.js`).
 - `formatDeckBadge` replaces two separate template functions.
 - Ride request contact info is public (no sign-in), uses `sms:` protocol for SMS method.
 - SailingKey format normalization discussed twice but deferred both times.
