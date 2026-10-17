@@ -263,6 +263,8 @@ describe('capture-gap consecutiveness', () => {
     const db = fakeDb().seed(KEY, {
       terminalFullRun: 3,
       crosswalkFullAtAuto: timeToDate('09:20').valueOf(),
+      crosswalkFullAt: timeToDate('09:20').valueOf(),
+      crosswalkSource: 'robot',
       terminalLastFrameTs: timeToDate('09:35').valueOf(),
     })
     queueFrames('fresh-frame')
@@ -276,9 +278,13 @@ describe('capture-gap consecutiveness', () => {
   })
 
   it('confirms a full run across a normal cadence', async () => {
+    // A standing robot crosswalk call: the detection AND the effective mark
+    // it was copied into (crosswalk-robot.js report()).
     const db = fakeDb().seed(KEY, {
       terminalFullRun: 3,
       crosswalkFullAtAuto: timeToDate('09:20').valueOf(),
+      crosswalkFullAt: timeToDate('09:20').valueOf(),
+      crosswalkSource: 'robot',
       terminalLastFrameTs: timeToDate('09:54').valueOf(),
     })
     queueFrames('fresh-frame')
@@ -287,5 +293,27 @@ describe('capture-gap consecutiveness', () => {
     await captureAt(db, '09:55')
 
     expect(db.docs.sailingStatus[KEY].ferryFullAuto).toBe(true)
+  })
+
+  it('does not call it full on a crosswalk detection a rider refuted', async () => {
+    // The sticky detection is still on the doc, but a rider's "not yet"
+    // cleared the effective mark (2026-10-17 10:00): the lineup is not
+    // known to have reached the crosswalk, so the cars at the end are
+    // probably late arrivals — no full stamp, no robot capacity.
+    const db = fakeDb().seed(KEY, {
+      terminalFullRun: 3,
+      crosswalkFullAtAuto: timeToDate('09:20').valueOf(),
+      crosswalkNotYetAt: timeToDate('09:24').valueOf(),
+      terminalLastFrameTs: timeToDate('09:54').valueOf(),
+    })
+    queueFrames('fresh-frame')
+    classifyTerminal.mockResolvedValue({ carsPresent: true, probability: 0.95 })
+
+    await captureAt(db, '09:55')
+
+    const cur = db.docs.sailingStatus[KEY]
+    expect(cur.ferryFullAuto).toBeUndefined()
+    expect(cur.lastCapacity).toBeUndefined()
+    expect(cur.terminalFullRun).toBe(4)
   })
 })

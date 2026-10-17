@@ -583,13 +583,17 @@ export async function captureDepartureTimelapse(db, data) {
     // any sub-0.7 frame resets it AND clears a stamped full verdict, so the
     // final state after the last frame equals the batch rule. Gated on the
     // crosswalk (Tom's rule: the lineup never reaching the crosswalk vetoes
-    // any full claim) — robot detection or a human mark both count.
+    // any full claim). The EFFECTIVE mark decides: the robot's own detection
+    // is copied into it when its call stands (crosswalk-robot.js report())
+    // and a rider's "not yet" clears it, so crosswalkFullAtAuto on its own
+    // is an overruled detection and must not open the gate (2026-10-17: a
+    // refuted 09:30 detection let a full stamp through on the 10:00).
     // Limitation: a crosswalk verdict landing after the window's last frame
     // means the server never stamps; the browser mirror recomputes it.
     if (verdict.probability >= FULL_CONFIDENT_P) {
       const fullRun = (prev.terminalFullRun || 0) + 1
       terminalFields.terminalFullRun = fullRun
-      const crosswalkOk = cur.crosswalkFullAtAuto != null || cur.crosswalkFullAt != null
+      const crosswalkOk = cur.crosswalkFullAt != null
       if (fullRun >= FULL_TAIL_FRAMES && crosswalkOk && !cur.ferryFullAuto) {
         terminalFields.ferryFullAuto = true
         terminalFields.terminalFullProb = Math.round(verdict.probability * 1000) / 1000
