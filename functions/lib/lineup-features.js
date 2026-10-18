@@ -1,4 +1,20 @@
 import sharp from 'sharp'
+import { cellStdGrid, standardizeRegions, regionRect } from './terminal-feature-math.js'
+import { LINEUP_FEATURE_SET } from './lineup-feature-set.js'
+export { LINEUP_FEATURE_SET }
+// FEATURE SET localStd-v1 (2026-10-18). Until then each cell was the crop's
+// downscaled grey BRIGHTNESS, and every version was seasonal: a model knew
+// the light it was trained in and slid as the sun moved (v4: 0.95 in its own
+// weeks, 0.58 by mid-October; a model trained through September lost half
+// its recall two weeks later), kept afloat only by nightly recency
+// retraining. Per-cell local TEXTURE (the standard deviation of the native
+// pixels each grid cell covers, standardised per region) carries across the
+// season both ways and in every held-out month (0.94–0.98, zero phantoms,
+// twilight recall 0.53 → 0.94; docs/experiments/2026-10-18-season-
+// generalisation.md). Same arithmetic as the terminal camera's set
+// (terminal-feature-math.js); the browser mirror shares it. The set name
+// ships in the model file and a model from another set is refused
+// (lineup-classifier.js modelUsable).
 
 // Shared preprocessing for the lineup classifier. The SAME code runs at
 // training time (scripts/train-lineup-classifier.mjs) and at inference time
@@ -29,32 +45,26 @@ export const REGIONS = [
 ]
 
 export const FEATURE_LENGTH = REGIONS.reduce((a, r) => a + r.width * r.height, 0)
+// No masked cells on this camera; every cell counts in the region
+// statistics. (The terminal camera masks its fare sign and walkway.)
+export const LINEUP_FEATURE_MASK = new Uint8Array(FEATURE_LENGTH).fill(1)
 
-// JPEG buffer → Float32Array of FEATURE_LENGTH grayscale values in [0, 1]:
-// per region crop → downscale → greyscale → normalize, then concatenate.
+// JPEG buffer → Float32Array of FEATURE_LENGTH values: per region, the
+// native-resolution greyscale crop reduced to per-cell standard deviations on
+// the model grid (localStd-v1), then standardised per region. On the stored
+// 640×360 frame a hill-lane cell is ~7.5×3.3 px and a crosswalk cell ~9×4 px.
 export async function extractFeatures(buf) {
   const meta = await sharp(buf).metadata()
   const out = new Float32Array(FEATURE_LENGTH)
   let offset = 0
   for (const { roi, width, height } of REGIONS) {
-    const left = Math.round(roi.left * meta.width)
-    const top = Math.round(roi.top * meta.height)
-    const region = {
-      left,
-      top,
-      width: Math.max(1, Math.min(Math.round(roi.width * meta.width), meta.width - left)),
-      height: Math.max(1, Math.min(Math.round(roi.height * meta.height), meta.height - top)),
-    }
-    const raw = await sharp(buf)
-      .extract(region)
-      .resize(width, height, { fit: 'fill' })
-      .greyscale()
-      .raw()
-      .toBuffer()
-    for (let i = 0; i < raw.length; i++) out[offset + i] = raw[i] / 255
-    offset += raw.length
+    const rect = regionRect(roi, meta.width, meta.height)
+    const gray = await sharp(buf).extract(rect).greyscale().raw().toBuffer()
+    cellStdGrid(gray, rect.width, rect.height, width, height, out, offset)
+    offset += width * height
   }
-  return out
+  for (let i = 0; i < out.length; i++) out[i] /= 255
+  return standardizeRegions(out, REGIONS, LINEUP_FEATURE_MASK)
 }
 
 // --- Night: stable-pixel composites ------------------------------------------

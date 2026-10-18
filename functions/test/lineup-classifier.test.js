@@ -22,28 +22,53 @@ async function solidJpeg(shade, width = 1280, height = 720) {
     .toBuffer()
 }
 
-// Weights that fire on a bright ROI: each pixel contributes up to 0.01, so an
-// all-white crop scores sigmoid(-6 + 12.96) ≈ 1 and an all-black one
-// sigmoid(-6) ≈ 0.002.
-const brightModel = {
+// A frame whose LEFT half is a fine checkerboard (texture) and whose right
+// half is flat: the hill-lane region (left of the frame) reads high texture,
+// the crosswalk region (right) none.
+async function texturedLeftJpeg(width = 1280, height = 720, dark = false) {
+  const px = Buffer.alloc(width * height)
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const checker = ((x >> 1) + (y >> 1)) % 2 ? 230 : 25
+      px[y * width + x] = x < width / 2 ? (dark ? 255 - checker : checker) : 128
+    }
+  return sharp(px, { raw: { width, height, channels: 1 } }).jpeg({ quality: 95 }).toBuffer()
+}
+
+// Weights that fire on texture in the hill lane: the first region's cells
+// contribute, the crosswalk region's don't. Standardised features run about
+// ±0.2 (÷5), so the all-lane sum for a textured crop is comfortably positive.
+const hillRegionLength = 48 * 27
+const textureModel = {
   enabled: true,
-  weights: new Array(FEATURE_LENGTH).fill(0.01),
-  bias: -6,
+  featureSet: 'localStd-v1',
+  weights: Array.from({ length: FEATURE_LENGTH }, (_, i) => (i < hillRegionLength ? 0.05 : 0)),
+  bias: -2,
   threshold: 0.7,
 }
 
-describe('extractFeatures', () => {
-  it('returns FEATURE_LENGTH normalized values, deterministically', async () => {
+describe('extractFeatures (localStd-v1)', () => {
+  it('returns FEATURE_LENGTH finite values, all zero for a flat frame, deterministically', async () => {
     const buf = await solidJpeg(128)
     const a = await extractFeatures(buf)
     const b = await extractFeatures(buf)
     expect(a.length).toBe(FEATURE_LENGTH)
-    expect([...a].every((v) => v >= 0 && v <= 1)).toBe(true)
+    expect([...a].every(Number.isFinite)).toBe(true)
+    // No texture anywhere → every cell's std is 0 → standardised to exactly 0.
+    expect([...a].every((v) => v === 0)).toBe(true)
     expect([...a]).toEqual([...b])
-    // A mid-grey frame should produce mid-range features.
-    const mean = [...a].reduce((s, v) => s + v, 0) / a.length
-    expect(mean).toBeGreaterThan(0.3)
-    expect(mean).toBeLessThan(0.7)
+  })
+
+  it('reads texture, not brightness: a checkerboard and its inverse give the same features', async () => {
+    const a = await extractFeatures(await texturedLeftJpeg(1280, 720, false))
+    const b = await extractFeatures(await texturedLeftJpeg(1280, 720, true))
+    for (let i = 0; i < FEATURE_LENGTH; i++) expect(Math.abs(a[i] - b[i])).toBeLessThan(0.02)
+    // The textured hill lane standardises around 0 with real spread; the flat
+    // crosswalk region is exactly 0 (its spread is 0, nothing to standardise).
+    const lane = [...a].slice(0, hillRegionLength)
+    const crosswalk = [...a].slice(hillRegionLength)
+    expect(crosswalk.every((v) => v === 0)).toBe(true)
+    expect(Math.max(...lane) - Math.min(...lane)).toBeGreaterThan(0)
   })
 })
 
@@ -178,22 +203,26 @@ describe('classifyLineup', () => {
     expect(await classifyLineup(buf, { enabled: false })).toBe(null)
   })
 
-  it('classifies bright vs dark ROI with a hand-built model', async () => {
-    const bright = await classifyLineup(await solidJpeg(250), brightModel)
-    const dark = await classifyLineup(await solidJpeg(5), brightModel)
-    expect(bright.fullToCrosswalk).toBe(true)
-    expect(bright.probability).toBeGreaterThan(0.9)
-    expect(dark.fullToCrosswalk).toBe(false)
-    expect(dark.probability).toBeLessThan(0.1)
+  it('a flat frame scores the bias alone; a hand-built model is a plain logistic', async () => {
+    // All-zero features → sigmoid(bias) exactly, whatever the weights.
+    const flat = await classifyLineup(await solidJpeg(250), textureModel)
+    expect(flat.probability).toBeCloseTo(1 / (1 + Math.exp(2)), 5)
+    expect(flat.fullToCrosswalk).toBe(false)
+  })
+
+  it('refuses a model trained on another feature set', async () => {
+    const buf = await solidJpeg(128)
+    expect(await classifyLineup(buf, { ...textureModel, featureSet: undefined })).toBe(null)
+    expect(await classifyLineup(buf, { ...textureModel, featureSet: 'brightness' })).toBe(null)
   })
 
   it('returns null rather than throwing on a non-image buffer', async () => {
-    expect(await classifyLineup(Buffer.from('garbage'), brightModel)).toBe(null)
+    expect(await classifyLineup(Buffer.from('garbage'), textureModel)).toBe(null)
   })
 
   it('scoreFeatures is a plain logistic over the feature vector', () => {
     const f = new Float32Array(FEATURE_LENGTH).fill(1)
-    const p = scoreFeatures(f, brightModel)
-    expect(p).toBeCloseTo(1 / (1 + Math.exp(-(FEATURE_LENGTH * 0.01 - 6))), 5)
+    const p = scoreFeatures(f, textureModel)
+    expect(p).toBeCloseTo(1 / (1 + Math.exp(-(hillRegionLength * 0.05 - 2))), 5)
   })
 })

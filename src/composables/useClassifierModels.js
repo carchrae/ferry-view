@@ -4,6 +4,7 @@ import { db } from 'src/boot/firebase'
 import bundledLineup from '../../functions/models/lineup-classifier.json'
 import bundledTerminal from '../../functions/models/terminal-cars-classifier.json'
 import { TERMINAL_FEATURE_SET } from '../../functions/lib/terminal-feature-math.js'
+import { LINEUP_FEATURE_SET } from '../../functions/lib/lineup-feature-set.js'
 
 // The classifier models the browser mirrors run — the same ones the Cloud
 // Functions run, chosen the same way: Firestore's classifierModels/live
@@ -58,7 +59,12 @@ const wellFormed = (m) => {
 }
 
 const TARGETS = [
-  { name: 'lineup', target: lineupModel, bundled: bundledLineup, accept: () => true },
+  {
+    name: 'lineup',
+    target: lineupModel,
+    bundled: bundledLineup,
+    accept: (m) => m.featureSet === LINEUP_FEATURE_SET,
+  },
   {
     name: 'terminal-cars',
     target: terminalModel,

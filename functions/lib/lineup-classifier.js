@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { logger } from 'firebase-functions/logger'
-import { extractFeatures, FEATURE_LENGTH, REGIONS } from './lineup-features.js'
+import { extractFeatures, FEATURE_LENGTH, REGIONS, LINEUP_FEATURE_SET } from './lineup-features.js'
 import { sameGeometry } from './model-geometry.js'
 import { scoreWithMembers, membersUsable } from './model-members.js'
 
@@ -27,11 +27,17 @@ try {
 }
 let model = bundled
 
+// Usable = enabled, full-length weights (and members), AND trained on the
+// feature set this build extracts (lineup-features.js LINEUP_FEATURE_SET;
+// localStd-v1 texture since 2026-10-18). The brightness-era models v1–v6
+// carry no featureSet and are refused outright — same length, different
+// meaning, so length alone cannot tell them apart.
 export function modelUsable(m = model) {
   return (
     Boolean(m?.enabled) &&
     Array.isArray(m.weights) &&
     m.weights.length === FEATURE_LENGTH &&
+    m.featureSet === LINEUP_FEATURE_SET &&
     membersUsable(m, FEATURE_LENGTH)
   )
 }

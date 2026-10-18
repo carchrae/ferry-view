@@ -119,10 +119,22 @@ into the training data on the next export (see
 A frame either shows cars past the crosswalk line or it doesn't — a fixed
 camera, a fixed crop, a binary question. That needs only:
 
-- **Features** (`functions/lib/lineup-features.js`): crop two fixed regions
-  (`REGIONS`), downscale each to a grayscale grid (left lane 48×27 +
-  crosswalk 24×14), normalize to [0,1], concatenate. The *same module* runs
-  at training and inference, so preprocessing can never drift. The regions
+- **Features** (`functions/lib/lineup-features.js`, feature set
+  **`localStd-v1`** since 2026-10-18): crop two fixed regions (`REGIONS`)
+  at native resolution, reduce each greyscale crop to per-cell **local
+  texture** (the standard deviation of the pixels each grid cell covers:
+  left lane 48×27 + crosswalk 24×14), standardise per region, concatenate.
+  Until 2026-10-18 each cell was the crop's downscaled brightness; that made
+  every version seasonal (a model knew the light it was trained in and slid
+  as the sun moved, see §4 "Seasonal drift" and
+  `docs/experiments/2026-10-18-season-generalisation.md`), whereas texture
+  carries across the season both ways and in every held-out month, with
+  zero phantoms and twilight recall 0.53 → 0.94. The arithmetic is shared
+  with the terminal camera (`functions/lib/terminal-feature-math.js`) and
+  the browser mirror; the set name ships in the model file and a model from
+  another set is refused (`modelUsable`), so the brightness models v1–v6
+  cannot be installed under texture code. The *same module* runs at
+  training and inference, so preprocessing can never drift. The regions
   were hand-drawn with the report's ROI picker: the left lane carries the
   strong "long line" signal, the crosswalk region confirms the crossing
   (recall 0.86 → 0.93 in the ROI experiments). A region change invalidates

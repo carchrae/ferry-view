@@ -39,6 +39,7 @@ import { createHash } from 'node:crypto'
 import {
   REGIONS,
   FEATURE_LENGTH,
+  LINEUP_FEATURE_SET,
   COMPOSITE,
   extractCompositeFeatures,
 } from '../functions/lib/lineup-features.js'
@@ -225,6 +226,7 @@ try {
 }
 const model = {
   enabled: true,
+  featureSet: LINEUP_FEATURE_SET,
   type: 'logistic',
   night: true,
   version,

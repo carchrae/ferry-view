@@ -110,14 +110,19 @@ on July–September scores 22 on October **without seeing it**.
 
 ## What changed because of it
 
-Nothing in production. Recommendation: give the crosswalk classifier a
-`localStd-v1` feature set the way the terminal got one on 2026-10-18
-(shared math, server extractor, browser mirror, `featureSet` in the model
-file with refusal of the other set, trainer, feature-set-aware history
-re-scoring). Open design points for that change: the night composites
-(`compositeWindow`) feed the same extractor, so texture of a composite is
-what a night model would see; and the recency weighting can likely be
-relaxed once the model carries across seasons.
+The crosswalk classifier got the `localStd-v1` feature set the same evening
+(Tom: "build it"): `functions/lib/lineup-feature-set.js` names it,
+`lineup-features.js` extracts it with the shared `terminal-feature-math.js`
+arithmetic, `lineup-classifier.js` and the browser mirror refuse a model
+from another set, the trainer and the night trainer stamp it, archived
+brightness versions can no longer win champion selection. **Lineup v7** is
+the first texture model: held-out P 0.964 / R 0.959 against v6's 0.944 /
+0.918 on the same split, severity cost 120 against 160, zero phantoms.
+Parity browser vs server: max score delta 0.0075 on 48 frames
+(`functions/test/lineup-feature-parity.test.js`). Still open: the recency
+weighting (kept at the trainer default for now) can likely be relaxed once
+the model carries across seasons; and texture on the night composites is
+measured in [2026-10-18-texture-composite.md](2026-10-18-texture-composite.md).
 
 ## Files
 

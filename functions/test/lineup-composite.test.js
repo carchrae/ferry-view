@@ -53,17 +53,17 @@ describe('composite helpers', () => {
     expect([meta.width, meta.height]).toEqual([640, 360])
     const f = await extractCompositeFeatures([small, big, small])
     expect(f.length).toBe(FEATURE_LENGTH)
+    expect([...f].every(Number.isFinite)).toBe(true)
     // Flat frames at 128 / 64 / 128: the 64 frame differs by 0.25 in mean
     // luminance from the judged frame — an exposure-mode change — so it is
-    // dropped and the two 128 frames composite (mean of two = 128).
+    // dropped and the two 128 frames composite. (Flat frames carry no
+    // texture, so the localStd-v1 features themselves are all 0 here; the
+    // window logic is what this checks.)
     expect(f.framesUsed).toBe(2)
-    expect(f[0]).toBeGreaterThan(0.45)
-    expect(f[0]).toBeLessThan(0.55)
     // Same-exposure frames composite normally: judged frame 64, neighbours 128
     // are dropped; judged frame 128 with 128 neighbours keeps all three.
     const fb = await extractCompositeFeatures([small, small, big])
     expect(fb.framesUsed).toBe(1)
-    expect(fb[0]).toBeLessThan(0.3)
     const fs = await extractCompositeFeatures([small, small, small])
     expect(fs.framesUsed).toBe(3)
   })

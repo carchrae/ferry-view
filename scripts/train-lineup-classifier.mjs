@@ -38,6 +38,7 @@ import {
   thumbnailJpeg,
   firstSustainedPositiveTs,
   FEATURE_LENGTH,
+  LINEUP_FEATURE_SET,
   REGIONS,
 } from '../functions/lib/lineup-features.js'
 import { isDarkAt } from '../functions/lib/daylight.js'
@@ -371,6 +372,10 @@ for (const k of ['phantom', 'early30']) {
 // match gets its stored metrics only.
 function evalHistorical(m) {
   if (!Array.isArray(m.weights) || m.weights.length !== FEATURE_LENGTH) return null
+  // A different feature set (the brightness models v1–v6, no featureSet)
+  // can't be re-scored on today's features — and must never win the nightly
+  // champion selection by accident.
+  if (m.featureSet !== LINEUP_FEATURE_SET) return null
   // Feature LENGTH alone can't prove compatibility — an ROI moved without
   // resizing (it has happened: fe779d2) keeps the length while changing what
   // every pixel means. A model trained on different crops must not be
@@ -504,6 +509,7 @@ console.log(`Per-sailing predictions saved: ${PREDICTIONS_JSON}`)
 // public/classifier-results/ (committed thumbnails; ships with the webapp at
 // /classifier-results, not linked from the app UI).
 const freshModel = {
+  featureSet: LINEUP_FEATURE_SET,
   weights: [...w],
   bias: b,
   threshold: THRESHOLD,
@@ -725,6 +731,7 @@ const shippedModel = {
   enabled: true,
   type: 'logistic',
   version: nextVersion,
+  featureSet: LINEUP_FEATURE_SET,
   regions: REGIONS,
   weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),
   bias: Math.round(b * 1e6) / 1e6,

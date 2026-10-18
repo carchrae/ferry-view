@@ -3,6 +3,13 @@ import { firstSustainedPositiveTs } from '../../functions/lib/lineup-labels.js'
 import { isDarkAt } from '../../functions/lib/daylight.js'
 import { lineupModel, loadLiveModels } from 'src/composables/useClassifierModels'
 import { scoreWithMembers } from '../../functions/lib/model-members.js'
+import {
+  cellStdGrid,
+  grayFromRgba,
+  standardizeRegions,
+  regionRect,
+} from '../../functions/lib/terminal-feature-math.js'
+import { LINEUP_FEATURE_SET } from '../../functions/lib/lineup-feature-set.js'
 
 // Browser-side lineup classifier — phase 1 of automated crosswalk detection.
 //
@@ -35,9 +42,17 @@ const threshold = () => current().threshold ?? 0.7
 // The per-frame cut, for callers that show the robot's read of one frame.
 export const lineupThreshold = computed(() => threshold())
 
+// Ready only for a model from the feature set this build extracts
+// (localStd-v1); the brightness models up to v6 are refused here exactly as
+// the server refuses them.
 export const browserClassifierReady = computed(() => {
   const m = current()
-  return Boolean(m?.enabled && Array.isArray(m.weights) && Array.isArray(m.regions))
+  return Boolean(
+    m?.enabled &&
+      Array.isArray(m.weights) &&
+      Array.isArray(m.regions) &&
+      m.featureSet === LINEUP_FEATURE_SET,
+  )
 })
 
 // The model's regions, for drawing where it looks (RoiOverlay).
@@ -61,33 +76,37 @@ const frameTs = (path) => {
   return m ? Number(m[1]) : null
 }
 
-// Mirror of functions/lib/lineup-features.js extractFeatures, on a canvas:
-// per region crop → downscale → grayscale (luma) → normalize → concatenate.
+// Mirror of functions/lib/lineup-features.js extractFeatures, on a canvas
+// (feature set localStd-v1): each region drawn at NATIVE size (no
+// resampling — the texture is the signal), converted to luma, reduced to
+// per-cell standard deviations on the model grid, then standardised per
+// region. The arithmetic is the shared terminal-feature-math.js, so the
+// browser and the server can only differ by the luma weights and the JPEG
+// decoder (functions/test/lineup-feature-parity.test.js pins the tolerance).
+let maskFor = null
+let maskKeep = null
+function keepAll(model) {
+  if (maskFor === model) return maskKeep
+  maskFor = model
+  maskKeep = new Uint8Array(model.regions.reduce((a, r) => a + r.width * r.height, 0)).fill(1)
+  return maskKeep
+}
 function extractFeatures(bitmap, model) {
-  const features = []
-  for (const { roi, width, height } of model.regions) {
+  const regions = model.regions
+  const features = new Float32Array(regions.reduce((a, r) => a + r.width * r.height, 0))
+  let offset = 0
+  for (const { roi, width, height } of regions) {
+    const rect = regionRect(roi, bitmap.width, bitmap.height)
     const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
+    canvas.width = rect.width
+    canvas.height = rect.height
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.drawImage(
-      bitmap,
-      Math.round(roi.left * bitmap.width),
-      Math.round(roi.top * bitmap.height),
-      Math.max(1, Math.round(roi.width * bitmap.width)),
-      Math.max(1, Math.round(roi.height * bitmap.height)),
-      0,
-      0,
-      width,
-      height,
-    )
-    const { data } = ctx.getImageData(0, 0, width, height)
-    for (let i = 0; i < width * height; i++) {
-      const o = i * 4
-      features.push((0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) / 255)
-    }
+    ctx.drawImage(bitmap, rect.left, rect.top, rect.width, rect.height, 0, 0, rect.width, rect.height)
+    const { data } = ctx.getImageData(0, 0, rect.width, rect.height)
+    cellStdGrid(grayFromRgba(data), rect.width, rect.height, width, height, features, offset)
+    offset += width * height
   }
-  return features
+  return standardizeRegions(features, regions, keepAll(model))
 }
 
 // Band-aware (model-members.js), same rule as the server.
