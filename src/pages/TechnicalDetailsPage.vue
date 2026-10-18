@@ -6,11 +6,8 @@
     </div>
     <p class="text-grey-8">
       How each part of the app reaches its answer: the method, the thresholds that matter, and the
-      evidence behind them. Each section ends with where the code lives and links to the experiment
-      write-ups where there are any. The code is public at
-      <a :href="REPO" target="_blank" rel="noopener">github.com/carchrae/ferry-view</a>; experiments
-      are recorded under
-      <a :href="gh('docs/experiments/README.md')" target="_blank" rel="noopener">docs/experiments</a>.
+      evidence behind them. Where a decision came out of an experiment, the section says what was
+      measured; the robots' live results pages are linked where they exist.
     </p>
 
     <section id="data">
@@ -31,7 +28,6 @@
         the schedule page is scraped nightly, kept as the weekly table with its exceptions, and any
         date in range is worked out from that.
       </p>
-      <p class="src">Source: <code>functions/lib/ais-position.js</code>, <code>bcferries-departures.js</code>, <code>seasonal-schedule.js</code>, <code>seasonal-rules.js</code>.</p>
     </section>
 
     <section id="lateness">
@@ -43,7 +39,6 @@
         number: each subscriber picks a threshold between five and thirty minutes, is notified once
         when lateness reaches it, and becomes eligible again once the boat has recovered.
       </p>
-      <p class="src">Source: <code>functions/lib/constants.js</code>, <code>lateness.js</code>.</p>
     </section>
 
     <section id="estimate">
@@ -94,7 +89,6 @@ run it three times — typical, quick, slow — for the estimate and its range</
         is busy: 12:27 + 18 = 12:45, ten late. The lateness shrinks on light sailings and holds on
         busy ones, which is what riders see on the day.
       </div>
-      <p class="src">Source: <code>src/lib/departure-estimate.js</code>.</p>
     </section>
 
     <section id="history">
@@ -141,7 +135,6 @@ word        = usually (≥ 60%) · often (30–59%) · sometimes (&lt; 30%)</pre
         within five, so it scores as right; had the hint said "usually full" and the sailing left
         with room, that call would score as wrong.
       </div>
-      <p class="src">Source: <code>src/lib/historical-stats.js</code> (served from a nightly aggregate, one document instead of a range scan).</p>
     </section>
 
     <section id="holidays">
@@ -153,9 +146,9 @@ word        = usually (≥ 60%) · often (30–59%) · sometimes (&lt; 30%)</pre
         same-kind holidays on any weekday, and finally ordinary days. Lateness is deliberately not
         treated that way: it tracks how busy the boat is and compounds through the day rather than
         following the date, so it always comes from the ordinary same weekday. The rules are young and
-        are backtested after each holiday.
+        are backtested after each holiday; the evidence so far and the open questions are kept with
+        the project's design notes.
       </p>
-      <p class="src">Source: <code>src/lib/holiday-forecast.js</code>, <code>functions/lib/holidays.js</code>; evidence and open questions in <a :href="gh('docs/holiday-forecasts.md')" target="_blank" rel="noopener">docs/holiday-forecasts.md</a>.</p>
     </section>
 
     <section id="cameras">
@@ -187,7 +180,6 @@ recovery is immediate: the next differing frame clears it</pre>
         does not run, because every one of its 26 dark-hour detections in a 45-day archive turned out to
         be wrong. The terminal camera has a street light and its classifier runs at night.
       </p>
-      <p class="src">Source: <code>functions/lib/webcam-decision.js</code>, <code>webcam-health.js</code>, <code>daylight.js</code>; capture and retention detail in <a :href="gh('docs/webcams.md')" target="_blank" rel="noopener">docs/webcams.md</a>.</p>
     </section>
 
     <section id="crosswalk">
@@ -219,7 +211,10 @@ any time:  ferry back at Bowen → stop correcting; a rider's mark or "not yet" 
         agrees: confirmed. 09:34, a rider says "not yet": the mark is cleared and the robot's call
         is recorded as overruled. 10:09 the same rider marks the real crossing at 09:45.
       </div>
-      <p class="src">Source: <code>functions/lib/lineup-classifier.js</code>, <code>crosswalk-robot.js</code>, <code>lineup-labels.js</code>; live results and model history on the <a :href="RESULTS + 'crosswalk.html'" target="_blank" rel="noopener">crosswalk results page</a>.</p>
+      <p>
+        Live results and model history are on the
+        <a :href="RESULTS + 'crosswalk.html'" target="_blank" rel="noopener">crosswalk results page</a>.
+      </p>
     </section>
 
     <section id="terminal">
@@ -264,13 +259,9 @@ full:      last 4 frames all p ≥ 0.7, and the lineup reached the crosswalk</pr
         the brightness features and 0.05 under texture; with texture the whole tail reads empty and
         the sailing is called "left with room" at 08:45, which is what riders tagged.
       </div>
-      <p class="src">
-        Source: <code>functions/lib/terminal-classifier.js</code>, <code>terminal-feature-math.js</code>, <code>lineup-labels.js</code>.
-        Experiments:
-        <a :href="gh('docs/experiments/2026-10-18-terminal-features-daybreak.md')" target="_blank" rel="noopener">terminal features at daybreak</a>,
-        <a :href="gh('docs/experiments/2026-10-17-full-gate-refuted-detection.md')" target="_blank" rel="noopener">the full call against a refuted detection</a>;
-        earlier rule work is indexed in <a :href="gh('docs/experiments/README.md')" target="_blank" rel="noopener">docs/experiments</a>;
-        live results on the <a :href="RESULTS + 'terminal.html'" target="_blank" rel="noopener">terminal results page</a>.
+      <p>
+        Live results, model history and the nightly retraining record are on the
+        <a :href="RESULTS + 'terminal.html'" target="_blank" rel="noopener">terminal results page</a>.
       </p>
     </section>
 
@@ -291,7 +282,6 @@ full:      last 4 frames all p ≥ 0.7, and the lineup reached the crosswalk</pr
         saved as a refute. Answering "yes" at 8:10 alone saves nothing yet; the dialog asks for 8:05
         first.
       </div>
-      <p class="src">Source: <code>src/lib/tagging-progress.js</code>.</p>
     </section>
 
     <section id="leaderboard">
@@ -311,16 +301,14 @@ full:      last 4 frames all p ≥ 0.7, and the lineup reached the crosswalk</pr
         agreers. Had it been Full against 25% one to one, everyone would hold 0.1 and the sailing
         would show a disagreement until a third rider settled it.
       </div>
-      <p class="src">Source: <code>functions/lib/leaderboard-score.js</code>.</p>
     </section>
 
     <section id="costs">
       <h2>Keeping it cheap</h2>
       <p>
-        Pages read nightly aggregate documents instead of scanning sailings, the one-minute poll writes
-        only when something changed, and staging functions sleep unless woken. The reasoning, and the
-        July 2026 read spike that prompted it, are in
-        <a :href="gh('docs/firestore-optimization.md')" target="_blank" rel="noopener">docs/firestore-optimization.md</a>.
+        Pages read nightly summaries instead of scanning every sailing, the one-minute poll writes
+        only when something changed, and the test environment's background jobs sleep unless woken.
+        The app runs on a hobby budget and these are what keep it there.
       </p>
     </section>
   </q-page>
@@ -328,10 +316,10 @@ full:      last 4 frames all p ≥ 0.7, and the lineup reached the crosswalk</pr
 
 <script setup>
 // Technical companion to HowItWorksPage.vue. Numbers here must match the
-// constants in the modules they cite; when a threshold changes, change it
-// here too (grep the constant's name).
-const REPO = 'https://github.com/carchrae/ferry-view'
-const gh = (path) => `${REPO}/blob/main/${path}`
+// constants in the code (historical-stats.js, departure-estimate.js,
+// lineup-labels.js, crosswalk-robot.js, webcam-health.js, daylight.js,
+// leaderboard-score.js); when a threshold changes, change it here too. No
+// repository or file names on the page itself — Tom's call.
 // The classifier results pages, published nightly to the production bucket.
 const RESULTS = 'https://storage.googleapis.com/bowen-ferry.firebasestorage.app/classifier-results/'
 </script>
