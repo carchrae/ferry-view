@@ -34,6 +34,11 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
   firebase-admin with the JSON key when `GOOGLE_APPLICATION_CREDENTIALS` is set.
 - **Sandbox**: Claude runs sandboxed here, so installing npm packages and running local
   tooling is fine without asking. Deploys are still off-limits (Tom runs those).
+- **Experiments are always saved** (Tom, 2026-10-18): every experiment gets its script in
+  `scripts/experiments/` (tracked; caches under gitignored `training-data/experiments/`),
+  a write-up in `docs/experiments/YYYY-MM-DD-<slug>.md` (Question · Setup · Results ·
+  Conclusion · What changed · Files), images in `docs/experiments/img/`, and a row in
+  `docs/experiments/README.md` the same day. Never leave results only in chat.
 
 ## Relevant Files
 - `functions/lib/constants.js`: shared lateness helpers and notification defaults.
