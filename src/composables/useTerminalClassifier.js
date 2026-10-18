@@ -4,6 +4,7 @@ import { terminalModel, loadLiveModels } from 'src/composables/useClassifierMode
 import { scoreWithMembers } from '../../functions/lib/model-members.js'
 import {
   cellStdGrid,
+  grayFromRgba,
   standardizeRegions,
   featureMask as buildFeatureMask,
   regionRect,
@@ -114,11 +115,7 @@ function extractFeatures(bitmap, model) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     ctx.drawImage(bitmap, rect.left, rect.top, rect.width, rect.height, 0, 0, rect.width, rect.height)
     const { data } = ctx.getImageData(0, 0, rect.width, rect.height)
-    const gray = new Float32Array(rect.width * rect.height)
-    for (let i = 0; i < gray.length; i++) {
-      const o = i * 4
-      gray[i] = (0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) / 255
-    }
+    const gray = grayFromRgba(data)
     cellStdGrid(gray, rect.width, rect.height, width, height, features, offset)
     offset += width * height
   }

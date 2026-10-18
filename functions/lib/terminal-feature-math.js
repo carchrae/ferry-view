@@ -25,6 +25,18 @@ export const TERMINAL_FEATURE_SET = 'localStd-v1'
 // old brightness features — the trainer's learning rate and L2 carry over.
 export const TERMINAL_Z_SCALE = 5
 
+// Canvas RGBA bytes (getImageData().data, 4 per pixel) → luma in 0..1, the
+// browser mirror's greyscale. Rec. 601 weights; the server's libvips
+// greyscale weights differ slightly, which the per-region standardisation
+// absorbs (functions/test/terminal-feature-parity.test.js pins the tolerance).
+export function grayFromRgba(data, out = new Float32Array(data.length >> 2)) {
+  for (let i = 0; i < out.length; i++) {
+    const o = i * 4
+    out[i] = (0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) / 255
+  }
+  return out
+}
+
 // Per-cell standard deviation of a greyscale region. `gray` holds W×H values
 // (any scale — bytes 0..255 or units 0..1; the result is in the same units),
 // cells are a gw×gh grid over it with floor-based boundaries (every native
