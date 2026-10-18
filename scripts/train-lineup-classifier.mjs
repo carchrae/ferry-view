@@ -758,14 +758,14 @@ if (!AUTO) {
     // keeping its original version number.
     writeFileSync(OUT, JSON.stringify(dupOf, null, 2) + '\n')
     console.log(
-      `Model identical to archived v${dupOf.version} — made v${dupOf.version} live (was v${prevVersion}). Deploy functions to activate.`,
+      `Model identical to archived v${dupOf.version} — made v${dupOf.version} live (was v${prevVersion}). Publish with npm run models:publish[:production] to activate.`,
     )
   } else {
     // Past versions stay browsable as files (history/<name>-v<n>.json) — the
     // report's Model history table reads that directory.
     archiveModel(OUT, shippedModel)
     writeFileSync(OUT, JSON.stringify(shippedModel, null, 2) + '\n')
-    console.log(`Model v${nextVersion} written to ${OUT} — deploy functions to activate.`)
+    console.log(`Model v${nextVersion} written to ${OUT} — publish with npm run models:publish[:production] to activate.`)
   }
 } else {
   // Nightly champion selection: archive the candidate unconditionally, then
@@ -816,7 +816,7 @@ if (!AUTO) {
   } else if (replaced) {
     writeFileSync(OUT, JSON.stringify(best.model, null, 2) + '\n')
     console.log(
-      `Live model replaced: v${prevVersion} → v${best.model.version} (severity cost ${best.cost}) — deploy functions to activate.`,
+      `Live model replaced: v${prevVersion} → v${best.model.version} (severity cost ${best.cost}) — publish with npm run models:publish[:production] to activate.`,
     )
   } else {
     console.log(`Live model stays v${prevVersion} (severity cost ${best.cost} — still the best).`)

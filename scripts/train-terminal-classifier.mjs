@@ -1022,14 +1022,14 @@ if (!AUTO) {
     // trained" — the archived twin goes live under its original version.
     writeFileSync(OUT, JSON.stringify(dupOf, null, 2) + '\n')
     console.log(
-      `Model identical to archived v${dupOf.version} — made v${dupOf.version} live (was v${prevVersion}). Deploy functions to activate.`,
+      `Model identical to archived v${dupOf.version} — made v${dupOf.version} live (was v${prevVersion}). Publish with npm run models:publish[:production] to activate.`,
     )
   } else {
     // Past versions stay browsable as files (history/<name>-v<n>.json) — the
     // report's Model history table reads that directory.
     archiveModel(OUT, shippedModel)
     writeFileSync(OUT, JSON.stringify(shippedModel, null, 2) + '\n')
-    console.log(`Model v${nextVersion} written to ${OUT} — deploy functions to activate.`)
+    console.log(`Model v${nextVersion} written to ${OUT} — publish with npm run models:publish[:production] to activate.`)
   }
 } else {
   // Nightly champion selection, mirroring train-lineup-classifier.mjs:
@@ -1075,7 +1075,7 @@ if (!AUTO) {
   } else if (replaced) {
     writeFileSync(OUT, JSON.stringify(best.model, null, 2) + '\n')
     console.log(
-      `Live model replaced: v${prevVersion} → v${best.model.version} (F1 ${best.f1}) — deploy functions to activate.`,
+      `Live model replaced: v${prevVersion} → v${best.model.version} (F1 ${best.f1}) — publish with npm run models:publish[:production] to activate.`,
     )
   } else {
     console.log(`Live model stays v${prevVersion} (F1 ${best.f1} — still the best).`)
