@@ -139,6 +139,25 @@ later, none blocking v10:
 3. **Two doubtful night labels** (2026-07-21 22:27 and 22:29) to confirm or
    flip.
 
+## Addendum: trimming the far-queue box's top edge
+
+Tom's idea after the dusk labelling: the top of the far-queue box (6% down
+the frame) is the distant road where a parked, an approaching and a turning
+car look alike, so stop reading it. `--far-top` moves that edge down with
+the bottom fixed; hand + rider training, 5-fold by sailing:
+
+| far-queue top | Frame F1 (hand OOF) | night R (58) | twilight R (133) | Room flagged | Wrong not-full | False cars-to-end |
+|---|---|---|---|---|---|---|
+| **0.06 (current)** | **0.975** | **0.920** | 0.836 | 70% | **0** | **6%** |
+| 0.15 | 0.976 | 0.920 | 0.852 | 70% | 1 | 7% |
+| 0.20 | 0.966 | 0.800 | 0.836 | 70% | 0 | 7% |
+| 0.25 | 0.952 | 0.760 | 0.803 | 70% | 0 | 7% |
+
+No gain. A small trim is a wash with one extra wrong flag; deeper trims lose
+night recall, because at night the far tail under the street light is where
+a queue is most legible. The ambiguous distant cars are better handled where
+they were: left out of the hand labels. Geometry unchanged.
+
 ## What changed because of it
 
 - `scripts/experiments/terminal-features-experiment.mjs`: `--sweep`,
@@ -150,6 +169,7 @@ later, none blocking v10:
 
 - `scripts/experiments/terminal-features-experiment.mjs`
 - `docs/experiments/2026-10-18-terminal-texture-review-results.json` (three
-  runs: hand-only, hand + rider, 1,500 epochs)
+  runs: hand-only, hand + rider, 1,500 epochs); far-top runs in
+  `training-data/experiments/terminal-features-experiment-rider-fartop*.json`
 - `docs/experiments/img/2026-10-18-terminal-texture-night-misses.jpg`
 - Parity scripts were throwaway (`scratchpad/`); the recipe is in Setup.
