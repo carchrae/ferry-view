@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { logger } from 'firebase-functions/logger'
+import { liveModel } from './classifier-models.js'
 import {
   extractTerminalFeatures,
   TERMINAL_FEATURE_LENGTH,
@@ -38,6 +39,12 @@ export function terminalModelUsable(m = model) {
     m.featureSet === TERMINAL_FEATURE_SET
   )
 }
+
+// The model to classify with right now: the published live version when this
+// build can run it (same feature set), else the bundled one. Callers pass
+// the result to classifyTerminal() and terminalModelVersion() so the stamp
+// on a verdict names the model that actually produced it.
+export const liveTerminalModel = (db) => liveModel(db, 'terminal-cars', model, terminalModelUsable)
 
 // Version stamped by the training script; null on legacy unversioned models.
 // Recorded on every confirmed verdict so results can be compared per model.

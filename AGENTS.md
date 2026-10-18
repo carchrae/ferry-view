@@ -16,6 +16,7 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 - `formatDeckBadge` replaces two separate template functions.
 - Ride request contact info is public (no sign-in), uses `sms:` protocol for SMS method.
 - SailingKey format normalization discussed twice but deferred both times.
+- Classifier models go live without a functions deploy: `npm run models:publish[:production]` (`functions/publish-models.js`) records the trained model under `classifierModels/{name}-v{version}`, points `classifierModels/live` at it, and publishes the classifier-results pages. The functions re-read the pointer every 10 min (`liveModel` in `functions/lib/classifier-models.js`) and use it when the running build can (same feature length / feature set), else the bundled model. A feature-set change still needs a functions deploy; the browser mirror uses the bundled model from the last webapp deploy.
 - Webcam images served via Firebase Storage download URL. Storage paths include a `_${Date.now()}` capture-time suffix (clients parse it for frame time labels).
 - Snapshot image uses plain `<img>` with CSS `aspect-ratio: 16/9` instead of Quasar `q-img` due to zero-height sizing bug.
 - Netlify proxy redirect for webcam images disabled while debugging frontend display.

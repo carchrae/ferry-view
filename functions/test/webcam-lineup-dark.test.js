@@ -37,6 +37,7 @@ vi.mock('../lib/lineup-classifier.js', () => ({
   classifyLineup: (...a) => classifyLineup(...a),
   lineupModelVersion: () => 3,
   modelUsable: () => true,
+  liveLineupModel: async () => ({ version: 3 }),
 }))
 
 // The gate itself is clock-based; the suite controls the clock's answer

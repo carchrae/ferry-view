@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { logger } from 'firebase-functions/logger'
 import { extractFeatures, FEATURE_LENGTH } from './lineup-features.js'
+import { liveModel } from './classifier-models.js'
 
 // Runtime for the "lineup full to crosswalk" classifier. The model is a
 // plain logistic regression trained by scripts/train-lineup-classifier.mjs;
@@ -24,6 +25,10 @@ try {
 export function modelUsable(m = model) {
   return Boolean(m?.enabled) && Array.isArray(m.weights) && m.weights.length === FEATURE_LENGTH
 }
+
+// The model to classify with right now: the published live version when this
+// build can run it, else the bundled one (see classifier-models.js).
+export const liveLineupModel = (db) => liveModel(db, 'lineup', model, modelUsable)
 
 // Version stamped by the training script; null on legacy unversioned models.
 // Recorded on every confirmed verdict so results can be compared per model.

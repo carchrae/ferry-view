@@ -21,6 +21,8 @@
     "deploy:rules:production": "npx firebase deploy --project bowen-ferry --only firestore:rules",
     "deploy:functions:production": "npx firebase deploy --project bowen-ferry --only functions",
     "deploy:all:production": "firebase deploy --project bowen-ferry --only functions,firestore:rules,firestore:indexes",
+    "models:publish": "node functions/publish-models.js --project bowen-ferry-staging",
+    "models:publish:production": "node functions/publish-models.js --project bowen-ferry",
     "lineup:export": "node scripts/export-lineup-dataset.mjs",
     "train": "bash scripts/train-all.sh",
     "lineup:train": "node scripts/train-lineup-classifier.mjs",

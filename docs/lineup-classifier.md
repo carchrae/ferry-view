@@ -287,8 +287,16 @@ npm run lineup:train              # just this one — writes functions/models/li
 # a trainer below the 0.8 metric floor exits without writing (reports still
 # regenerate).
 
-# 3. Deploy — the model activates
-npm run deploy:functions
+# 3. Publish — the model goes live and the results pages update
+npm run models:publish:production   # or models:publish for staging
+# Writes the model as classifierModels/<name>-v<version>, points
+# classifierModels/live at it (the functions re-read that pointer every ten
+# minutes and classify with it — no functions deploy for a plain retrain),
+# then publishes public/classifier-results/ to the results bucket.
+# A functions deploy is only needed when the FEATURE CODE changed (the model's
+# featureSet differs from the one the running build extracts — the script
+# says so); the webapp's browser mirror bundles the model, so push the webapp
+# (npm run deploy:webapp) when convenient.
 ```
 
 The **exporter** archives the raw `lineupReports`, joins them with frame
@@ -371,9 +379,10 @@ decide what's live:
   (`scripts/deploy-classifier-results.sh --production`; needs `gcloud auth`
   on the cron machine) so `/classifier-results` in the app shows each
   night's run — set `FERRY_RESULTS_TARGET=staging` or `skip` to override,
-- the **model** never deploys: the winning weights reach production on the
-  next `npm run deploy:functions:production` (and the browser mirror on the
-  next webapp deploy).
+- the **model** is not published by the nightly job: the winning weights go
+  live when you run `npm run models:publish:production` (no functions deploy
+  unless the feature set changed; the browser mirror follows the next webapp
+  deploy).
 
 ```bash
 crontab -e
