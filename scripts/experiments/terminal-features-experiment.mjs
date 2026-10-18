@@ -24,7 +24,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { TERMINAL_REGIONS, TERMINAL_FEATURE_MASK, TERMINAL_FEATURE_LENGTH } from '../../functions/lib/terminal-features.js'
+import { TERMINAL_REGIONS, TERMINAL_MASKS, TERMINAL_FEATURE_MASK, TERMINAL_FEATURE_LENGTH } from '../../functions/lib/terminal-features.js'
+import { featureMask } from '../../functions/lib/terminal-feature-math.js'
 import { terminalEmptyFrameTs, FULL_TAIL_FRAMES, FULL_CONFIDENT_P } from '../../functions/lib/lineup-labels.js'
 import { solarElevation } from '../../functions/lib/daylight.js'
 
@@ -43,6 +44,20 @@ const L2 = 1e-4
 // thresholds 0.3/0.4/0.6 (frame metrics and the sailing-level rules).
 const TRAIN_RIDER = args.includes('--train-rider')
 const SWEEP = args.includes('--sweep')
+// --far-top Y: move the far-queue box's top edge down to Y (frame fraction;
+// the bottom edge stays), to test whether the distant road at the top — where
+// a parked, an approaching and a turning car look alike — is worth reading
+// at all (Tom, 2026-10-18). Caches are kept per geometry.
+const FAR_TOP = flag('far-top', null)
+const REGIONS =
+  FAR_TOP == null
+    ? TERMINAL_REGIONS
+    : TERMINAL_REGIONS.map((r, i) =>
+        i === 1 ? { ...r, roi: { ...r.roi, top: Number(FAR_TOP), height: +(r.roi.top + r.roi.height - Number(FAR_TOP)).toFixed(3) } } : r,
+      )
+const MASK_KEEP = FAR_TOP == null ? TERMINAL_FEATURE_MASK : featureMask(REGIONS, TERMINAL_MASKS)
+const CACHE_SUFFIX = FAR_TOP == null ? '' : `-fartop${FAR_TOP}`
+if (FAR_TOP != null) console.log(`far-queue box: top ${REGIONS[1].roi.top} height ${REGIONS[1].roi.height} (default top ${TERMINAL_REGIONS[1].roi.top})`)
 const VARIANTS = flag('variants', 'base,grad+zscore+bal,std+z+bal,sobel+z+bal,hp+z+bal,clahe+z+bal,grad+std+z+bal,sobel+std+clahe+z+bal,grad+hp+z+bal,bgref+z+bal,grad+bgref+z+bal').split(',')
 
 // --- manifest ---------------------------------------------------------------
@@ -59,12 +74,12 @@ console.log(`frames on disk: ${frames.length} (hand labels ${frames.filter((f) =
 // coarse: the deployed grids (32x18 + 20x18 = 936 bytes); fine: 2x grids
 // (64x36 + 40x36 = 3744 bytes) for gradient features.
 const COARSE = TERMINAL_FEATURE_LENGTH
-const FINE_REGIONS = TERMINAL_REGIONS.map((r) => ({ ...r, width: r.width * 2, height: r.height * 2 }))
+const FINE_REGIONS = REGIONS.map((r) => ({ ...r, width: r.width * 2, height: r.height * 2 }))
 const FINE = FINE_REGIONS.reduce((a, r) => a + r.width * r.height, 0)
 mkdirSync(CACHE, { recursive: true })
-const idxPath = join(CACHE, 'terminal-raw-index.json')
-const coarsePath = join(CACHE, 'terminal-raw-coarse.u8')
-const finePath = join(CACHE, 'terminal-raw-fine.u8')
+const idxPath = join(CACHE, `terminal-raw-index${CACHE_SUFFIX}.json`)
+const coarsePath = join(CACHE, `terminal-raw-coarse${CACHE_SUFFIX}.u8`)
+const finePath = join(CACHE, `terminal-raw-fine${CACHE_SUFFIX}.u8`)
 let index = existsSync(idxPath) ? JSON.parse(readFileSync(idxPath, 'utf8')) : {}
 let coarseBuf = existsSync(coarsePath) ? readFileSync(coarsePath) : Buffer.alloc(0)
 let fineBuf = existsSync(finePath) ? readFileSync(finePath) : Buffer.alloc(0)
@@ -89,7 +104,7 @@ async function extractRaw(buf, regions) {
     for (const f of missing) {
       try {
         const bytes = readFileSync(join(DATA, 'frames', f.path))
-        const c = await extractRaw(bytes, TERMINAL_REGIONS)
+        const c = await extractRaw(bytes, REGIONS)
         const fi = await extractRaw(bytes, FINE_REGIONS)
         if (c.length !== COARSE || fi.length !== FINE) throw new Error('bad length')
         newCoarse.push(c); newFine.push(fi); index[f.path] = n++
@@ -110,8 +125,8 @@ async function extractRaw(buf, regions) {
 //   clahe  mean of the CLAHE-equalised crop (local contrast stretch)
 // Each quantised to u8; 4 channels × 936 cells per frame.
 const STATS = ['std', 'sobel', 'hp', 'clahe']
-const statsPath = join(CACHE, 'terminal-stats.u8')
-const statsIdxPath = join(CACHE, 'terminal-stats-index.json')
+const statsPath = join(CACHE, `terminal-stats${CACHE_SUFFIX}.u8`)
+const statsIdxPath = join(CACHE, `terminal-stats-index${CACHE_SUFFIX}.json`)
 let statsIndex = existsSync(statsIdxPath) ? JSON.parse(readFileSync(statsIdxPath, 'utf8')) : {}
 let statsBuf = existsSync(statsPath) ? readFileSync(statsPath) : Buffer.alloc(0)
 const q = (x, scale) => Math.max(0, Math.min(255, Math.round(x * scale)))
@@ -119,7 +134,7 @@ async function extractStats(buf) {
   const meta = await sharp(buf).metadata()
   const out = Buffer.alloc(STATS.length * COARSE)
   let offC = 0
-  for (const { roi, width, height } of TERMINAL_REGIONS) {
+  for (const { roi, width, height } of REGIONS) {
     const left = Math.round(roi.left * meta.width), top = Math.round(roi.top * meta.height)
     const region = { left, top, width: Math.max(1, Math.min(Math.round(roi.width * meta.width), meta.width - left)), height: Math.max(1, Math.min(Math.round(roi.height * meta.height), meta.height - top)) }
     const W = region.width, H = region.height
@@ -186,8 +201,8 @@ const band = (e) => (e < -7 ? 'night' : e < 8 ? 'twilight' : e < 25 ? 'low sun' 
 const BANDS = ['night', 'twilight', 'low sun', 'high sun']
 
 // --- feature pipelines ---------------------------------------------------------
-const MASK = TERMINAL_FEATURE_MASK
-const regionSpans = (() => { const s = []; let off = 0; for (const r of TERMINAL_REGIONS) { s.push([off, off + r.width * r.height]); off += r.width * r.height } return s })()
+const MASK = MASK_KEEP
+const regionSpans = (() => { const s = []; let off = 0; for (const r of REGIONS) { s.push([off, off + r.width * r.height]); off += r.width * r.height } return s })()
 
 function frameCenter(v) { // deployed: one mean over unmasked cells, masked → 0
   let m = 0, k = 0
@@ -427,7 +442,7 @@ for (const ts of SUNDAY_TS) {
     try { writeFileSync(file, Buffer.from(await (await fetch(url)).arrayBuffer())) } catch { continue }
   }
   const bytes = readFileSync(file)
-  const c = await extractRaw(bytes, TERMINAL_REGIONS), fi = await extractRaw(bytes, FINE_REGIONS), st = await extractStats(bytes)
+  const c = await extractRaw(bytes, REGIONS), fi = await extractRaw(bytes, FINE_REGIONS), st = await extractStats(bytes)
   sunday.push({ ts, elev: solarElevation(ts), date: '2026-10-18', c, fi, st })
 }
 
@@ -518,6 +533,6 @@ for (const name of VARIANTS) {
     for (const [thr, sw] of Object.entries(out.sweep)) console.log(`    thr ${thr}: ${r3(sw.hand.P)}/${r3(sw.hand.R)} | ${r3(sw.night.R)} | ${r3(sw.twilight.R)} | ${r3(sw.rider.P)}/${r3(sw.rider.R)} | ${pct(sw.sailing.roomFlag, sw.sailing.roomN)} | ${sw.sailing.fullWrong} | ${pct(sw.sailing.roomCarsEnd, sw.sailing.roomN)}`)
   }
 }
-const OUT_JSON = join(DATA, `experiments/terminal-features-experiment${TRAIN_RIDER ? '-rider' : ''}${EPOCHS !== 600 ? `-e${EPOCHS}` : ''}.json`)
+const OUT_JSON = join(DATA, `experiments/terminal-features-experiment${TRAIN_RIDER ? '-rider' : ''}${EPOCHS !== 600 ? `-e${EPOCHS}` : ''}${CACHE_SUFFIX}.json`)
 writeFileSync(OUT_JSON, JSON.stringify(results, null, 1))
 console.log(`\nwritten ${OUT_JSON} (copy the one you report into docs/experiments/)`)
