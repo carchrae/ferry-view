@@ -462,6 +462,12 @@ the model) regenerates the **classifier-results pages** — shared builders in
   (correct/misclassified, label, split), and the ROI picker.
 - **`terminal.html`** — same card layout for terminal frames, plus the
   ferry not-full verdicts with context/confirming photos.
+- **`composites.html`** (`npm run lineup:composites-page`, also run by the
+  nightly cron) — how the night composites work, with real windows from the
+  archive: the frames that went in, the composite, and a map of the replaced
+  pixels, for hand-labelled dark crossings, the biggest headlight sweeps, and
+  windows where the colour/infrared guard dropped a neighbour; plus the day
+  and terminal experiment numbers.
 
 Two copies of the set: **`training-data/report/`** (local, full-size
 photos) and **`public/classifier-results/`** (ships with the webapp at

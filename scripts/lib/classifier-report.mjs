@@ -800,7 +800,10 @@ detects an empty terminal (ferry left not full). They run in milliseconds,
 ship as JSON weights, and everything they learn comes from rider tags and
 reviewed labels. This page is the summary; the example pages show every
 labeled frame and every sequence decision. Automated retraining decisions are
-logged on the <a href="nightly.html">nightly training runs</a> page.</p>
+logged on the <a href="nightly.html">nightly training runs</a> page. How the
+classifier is meant to see in the dark — frames combined into stable-pixel
+composites that drop passing headlights — is shown with real examples on the
+<a href="composites.html">night composites</a> page.</p>
 ${cw}
 ${tm}
 <script>

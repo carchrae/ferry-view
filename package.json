@@ -30,6 +30,7 @@
     "terminal:review-claude": "node scripts/review-claude-labels.mjs",
     "terminal:apply-review": "node scripts/apply-label-review.mjs",
     "lineup:dark-label": "node scripts/build-dark-label-page.mjs",
+    "lineup:composites-page": "node scripts/build-composite-page.mjs",
     "lineup:dark-apply-review": "node scripts/apply-dark-label-review.mjs",
     "lineup:train-night": "node scripts/train-night-classifier.mjs",
     "playwright:install": "bash scripts/install-playwright.sh",

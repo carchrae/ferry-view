@@ -91,6 +91,11 @@ status=0
   node "$REPO_DIR/scripts/train-lineup-classifier.mjs" --auto || status=1
   echo "--- $(date '+%F %T') terminal trainer ---"
   node "$REPO_DIR/scripts/train-terminal-classifier.mjs" --auto || status=1
+  # Night labelling page + the composites explainer (both read the archive
+  # only; cheap, and they keep the published results pages current).
+  echo "--- $(date '+%F %T') night page + composites page ---"
+  node "$REPO_DIR/scripts/build-dark-label-page.mjs" || status=1
+  node "$REPO_DIR/scripts/build-composite-page.mjs" || status=1
   # Publish the regenerated results pages so /classifier-results in the app
   # reflects tonight's run. Pages regenerate even on a failed training step,
   # so this runs regardless — a failed step is exactly what's worth seeing.

@@ -52,8 +52,18 @@ gcloud storage rsync "$SRC/thumbs" "$DEST/thumbs" \
   "${DRY_RUN[@]+"${DRY_RUN[@]}"}"
 
 # Pages last, and never cached for long — they change on every training run.
+# The composites page's images (scripts/build-composite-page.mjs). Names are
+# content-addressed by frame path, not content, so a rebuilt composite keeps
+# its name — a day of caching, not a year.
+if [ -d "$SRC/composites" ]; then
+  gcloud storage rsync "$SRC/composites" "$DEST/composites" \
+    --recursive \
+    --predefined-acl publicRead \
+    --cache-control "public, max-age=86400" \
+    "${DRY_RUN[@]+"${DRY_RUN[@]}"}"
+fi
 gcloud storage rsync "$SRC" "$DEST" \
-  --exclude '^thumbs/' \
+  --exclude '^thumbs/|^composites/' \
   --predefined-acl publicRead \
   --cache-control "public, max-age=300" \
   "${DRY_RUN[@]+"${DRY_RUN[@]}"}"
