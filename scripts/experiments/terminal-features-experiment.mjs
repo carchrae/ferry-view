@@ -38,6 +38,11 @@ const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[
 const EPOCHS = Number(flag('epochs', '600'))
 const LR = Number(flag('lr', '0.2'))
 const L2 = 1e-4
+// --train-rider: train each fold on hand AND rider labels (what the trainer
+// ships since v7) instead of hand only; --sweep: also report every variant at
+// thresholds 0.3/0.4/0.6 (frame metrics and the sailing-level rules).
+const TRAIN_RIDER = args.includes('--train-rider')
+const SWEEP = args.includes('--sweep')
 const VARIANTS = flag('variants', 'base,grad+zscore+bal,std+z+bal,sobel+z+bal,hp+z+bal,clahe+z+bal,grad+std+z+bal,sobel+std+clahe+z+bal,grad+hp+z+bal,bgref+z+bal,grad+bgref+z+bal').split(',')
 
 // --- manifest ---------------------------------------------------------------
@@ -310,6 +315,10 @@ const PIPELINES = {
   'std+z+bal': (f) => statFeat(f, 'std', true),
   'std+z': (f) => statFeat(f, 'std', true),
   'std': (f) => statFeat(f, 'std', false),
+  'std+bal': (f) => statFeat(f, 'std', false),
+  // texture AND brightness (both z-scored per region): can shade add what
+  // texture lacks at night, where cars are bright blobs under the street light?
+  'std+bright+z+bal': (f) => concat(statFeat(f, 'std', true), regionCenter(toUnit(rawCoarse(f)), true)),
   'sobel+z+bal': (f) => statFeat(f, 'sobel', true),
   'hp+z+bal': (f) => statFeat(f, 'hp', true),
   'clahe+z+bal': (f) => statFeat(f, 'clahe', true),
@@ -333,6 +342,8 @@ const balanced = (name) => name.includes('+bal')
 const STAT_VARIANTS = {
   'std+z+bal': (s, ch) => ch('std'),
   'std+z': (s, ch) => ch('std'),
+  'std+bal': (s) => regionCenter(toUnit(s.st.subarray(0, COARSE)), false),
+  'std+bright+z+bal': (s, ch) => concat(ch('std'), regionCenter(toUnit(s.c), true)),
   std: (s) => regionCenter(toUnit(s.st.subarray(0, COARSE)), false),
   'sobel+z+bal': (s, ch) => ch('sobel'),
   'hp+z+bal': (s, ch) => ch('hp'),
@@ -423,13 +434,14 @@ for (const ts of SUNDAY_TS) {
 // --- run variants -------------------------------------------------------------
 const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '—')
 const r3 = (x) => (x == null ? '—' : x.toFixed(3))
-function frameMetrics(set) {
+function frameMetrics(set, thr = 0.5) {
   let tp = 0, fp = 0, fn = 0, ok = 0
-  for (const s of set) { const yh = s.p >= 0.5 ? 1 : 0; if (yh === s.y) ok++; if (yh && s.y) tp++; if (yh && !s.y) fp++; if (!yh && s.y) fn++ }
+  for (const s of set) { const yh = s.p >= thr ? 1 : 0; if (yh === s.y) ok++; if (yh && s.y) tp++; if (yh && !s.y) fp++; if (!yh && s.y) fn++ }
   const P = tp + fp ? tp / (tp + fp) : null, R = tp + fn ? tp / (tp + fn) : null
   return { n: set.length, acc: set.length ? ok / set.length : null, P, R, F1: P && R ? (2 * P * R) / (P + R) : null }
 }
 const results = {}
+console.log(`training pool per fold: ${TRAIN_RIDER ? 'hand + rider labels' : 'hand labels only'}; epochs ${EPOCHS}, lr ${LR}`)
 for (const name of VARIANTS) {
   const { pipe: pipeName, bands: bandSet } = parseVariant(name)
   const pipe = PIPELINES[pipeName]
@@ -438,9 +450,10 @@ for (const name of VARIANTS) {
   const t0 = Date.now()
   for (const f of usable) f.x = pipe(f)
   const hand = usable.filter((f) => f.y != null && f.source === 'hand')
+  const trainPool = TRAIN_RIDER ? usable.filter((f) => f.y != null) : hand
   const biases = []
   for (const fold of [0, 1, 2, 3, 4]) {
-    const m = trainBanded(hand.filter((s) => s.fold !== fold), balanced(name), bandSet)
+    const m = trainBanded(trainPool.filter((s) => s.fold !== fold), balanced(name), bandSet)
     biases.push(m.bias)
     for (const f of usable) if (f.fold === fold) f.p = m.predict(f.x, f.elev)
   }
@@ -450,22 +463,33 @@ for (const name of VARIANTS) {
   // sailing level: tail rules on OOF predictions, against rider tags
   const bySailing = new Map()
   for (const f of usable) { if (!bySailing.has(f.sailingKey)) bySailing.set(f.sailingKey, []); bySailing.get(f.sailingKey).push(f) }
-  const slots = {}
-  let roomN = 0, roomFlag = 0, fullN = 0, fullWrong = 0, roomCarsEnd = 0, fullCarsEnd = 0
-  for (const [key, fr] of bySailing) {
-    const tag = tagBySailing.get(key)
-    if (!tag || fr.length < 2) continue
-    fr.sort((a, b) => a.ts - b.ts)
-    const room = tag.capacity !== 'Full'
-    const nf = terminalEmptyFrameTs(fr.map((f) => ({ ts: f.ts, carsPresent: f.p >= 0.5 }))) != null
-    const tail = fr.slice(-FULL_TAIL_FRAMES)
-    const carsEnd = tail.length === FULL_TAIL_FRAMES && tail.every((f) => f.p >= FULL_CONFIDENT_P)
-    const slot = band(fr[fr.length - 1].elev)
-    slots[slot] ??= { roomN: 0, roomFlag: 0, roomCarsEnd: 0, fullN: 0, fullWrong: 0 }
-    if (room) { roomN++; slots[slot].roomN++; if (nf) { roomFlag++; slots[slot].roomFlag++ } if (carsEnd) { roomCarsEnd++; slots[slot].roomCarsEnd++ } }
-    else { fullN++; slots[slot].fullN++; if (nf) { fullWrong++; slots[slot].fullWrong++ } if (carsEnd) fullCarsEnd++ }
+  function sailingLevel(thr) {
+    const slots = {}
+    let roomN = 0, roomFlag = 0, fullN = 0, fullWrong = 0, roomCarsEnd = 0, fullCarsEnd = 0
+    for (const [key, fr] of bySailing) {
+      const tag = tagBySailing.get(key)
+      if (!tag || fr.length < 2) continue
+      fr.sort((a, b) => a.ts - b.ts)
+      const room = tag.capacity !== 'Full'
+      const nf = terminalEmptyFrameTs(fr.map((f) => ({ ts: f.ts, carsPresent: f.p >= thr }))) != null
+      const tail = fr.slice(-FULL_TAIL_FRAMES)
+      const carsEnd = tail.length === FULL_TAIL_FRAMES && tail.every((f) => f.p >= FULL_CONFIDENT_P)
+      const slot = band(fr[fr.length - 1].elev)
+      slots[slot] ??= { roomN: 0, roomFlag: 0, roomCarsEnd: 0, fullN: 0, fullWrong: 0 }
+      if (room) { roomN++; slots[slot].roomN++; if (nf) { roomFlag++; slots[slot].roomFlag++ } if (carsEnd) { roomCarsEnd++; slots[slot].roomCarsEnd++ } }
+      else { fullN++; slots[slot].fullN++; if (nf) { fullWrong++; slots[slot].fullWrong++ } if (carsEnd) fullCarsEnd++ }
+    }
+    return { roomN, roomFlag, fullN, fullWrong, roomCarsEnd, fullCarsEnd, slots }
   }
-  out.sailing = { roomN, roomFlag, fullN, fullWrong, roomCarsEnd, fullCarsEnd, slots }
+  out.sailing = sailingLevel(0.5)
+  const { roomN, roomFlag, fullN, fullWrong, roomCarsEnd, fullCarsEnd, slots } = out.sailing
+  if (SWEEP) {
+    out.sweep = {}
+    for (const thr of [0.3, 0.4, 0.5, 0.6]) {
+      const sl = sailingLevel(thr)
+      out.sweep[thr] = { hand: frameMetrics(hand, thr), night: frameMetrics(hand.filter((f) => band(f.elev) === 'night'), thr), twilight: frameMetrics(hand.filter((f) => band(f.elev) === 'twilight'), thr), rider: frameMetrics(usable.filter((f) => f.y != null && f.source === 'rider'), thr), sailing: sl }
+    }
+  }
   // Sunday frames, model trained on all hand labels
   if (sunday.length) {
     const m = trainBanded(hand, balanced(name), bandSet)
@@ -489,6 +513,11 @@ for (const name of VARIANTS) {
   console.log(`  sailings: room-tagged ${roomN} → not-full flagged ${pct(roomFlag, roomN)} | Full-tagged ${fullN} → wrong not-full ${fullWrong} | "cars to the end" on room-tagged ${pct(roomCarsEnd, roomN)} (false-full feed), on Full-tagged ${pct(fullCarsEnd, fullN)}`)
   for (const b of BANDS) { const s = slots[b]; if (s) console.log(`    ${b.padEnd(9)} room ${String(s.roomN).padStart(3)} flagged ${pct(s.roomFlag, s.roomN).padStart(4)} cars-to-end ${pct(s.roomCarsEnd, s.roomN).padStart(4)} | full ${s.fullN} wrong ${s.fullWrong}`) }
   if (out.sunday) console.log(`  Sun 10-18 08:45 frames p: ${out.sunday.map((p) => p.toFixed(2)).join(' ')}`)
+  if (out.sweep) {
+    console.log('  threshold sweep (hand OOF P/R | night R | twilight R | rider P/R | room flagged | wrong | cars-to-end room):')
+    for (const [thr, sw] of Object.entries(out.sweep)) console.log(`    thr ${thr}: ${r3(sw.hand.P)}/${r3(sw.hand.R)} | ${r3(sw.night.R)} | ${r3(sw.twilight.R)} | ${r3(sw.rider.P)}/${r3(sw.rider.R)} | ${pct(sw.sailing.roomFlag, sw.sailing.roomN)} | ${sw.sailing.fullWrong} | ${pct(sw.sailing.roomCarsEnd, sw.sailing.roomN)}`)
+  }
 }
-writeFileSync(join(DATA, 'experiments/terminal-features-experiment.json'), JSON.stringify(results, null, 1))
-console.log('\nwritten training-data/experiments/terminal-features-experiment.json (copy the one you report into docs/experiments/)')
+const OUT_JSON = join(DATA, `experiments/terminal-features-experiment${TRAIN_RIDER ? '-rider' : ''}${EPOCHS !== 600 ? `-e${EPOCHS}` : ''}.json`)
+writeFileSync(OUT_JSON, JSON.stringify(results, null, 1))
+console.log(`\nwritten ${OUT_JSON} (copy the one you report into docs/experiments/)`)
