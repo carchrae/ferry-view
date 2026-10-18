@@ -34,7 +34,6 @@ const classifyTerminal = vi.fn()
 vi.mock('../lib/terminal-classifier.js', () => ({
   classifyTerminal: (...a) => classifyTerminal(...a),
   terminalModelVersion: () => 5,
-  liveTerminalModel: async () => ({ version: 5 }),
 }))
 
 const classifyLineup = vi.fn()
@@ -42,7 +41,6 @@ vi.mock('../lib/lineup-classifier.js', () => ({
   classifyLineup: (...a) => classifyLineup(...a),
   lineupModelVersion: () => 3,
   modelUsable: () => true,
-  liveLineupModel: async () => ({ version: 3 }),
 }))
 
 vi.mock('../lib/bowen-sailings-aggregate.js', () => ({

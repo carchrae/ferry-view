@@ -91,6 +91,12 @@ describe('api.js', () => {
       const data = { speed: 10, heading: undefined, lastUpdate: '16:10', bowenSchedule: [] }
       expect(liveFields(data)).toEqual({ speed: 10, lastUpdate: '16:10' })
     })
+
+    it('carries the running classifier versions as a live field (patched, never re-enriched)', () => {
+      const data = { speed: 10, classifierModels: { lineup: 5, 'terminal-cars': 7 }, bowenSchedule: [] }
+      expect(liveFields(data).classifierModels).toEqual({ lineup: 5, 'terminal-cars': 7 })
+      expect(sanitizeForCompare(data).classifierModels).toBeUndefined()
+    })
   })
 
   describe('sameAsSaved', () => {

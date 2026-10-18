@@ -1456,7 +1456,11 @@ import {
   loadCameraFrames,
   loadTaggableTimes,
 } from 'src/composables/useBowenSailings'
-import { cachedTerminal, predictTerminal } from 'src/composables/useTerminalClassifier'
+import {
+  cachedTerminal,
+  predictTerminal,
+  terminalModelVersion,
+} from 'src/composables/useTerminalClassifier'
 import { isDarkAt } from '../../functions/lib/daylight.js'
 import { useCapacityRating } from 'src/composables/useCapacityRating'
 import { useLineupReport } from 'src/composables/useLineupReport'
@@ -1469,7 +1473,6 @@ import {
   DEFAULT_SAILING_DESIGN,
 } from 'src/composables/useSailingDesign'
 import { useWebcamHealth } from 'src/composables/useWebcamHealth'
-import terminalModel from '../../functions/models/terminal-cars-classifier.json'
 import RobotVerifyDialog from 'src/components/RobotVerifyDialog.vue'
 import SignInDialog from 'src/components/SignInDialog.vue'
 import {
@@ -2427,7 +2430,7 @@ async function onRobotVerifyFrameLabel({ framePath, sailingKey, carsWaiting, aut
     sailingKey: sailingKey || robotVerify.value.sailingKey,
     carsWaiting,
     autoP,
-    autoModel: terminalModel.version ?? null,
+    autoModel: terminalModelVersion(),
   })
   if (!saved) showSignInDialog.value = true
   done(saved)

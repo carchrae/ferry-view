@@ -1,9 +1,11 @@
-import model from '../../functions/models/terminal-cars-classifier.json'
+import { computed } from 'vue'
 import { terminalEmptyFrameTs, terminalFullAtDeparture } from '../../functions/lib/lineup-labels.js'
+import { terminalModel, loadLiveModels } from 'src/composables/useClassifierModels'
+import { scoreWithMembers } from '../../functions/lib/model-members.js'
 import {
   cellStdGrid,
   standardizeRegions,
-  featureMask,
+  featureMask as buildFeatureMask,
   regionRect,
   TERMINAL_FEATURE_SET,
 } from '../../functions/lib/terminal-feature-math.js'
@@ -19,39 +21,51 @@ import {
 //
 // Like the crosswalk classifier, this exists so verdicts appear without any
 // server deploy or backfill: any sailing whose terminal frames are still in
-// Storage gets judged on the spot, cached per device.
+// Storage gets judged on the spot, cached per device. The model is whichever
+// version classifierModels/live names (useClassifierModels.js), bundled
+// JSON as fallback — same as the server.
 //
 // Terminal features are per-cell LOCAL TEXTURE (standard deviation of the
 // native pixels), standardised per region — feature set localStd-v1, see
 // functions/lib/terminal-feature-math.js, whose arithmetic this canvas
-// extraction shares. A model file naming another feature set is refused.
+// extraction shares. A model from another feature set (the brightness
+// models up to v8) is not ready here, exactly as the server refuses it.
 
 // Single decision threshold, mirroring functions/lib/terminal-classifier.js:
 // cars at p >= THRESHOLD, else empty. EMPTY_THRESHOLD survives only as the
 // UI band boundary below — 'unsure' frames are where a rider's label is
 // worth most, but they no longer gate the verdict (the tail rule does; see
 // lineup-labels.js).
-export const THRESHOLD = model.threshold ?? 0.5
-export const EMPTY_THRESHOLD = model.emptyThreshold ?? 0.35
-const terminalState = (p) => p >= THRESHOLD
+loadLiveModels()
+// The model in force right now — read at call time, never captured.
+const current = () => terminalModel.value
+const threshold = () => current().threshold ?? 0.5
+const emptyThreshold = () => current().emptyThreshold ?? 0.35
+export const THRESHOLD = computed(() => threshold())
+export const EMPTY_THRESHOLD = computed(() => emptyThreshold())
+const terminalState = (p) => p >= threshold()
 
 // Which side of the two thresholds a score falls on — 'unsure' is the band
 // where the model is least useful and a rider's label is worth most.
 export const terminalBand = (p) =>
-  p >= THRESHOLD ? 'cars' : p < EMPTY_THRESHOLD ? 'empty' : 'unsure'
+  p >= threshold() ? 'cars' : p < emptyThreshold() ? 'empty' : 'unsure'
 
-export const terminalClassifierReady = Boolean(
-  model?.enabled &&
-    Array.isArray(model.weights) &&
-    Array.isArray(model.regions) &&
-    model.featureSet === TERMINAL_FEATURE_SET,
-)
+export const terminalClassifierReady = computed(() => {
+  const m = current()
+  return Boolean(
+    m?.enabled &&
+      Array.isArray(m.weights) &&
+      Array.isArray(m.regions) &&
+      m.featureSet === TERMINAL_FEATURE_SET,
+  )
+})
+export const terminalModelVersion = () => current().version ?? null
 
 // The model's geometry, for drawing where it looks (RoiOverlay): the regions
-// it reads and the masks it ignores. Straight from the model file so the
-// picture riders see can never drift from what was trained.
-export const terminalRegions = model.regions || []
-export const terminalMasks = model.masks || []
+// it reads and the masks it ignores. Straight from the model so the picture
+// riders see can never drift from what was trained.
+export const terminalRegions = computed(() => current().regions || [])
+export const terminalMasks = computed(() => current().masks || [])
 
 function proxyUrl(path) {
   return (
@@ -72,16 +86,25 @@ const frameTs = (path) => {
 // Masked cells (model.masks — static clutter like the signpost and the
 // walkway) are excluded from the region statistics and forced to 0, exactly
 // as functions/lib/terminal-features.js does. The masks ride along in the
-// model file so this mirror can never drift from the trained geometry.
-const regions = model.regions || []
-const FEATURE_MASK = featureMask(regions, model.masks || [])
-const FEATURE_LENGTH = regions.reduce((a, r) => a + r.width * r.height, 0)
+// model so this mirror can never drift from the trained geometry. Computed
+// once per model object (the live model replaces the bundled one at most
+// once per page load).
+let maskFor = null
+let maskKeep = null
+function featureMask(model) {
+  if (maskFor === model) return maskKeep
+  maskFor = model
+  maskKeep = buildFeatureMask(model.regions, model.masks || [])
+  return maskKeep
+}
 
 // Each region is drawn at NATIVE size (no resampling — the texture is the
-// signal), converted to luma, and reduced to per-cell standard deviations on
-// the model grid; then standardised per region. Mirrors extractTerminalFeatures.
-function extractFeatures(bitmap) {
-  const features = new Float32Array(FEATURE_LENGTH)
+// signal), converted to luma, reduced to per-cell standard deviations on the
+// model grid, then standardised per region. Mirrors extractTerminalFeatures.
+function extractFeatures(bitmap, model) {
+  const regions = model.regions
+  const length = regions.reduce((a, r) => a + r.width * r.height, 0)
+  const features = new Float32Array(length)
   let offset = 0
   for (const { roi, width, height } of regions) {
     const rect = regionRect(roi, bitmap.width, bitmap.height)
@@ -99,22 +122,22 @@ function extractFeatures(bitmap) {
     cellStdGrid(gray, rect.width, rect.height, width, height, features, offset)
     offset += width * height
   }
-  return standardizeRegions(features, regions, FEATURE_MASK)
+  return standardizeRegions(features, regions, featureMask(model))
 }
 
-function score(features) {
-  let z = model.bias || 0
-  for (let i = 0; i < model.weights.length; i++) z += model.weights[i] * features[i]
-  return 1 / (1 + Math.exp(-z))
-}
+// Band-aware (model-members.js): the frame's capture time picks the
+// daylight member when the model has them — the same rule as the server.
+const score = (features, model, ts) => scoreWithMembers(model, features, ts)
 
 async function classifyFrame(path) {
   const res = await fetch(proxyUrl(path))
   if (!res.ok) throw new Error(`frame fetch ${res.status}`)
   const bitmap = await createImageBitmap(await res.blob())
   try {
-    const p = score(extractFeatures(bitmap))
-    return { ts: frameTs(path), p, carsPresent: terminalState(p) }
+    const model = current()
+    const ts = frameTs(path)
+    const p = score(extractFeatures(bitmap, model), model, ts)
+    return { ts, p, carsPresent: terminalState(p) }
   } finally {
     bitmap.close?.()
   }
@@ -130,7 +153,7 @@ export const classifyTerminalFrame = (path) => classifyFrame(path)
 // proxied image URL. Frames come from the browser HTTP cache when the
 // verdict pass already fetched them.
 export async function classifyAllTerminalFrames(departureTimelapsePaths) {
-  if (!terminalClassifierReady) return null
+  if (!terminalClassifierReady.value) return null
   const paths = [...(departureTimelapsePaths || [])]
     .filter((p) => frameTs(p) != null)
     .sort((a, b) => frameTs(a) - frameTs(b))
@@ -149,12 +172,14 @@ export async function classifyAllTerminalFrames(departureTimelapsePaths) {
 const CACHE_KEY = 'terminalAutoVerdicts.v4'
 let cache = null
 function loadCache() {
-  if (cache) return cache
+  const modelId = current().trainedAt
+  // A live model arriving mid-session invalidates the memo too.
+  if (cache && cache.model === modelId) return cache
   try {
     const stored = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}')
-    cache = stored.model === model.trainedAt ? stored : { model: model.trainedAt, sailings: {} }
+    cache = stored.model === modelId ? stored : { model: modelId, sailings: {} }
   } catch {
-    cache = { model: model.trainedAt, sailings: {} }
+    cache = { model: modelId, sailings: {} }
   }
   cache.sailings = cache.sailings || {}
   return cache
@@ -206,7 +231,7 @@ export async function predictTerminal(
   departureTimelapsePaths,
   { final = true, force = false, crosswalkOk = false } = {},
 ) {
-  if (!terminalClassifierReady) return null
+  if (!terminalClassifierReady.value) return null
   const c = loadCache()
   const hit = c.sailings[sailingKey]
   // A positive from a finished sailing is settled; one from a sailing still

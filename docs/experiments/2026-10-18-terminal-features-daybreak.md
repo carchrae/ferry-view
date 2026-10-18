@@ -126,22 +126,26 @@ file and both runtimes refuse a model trained on another set. Trainer
 (`--no-balance` to opt out) and excludes other-feature-set models from the
 history comparison and nightly champion selection.
 
-Retrained the same day as **model v8** (`npm run terminal:train`, hand +
-rider labels, 1,435 train / 263 test frames): held-out precision 0.978 /
-recall 0.924 overall, 0.980 / 0.943 on hand-labelled frames — v5's own
-held-out was 0.933 / 0.792. Bias 1.72 (down from 1.79 despite the larger
-rider-label imbalance). Earlier versions can no longer be re-scored on
-today's split (different feature set), so the history table shows them
-as-trained only.
+Retrained the same day as **model v9** (`npm run terminal:train` on the
+laptop, hand + rider labels, 1,435 train / 263 test frames): held-out
+precision 0.978 / recall 0.924 overall, 0.980 / 0.943 on hand-labelled
+frames — v5's own held-out was 0.933 / 0.792. Bias 1.72 (down from 1.79
+despite the larger rider-label imbalance). Earlier versions can no longer be
+re-scored on today's split (different feature set), so the history table
+shows them as-trained only.
 
-It was first numbered v7, which collided with a **brightness-feature v7**
-Tom had trained on 2026-10-17 at 12:10 on another checkout and deployed
-that afternoon (1,769 labelled frames, bias 1.75; recorded in Firestore but
-not in git). That model is now recovered into `functions/models/history/`
-as v7 and the texture model renumbered v8; `npm run models:publish` refuses
-such collisions. Goes live via `npm run models:publish:production` after a
-functions deploy that carries the new feature code; until then the running
-functions keep their bundled model.
+Numbering: this model was minted as v7, then v8, before landing as v9 — the
+desktop (saturn) had trained a brightness v7 on 2026-10-17 12:10 and a
+daylight-banded brightness v8 that evening and pushed both while the laptop
+was unpulled. Version numbers are minted per machine from the local history
+folder, so a checkout that is behind can reuse a number. Lesson recorded in
+AGENTS.md: training runs on saturn only, which also holds the hand label
+files and the frame cache. Goes live via `npm run models:publish:production`
+(`functions/publish-classifier-models.js`, which refuses a version whose
+registry doc differs), after a functions deploy that carries the texture
+feature code. Still to do on saturn: retrain texture WITH daylight bands and
+compare against texture alone — bands fixed the same sunrise false positives
+by another route, so they may stack or be redundant.
 
 ## Files
 

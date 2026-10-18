@@ -13,10 +13,11 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 ## Key Decisions
 - Lateness computation lives in `functions/lib/constants.js`; Vue app imports only notification constants.
 - Webcam capture is fire-and-forget (`.catch()` only) so poll latency is not impacted.
+- Classifier models may be **daylight-banded**: `members[]` sub-models per solar-elevation band (`functions/lib/model-members.js`), picked per frame by capture time; top-level weights are the all-band fallback. Terminal trainer makes them by default; both runtimes and the browser mirrors honour them.
+- Classifier models are **published to Firestore, not deployed**: `classifierModels/live` names the version each robot runs (server `refreshLiveModels` per poll; the poll copies the active versions to `ferryStatus/current.classifierModels`, which the browser mirrors read via `useClassifierModels.js` — no extra client read); `npm run models:publish[:production]` after training. Bundled `functions/models/*.json` are only the fallback. A live model whose crop geometry differs from the deployed feature code is refused (`functions/lib/model-geometry.js`), as is one from another **feature set** (the model file's `featureSet`; terminal is `localStd-v1` local-texture since 2026-10-18, `functions/lib/terminal-feature-math.js`) — so a feature-set change is the one case that still ships code and model together (functions + webapp deploy). Training runs on saturn (Tom's desktop), which has the full training data and the cron; the laptop does not train.
 - `formatDeckBadge` replaces two separate template functions.
 - Ride request contact info is public (no sign-in), uses `sms:` protocol for SMS method.
 - SailingKey format normalization discussed twice but deferred both times.
-- Classifier models go live without a functions deploy: `npm run models:publish[:production]` (`functions/publish-models.js`) records the trained model under `classifierModels/{name}-v{version}`, points `classifierModels/live` at it, and publishes the classifier-results pages. The functions re-read the pointer every 10 min (`liveModel` in `functions/lib/classifier-models.js`) and use it when the running build can (same feature length / feature set), else the bundled model. A feature-set change still needs a functions deploy; the browser mirror uses the bundled model from the last webapp deploy.
 - Webcam images served via Firebase Storage download URL. Storage paths include a `_${Date.now()}` capture-time suffix (clients parse it for frame time labels).
 - Snapshot image uses plain `<img>` with CSS `aspect-ratio: 16/9` instead of Quasar `q-img` due to zero-height sizing bug.
 - Netlify proxy redirect for webcam images disabled while debugging frontend display.
@@ -26,8 +27,9 @@ Real-time Bowen Island ferry status with departure tracking, lateness display, p
 ## Agent Environment
 - **Scratchpad**: use `/scratchpad/` (gitignored) for all temporary files — throwaway
   scripts, screenshots, logs, intermediate data. Don't use `/tmp` or the session temp dir.
-  It already has a local `playwright` install (Chromium is in `~/Library/Caches/ms-playwright`)
-  for driving the dev server headless — see `.claude/skills/verify`.
+  `npm run playwright:install` puts a local `playwright` there (Chromium in
+  `~/.cache/ms-playwright` on Linux, `~/Library/Caches/ms-playwright` on macOS) for
+  driving the dev server headless — see `.claude/skills/verify`. Tom runs that install.
 - **Admin scripts**: any local script that connects to Firestore/Storage with admin
   rights must use `connectAdmin(projectId, { storage })` + `detectProjectId()` from
   `functions/script-auth.js` — never call `initializeApp`/`applicationDefault()` directly.

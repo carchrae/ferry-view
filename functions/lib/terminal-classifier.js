@@ -2,49 +2,73 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { logger } from 'firebase-functions/logger'
-import { liveModel } from './classifier-models.js'
 import {
   extractTerminalFeatures,
   TERMINAL_FEATURE_LENGTH,
+  TERMINAL_REGIONS,
+  TERMINAL_MASKS,
   TERMINAL_FEATURE_SET,
 } from './terminal-features.js'
+import { sameGeometry, sameMasks } from './model-geometry.js'
+import { scoreWithMembers, membersUsable } from './model-members.js'
 
 // Runtime for the terminal-cars classifier ("are there cars waiting in the
 // Bowen terminal frame?") — independent of the crosswalk classifier but the
-// same shape: logistic weights trained by scripts/train-terminal-classifier.mjs,
-// shipped as JSON with the functions deploy. Until a trained model with
-// enabled:true is committed, classifyTerminal() returns null and costs
-// nothing.
+// same shape: logistic weights trained by scripts/train-terminal-classifier.mjs.
+// The bundled JSON is the deploy-time fallback; the LIVE model is read from
+// Firestore (classifierModels/live → classifierModels/terminal-cars-v{n}, see
+// classifier-models.js) and installed with setTerminalModel() — no deploy
+// needed. Until some usable model is in place, classifyTerminal() returns
+// null and costs nothing.
 const MODEL_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   '../models/terminal-cars-classifier.json',
 )
 
-let model = { enabled: false }
+let bundled = { enabled: false }
 try {
-  model = JSON.parse(readFileSync(MODEL_PATH, 'utf8'))
+  bundled = JSON.parse(readFileSync(MODEL_PATH, 'utf8'))
 } catch {
   // A missing or corrupt model file simply leaves the classifier disabled.
 }
+let model = bundled
 
-// A model is only usable when it was trained on the feature set this code
-// extracts (the name ships in the model file). Weights from another feature
-// set would score garbage, so a mismatch disables the classifier outright —
-// e.g. a functions deploy that carries new feature code with an old model.
+// Usable = enabled, full-length weights (and members), AND trained on the
+// feature set this build extracts: the model file names it (featureSet;
+// localStd-v1 local texture since 2026-10-18, terminal-feature-math.js) and
+// brightness-era models (v1–v8, no featureSet) are refused outright — their
+// weights mean nothing against texture features. Same length, different
+// meaning, so length alone cannot tell them apart.
 export function terminalModelUsable(m = model) {
   return (
     Boolean(m?.enabled) &&
     Array.isArray(m.weights) &&
     m.weights.length === TERMINAL_FEATURE_LENGTH &&
-    m.featureSet === TERMINAL_FEATURE_SET
+    m.featureSet === TERMINAL_FEATURE_SET &&
+    membersUsable(m, TERMINAL_FEATURE_LENGTH)
   )
 }
 
-// The model to classify with right now: the published live version when this
-// build can run it (same feature set), else the bundled one. Callers pass
-// the result to classifyTerminal() and terminalModelVersion() so the stamp
-// on a verdict names the model that actually produced it.
-export const liveTerminalModel = (db) => liveModel(db, 'terminal-cars', model, terminalModelUsable)
+// Usable AND trained on this deploy's crops and masks (features are
+// standardised per region over the unmasked cells, so a mask change moves
+// every value).
+export function terminalModelAcceptable(m) {
+  return (
+    terminalModelUsable(m) &&
+    sameGeometry(m.regions, TERMINAL_REGIONS) &&
+    sameMasks(m.masks, TERMINAL_MASKS)
+  )
+}
+
+export function setTerminalModel(m) {
+  const next = m == null ? bundled : m
+  if (m != null && !terminalModelAcceptable(m)) return false
+  model = next
+  return true
+}
+
+export const activeTerminalModel = () => model
+export const bundledTerminalModel = () => bundled
 
 // Version stamped by the training script; null on legacy unversioned models.
 // Recorded on every confirmed verdict so results can be compared per model.
@@ -52,10 +76,10 @@ export function terminalModelVersion(m = model) {
   return m?.version ?? null
 }
 
-export function scoreTerminalFeatures(features, m = model) {
-  let z = m.bias || 0
-  for (let i = 0; i < m.weights.length; i++) z += m.weights[i] * features[i]
-  return 1 / (1 + Math.exp(-z))
+// `ts` (capture time, epoch ms) picks the daylight-band member when the model
+// has them (model-members.js); without it the all-band weights score.
+export function scoreTerminalFeatures(features, m = model, ts = null) {
+  return scoreWithMembers(m, features, ts)
 }
 
 // Single threshold again (2026-08-16, second revision): p >= threshold (0.5)
@@ -77,11 +101,11 @@ export function terminalState(probability, m = model) {
 
 // JPEG buffer → { probability, carsPresent: true|false } or null
 // (disabled / failed).
-export async function classifyTerminal(buf, m = model) {
+export async function classifyTerminal(buf, m = model, { ts = null } = {}) {
   if (!terminalModelUsable(m)) return null
   try {
     const features = await extractTerminalFeatures(buf)
-    const probability = scoreTerminalFeatures(features, m)
+    const probability = scoreTerminalFeatures(features, m, ts)
     return { probability, carsPresent: terminalState(probability, m) }
   } catch (e) {
     logger.warn('Terminal-cars classification failed:', e.message)

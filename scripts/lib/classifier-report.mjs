@@ -8,6 +8,7 @@
 import { createHash } from 'node:crypto'
 import { execSync } from 'node:child_process'
 import { TZ } from '../../functions/lib/time.js'
+import { describeMembers } from '../../functions/lib/model-members.js'
 import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs'
 import { join, dirname, basename } from 'node:path'
 
@@ -168,6 +169,24 @@ F1 (higher is better). Back to the
 // Console rendering of the same history rows the summary page tables show —
 // every training run prints this after its own metrics, so the comparison
 // against all prior models is right there in the terminal.
+// The history rows are built (and the summary page first rendered) BEFORE
+// a run decides what ships — so "this run" has no version yet and the old
+// live model still wears "(shipped)". Once the live file is settled, fix the
+// labels: the candidate gets its version, and only the version that is live
+// now is marked shipped. Returns new rows (callers splice them back in so the
+// page builder's closure sees them).
+export function relabelShipped(rows, { liveVersion, candidateVersion }) {
+  // A rerun that reproduces an archived version (deterministic training on
+  // unchanged data) already has that version's row — drop the duplicate
+  // "this run" rather than showing v8 twice.
+  const archived = rows.some((r) => r.label !== 'this run' && new RegExp(`^v${candidateVersion}( |$)`).test(r.label))
+  return rows.filter((r) => !(archived && r.label === 'this run')).map((r) => {
+    const base = r.label === 'this run' ? `v${candidateVersion}` : r.label.replace(/ \(shipped\)$/, '')
+    const v = Number((/^v(\d+)/.exec(base) || [])[1])
+    return { ...r, label: v === liveVersion ? `${base} (shipped)` : base }
+  })
+}
+
 export function printHistory(title, rows) {
   if (!rows?.length) return
   const cols = [
@@ -724,7 +743,7 @@ export function buildSummaryPage({ crosswalk, terminal }) {
   ${row(`train (${m.trainFrames ?? '?'})`, m.train)}
   ${row(`test (${m.testFrames ?? '?'})`, m.test)}
 </table>
-<p>${cfg.statsLine} · threshold ${cfg.model.threshold} · trained ${esc(cfg.model.trainedAt || '?')}</p>
+<p>${cfg.statsLine} · threshold ${cfg.model.threshold}${cfg.model.members ? ` · daylight bands ${esc(describeMembers(cfg.model))} (model-members.js: one set of weights per solar-elevation band, picked per frame by capture time)` : ''} · trained ${esc(cfg.model.trainedAt || '?')}</p>
 ${historyTableHtml(cfg.history)}
 ${stageHtml(cfg.regions, `wmap-${key}`, { photo: cfg.photo, aspect: frameAspect })}
 <p class="legend">the learned weight maps, drawn at the exact position each
@@ -781,7 +800,10 @@ detects an empty terminal (ferry left not full). They run in milliseconds,
 ship as JSON weights, and everything they learn comes from rider tags and
 reviewed labels. This page is the summary; the example pages show every
 labeled frame and every sequence decision. Automated retraining decisions are
-logged on the <a href="nightly.html">nightly training runs</a> page.</p>
+logged on the <a href="nightly.html">nightly training runs</a> page. How the
+classifier is meant to see in the dark — frames combined into stable-pixel
+composites that drop passing headlights — is shown with real examples on the
+<a href="composites.html">night composites</a> page.</p>
 ${cw}
 ${tm}
 <script>

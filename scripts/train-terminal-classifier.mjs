@@ -46,7 +46,9 @@ import {
   FULL_TAIL_FRAMES,
   FULL_CONFIDENT_P,
 } from '../functions/lib/lineup-labels.js'
-import { isDarkAt } from '../functions/lib/daylight.js'
+import { isDarkAt, solarElevation } from '../functions/lib/daylight.js'
+import { scoreWithMembers, describeMembers } from '../functions/lib/model-members.js'
+import { sameGeometry } from '../functions/lib/model-geometry.js'
 import {
   buildExamplesPage,
   buildSummaryPage,
@@ -60,6 +62,7 @@ import {
   saveHistoryRows,
   loadHistoryRows,
   recordAndRenderNightly,
+  relabelShipped,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -81,6 +84,26 @@ const THRESHOLD = Number(flag('threshold', '0.5'))
 // comes from the tail rule in lineup-labels.js, not from per-frame
 // confidence (see training-data/experiments/empty-threshold-sweep.mjs).
 const EMPTY_THRESHOLD = Number(flag('empty-threshold', '0.35'))
+// Daylight bands (model-members.js): one member per band, each trained on
+// the frames whose solar elevation falls inside the band widened by
+// --band-overlap degrees (so a member sees the light just across its edge),
+// selected at inference by the frame's elevation. Default: a split at
+// sunrise/sunset. The all-band weights are still trained and shipped as the
+// fallback. `--bands none` trains a single model as before.
+//   --bands "-90:0,0:90"  --band-overlap 6
+// Why 0° / ±6: the 2026-10-17 gate sweep (training-data/experiments/
+// terminal-gate-sweep.mjs) — held-out F1 0.906 single → 0.928 at 0° ±6, with
+// the gain in the below-horizon frames (precision 0.82 → 0.98); gates at
+// 4°/8°/12° and a third band did slightly worse.
+const BANDS_FLAG = flag('bands', '-90:0,0:90')
+const BAND_OVERLAP = Number(flag('band-overlap', '6'))
+const BANDS =
+  BANDS_FLAG === 'none'
+    ? []
+    : BANDS_FLAG.split(',').map((b) => {
+        const [lo, hi] = b.split(':').map(Number)
+        return { min: lo, max: hi }
+      })
 const FORCE = args.includes('--force')
 const BALANCE = !args.includes('--no-balance')
 const LABEL_ONLY = args.includes('--label-only')
@@ -269,6 +292,7 @@ for (const r of rows) {
     ts: r.ts,
     y: r.label === '0' || r.label === '1' ? Number(r.label) : null,
     source: r.source || 'hand',
+    elev: solarElevation(r.ts),
     features,
   })
 }
@@ -303,36 +327,53 @@ if (!train.length || !test.length) {
   process.exit(1)
 }
 
-const w = new Float64Array(TERMINAL_FEATURE_LENGTH)
-let b = 0
-const predict = (f) => {
-  let z = b
-  for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) z += w[i] * f[i]
-  return 1 / (1 + Math.exp(-z))
-}
-// Class weights: each empty frame counts pos/neg so both classes carry equal
-// total weight (BALANCE); the gradient is normalised by the total weight.
-const nPos = train.filter((s) => s.y === 1).length
-const negWeight = BALANCE ? nPos / Math.max(1, train.length - nPos) : 1
-const sampleWeight = (s) => (s.y === 1 ? 1 : negWeight)
-const totalWeight = train.reduce((a, s) => a + sampleWeight(s), 0)
-console.log(`class balance: ${BALANCE ? `on (empty frames weighted ×${negWeight.toFixed(2)})` : 'off'}`)
-for (let epoch = 0; epoch < EPOCHS; epoch++) {
-  const gw = new Float64Array(TERMINAL_FEATURE_LENGTH)
-  let gb = 0
-  for (const s of train) {
-    const err = (predict(s.features) - s.y) * sampleWeight(s)
-    for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) gw[i] += err * s.features[i]
-    gb += err
+function trainLogistic(set) {
+  const w = new Float64Array(TERMINAL_FEATURE_LENGTH)
+  let b = 0
+  const sig = (z) => 1 / (1 + Math.exp(-z))
+  // Class weights (BALANCE, default on): each empty frame counts pos/neg so
+  // both classes carry equal total weight — the hand labels run ~2.6 cars
+  // frames per empty one, which trained v5 to a +1.79 bias (0.86 "cars"
+  // before any pixel). The gradient is normalised by the total weight.
+  const nPos = set.filter((s) => s.y === 1).length
+  const negWeight = BALANCE ? nPos / Math.max(1, set.length - nPos) : 1
+  const sampleWeight = (s) => (s.y === 1 ? 1 : negWeight)
+  const totalWeight = set.reduce((a, s) => a + sampleWeight(s), 0) || 1
+  for (let epoch = 0; epoch < EPOCHS; epoch++) {
+    const gw = new Float64Array(TERMINAL_FEATURE_LENGTH)
+    let gb = 0
+    for (const s of set) {
+      let z = b
+      for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) z += w[i] * s.features[i]
+      const err = (sig(z) - s.y) * sampleWeight(s)
+      for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) gw[i] += err * s.features[i]
+      gb += err
+    }
+    for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) w[i] -= LR * (gw[i] / totalWeight + L2 * w[i])
+    b -= LR * (gb / totalWeight)
   }
-  for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) w[i] -= LR * (gw[i] / totalWeight + L2 * w[i])
-  b -= LR * (gb / totalWeight)
+  return { w, b }
 }
+console.log(`class balance: ${BALANCE ? 'on (empty frames weighted up to match cars)' : 'off'}`)
+// All-band model: the fallback weights every consumer understands.
+const { w, b } = trainLogistic(train)
+// Daylight-band members (see --bands above).
+const members = BANDS.map(({ min, max }) => {
+  const set = train.filter((s) => s.elev >= min - BAND_OVERLAP && s.elev < max + BAND_OVERLAP)
+  const { w: mw, b: mb } = trainLogistic(set)
+  const name = min <= -90 ? `below ${max}°` : max >= 90 ? `from ${min}°` : `${min}°…${max}°`
+  console.log(`band ${name}: trained on ${set.length} frames (${set.filter((s) => s.y === 1).length} cars), overlap ±${BAND_OVERLAP}°`)
+  return { name, elevation: { ...(min > -90 ? { min } : {}), ...(max < 90 ? { max } : {}) }, weights: mw, bias: mb }
+})
+// The model as it will score in production: members by the frame's
+// elevation, all-band weights as fallback (model-members.js).
+const liveShape = { weights: w, bias: b, members }
+const predict = (f, ts) => scoreWithMembers(liveShape, f, ts)
 
 function metrics(set) {
   let tp = 0, fp = 0, fn = 0, correct = 0
   for (const s of set) {
-    const yhat = predict(s.features) >= THRESHOLD ? 1 : 0
+    const yhat = predict(s.features, s.ts) >= THRESHOLD ? 1 : 0
     if (yhat === s.y) correct++
     if (yhat === 1 && s.y === 1) tp++
     if (yhat === 1 && s.y === 0) fp++
@@ -351,6 +392,24 @@ console.log('test :', testM)
 for (const src of ['hand', 'rider']) {
   const sub = test.filter((s) => s.source === src)
   if (sub.length) console.log(`test/${src}:`, metrics(sub), `(${sub.length} frames)`)
+}
+// Held-out metrics per solar-elevation band — where the model is weak and
+// what the members bought (compare the single all-band weights).
+{
+  const bandOf = (e) => (e < -7 ? '<-7° dark' : e < 0 ? '-7°…0° twilight' : e < 8 ? '0°…8°' : e < 25 ? '8°…25°' : '≥25°')
+  const singleShape = { weights: w, bias: b }
+  const rows = {}
+  for (const s of test) {
+    const r = (rows[bandOf(s.elev)] ??= { n: 0, m: { tp: 0, fp: 0, fn: 0 }, s: { tp: 0, fp: 0, fn: 0 } })
+    r.n++
+    for (const [k, shape] of [['m', liveShape], ['s', singleShape]]) {
+      const yhat = scoreWithMembers(shape, s.features, s.ts) >= THRESHOLD ? 1 : 0
+      if (yhat && s.y) r[k].tp++; else if (yhat && !s.y) r[k].fp++; else if (!yhat && s.y) r[k].fn++
+    }
+  }
+  const pr = (c) => `P ${(c.tp / (c.tp + c.fp) || 0).toFixed(2)} R ${(c.tp / (c.tp + c.fn) || 0).toFixed(2)}`
+  console.log(`held-out by band (${describeMembers(liveShape)} vs single):`)
+  for (const [band, r] of Object.entries(rows).sort()) console.log(`  ${band.padEnd(16)} n=${String(r.n).padStart(3)}  members ${pr(r.m)}  single ${pr(r.s)}`)
 }
 
 // --- Model history (report comparison) ----------------------------------------
@@ -379,16 +438,17 @@ function evalHistoricalTerminal(m) {
   // Length alone can't prove compatibility (an ROI/mask retune can keep the
   // length while changing what every pixel means) — regions AND masks must
   // match before an archived model may be re-scored on today's features.
-  if (JSON.stringify(m.regions) !== JSON.stringify(TERMINAL_REGIONS)) return null
+  // Geometry only (model-geometry.js) — region NAMES are report labels and
+  // were renamed in 2026-10, which silently dropped every archived version
+  // out of this table and out of champion selection.
+  if (!sameGeometry(m.regions, TERMINAL_REGIONS)) return null
   if (JSON.stringify(m.masks ?? null) !== JSON.stringify(TERMINAL_MASKS ?? null)) return null
   const th = m.threshold ?? 0.5
   let tp = 0
   let fp = 0
   let fn = 0
   for (const s of test) {
-    let z = m.bias || 0
-    for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) z += m.weights[i] * s.features[i]
-    const yhat = 1 / (1 + Math.exp(-z)) >= th ? 1 : 0
+    const yhat = scoreWithMembers(m, s.features, s.ts) >= th ? 1 : 0
     if (yhat === 1 && s.y === 1) tp++
     if (yhat === 1 && s.y === 0) fp++
     if (yhat === 0 && s.y === 1) fn++
@@ -425,10 +485,13 @@ saveHistoryRows(DATA, 'terminal', terminalHistory)
 printHistory('vs prior models (terminal-cars):', terminalHistory)
 
 // --- Report pages (always written, even when the floor blocks the model) ------
+const roundMembers = (ms) =>
+  ms.map((m) => ({ ...m, weights: [...m.weights].map((x) => Math.round(x * 1e6) / 1e6), bias: Math.round(m.bias * 1e6) / 1e6 }))
 const freshModel = {
   featureSet: TERMINAL_FEATURE_SET,
   weights: [...w],
   bias: b,
+  ...(members.length ? { members: roundMembers(members) } : {}),
   threshold: THRESHOLD,
   emptyThreshold: EMPTY_THRESHOLD,
   metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
@@ -928,6 +991,7 @@ const shippedModel = {
   masks: TERMINAL_MASKS,
   weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),
   bias: Math.round(b * 1e6) / 1e6,
+  ...(members.length ? { members: roundMembers(members), bandOverlap: BAND_OVERLAP } : {}),
   threshold: THRESHOLD,
   emptyThreshold: EMPTY_THRESHOLD,
   metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length },
@@ -941,7 +1005,8 @@ const identicalTo = (m) =>
   m.bias === shippedModel.bias &&
   m.threshold === shippedModel.threshold &&
   m.emptyThreshold === shippedModel.emptyThreshold &&
-  JSON.stringify(m.weights) === JSON.stringify(shippedModel.weights)
+  JSON.stringify(m.weights) === JSON.stringify(shippedModel.weights) &&
+  JSON.stringify(m.members ?? null) === JSON.stringify(shippedModel.members ?? null)
 const dupOf = [prevModel, ...pastModels].find(identicalTo)
 const f1 = (p, r) => (p && r ? Math.round(((2 * p * r) / (p + r)) * 1000) / 1000 : 0)
 
@@ -1027,4 +1092,23 @@ if (!AUTO) {
     replaced,
     ranking: contenders.map((c) => ({ label: c.label, score: c.f1 })),
   })
+}
+
+// The summary page above was rendered before this run settled what is live.
+// Re-label the history rows ("this run" → its version, "(shipped)" only on
+// the model in the live file now) and re-render the page, so the published
+// results say which model actually ships (2026-10-17: v8 won champion
+// selection but the page still read "v7 (shipped)").
+{
+  let liveVersion = null
+  try {
+    liveVersion = JSON.parse(readFileSync(OUT, 'utf8')).version
+  } catch {
+    // No live model written (floor exit happens earlier anyway).
+  }
+  const candidateVersion = dupOf ? dupOf.version : shippedModel.version
+  terminalHistory.splice(0, terminalHistory.length, ...relabelShipped(terminalHistory, { liveVersion, candidateVersion }))
+  saveHistoryRows(DATA, 'terminal', terminalHistory)
+  writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage(localSrc))
+  writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc))
 }

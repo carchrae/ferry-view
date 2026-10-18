@@ -1,6 +1,7 @@
 import {ref, onUnmounted} from 'vue'
 import {doc, onSnapshot} from 'firebase/firestore'
 import {db} from 'boot/firebase'
+import { applyLiveVersions } from 'src/composables/useClassifierModels'
 
 export function useFirestoreFerryListener() {
   const ferryData = ref(null)
@@ -25,6 +26,9 @@ export function useFirestoreFerryListener() {
       (snapshot) => {
         if (snapshot.exists()) {
           ferryData.value = snapshot.data()
+          // The classifier versions the robots run ride on this doc; hand
+          // them to the browser mirrors so they need no read of their own.
+          applyLiveVersions(ferryData.value.classifierModels)
         } else {
           error.value = 'No ferry data available'
         }

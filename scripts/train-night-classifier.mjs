@@ -11,9 +11,13 @@
 // Labels, for DARK frames only (solar elevation below DARK_ELEVATION_DEG):
 //   1. training-data/lineup-dark-labels.json  { path: 0|1 } — hand labels
 //      from training-data/lineup-dark-labeling.html (build-dark-label-page.mjs)
-//   2. else the manifest label (a rider's crosswalk mark on that sailing,
+//   2. else training-data/lineup-dark-labels-claude.json — labels an LLM
+//      proposed over the same page's raw+composite pairs, pending a human
+//      pass (scripts/apply-dark-label-review.mjs moves reviewed ones to 1.)
+//   3. else the manifest label (a rider's crosswalk mark on that sailing,
 //      frames at/after the mark are 1) — the day trainer ignores these on dark
 //      frames; here they are the point.
+// The written model records how many of each went in (dataset.labelSources).
 // Features: the trailing window (≤ COMPOSITE.k frames, no gap over
 // COMPOSITE.maxGapMs) → stable composite → the day feature extraction. A
 // frame with no earlier frame in its window still trains (composite of one
@@ -60,6 +64,8 @@ const METRIC_FLOOR = 0.8
 // --- Load ----------------------------------------------------------------------
 const handPath = join(DATA, 'lineup-dark-labels.json')
 const hand = existsSync(handPath) ? JSON.parse(readFileSync(handPath, 'utf8')) : {}
+const claudePath = join(DATA, 'lineup-dark-labels-claude.json')
+const claude = existsSync(claudePath) ? JSON.parse(readFileSync(claudePath, 'utf8')) : {}
 const rows = []
 for (const line of readFileSync(join(DATA, 'manifest.csv'), 'utf8').trim().split('\n').slice(1)) {
   const [path, sailingKey, ts, label, crosswalkAt] = line.split(',')
@@ -86,6 +92,7 @@ for (const l of bySailing.values()) l.sort((a, b) => a.ts - b.ts)
 // Dark frames → composite features (+ label when there is one).
 const samples = []
 let handUsed = 0
+let claudeUsed = 0
 let riderUsed = 0
 let unreadable = 0
 for (const [key, list] of bySailing) {
@@ -109,6 +116,9 @@ for (const [key, list] of bySailing) {
     if (hand[r.path] === 0 || hand[r.path] === 1) {
       y = hand[r.path]
       handUsed++
+    } else if (claude[r.path] === 0 || claude[r.path] === 1) {
+      y = claude[r.path]
+      claudeUsed++
     } else if (r.riderLabel != null) {
       y = r.riderLabel
       riderUsed++
@@ -118,7 +128,7 @@ for (const [key, list] of bySailing) {
 }
 console.log(
   `${samples.length} dark frames composited in ${new Set(samples.map((s) => s.sailingKey)).size} sailings ` +
-    `(${unreadable} unreadable skipped); labels: ${handUsed} hand, ${riderUsed} from rider marks`,
+    `(${unreadable} unreadable skipped); labels: ${handUsed} hand, ${claudeUsed} claude (unreviewed), ${riderUsed} from rider marks`,
 )
 const labeled = samples.filter((s) => s.y != null && s.window >= MIN_WINDOW)
 const nPos = labeled.filter((s) => s.y === 1).length
@@ -226,8 +236,7 @@ const model = {
   metrics: { train: trainM, test: testM, trainFrames: train.length, testFrames: test.length, sequence: { agree, early, late, missed, phantom, unknown } },
   dataset: {
     labeledFrames: labeled.length,
-    handLabels: handUsed,
-    riderLabels: riderUsed,
+    labelSources: { hand: handUsed, claude: claudeUsed, rider: riderUsed },
     sailings: new Set(labeled.map((s) => s.sailingKey)).size,
     from: [...bySailing.keys()].sort()[0]?.slice(0, 10) ?? null,
     to: [...bySailing.keys()].sort().pop()?.slice(0, 10) ?? null,

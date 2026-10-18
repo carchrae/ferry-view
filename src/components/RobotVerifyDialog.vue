@@ -471,8 +471,8 @@ const cameraName = computed(() =>
 // Where the robot looks on this camera — the model's own geometry.
 const roi = computed(() =>
   props.kind === 'fullness'
-    ? { regions: terminalRegions, masks: terminalMasks }
-    : { regions: lineupRegions, masks: [] },
+    ? { regions: terminalRegions.value, masks: terminalMasks.value }
+    : { regions: lineupRegions.value, masks: [] },
 )
 // The robot's boxes are always drawn while tagging (the toggle is gone — one
 // less control; the overlay is what the question is about).
@@ -898,7 +898,7 @@ async function scoreFrames() {
   const run = ++scoreRun
   scoresReady.value = false
   const crosswalk = props.kind === 'crosswalk'
-  if (crosswalk ? !browserClassifierReady : !terminalClassifierReady) {
+  if (crosswalk ? !browserClassifierReady.value : !terminalClassifierReady.value) {
     scoresReady.value = true
     return
   }
@@ -918,7 +918,10 @@ async function scoreFrames() {
     try {
       const { p } = crosswalk ? await classifyLineupFrame(f.path) : await classifyTerminalFrame(f.path)
       if (run !== scoreRun) return
-      setScore(f.path, { p, band: crosswalk ? (p >= lineupThreshold ? 'at' : 'notYet') : terminalBand(p) })
+      setScore(f.path, {
+        p,
+        band: crosswalk ? (p >= lineupThreshold.value ? 'at' : 'notYet') : terminalBand(p),
+      })
     } catch {
       // This frame stays unscored (chip says so); the rest still get read.
       if (run !== scoreRun) return

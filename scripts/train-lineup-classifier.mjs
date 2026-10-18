@@ -13,6 +13,11 @@
 //     [--epochs 1000] [--lr 0.1] [--l2 1e-4] [--threshold 0.7] [--force]
 //     [--boundary-weight]  (downweight near-crosswalkAt labels — see below,
 //                           off by default: CV showed it doubles phantoms)
+//     [--recent-boost 3] [--recent-scale 21]
+//                          (recency weighting, ON by default: a frame's weight
+//                           is 1 + boost · e^(−age/scale days); --recent-boost 0
+//                           turns it off — see docs/lineup-classifier.md
+//                           "Seasonal drift")
 //
 // The train/test split is BY SAILING (not by frame): frames within one
 // sailing are near-duplicates, so a frame-level split would leak and inflate
@@ -36,6 +41,8 @@ import {
   REGIONS,
 } from '../functions/lib/lineup-features.js'
 import { isDarkAt } from '../functions/lib/daylight.js'
+import { sameGeometry } from '../functions/lib/model-geometry.js'
+import { scoreWithMembers } from '../functions/lib/model-members.js'
 import { effectiveCrosswalk } from '../functions/lib/lineup-labels.js'
 import { TZ } from '../functions/lib/time.js'
 import {
@@ -51,6 +58,7 @@ import {
   saveHistoryRows,
   loadHistoryRows,
   recordAndRenderNightly,
+  relabelShipped,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -150,10 +158,34 @@ if (!train.length || !test.length) {
 // drops, more too-early detections).
 const BOUNDARY_WEIGHT = args.includes('--boundary-weight')
 const MIN15 = 15 * 60 * 1000
-const sampleWeight = (s) =>
+const boundaryWeight = (s) =>
   !BOUNDARY_WEIGHT || s.crosswalkAt == null
     ? 1
     : Math.min(1, Math.max(0.3, Math.abs(s.ts - s.crosswalkAt) / MIN15))
+// Recency weighting (ON by default): weight = 1 + boost · e^(−age / scale),
+// age in days before the NEWEST frame in the dataset (not today — so an
+// unchanged dataset still reproduces identical weights and no new version is
+// minted). The light changes with the season (sun angle, shadows, dusk
+// creeping into the afternoon sailings) and the camera never sees last
+// season's light again, so the newest frames should pull hardest while the
+// older ones still anchor the queue shape. 2026-10-17, when the 2026-09-06
+// model's recall on autumn frames had fallen 0.93 → 0.70: 5-fold CV by
+// sailing (training-data/experiments/seasonal-drift-cv.mjs) put the unweighted
+// retrain at severity cost 204 (autumn 97) and this default at 177 (autumn
+// 69), with summer unchanged (107 → 108) and fewer phantoms (3 → 1); flat
+// windows (last 28/42 days ×3) and a seasonal ×2 landed between the two.
+const RECENT_BOOST = Number(flag('recent-boost', '3'))
+const RECENT_SCALE = Number(flag('recent-scale', '21'))
+const newestDay = labeled.map((s) => s.sailingKey.slice(0, 10)).sort().at(-1)
+const ageDays = (s) => (Date.parse(newestDay) - Date.parse(s.sailingKey.slice(0, 10))) / 864e5
+const recencyWeight = (s) =>
+  RECENT_BOOST > 0 ? 1 + RECENT_BOOST * Math.exp(-ageDays(s) / RECENT_SCALE) : 1
+const sampleWeight = (s) => boundaryWeight(s) * recencyWeight(s)
+if (RECENT_BOOST > 0) {
+  console.log(
+    `recency weighting: 1 + ${RECENT_BOOST}·e^(−age/${RECENT_SCALE}d), newest frame ${newestDay}`,
+  )
+}
 const w = new Float64Array(FEATURE_LENGTH)
 let b = 0
 const sigmoid = (z) => 1 / (1 + Math.exp(-z))
@@ -343,18 +375,19 @@ function evalHistorical(m) {
   // resizing (it has happened: fe779d2) keeps the length while changing what
   // every pixel means. A model trained on different crops must not be
   // re-scored, or a meaningless score could win champion selection.
-  if (JSON.stringify(m.regions) !== JSON.stringify(REGIONS)) return null
+  // Geometry only (model-geometry.js) — region NAMES are report labels and
+  // were renamed in 2026-10, which silently dropped every archived version
+  // out of this table and out of champion selection.
+  if (!sameGeometry(m.regions, REGIONS)) return null
   const th = m.threshold ?? 0.7
-  const score = (f) => {
-    let z = m.bias || 0
-    for (let i = 0; i < FEATURE_LENGTH; i++) z += m.weights[i] * f[i]
-    return sigmoid(z)
-  }
+  // Band-aware (model-members.js): an archived model with daylight members
+  // is re-scored the way production would run it.
+  const score = (f, ts) => scoreWithMembers(m, f, ts)
   let tp = 0
   let fp = 0
   let fn = 0
   for (const s of test) {
-    const yhat = score(s.features) >= th ? 1 : 0
+    const yhat = score(s.features, s.ts) >= th ? 1 : 0
     if (yhat === 1 && s.y === 1) tp++
     if (yhat === 1 && s.y === 0) fp++
     if (yhat === 0 && s.y === 1) fn++
@@ -363,7 +396,7 @@ function evalHistorical(m) {
     key,
     frames,
     detectedTs: firstSustainedPositiveTs(
-      frames.filter((f) => !f.dark).map((f) => ({ ts: f.ts, positive: score(f.features) >= th })),
+      frames.filter((f) => !f.dark).map((f) => ({ ts: f.ts, positive: score(f.features, f.ts) >= th })),
     ),
     humanTs: frames[0].crosswalkAt,
   }))
@@ -803,4 +836,23 @@ if (!AUTO) {
     replaced,
     ranking: contenders.map((c) => ({ label: c.label, score: c.cost })),
   })
+}
+
+// The summary page above was rendered before this run settled what is live.
+// Re-label the history rows ("this run" → its version, "(shipped)" only on
+// the model in the live file now) and re-render the page, so the published
+// results say which model actually ships (2026-10-17: v8 won champion
+// selection but the page still read "v7 (shipped)").
+{
+  let liveVersion = null
+  try {
+    liveVersion = JSON.parse(readFileSync(OUT, 'utf8')).version
+  } catch {
+    // No live model written (floor exit happens earlier anyway).
+  }
+  const candidateVersion = dupOf ? dupOf.version : shippedModel.version
+  crosswalkHistory.splice(0, crosswalkHistory.length, ...relabelShipped(crosswalkHistory, { liveVersion, candidateVersion }))
+  saveHistoryRows(DATA, 'crosswalk', crosswalkHistory)
+  writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage(localSrc))
+  writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc))
 }

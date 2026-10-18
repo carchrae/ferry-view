@@ -4,9 +4,9 @@ import { getStorage } from 'firebase-admin/storage'
 import { FieldValue } from 'firebase-admin/firestore'
 import sharp from 'sharp'
 import { isRecent, nowInVancouver, timeToDate, dayjs, TZ } from './time.js'
-import { classifyLineup, lineupModelVersion, modelUsable, liveLineupModel } from './lineup-classifier.js'
+import { classifyLineup, lineupModelVersion, modelUsable } from './lineup-classifier.js'
 import { isDarkAt } from './daylight.js'
-import { classifyTerminal, terminalModelVersion, liveTerminalModel } from './terminal-classifier.js'
+import { classifyTerminal, terminalModelVersion } from './terminal-classifier.js'
 import { upsertBowenSailing } from './bowen-sailings-aggregate.js'
 import { updateSailingStatus } from './helpers.js'
 import { crosswalkRobotStep, MAX_GAP_MS } from './crosswalk-robot.js'
@@ -327,10 +327,7 @@ export async function captureLineupTimelapse(db, data) {
   // classify-first probe saves nothing — junk night frames stop
   // accumulating. Unconditional captures still save (frames stay taggable,
   // and they build the dark archive a future night model needs).
-  // The published live model when this build can run it, else the bundled
-  // one — a retrain reaches here without a deploy (classifier-models.js).
-  const lineupModel = await liveLineupModel(db)
-  const verdict = isDarkAt(timestamp) ? null : await classifyLineup(best, lineupModel)
+  const verdict = isDarkAt(timestamp) ? null : await classifyLineup(best, undefined, { ts: timestamp })
   // No verdict, no check: an unclassified frame can't settle anything.
   if (!verdict) lineupCheck = null
 
@@ -381,7 +378,7 @@ export async function captureLineupTimelapse(db, data) {
     arrived: Boolean(decision.arrived),
     mayFill: robotMayFillCrosswalk,
     DELETE: FieldValue.delete(),
-    model: lineupModelVersion(lineupModel),
+    model: lineupModelVersion(),
   })
   if (step.event) step.fields.crosswalkRobotLog = FieldValue.arrayUnion(step.event)
   lineupCheck = step.check ? { snapshotKey, until: timestamp + MAX_GAP_MS } : null
@@ -477,8 +474,7 @@ export async function captureDepartureTimelapse(db, data) {
   let fullCleared = false
   let curCapacitySource = null
   let curLastCapacity = null
-  const terminalModel = await liveTerminalModel(db)
-  const verdict = await classifyTerminal(best, terminalModel)
+  const verdict = await classifyTerminal(best, undefined, { ts: timestamp })
   if (verdict) {
     const snap = await db.collection('sailingStatus').doc(snapshotKey).get()
     const cur = snap.exists ? snap.data() : {}
@@ -568,7 +564,7 @@ export async function captureDepartureTimelapse(db, data) {
         terminalFields.terminalEmptyFrameTs = timestamp
         terminalFields.ferryNotFullAuto = true
         terminalFields.terminalEmptyProb = Math.round((1 - verdict.probability) * 1000) / 1000
-        const modelVersion = terminalModelVersion(terminalModel)
+        const modelVersion = terminalModelVersion()
         if (modelVersion != null) terminalFields.terminalAutoModel = modelVersion
         firstConfirm = true
       } else if (!prev.terminalEmptyPending) {
@@ -601,7 +597,7 @@ export async function captureDepartureTimelapse(db, data) {
       if (fullRun >= FULL_TAIL_FRAMES && crosswalkOk && !cur.ferryFullAuto) {
         terminalFields.ferryFullAuto = true
         terminalFields.terminalFullProb = Math.round(verdict.probability * 1000) / 1000
-        const modelVersion = terminalModelVersion(terminalModel)
+        const modelVersion = terminalModelVersion()
         if (modelVersion != null) terminalFields.terminalAutoModel = modelVersion
         firstFullConfirm = true
       }

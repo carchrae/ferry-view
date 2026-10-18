@@ -18,6 +18,7 @@ The current ferry state, overwritten on every data change.
 |-------|------|-------------|
 | `dateIso` | string | `"2026-05-20"` — the operating day |
 | `vesselName` | string | Current vessel (e.g. `"QUEEN OF CAPILANO"`) |
+| `classifierModels` | map? | `{ lineup: 5, 'terminal-cars': 7 }` — the classifier versions the robots are running this poll (`classifierModels/{name}-v{n}`; see `classifierModels/live`). A live field: patched when it changes, not a reason to re-enrich. The webapp's browser mirrors take their model versions from here, so they never read the pointer |
 | `speed` | string | `"0.00"` — knots from AIS |
 | `heading` | string | Compass heading |
 | `position` | object? | `{ lat, lon }` — vessel WGS84 coordinates from the AIS feed (excluded from the change diff) |
@@ -255,13 +256,16 @@ composables expand them.
 
 ## `classifierModels/{name}-v{version}`
 
-Immutable registry of every classifier model version that has shipped — e.g.
-`lineup-v1`, `terminal-cars-v2`. Upserted by the Cloud Functions on cold start
-(`ensureClassifierModelDocs`, see `functions/lib/classifier-models.js`) from
-the bundled model JSONs, so the registry always describes the models actually
-deployed. Robot verdicts on `sailingStatus` reference these via
+Immutable registry of every classifier model version — e.g. `lineup-v1`,
+`terminal-cars-v2`. Written two ways: the Cloud Functions upsert their
+bundled model JSONs on cold start (`ensureClassifierModelDocs`, see
+`functions/lib/classifier-models.js`), and `npm run models:publish[:production]`
+(`functions/publish-classifier-models.js`) registers freshly trained or
+archived versions. Robot verdicts on `sailingStatus` reference these via
 `crosswalkAutoModel` / `terminalAutoModel`, keeping every prediction
-attributable to the exact model + training set that produced it.
+attributable to the exact model + training set that produced it. Since
+2026-10-17 these docs are also what the robots **run**: see
+`classifierModels/live` below.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -269,9 +273,30 @@ attributable to the exact model + training set that produced it.
 | `version` | number | Monotonic, bumped by the training script on each successful run |
 | `trainedAt` | string | ISO timestamp of the training run |
 | `type` / `threshold` / `regions` / `weights` / `bias` | | The full model, as shipped in `functions/models/*.json` |
+| `members` | array? | Daylight-banded sub-models (`functions/lib/model-members.js`, since terminal-cars v8): `[{ name, elevation: { min?, max? }, weights, bias }]`, chosen per frame by solar elevation at capture; absent on single models. `bandOverlap` (degrees) records the training overlap |
 | `metrics` | map | `{ train, test, trainFrames, testFrames }` — accuracy/precision/recall on the by-sailing split |
 | `dataset` | map? | Training-set snapshot: `{ from, to }` date range, `frames`, `labeledFrames`, `sailings`. Absent on v1 (predates the field) |
 | `syncedAt` | number | Epoch ms the doc was written |
+
+## `classifierModels/live`
+
+The pointer that decides which registered version each classifier runs,
+read by the server at the top of every poll (`refreshLiveModels`). The poll
+then writes the versions it actually installed onto
+`ferryStatus/current.classifierModels`, which is where the browser mirrors
+(`src/composables/useClassifierModels.js`) get them — no client read of this
+doc (a page without the status listener falls back to the cached status doc,
+then to one read here). Written only by `npm run models:publish[:production]`;
+a missing doc or a missing field means the model bundled with the deploy. A
+named version that is missing, disabled, or trained on different crops than
+the deployed feature code is refused and logged, and the current model stays.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `lineup` | number? | Live crosswalk model version (`classifierModels/lineup-v{n}`) |
+| `terminal-cars` | number? | Live terminal-cars model version |
+| `updatedAt` | number | Epoch ms of the last publish |
+| `updatedBy` | string | Identity the publish script ran as |
 
 ---
 

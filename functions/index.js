@@ -40,7 +40,11 @@ import { recomputeLeaderboard, backfillUserReportFlag } from './lib/leaderboard-
 import { recomputeHistoricalStats, recomputeHolidayStats } from './lib/history-aggregate.js'
 import { recomputeBowenSailings, upsertBowenSailing } from './lib/bowen-sailings-aggregate.js'
 import { functionsActive } from './lib/control.js'
-import { ensureClassifierModelDocs } from './lib/classifier-models.js'
+import {
+  ensureClassifierModelDocs,
+  refreshLiveModels,
+  activeClassifierVersions,
+} from './lib/classifier-models.js'
 import { refreshServiceNotices } from './lib/service-notices.js'
 import {
   refreshSeasonalSchedule,
@@ -86,6 +90,10 @@ async function refreshFerryData(db, {forceUpdate = false} = {}) {
   // fallback triggers a persist on its own.
   const usingFallback = isDepartureLogStale(data, now)
   data.usingFallback = usingFallback
+  // Which classifier versions the robots run (installed by refreshLiveModels
+  // at the top of the poll). A live field: patched onto the doc when it moves,
+  // never a reason to re-enrich. The webapp mirrors read it from here.
+  data.classifierModels = activeClassifierVersions()
 
   const existingDoc = await db.collection('ferryStatus').doc('current').get()
   const existingData = existingDoc.exists ? existingDoc.data() : null
@@ -302,16 +310,21 @@ export const pollFerryStatus = onSchedule(
   async (context) => {
     if (!(await functionsActive())) return
     logger.log('Polling ferry status...')
+    // Keep the classifier model registry in sync (memoized per cold start —
+    // effectively free). Fire-and-forget: the poll must not wait on it.
+    ensureClassifierModelDocs(db)
+    // Install whatever classifierModels/live points at BEFORE the status doc
+    // is written (it carries the active versions) and before this poll's
+    // captures classify anything: one tiny read a minute, a model doc only
+    // when the pointer moved. Never throws — a problem keeps the current
+    // models and is logged.
+    await refreshLiveModels(db)
     const result = await refreshFerryData(db)
     if (!result) {
       logger.log('No ferry data fetched')
       return
     }
     const { data, hsbPast, bowenPast, dataChanged } = result
-
-    // Keep the classifier model registry in sync (memoized per cold start —
-    // effectively free). Fire-and-forget: the poll must not wait on it.
-    ensureClassifierModelDocs(db)
 
     // Cadence-driven (lineup: every 5th poll; departure: every poll in the
     // 10-min pre-departure window), so they run whether or not this poll
