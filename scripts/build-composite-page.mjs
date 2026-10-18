@@ -189,13 +189,21 @@ The same code runs in the trainer, on the labelling page, and on the server.</p>
 <p>The night model is not shipped yet: it needs more labelled night crossings (${queue.length} dark
 sailings are labelled as reaching the crosswalk so far, almost all pre-dawn 06:15 boats — the dusk
 boats join as sunset moves earlier). Composites were also tried for the two daytime models and
-<em>not</em> adopted: for the crosswalk model at 5-minute spacing they fixed nothing and added two
-empty-scene false positives; for the terminal camera the daylight-banded model (one set of weights
-below the horizon, one above — shipped as terminal-cars v8) beats composites in every band.</p>
+<em>not</em> adopted. With the brightness features both models used until 2026-10-18, the crosswalk
+composite at 5-minute spacing fixed nothing and added two empty-scene false positives, and on the
+terminal camera a daylight-banded model beat composites in every band. Since 2026-10-18 both models
+read <strong>texture</strong> (how much each small patch of the picture varies, not how bright it is);
+texture on raw frames is the best pipeline by day on every measure, and a headlight bloom, being
+smooth, reads as little texture — so the composite is not needed to make the day model safe. In the
+dark, on the ${queue.length}-sailing hand-labelled set, texture on raw frames finds the most crossings
+and raises no false alarm on 118 quiet dark sailings, but still misses more than half, so the robot
+stays off in the dark until more night crossings are labelled.</p>
 <table><tr><th>experiment (5-fold CV by sailing)</th><th>raw frames</th><th>composite</th></tr>
-<tr><td>crosswalk, day frames — held-out severity cost (lower is better)</td><td>165</td><td>184</td></tr>
-<tr><td>terminal, single model — F1</td><td>0.906</td><td>0.896</td></tr>
-<tr><td>terminal, banded at 0° — F1 (composite only below the horizon)</td><td>0.928</td><td>0.918</td></tr></table>
+<tr><td>crosswalk, day frames, brightness features — held-out severity cost (lower is better)</td><td>165</td><td>184</td></tr>
+<tr><td>crosswalk, day frames, <strong>texture</strong> features — severity cost</td><td><strong>124</strong></td><td>154</td></tr>
+<tr><td>crosswalk, dark hand-labelled frames, texture — positive sailings found of 11 / false of 118</td><td><strong>4 / 0</strong></td><td>3 / 0</td></tr>
+<tr><td>terminal, brightness, single model — F1</td><td>0.906</td><td>0.896</td></tr>
+<tr><td>terminal, brightness, banded at 0° — F1 (composite only below the horizon)</td><td>0.928</td><td>0.918</td></tr></table>
 ${sections.map((s) => `<h2>${esc(s.title)}</h2><p>${esc(s.intro)}</p>${s.examples.length ? s.examples.map(exampleHtml).join('') : '<p><em>No examples in the current archive.</em></p>'}`).join('')}
 <p class="note">Built ${new Date().toISOString().slice(0, 16).replace('T', ' ')}Z from training-data/dark-frames.json (npm run lineup:dark-label) by scripts/build-composite-page.mjs.</p>
 `
