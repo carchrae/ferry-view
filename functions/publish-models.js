@@ -84,10 +84,38 @@ if (!dryRun) {
   const col = db.collection('classifierModels')
   const liveRef = col.doc('live')
   const live = (await liveRef.get()).data() || {}
-  const pointer = {}
+  // Pass 1 — check every model before writing anything. Versions are
+  // immutable, so an existing doc must BE this model. Version numbers are
+  // minted per machine (max of live + history, +1), and a retrain elsewhere
+  // can mint the same number for a different model (2026-10-17/18: two
+  // different terminal-cars v7s). Pointing live at a colliding version would
+  // stamp verdicts with an ambiguous number and hand older builds the wrong
+  // weights, so a collision stops the whole publish with nothing changed.
+  const plan = []
   for (const { name, model } of models) {
     const ref = col.doc(`${name}-v${model.version}`)
-    if ((await ref.get()).exists) console.log(`  ${name}-v${model.version}: already recorded`)
+    const existing = (await ref.get()).data()
+    if (existing) {
+      const same =
+        existing.trainedAt === model.trainedAt &&
+        existing.bias === model.bias &&
+        (existing.featureSet ?? null) === (model.featureSet ?? null)
+      if (!same) {
+        console.error(
+          `  ${name}-v${model.version}: VERSION COLLISION — Firestore already holds a different ${name} v${model.version}` +
+            ` (trained ${existing.trainedAt}, feature set ${existing.featureSet ?? 'none'}); the local one is trained ${model.trainedAt},` +
+            ` feature set ${model.featureSet ?? 'none'}.\n` +
+            `  Fetch the recorded one into functions/models/history/ and renumber the local model, then publish again. Nothing was changed.`,
+        )
+        process.exit(2)
+      }
+    }
+    plan.push({ name, model, ref, existing })
+  }
+  // Pass 2 — record and point.
+  const pointer = {}
+  for (const { name, model, ref, existing } of plan) {
+    if (existing) console.log(`  ${name}-v${model.version}: already recorded`)
     else {
       await ref.set({ name, ...model, syncedAt: Date.now(), publishedBy: via })
       console.log(`  ${name}-v${model.version}: recorded`)

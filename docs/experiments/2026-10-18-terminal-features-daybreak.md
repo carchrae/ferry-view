@@ -126,15 +126,22 @@ file and both runtimes refuse a model trained on another set. Trainer
 (`--no-balance` to opt out) and excludes other-feature-set models from the
 history comparison and nightly champion selection.
 
-Retrained the same day as **model v7** (`npm run terminal:train`, hand +
+Retrained the same day as **model v8** (`npm run terminal:train`, hand +
 rider labels, 1,435 train / 263 test frames): held-out precision 0.978 /
 recall 0.924 overall, 0.980 / 0.943 on hand-labelled frames — v5's own
 held-out was 0.933 / 0.792. Bias 1.72 (down from 1.79 despite the larger
 rider-label imbalance). Earlier versions can no longer be re-scored on
 today's split (different feature set), so the history table shows them
-as-trained only. Needs a functions + client deploy to take effect; until
-then the live code refuses the old model and the terminal classifier is
-simply off.
+as-trained only.
+
+It was first numbered v7, which collided with a **brightness-feature v7**
+Tom had trained on 2026-10-17 at 12:10 on another checkout and deployed
+that afternoon (1,769 labelled frames, bias 1.75; recorded in Firestore but
+not in git). That model is now recovered into `functions/models/history/`
+as v7 and the texture model renumbered v8; `npm run models:publish` refuses
+such collisions. Goes live via `npm run models:publish:production` after a
+functions deploy that carries the new feature code; until then the running
+functions keep their bundled model.
 
 ## Files
 
