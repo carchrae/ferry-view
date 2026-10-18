@@ -87,15 +87,18 @@ const EMPTY_THRESHOLD = Number(flag('empty-threshold', '0.35'))
 // Daylight bands (model-members.js): one member per band, each trained on
 // the frames whose solar elevation falls inside the band widened by
 // --band-overlap degrees (so a member sees the light just across its edge),
-// selected at inference by the frame's elevation. Default: a split at
-// sunrise/sunset. The all-band weights are still trained and shipped as the
-// fallback. `--bands none` trains a single model as before.
+// selected at inference by the frame's elevation. The all-band weights are
+// still trained and shipped as the fallback. Default since 2026-10-18:
+// `none` (a single model) — on the localStd-v1 texture features the
+// horizon pair bought nothing (5-fold CV F1 0.961 single vs 0.958, same
+// sailing-level numbers, worse night recall; docs/experiments/
+// 2026-10-18-terminal-features-daybreak.md). Opt in with
 //   --bands "-90:0,0:90"  --band-overlap 6
-// Why 0° / ±6: the 2026-10-17 gate sweep (training-data/experiments/
-// terminal-gate-sweep.mjs) — held-out F1 0.906 single → 0.928 at 0° ±6, with
+// Why 0° / ±6: the 2026-10-17 gate sweep (scripts/experiments/
+// terminal-gate-sweep.mjs, brightness features) — held-out F1 0.906 single → 0.928 at 0° ±6, with
 // the gain in the below-horizon frames (precision 0.82 → 0.98); gates at
 // 4°/8°/12° and a third band did slightly worse.
-const BANDS_FLAG = flag('bands', '-90:0,0:90')
+const BANDS_FLAG = flag('bands', 'none')
 const BAND_OVERLAP = Number(flag('band-overlap', '6'))
 const BANDS =
   BANDS_FLAG === 'none'

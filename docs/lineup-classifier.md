@@ -301,7 +301,7 @@ review: **1-minute frames in the last 15 minutes before a dark departure**
 (the crosswalk robot's off-cadence check photos already exist for this; see
 `timelapseDecision({ offCadence })`), and **composites for the day model
 too**, so stopped cars read differently from moving ones
-(`training-data/experiments/day-composite-cv.mjs`). Result, same 5-fold
+(`scripts/experiments/day-composite-cv.mjs`). Result, same 5-fold
 CV and recency weights as the drift experiment, 4,221 daylight frames
 (3,348 with a full 3-frame window at 5-minute spacing):
 
@@ -351,14 +351,14 @@ The light changes faster than the model: v4 (trained 2026-09-06 on July–early
 September frames) scored recall 0.93 on summer frames but **0.70 on the
 autumn frames tagged after it shipped**, down to 0.37 in the week of
 2026-10-12. The misses are not a twilight problem — scored by solar
-elevation (`training-data/experiments/lineup-daylight-bands.mjs`), v4's
+elevation (`scripts/experiments/lineup-daylight-bands.mjs`), v4's
 autumn recall is fine below 15° (≈ 0.90) and collapses at **25–35°
 (0.455)**: the 12:00–17:00 sailings, where the autumn sun sits where the
 summer sun never did and the shadows on the hill lane look nothing like
 July. (Its autumn false positives are the opposite case — dim 06:xx frames.)
 
 Fix: retrain, with the newest frames weighted most. 5-fold CV by sailing
-(`training-data/experiments/seasonal-drift-cv.mjs`, held-out severity cost,
+(`scripts/experiments/seasonal-drift-cv.mjs`, held-out severity cost,
 summer / autumn / total):
 
 | training weights                 | summer cost | autumn cost | total | phantoms |
@@ -583,7 +583,7 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   dialog, and the per-sailing dialog shows one boxed frame per camera.
 - **Sunrise is where it fails; a sun-up/sun-down pair would fix most of it**
   (2026-10-17). Scored by solar elevation on the 1,370 rider-labelled frames
-  (`training-data/experiments/terminal-daylight-bands.mjs`), v5's errors
+  (`scripts/experiments/terminal-daylight-bands.mjs`), v5's errors
   were overwhelmingly *false cars* between civil twilight and 8° — 06:00–08:59
   Vancouver, precision 0.59–0.65 against 0.90–0.95 for the rest of the day
   and 0.95 at night, where the street lighting is steady. Night itself is
@@ -612,9 +612,14 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   single weights. **v8** is the first banded model: held-out F1 0.858 vs
   v7's 0.82 on the same split, precision 0.74 → 0.83, with twilight
   precision 0.48 → 1.00 and dark 0.78 → 1.00; the lineup trainer stays
-  single-model (bands did not pay for the crosswalk — §4).
+  single-model (bands did not pay for the crosswalk — §4). **Superseded
+  2026-10-18:** the texture feature set (`localStd-v1`, see
+  `docs/experiments/2026-10-18-terminal-features-daybreak.md`) removes the
+  sunrise false cars on its own, and bands on top of it buy nothing (CV F1
+  0.961 single vs 0.958 pair, worse night recall), so the terminal trainer
+  now also defaults to a single model; the members runtime stays.
 - **Composites on the terminal cam** (2026-10-17, Tom's follow-up to the day
-  experiment; `training-data/experiments/terminal-composite-cv.mjs`): the
+  experiment; `scripts/experiments/terminal-composite-cv.mjs`): the
   departure timelapse runs at ~1-minute spacing, so stable-pixel composites
   (native 320×240, the shared `compositeWindow` rule with the saturation
   infrared guard) were tried against raw frames, 5-fold CV by sailing on the

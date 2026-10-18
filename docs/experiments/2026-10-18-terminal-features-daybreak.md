@@ -143,9 +143,49 @@ AGENTS.md: training runs on saturn only, which also holds the hand label
 files and the frame cache. Goes live via `npm run models:publish:production`
 (`functions/publish-classifier-models.js`, which refuses a version whose
 registry doc differs), after a functions deploy that carries the texture
-feature code. Still to do on saturn: retrain texture WITH daylight bands and
-compare against texture alone — bands fixed the same sunrise false positives
-by another route, so they may stack or be redundant.
+feature code. The open question, texture WITH daylight bands or without, is answered
+below: without.
+
+## Daylight bands on texture features (saturn, 2026-10-18 afternoon)
+
+The 2026-10-17 banded design
+([2026-10-17-terminal-daylight-bands.md](2026-10-17-terminal-daylight-bands.md))
+cured the same sunrise false cars by another route, one logistic member per
+solar-elevation band. Do the two stack? Same script, variants
+`std+z+bal` (one model), `+bands` (members split at the horizon, ±6°
+training overlap, the trainer's banded default), `+bands3` (night /
+twilight / day at −7° and 8°) and `+bandsN` (one night member below −7°),
+5-fold CV by sailing on saturn's export of 2026-10-18 (399 hand labels,
+1,383 rider labels; the laptop's 488 hand labels include 89 active-learning
+labels that had not reached saturn, see below):
+
+| Texture variant | Frame F1 (hand, OOF) | night R (36) | twilight R (86) | Room sailings flagged | Wrong not-full | False "cars to end" on room | low-sun band |
+|---|---|---|---|---|---|---|---|
+| **one model** | **0.961** | 0.455 | 0.811 | 71% | 0 | 6% | 5% |
+| + bands at 0° | 0.958 | 0.364 | 0.811 | 71% | 0 | 5% | 4% |
+| + bands at −7° / 8° | 0.946 | 0.182 | 0.676 | 71% | 1 | 5% | 4% |
+| + one night member below −7° | 0.954 | 0.182 | 0.811 | 71% | 0 | 5% | 4% |
+| brightness (v5 recipe) on this data | 0.944 | 0.636 | 0.649 | 66% | 2 | 5% | 9% |
+
+Sunday 08:45 empty frames read 0.05–0.18 with one model and 0.04–0.13 with
+the horizon pair; the same frames. Full numbers:
+[2026-10-18-terminal-bands-results.json](2026-10-18-terminal-bands-results.json).
+
+Bands buy nothing on texture. At the sailing level the horizon pair is
+identical (71% / 0 wrong) with one point less false cars-to-end, within
+noise, and every banded variant loses night recall because the night member
+trains on a few dozen frames; the three-band split is clearly worse. The
+sunrise false cars that the bands were curing are gone with the texture
+features alone, so there is nothing left for a second member to fix.
+Decision: **one texture model, no members.** The trainer's `--bands`
+default becomes `none` (the flag and the members runtime stay for a camera
+or feature set where bands pay).
+
+A side finding from the same run: saturn's `training-data/terminal-labels.json`
+is the 2026-07-24 file (399 entries) and lacks the 89 active-learning labels
+merged on the laptop on 2026-08-10, so the two machines were training on
+different hand-label sets. They are being reconciled before v10 is trained;
+one more reason to commit the label files.
 
 ## Files
 
@@ -153,6 +193,7 @@ by another route, so they may stack or be redundant.
   (`--variants a,b` to try new ideas against the cache).
 - `scripts/experiments/terminal-feature-sheet.mjs` — the contact sheet.
 - `docs/experiments/2026-10-18-terminal-features-results.json` — per-variant
-  metrics.
+  metrics (laptop run); `2026-10-18-terminal-bands-results.json` — the
+  bands-on-texture run (saturn).
 - `docs/experiments/img/2026-10-18-terminal-0845-frames.png`,
   `img/2026-10-18-terminal-feature-pipelines.png`.

@@ -170,7 +170,7 @@ const boundaryWeight = (s) =>
 // season's light again, so the newest frames should pull hardest while the
 // older ones still anchor the queue shape. 2026-10-17, when the 2026-09-06
 // model's recall on autumn frames had fallen 0.93 → 0.70: 5-fold CV by
-// sailing (training-data/experiments/seasonal-drift-cv.mjs) put the unweighted
+// sailing (scripts/experiments/seasonal-drift-cv.mjs) put the unweighted
 // retrain at severity cost 204 (autumn 97) and this default at 177 (autumn
 // 69), with summer unchanged (107 → 108) and fewer phantoms (3 → 1); flat
 // windows (last 28/42 days ×3) and a seasonal ×2 landed between the two.

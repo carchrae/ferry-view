@@ -208,8 +208,8 @@ function regionCenter(v, z = false) { // per-region mean (and std), masked → 0
 const toUnit = (u8) => { const v = new Float32Array(u8.length); for (let i = 0; i < u8.length; i++) v[i] = u8[i] / 255; return v }
 
 // Gradient magnitude on the 2x grid, pooled 2x2 back to the deployed grid.
-function gradFeatures(f) {
-  const fine = rawFine(f)
+function gradFeatures(f) { return gradFromFine(rawFine(f)) }
+function gradFromFine(fine) {
   const out = new Float32Array(COARSE)
   let offF = 0, offC = 0
   for (const r of FINE_REGIONS) {
@@ -328,6 +328,47 @@ const PIPELINES = {
   'grad+zscore+bal': (f) => regionCenter(gradFeatures(f), true),
 }
 const balanced = (name) => name.includes('+bal')
+// The same pipelines for the Sunday frames, which carry their own buffers
+// (c raw coarse, fi raw fine, st stats) instead of cache indexes.
+const STAT_VARIANTS = {
+  'std+z+bal': (s, ch) => ch('std'),
+  'std+z': (s, ch) => ch('std'),
+  std: (s) => regionCenter(toUnit(s.st.subarray(0, COARSE)), false),
+  'sobel+z+bal': (s, ch) => ch('sobel'),
+  'hp+z+bal': (s, ch) => ch('hp'),
+  'clahe+z+bal': (s, ch) => ch('clahe'),
+  'grad+std+z+bal': (s, ch) => concat(regionCenter(gradFromFine(s.fi), true), ch('std')),
+  'sobel+std+clahe+z+bal': (s, ch) => concat(ch('sobel'), ch('std'), ch('clahe')),
+  'grad+hp+z+bal': (s, ch) => concat(regionCenter(gradFromFine(s.fi), true), ch('hp')),
+  'bgref+z+bal': (s) => bgrefFeatures(s.c, s.elev, null),
+  'grad+bgref+z+bal': (s) => concat(regionCenter(gradFromFine(s.fi), true), bgrefFeatures(s.c, s.elev, null)),
+}
+
+// Daylight-band members (functions/lib/model-members.js, 2026-10-17): a
+// variant suffixed "+bands" trains one logistic member per solar-elevation
+// band on the frames inside the band widened by ±BAND_OVERLAP°, and scores
+// each frame with the member for its band (all-band weights as fallback).
+//   +bands   split at the horizon, as the trainer's default "-90:0,0:90"
+//   +bands3  night / twilight / day at the −7° and 8° gates
+//   +bandsN  a single night member below the −7° dark gate
+const BAND_SETS = { bands: [[-90, 0], [0, 90]], bands3: [[-90, -7], [-7, 8], [8, 90]], bandsN: [[-90, -7], [-7, 90]] }
+const BAND_OVERLAP = 6
+const parseVariant = (name) => {
+  const m = name.match(/\+(bands\w*)$/)
+  if (!m) return { pipe: name, bands: null }
+  if (!BAND_SETS[m[1]]) throw new Error(`unknown band set ${m[1]}`)
+  return { pipe: name.slice(0, m.index), bands: BAND_SETS[m[1]] }
+}
+function trainBanded(set, weighted, bands) {
+  const all = train(set, weighted)
+  if (!bands) return { bias: all.bias, predict: (x) => all.predict(x) }
+  const members = bands.map(([lo, hi]) => ({ lo, hi, m: train(set.filter((s) => s.elev >= lo - BAND_OVERLAP && s.elev < hi + BAND_OVERLAP), weighted) }))
+  return {
+    bias: all.bias,
+    members: members.map((b) => ({ band: `${b.lo}:${b.hi}`, bias: b.m.bias })),
+    predict: (x, elev) => { const mem = members.find((b) => elev >= b.lo && elev < b.hi); return (mem ? mem.m : all).predict(x) },
+  }
+}
 
 // --- training -------------------------------------------------------------------
 const sigmoid = (z) => 1 / (1 + Math.exp(-z))
@@ -390,7 +431,8 @@ function frameMetrics(set) {
 }
 const results = {}
 for (const name of VARIANTS) {
-  const pipe = PIPELINES[name]
+  const { pipe: pipeName, bands: bandSet } = parseVariant(name)
+  const pipe = PIPELINES[pipeName]
   if (!pipe) { console.log(`unknown variant ${name}`); continue }
   bgMiss = 0
   const t0 = Date.now()
@@ -398,12 +440,12 @@ for (const name of VARIANTS) {
   const hand = usable.filter((f) => f.y != null && f.source === 'hand')
   const biases = []
   for (const fold of [0, 1, 2, 3, 4]) {
-    const m = train(hand.filter((s) => s.fold !== fold), balanced(name))
+    const m = trainBanded(hand.filter((s) => s.fold !== fold), balanced(name), bandSet)
     biases.push(m.bias)
-    for (const f of usable) if (f.fold === fold) f.p = m.predict(f.x)
+    for (const f of usable) if (f.fold === fold) f.p = m.predict(f.x, f.elev)
   }
   // frame level
-  const out = { name, bias: biases.reduce((a, b) => a + b, 0) / 5, hand: frameMetrics(hand), rider: frameMetrics(usable.filter((f) => f.y != null && f.source === 'rider')), bands: {} }
+  const out = { name, bias: biases.reduce((a, b) => a + b, 0) / 5, members: bandSet ? bandSet.map(([lo, hi]) => `${lo}:${hi}`) : null, hand: frameMetrics(hand), rider: frameMetrics(usable.filter((f) => f.y != null && f.source === 'rider')), bands: {} }
   for (const b of BANDS) out.bands[b] = frameMetrics(hand.filter((f) => band(f.elev) === b))
   // sailing level: tail rules on OOF predictions, against rider tags
   const bySailing = new Map()
@@ -426,18 +468,18 @@ for (const name of VARIANTS) {
   out.sailing = { roomN, roomFlag, fullN, fullWrong, roomCarsEnd, fullCarsEnd, slots }
   // Sunday frames, model trained on all hand labels
   if (sunday.length) {
-    const m = train(hand, balanced(name))
+    const m = trainBanded(hand, balanced(name), bandSet)
     out.sunday = sunday.map((s) => {
       const fake = { i: null, elev: s.elev, date: s.date, ts: s.ts }
       let x
       const sChan = (ch) => regionCenter(toUnit(s.st.subarray(STATS.indexOf(ch) * COARSE, (STATS.indexOf(ch) + 1) * COARSE)), true)
-      const z = name.includes('zscore') || name.includes('+z')
-      if (name in STAT_VARIANTS) x = STAT_VARIANTS[name](s, sChan)
-      else if (name.startsWith('grad')) { const g = gradFromFine(s.fi); x = regionCenter(g, z) }
-      else if (name.startsWith('bg')) { const bg = background(fake); const v = toUnit(s.c); const d = new Float32Array(COARSE); for (let i = 0; i < COARSE; i++) d[i] = v[i] - (bg ? bg[i] : 0); x = regionCenter(d, name.includes('zscore')) }
-      else if (name === 'base') x = frameCenter(toUnit(s.c))
-      else x = regionCenter(toUnit(s.c), name.includes('zscore'))
-      return m.predict(x)
+      const z = pipeName.includes('zscore') || pipeName.includes('+z')
+      if (pipeName in STAT_VARIANTS) x = STAT_VARIANTS[pipeName](s, sChan)
+      else if (pipeName.startsWith('grad')) { const g = gradFromFine(s.fi); x = regionCenter(g, z) }
+      else if (pipeName.startsWith('bg')) { const bg = background(fake); const v = toUnit(s.c); const d = new Float32Array(COARSE); for (let i = 0; i < COARSE; i++) d[i] = v[i] - (bg ? bg[i] : 0); x = regionCenter(d, pipeName.includes('zscore')) }
+      else if (pipeName === 'base') x = frameCenter(toUnit(s.c))
+      else x = regionCenter(toUnit(s.c), pipeName.includes('zscore'))
+      return m.predict(x, s.elev)
     })
   }
   results[name] = out
