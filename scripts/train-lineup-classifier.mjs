@@ -58,6 +58,7 @@ import {
   saveHistoryRows,
   loadHistoryRows,
   recordAndRenderNightly,
+  relabelShipped,
 } from './lib/classifier-report.mjs'
 
 const args = process.argv.slice(2)
@@ -835,4 +836,23 @@ if (!AUTO) {
     replaced,
     ranking: contenders.map((c) => ({ label: c.label, score: c.cost })),
   })
+}
+
+// The summary page above was rendered before this run settled what is live.
+// Re-label the history rows ("this run" → its version, "(shipped)" only on
+// the model in the live file now) and re-render the page, so the published
+// results say which model actually ships (2026-10-17: v8 won champion
+// selection but the page still read "v7 (shipped)").
+{
+  let liveVersion = null
+  try {
+    liveVersion = JSON.parse(readFileSync(OUT, 'utf8')).version
+  } catch {
+    // No live model written (floor exit happens earlier anyway).
+  }
+  const candidateVersion = dupOf ? dupOf.version : shippedModel.version
+  crosswalkHistory.splice(0, crosswalkHistory.length, ...relabelShipped(crosswalkHistory, { liveVersion, candidateVersion }))
+  saveHistoryRows(DATA, 'crosswalk', crosswalkHistory)
+  writeFileSync(join(LOCAL_DIR, 'index.html'), summaryPage(localSrc))
+  writeFileSync(join(PUB_DIR, 'index.html'), summaryPage(pubSrc))
 }
