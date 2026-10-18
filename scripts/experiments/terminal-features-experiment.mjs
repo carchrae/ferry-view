@@ -43,6 +43,12 @@ const L2 = 1e-4
 // ships since v7) instead of hand only; --sweep: also report every variant at
 // thresholds 0.3/0.4/0.6 (frame metrics and the sailing-level rules).
 const TRAIN_RIDER = args.includes('--train-rider')
+// --train-before YYYY-MM-DD: time-forward test instead of 5-fold CV — one
+// model trained on every labelled frame before the date, scored on every
+// frame from the date on. Random folds by sailing mix seasons; this does not.
+const TRAIN_BEFORE = flag('train-before', null)
+const CUTOFF = TRAIN_BEFORE ? Date.parse(TRAIN_BEFORE + 'T00:00:00-07:00') : null
+const inEval = (f) => CUTOFF == null || f.ts >= CUTOFF
 const SWEEP = args.includes('--sweep')
 // --far-top Y: move the far-queue box's top edge down to Y (frame fraction;
 // the bottom edge stays), to test whether the distant road at the top — where
@@ -456,7 +462,7 @@ function frameMetrics(set, thr = 0.5) {
   return { n: set.length, acc: set.length ? ok / set.length : null, P, R, F1: P && R ? (2 * P * R) / (P + R) : null }
 }
 const results = {}
-console.log(`training pool per fold: ${TRAIN_RIDER ? 'hand + rider labels' : 'hand labels only'}; epochs ${EPOCHS}, lr ${LR}`)
+console.log(`training pool: ${TRAIN_RIDER ? 'hand + rider labels' : 'hand labels only'}; ${TRAIN_BEFORE ? `time-forward: trained before ${TRAIN_BEFORE}, scored from then on` : '5-fold CV by sailing'}; epochs ${EPOCHS}, lr ${LR}`)
 for (const name of VARIANTS) {
   const { pipe: pipeName, bands: bandSet } = parseVariant(name)
   const pipe = PIPELINES[pipeName]
@@ -467,17 +473,25 @@ for (const name of VARIANTS) {
   const hand = usable.filter((f) => f.y != null && f.source === 'hand')
   const trainPool = TRAIN_RIDER ? usable.filter((f) => f.y != null) : hand
   const biases = []
-  for (const fold of [0, 1, 2, 3, 4]) {
-    const m = trainBanded(trainPool.filter((s) => s.fold !== fold), balanced(name), bandSet)
+  if (CUTOFF != null) {
+    const m = trainBanded(trainPool.filter((s) => s.ts < CUTOFF), balanced(name), bandSet)
     biases.push(m.bias)
-    for (const f of usable) if (f.fold === fold) f.p = m.predict(f.x, f.elev)
+    for (const f of usable) f.p = inEval(f) ? m.predict(f.x, f.elev) : undefined
+  } else {
+    for (const fold of [0, 1, 2, 3, 4]) {
+      const m = trainBanded(trainPool.filter((s) => s.fold !== fold), balanced(name), bandSet)
+      biases.push(m.bias)
+      for (const f of usable) if (f.fold === fold) f.p = m.predict(f.x, f.elev)
+    }
   }
-  // frame level
-  const out = { name, bias: biases.reduce((a, b) => a + b, 0) / 5, members: bandSet ? bandSet.map(([lo, hi]) => `${lo}:${hi}`) : null, hand: frameMetrics(hand), rider: frameMetrics(usable.filter((f) => f.y != null && f.source === 'rider')), bands: {} }
-  for (const b of BANDS) out.bands[b] = frameMetrics(hand.filter((f) => band(f.elev) === b))
+  // frame level (time-forward: only frames from the cutoff on)
+  const handEval = hand.filter(inEval)
+  const riderEval = usable.filter((f) => f.y != null && f.source === 'rider' && inEval(f))
+  const out = { name, trainBefore: TRAIN_BEFORE, bias: biases.reduce((a, b) => a + b, 0) / biases.length, members: bandSet ? bandSet.map(([lo, hi]) => `${lo}:${hi}`) : null, hand: frameMetrics(handEval), rider: frameMetrics(riderEval), bands: {} }
+  for (const b of BANDS) out.bands[b] = frameMetrics(handEval.filter((f) => band(f.elev) === b))
   // sailing level: tail rules on OOF predictions, against rider tags
   const bySailing = new Map()
-  for (const f of usable) { if (!bySailing.has(f.sailingKey)) bySailing.set(f.sailingKey, []); bySailing.get(f.sailingKey).push(f) }
+  for (const f of usable) { if (!inEval(f)) continue; if (!bySailing.has(f.sailingKey)) bySailing.set(f.sailingKey, []); bySailing.get(f.sailingKey).push(f) }
   function sailingLevel(thr) {
     const slots = {}
     let roomN = 0, roomFlag = 0, fullN = 0, fullWrong = 0, roomCarsEnd = 0, fullCarsEnd = 0
@@ -502,12 +516,12 @@ for (const name of VARIANTS) {
     out.sweep = {}
     for (const thr of [0.3, 0.4, 0.5, 0.6]) {
       const sl = sailingLevel(thr)
-      out.sweep[thr] = { hand: frameMetrics(hand, thr), night: frameMetrics(hand.filter((f) => band(f.elev) === 'night'), thr), twilight: frameMetrics(hand.filter((f) => band(f.elev) === 'twilight'), thr), rider: frameMetrics(usable.filter((f) => f.y != null && f.source === 'rider'), thr), sailing: sl }
+      out.sweep[thr] = { hand: frameMetrics(handEval, thr), night: frameMetrics(handEval.filter((f) => band(f.elev) === 'night'), thr), twilight: frameMetrics(handEval.filter((f) => band(f.elev) === 'twilight'), thr), rider: frameMetrics(riderEval, thr), sailing: sl }
     }
   }
   // Sunday frames, model trained on all hand labels
   if (sunday.length) {
-    const m = trainBanded(hand, balanced(name), bandSet)
+    const m = trainBanded(CUTOFF != null ? trainPool.filter((s) => s.ts < CUTOFF) : hand, balanced(name), bandSet)
     out.sunday = sunday.map((s) => {
       const fake = { i: null, elev: s.elev, date: s.date, ts: s.ts }
       let x
@@ -533,6 +547,6 @@ for (const name of VARIANTS) {
     for (const [thr, sw] of Object.entries(out.sweep)) console.log(`    thr ${thr}: ${r3(sw.hand.P)}/${r3(sw.hand.R)} | ${r3(sw.night.R)} | ${r3(sw.twilight.R)} | ${r3(sw.rider.P)}/${r3(sw.rider.R)} | ${pct(sw.sailing.roomFlag, sw.sailing.roomN)} | ${sw.sailing.fullWrong} | ${pct(sw.sailing.roomCarsEnd, sw.sailing.roomN)}`)
   }
 }
-const OUT_JSON = join(DATA, `experiments/terminal-features-experiment${TRAIN_RIDER ? '-rider' : ''}${EPOCHS !== 600 ? `-e${EPOCHS}` : ''}${CACHE_SUFFIX}.json`)
+const OUT_JSON = join(DATA, `experiments/terminal-features-experiment${TRAIN_RIDER ? '-rider' : ''}${EPOCHS !== 600 ? `-e${EPOCHS}` : ''}${TRAIN_BEFORE ? `-before${TRAIN_BEFORE}` : ''}${CACHE_SUFFIX}.json`)
 writeFileSync(OUT_JSON, JSON.stringify(results, null, 1))
 console.log(`\nwritten ${OUT_JSON} (copy the one you report into docs/experiments/)`)
