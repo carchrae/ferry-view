@@ -5,34 +5,33 @@
       <q-btn flat dense no-caps color="primary" icon="code" label="Technical details" to="/how-it-works/technical" />
     </div>
     <p class="text-grey-8">
-      Nothing here is certain — it's a ferry. This page says, in plain words, where each number on the
-      app comes from and how much to trust it. The
-      <router-link to="/how-it-works/technical">technical page</router-link> has the rules, the
-      thresholds and the experiments behind them.
+      It's a ferry, so nothing here is certain. This page says where each thing on the app comes
+      from and how much to trust it. If you want the actual rules and numbers, there's a
+      <router-link to="/how-it-works/technical">technical page</router-link>.
     </p>
 
     <section>
       <h2>Where the information comes from</h2>
       <ul>
         <li>
-          <strong>The boat's position.</strong> Carlos's bowenferry.ca feed relays the Queen of
-          Capilano's AIS transponder and keeps a log of arrivals and departures. When that log
-          freezes, the app works out arrivals and departures itself from the boat's position and
-          speed, and as a last resort reads BC Ferries' own departures page.
+          <strong>The boat itself.</strong> The ferry broadcasts its position, like a ship's version
+          of a phone's location. Carlos's bowenferry.ca collects that and keeps a diary of when the
+          boat arrives and leaves. If the diary stops updating, the app can still tell from the
+          position whether the boat is sitting at a dock or moving.
         </li>
         <li>
-          <strong>The timetable.</strong> BC Ferries' seasonal schedule, read once a night, including
-          the small print ("except Aug 3, Sep 7…") that says which sailings don't run on a holiday.
+          <strong>The timetable.</strong> Read from BC Ferries every night, including the small print
+          about which sailings don't run on holidays.
         </li>
         <li>
-          <strong>Three cameras.</strong> BC Ferries' camera at the front of the Bowen lineup, the
-          community centre's camera looking at the crosswalk on the hill, and BC Ferries' cameras at
-          Horseshoe Bay. Around each sailing the crosswalk camera is photographed every five minutes
-          and the terminal camera every minute; the photos are kept for two weeks.
+          <strong>Lineup webcams.</strong> The camera at the front of the Bowen lineup and the
+          community centre's camera looking at the crosswalk on the hill. The app takes a photo of
+          each as a sailing loads up, so you can look back at how the line built. Photos are kept
+          for two weeks.
         </li>
         <li>
-          <strong>You.</strong> Riders tag how full a sailing left and when the lineup reached the
-          crosswalk. Those tags are the ground truth everything else is checked against.
+          <strong>You.</strong> Riders tag how full a sailing was and when the line reached the
+          crosswalk. Those tags are what everything else is checked against.
         </li>
       </ul>
     </section>
@@ -40,135 +39,128 @@
     <section>
       <h2>Is the ferry late right now?</h2>
       <p>
-        Lateness is the gap between the timetable and the last logged departure. Up to four minutes
-        early still counts as on time (the boat often leaves a touch early when it's loaded). Two
-        minutes behind reads as late, six or more turns red.
+        We compare when the boat actually left with when it was meant to. Leaving a few minutes
+        early is normal once everyone is on, so that still counts as on time. A couple of minutes
+        behind shows as late; more than five goes red.
       </p>
     </section>
 
     <section>
       <h2>When will my sailing actually leave?</h2>
       <p>
-        The old answer was "minutes since it was due", which told you nothing about a boat that was
-        still unloading. Now the app follows the one boat forward from wherever it is: it arrives,
-        it needs time to load, then it crosses. Loading takes about 12 minutes for a light sailing,
-        18 for a busy one and 23 when it's full; the crossing takes about 20, measured from today's
-        own trips once there have been three.
+        There is one boat, and it can only be in one place. So the app follows it: once it arrives,
+        it needs time to unload and load, then it crosses. A quiet sailing loads in about a dozen
+        minutes, a packed one takes well over twenty, and the crossing is about twenty.
       </p>
       <p>
-        Each sailing leaves at the <em>latest</em> of its scheduled time, "arrival plus loading", and
-        now. That's why a late boat catches up on quiet sailings and stays late through busy ones.
-        The estimate is run three times, quick, typical and slow, which is where the range comes
-        from. When nobody knows yet how full a sailing will be, the range runs from light to full.
+        A boat that's ahead of schedule waits for its departure time. A boat that's behind leaves
+        as soon as it's loaded. That's why a late boat catches up on quiet sailings and stays late
+        through busy ones. The app runs this with quick and slow timings as well as typical ones,
+        which is where the range (say, "11:19 to 11:24") comes from.
       </p>
     </section>
 
     <section>
       <h2>What's usual for this sailing</h2>
       <p>
-        The hint under each upcoming sailing ("usually on time", "often +7 min", "usually full by
-        4:15 pm") comes from the last eight weeks of the same sailing on the same weekday. "Often"
-        and "usually" are real percentages ("often" is 30 to 59% of days, "usually" 60% or more): a
-        sailing is called late when it left late on at least 40% of those days and averaged three
-        minutes or more behind, and full when riders reported it full on at least 30%. Tap a hint to
-        see the exact numbers it was built from.
+        The small note under each sailing, like "usually on time" or "often full", comes from the
+        last two months of that same sailing on that same day of the week. "Sometimes" means now
+        and then, "often" means a good share of those days, and "usually" means most of them. Tap
+        the note and it shows you the actual count it was built from.
       </p>
       <p>
-        One-off disasters, a breakdown or a medical hold, are spotted statistically and left out of
-        the averages so a single bad day doesn't make a reliable sailing look bad. They are still
-        shown, marked as exceptions.
+        The occasional disaster, a breakdown or a medical hold, is left out of the averages so one
+        terrible day doesn't make a dependable sailing look bad. Those days are still shown, just
+        marked as one-offs.
       </p>
     </section>
 
     <section>
       <h2>Holidays and long weekends</h2>
       <p>
-        A holiday Monday behaves nothing like an ordinary Monday, so for holidays the fullness hint
-        is built from the same holiday in earlier years, or from holidays of the same kind (family
-        travel weekends, a plain day off, the Christmas season). Lateness, oddly, isn't like that: it
-        tracks how busy the boat is rather than the date, so it keeps coming from ordinary weekdays.
-        These rules are young and are being checked against each holiday as it passes.
+        A holiday Monday is nothing like a normal Monday. So for holidays, the "how full" note is
+        built from the same holiday in past years, or from similar holidays. Lateness is different:
+        it depends on how busy the boat is, not on the date, so that part still comes from ordinary
+        days. These rules are new and get checked after each holiday.
       </p>
     </section>
 
     <section>
-      <h2>Checking our own predictions</h2>
+      <h2>Marking our own homework</h2>
       <p>
-        Once a sailing has left, the app compares what it predicted with what happened. A lateness
-        call counts as right within five minutes; a "full" call only counts when it was a firm one.
-        The score for the day is shown in the Today dialog so you can see how the guesses are doing,
-        not just read them.
+        After a sailing leaves, the app looks back at what it predicted and whether it was right.
+        You can see the day's score in the Today view, so you know how good the guesses have been
+        lately rather than taking them on faith.
       </p>
     </section>
 
     <section>
       <h2>The robots</h2>
       <p>
-        Two small image classifiers watch the Bowen cameras. They are deliberately simple, they learn
-        from riders' tags, and they are wrong often enough that every call can be checked and
-        corrected by a person. The robot icon marks anything that came from them.
+        Two small programs look at the Bowen webcams and make a call. They learn from riders' tags,
+        and they are wrong often enough that every call is shown with a robot icon and can be
+        corrected by a person. Your tap beats their guess, every time.
       </p>
       <h3>The crosswalk robot</h3>
       <p>
-        It looks at the community camera every five minutes and asks one question: has the lineup
-        reached the crosswalk? The first time it thinks so it reports it at once, marked "checking",
-        then takes extra photos a minute apart. A second yes confirms; two noes in a row take the
-        report back. It keeps correcting itself until the ferry is back at the dock. It doesn't look
-        at all in the dark, because that camera goes black at night and the robot was seeing queues
-        in streetlights. An owl marks those frames.
+        Every few minutes it looks at the hill camera and asks: has the line reached the crosswalk
+        yet? The first time it thinks so, it says so straight away but marks it "checking", then
+        takes a couple more photos a minute apart to be sure. If the next photo agrees, the call
+        stands; if two in a row disagree, it takes the call back. It keeps checking until the ferry
+        is back at the dock. It doesn't look after dark at all, because that camera goes black at
+        night and the robot used to mistake streetlights for a lineup. An owl marks those photos.
       </p>
       <h3>The terminal robot</h3>
       <p>
-        It looks at the front-of-lineup camera once a minute while the ferry loads and asks, frame by
-        frame, whether cars are still waiting. Two empty frames in a row after the last cars means
-        everyone got on: the sailing left with room. Cars still there in the final four frames means
-        it left full, but only if the lineup had reached the crosswalk earlier; otherwise those cars
-        probably arrived too late to board, and the robot asks a rider instead.
+        While the ferry loads, it looks at the front-of-lineup camera every minute and asks: are
+        there still cars waiting? When the road has been empty for a couple of photos after the
+        last cars, everyone got on, so the sailing left with room. When cars are still there right
+        up to the moment the boat leaves, it probably left full, but only if the line had reached
+        the crosswalk earlier. If it never did, those last cars most likely turned up too late to
+        board, and the robot asks a rider instead of guessing.
       </p>
       <p>
-        Until October 2026 this robot judged brightness, and at daybreak a grey car on grey asphalt
-        was invisible to it while sunlight on the hill looked like a queue. It now judges texture,
-        which is what tells a car from a road. The
-        <router-link to="/how-it-works/technical#terminal">technical page</router-link> has the
-        experiment.
+        This robot used to judge by how light or dark the road looked. At daybreak that fooled it:
+        a grey car on grey asphalt was invisible, and sunshine on the hill looked like a queue. It
+        now looks at texture, the pattern of edges and shadows that makes a car look like a car,
+        which is much closer to how your own eye does it.
       </p>
       <h3>When a camera freezes</h3>
       <p>
-        A frozen camera keeps serving the same picture, which looks perfectly valid. Each camera
-        burns a clock into its frames, so two genuinely fresh photos can never be identical; when they
-        are, the app stops using that camera and says so until a new frame arrives.
+        Sometimes a camera gets stuck and keeps sending the same picture, which looks perfectly
+        normal. Each camera prints the time on its photos, so two fresh photos can never be
+        identical. When they are, the app knows the camera is stuck, stops trusting it, and says
+        so until a new picture arrives.
       </p>
       <h3>Which sailing does a photo belong to?</h3>
       <p>
-        A photo of the lineup is filed under the next sailing that hasn't left, and the terminal
-        photos under the sailing that is loading, worked out from the boat's actual arrival rather
-        than the timetable, so a late ferry's photos don't drift onto the wrong sailing.
+        A photo of the line is filed under the next sailing that hasn't left yet, and photos of
+        loading under the sailing that's loading, based on when the boat really arrived rather than
+        the timetable. That way a late ferry's photos don't end up under the wrong sailing.
       </p>
     </section>
 
     <section>
       <h2>Your tags and the leaderboard</h2>
       <p>
-        When you tag a sailing's fullness or its crosswalk time, the first report earns a point and
-        agreeing with an existing one earns a tenth. When reports disagree, the value most riders
-        gave wins and the sailing shows the disagreement until it's settled. Your tags also train the
-        robots: the crosswalk marks become labels for the crosswalk model, and frame-by-frame answers
-        in the tagging dialog become labels for the terminal model.
+        The first rider to tag a sailing gets a point; agreeing with a tag that's already there gets
+        a tenth of one. When riders disagree, the answer most of them gave wins, and the sailing
+        shows the disagreement until it's settled. Your tags also teach the robots: every crosswalk
+        mark and every frame you answer in the tagging screen becomes an example they learn from.
       </p>
     </section>
 
     <section>
       <h2>Notifications</h2>
       <p>
-        If you turn on delay alerts you pick a threshold, five minutes by default, and you get one
-        notification when the ferry falls that far behind, not one every minute.
+        If you turn on delay alerts, you choose how late is late enough, five minutes unless you
+        change it. You get one message when the boat falls that far behind, not one every minute.
       </p>
     </section>
 
     <p class="text-grey-7 q-mt-lg">
-      Want the rules, numbers and evidence? See the
-      <router-link to="/how-it-works/technical">technical details</router-link>, which link to the
-      write-ups of the experiments behind each decision.
+      Curious about the exact rules, the numbers, and the experiments behind them? They're on the
+      <router-link to="/how-it-works/technical">technical page</router-link>.
     </p>
   </q-page>
 </template>
