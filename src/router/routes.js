@@ -36,6 +36,10 @@ const routes = [
       { path: 'rides/:id', component: () => import('pages/RideDetailPage.vue') },
       { path: 'map', component: () => import('pages/MapPage.vue') },
       { path: 'classifier-results', component: () => import('pages/ClassifierResultsPage.vue') },
+      // How the app works, from the About dialog: plain words, then the rules
+      // and the experiments behind them.
+      { path: 'how-it-works', component: () => import('pages/HowItWorksPage.vue') },
+      { path: 'how-it-works/technical', component: () => import('pages/TechnicalDetailsPage.vue') },
     ]
   },
 

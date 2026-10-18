@@ -2,7 +2,7 @@
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
     <q-card style="min-width: 300px">
       <q-card-section class="row items-center">
-        <div class="text-h6">Attributions</div>
+        <div class="text-h6">About</div>
         <q-space />
         <q-btn flat round dense icon="close" aria-label="Close" v-close-popup />
       </q-card-section>
@@ -16,7 +16,32 @@
           @click="install"
         />
       </q-card-section>
+      <!-- How the numbers and robot calls are made: a plain-words page and a
+           technical one (which links to the experiment write-ups). Router
+           links, so the dialog closes and the page opens in place. -->
       <q-card-section class="q-pt-none">
+        <div class="text-subtitle2 text-grey-8 q-mb-xs">How it works</div>
+        <q-list dense>
+          <q-item clickable to="/how-it-works" v-close-popup>
+            <q-item-section avatar><q-icon name="menu_book" color="primary" /></q-item-section>
+            <q-item-section>
+              <q-item-label>How Bowen Lift works</q-item-label>
+              <q-item-label caption>Where each number comes from, in plain words</q-item-label>
+            </q-item-section>
+            <q-item-section side><q-icon name="chevron_right" size="xs" /></q-item-section>
+          </q-item>
+          <q-item clickable to="/how-it-works/technical" v-close-popup>
+            <q-item-section avatar><q-icon name="code" color="primary" /></q-item-section>
+            <q-item-section>
+              <q-item-label>Technical details</q-item-label>
+              <q-item-label caption>The rules, thresholds and experiments behind them</q-item-label>
+            </q-item-section>
+            <q-item-section side><q-icon name="chevron_right" size="xs" /></q-item-section>
+          </q-item>
+        </q-list>
+      </q-card-section>
+      <q-card-section class="q-pt-none">
+        <div class="text-subtitle2 text-grey-8 q-mb-xs">Thanks to</div>
         <q-list>
           <q-item clickable tag="a" href="https://bowenferry.ca" target="_blank">
             <q-item-section avatar><q-icon name="api" color="primary" /></q-item-section>
