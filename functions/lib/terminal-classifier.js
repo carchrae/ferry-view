@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { logger } from 'firebase-functions/logger'
-import { extractTerminalFeatures, TERMINAL_FEATURE_LENGTH } from './terminal-features.js'
+import {
+  extractTerminalFeatures,
+  TERMINAL_FEATURE_LENGTH,
+  TERMINAL_FEATURE_SET,
+} from './terminal-features.js'
 
 // Runtime for the terminal-cars classifier ("are there cars waiting in the
 // Bowen terminal frame?") — independent of the crosswalk classifier but the
@@ -22,8 +26,17 @@ try {
   // A missing or corrupt model file simply leaves the classifier disabled.
 }
 
+// A model is only usable when it was trained on the feature set this code
+// extracts (the name ships in the model file). Weights from another feature
+// set would score garbage, so a mismatch disables the classifier outright —
+// e.g. a functions deploy that carries new feature code with an old model.
 export function terminalModelUsable(m = model) {
-  return Boolean(m?.enabled) && Array.isArray(m.weights) && m.weights.length === TERMINAL_FEATURE_LENGTH
+  return (
+    Boolean(m?.enabled) &&
+    Array.isArray(m.weights) &&
+    m.weights.length === TERMINAL_FEATURE_LENGTH &&
+    m.featureSet === TERMINAL_FEATURE_SET
+  )
 }
 
 // Version stamped by the training script; null on legacy unversioned models.

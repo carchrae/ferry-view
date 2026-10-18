@@ -527,9 +527,15 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
 Pipeline (mirrors the crosswalk one, separate everywhere):
 `functions/lib/terminal-features.js` (two regions — "near lane" 32×18 and
 "far queue" 20×18, redrawn 2026-08-10 via the report page's ROI picker,
-still clearing the ebike shop's golf-cart parking spot; features are
-per-frame mean-centered because the terminal cam spans day-to-night
-lighting) → `functions/models/terminal-cars-classifier.json` (v3, trained
+still clearing the ebike shop's golf-cart parking spot; since 2026-10-18 the
+features are feature set **`localStd-v1`**: per-cell local standard
+deviation of the native pixels, standardised per region — texture, not
+brightness, because brightness minus the frame mean read an empty sun-lit
+road as cars at daybreak, see
+`docs/experiments/2026-10-18-terminal-features-daybreak.md`; the arithmetic
+is shared with the browser mirror via `terminal-feature-math.js`, and the
+set name in the model file gates both runtimes) →
+`functions/models/terminal-cars-classifier.json` (v3, trained
 2026-08-10 on 488 labeled frames: 5-fold CV precision 0.94 / recall 0.91;
 a lone empty frame misreads ~25% of the time, hence the two-consecutive
 confirmation) → `functions/lib/terminal-classifier.js` (runtime, hooked into

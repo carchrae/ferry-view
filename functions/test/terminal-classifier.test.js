@@ -1,7 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import sharp from 'sharp'
-import { extractTerminalFeatures, TERMINAL_FEATURE_LENGTH } from '../lib/terminal-features.js'
-import { classifyTerminal, scoreTerminalFeatures, terminalState } from '../lib/terminal-classifier.js'
+import {
+  extractTerminalFeatures,
+  TERMINAL_FEATURE_LENGTH,
+  TERMINAL_FEATURE_MASK,
+  TERMINAL_FEATURE_SET,
+} from '../lib/terminal-features.js'
+import {
+  classifyTerminal,
+  scoreTerminalFeatures,
+  terminalState,
+  terminalModelUsable,
+} from '../lib/terminal-classifier.js'
 import {
   terminalEmptyFrameTs,
   terminalFullAtDeparture,
@@ -18,11 +28,32 @@ async function solidJpeg(shade, width = 320, height = 240) {
     .toBuffer()
 }
 
-describe('extractTerminalFeatures', () => {
-  it('returns TERMINAL_FEATURE_LENGTH normalized values', async () => {
+// 4-px checkerboard of two shades over the whole frame — texture everywhere.
+async function checkerJpeg(a, b, width = 320, height = 240) {
+  const raw = Buffer.alloc(width * height)
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) raw[y * width + x] = ((x >> 2) + (y >> 2)) % 2 ? a : b
+  return sharp(raw, { raw: { width, height, channels: 1 } }).jpeg({ quality: 100 }).toBuffer()
+}
+
+describe('extractTerminalFeatures (localStd-v1)', () => {
+  it('returns TERMINAL_FEATURE_LENGTH finite values, all zero for a flat frame', async () => {
     const f = await extractTerminalFeatures(await solidJpeg(128))
     expect(f.length).toBe(TERMINAL_FEATURE_LENGTH)
-    expect([...f].every((v) => v >= 0 && v <= 1)).toBe(true)
+    // No texture anywhere → every cell's std is 0 → standardised to 0.
+    expect([...f].every((v) => Number.isFinite(v) && Math.abs(v) < 1e-6)).toBe(true)
+  })
+
+  it('reads texture, not brightness: a checkerboard and its inverse give the same features', async () => {
+    const a = await extractTerminalFeatures(await checkerJpeg(0, 255))
+    const b = await extractTerminalFeatures(await checkerJpeg(255, 0))
+    expect([...a].some((v) => v > 0)).toBe(true)
+    for (let i = 0; i < a.length; i++) expect(a[i]).toBeCloseTo(b[i], 2)
+  })
+
+  it('forces masked cells to exactly 0', async () => {
+    const f = await extractTerminalFeatures(await checkerJpeg(0, 255))
+    for (let i = 0; i < f.length; i++) if (!TERMINAL_FEATURE_MASK[i]) expect(f[i]).toBe(0)
   })
 })
 
@@ -54,41 +85,30 @@ describe('classifyTerminal', () => {
   })
 
   it('classifies with a hand-built matched-filter model', async () => {
-    // Features are per-frame mean-centered, so solid frames are all zeros;
-    // use a bright-top/dark-bottom pattern and its inverse instead. The
-    // model's weights are the pattern's own features (matched filter):
-    // strongly positive dot product for the pattern, negative for the
-    // inverse.
-    const topBright = await sharp({
-      create: { width: 320, height: 240, channels: 3, background: { r: 0, g: 0, b: 0 } },
-    })
-      .composite([
-        {
-          input: { create: { width: 320, height: 120, channels: 3, background: { r: 255, g: 255, b: 255 } } },
-          top: 0,
-          left: 0,
-        },
-      ])
-      .jpeg()
-      .toBuffer()
-    const bottomBright = await sharp({
-      create: { width: 320, height: 240, channels: 3, background: { r: 255, g: 255, b: 255 } },
-    })
-      .composite([
-        {
-          input: { create: { width: 320, height: 120, channels: 3, background: { r: 0, g: 0, b: 0 } } },
-          top: 0,
-          left: 0,
-        },
-      ])
-      .jpeg()
-      .toBuffer()
-    const pattern = await extractTerminalFeatures(topBright)
-    const model = { enabled: true, weights: [...pattern].map((v) => v * 0.5), bias: 0, threshold: 0.5 }
-    const match = await classifyTerminal(topBright, model)
-    const anti = await classifyTerminal(bottomBright, model)
+    // Texture features: a textured frame has positive cells where a flat
+    // frame has none. Weights = the textured frame's own features (matched
+    // filter), bias slightly negative: textured → cars, flat → empty.
+    const textured = await checkerJpeg(0, 255)
+    const pattern = await extractTerminalFeatures(textured)
+    const model = {
+      enabled: true,
+      featureSet: TERMINAL_FEATURE_SET,
+      weights: [...pattern].map((v) => v * 0.5),
+      bias: -0.5,
+      threshold: 0.5,
+    }
+    const match = await classifyTerminal(textured, model)
+    const flat = await classifyTerminal(await solidJpeg(128), model)
     expect(match.carsPresent).toBe(true)
-    expect(anti.carsPresent).toBe(false)
+    expect(flat.carsPresent).toBe(false)
+  })
+
+  it('refuses a model trained on another feature set', async () => {
+    const weights = new Array(TERMINAL_FEATURE_LENGTH).fill(0)
+    expect(terminalModelUsable({ enabled: true, weights, featureSet: TERMINAL_FEATURE_SET })).toBe(true)
+    expect(terminalModelUsable({ enabled: true, weights })).toBe(false)
+    expect(terminalModelUsable({ enabled: true, weights, featureSet: 'brightness-v0' })).toBe(false)
+    expect(await classifyTerminal(await solidJpeg(128), { enabled: true, weights })).toBe(null)
   })
 
   it('scoreTerminalFeatures is a plain logistic', () => {

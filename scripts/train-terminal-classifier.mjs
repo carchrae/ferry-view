@@ -20,7 +20,13 @@
 // Usage:
 //   node scripts/train-terminal-classifier.mjs [--label-only]
 //     [--epochs 300] [--lr 0.5] [--l2 1e-4] [--threshold 0.5]
-//     [--empty-threshold 0.35] [--force]
+//     [--empty-threshold 0.35] [--no-balance] [--force]
+//
+// Class balance (default on, --no-balance to opt out): the hand labels run
+// ~2.6 cars frames per empty one, which trained v5 to a bias of +1.79 — 0.86
+// "cars" before it looked at a pixel. Negatives are weighted pos/neg so the
+// two classes pull equally (2026-10-18 experiment: same F1, wider margin on
+// empty low-sun frames).
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -31,6 +37,7 @@ import {
   TERMINAL_FEATURE_LENGTH,
   TERMINAL_REGIONS,
   TERMINAL_MASKS,
+  TERMINAL_FEATURE_SET,
 } from '../functions/lib/terminal-features.js'
 import { thumbnailJpeg } from '../functions/lib/lineup-features.js'
 import {
@@ -75,6 +82,7 @@ const THRESHOLD = Number(flag('threshold', '0.5'))
 // confidence (see training-data/experiments/empty-threshold-sweep.mjs).
 const EMPTY_THRESHOLD = Number(flag('empty-threshold', '0.35'))
 const FORCE = args.includes('--force')
+const BALANCE = !args.includes('--no-balance')
 const LABEL_ONLY = args.includes('--label-only')
 const MIN_LABELS = 60
 // Mirrors the crosswalk floor — the held-out split is small, so a run can
@@ -302,16 +310,23 @@ const predict = (f) => {
   for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) z += w[i] * f[i]
   return 1 / (1 + Math.exp(-z))
 }
+// Class weights: each empty frame counts pos/neg so both classes carry equal
+// total weight (BALANCE); the gradient is normalised by the total weight.
+const nPos = train.filter((s) => s.y === 1).length
+const negWeight = BALANCE ? nPos / Math.max(1, train.length - nPos) : 1
+const sampleWeight = (s) => (s.y === 1 ? 1 : negWeight)
+const totalWeight = train.reduce((a, s) => a + sampleWeight(s), 0)
+console.log(`class balance: ${BALANCE ? `on (empty frames weighted ×${negWeight.toFixed(2)})` : 'off'}`)
 for (let epoch = 0; epoch < EPOCHS; epoch++) {
   const gw = new Float64Array(TERMINAL_FEATURE_LENGTH)
   let gb = 0
   for (const s of train) {
-    const err = predict(s.features) - s.y
+    const err = (predict(s.features) - s.y) * sampleWeight(s)
     for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) gw[i] += err * s.features[i]
     gb += err
   }
-  for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) w[i] -= LR * (gw[i] / train.length + L2 * w[i])
-  b -= LR * (gb / train.length)
+  for (let i = 0; i < TERMINAL_FEATURE_LENGTH; i++) w[i] -= LR * (gw[i] / totalWeight + L2 * w[i])
+  b -= LR * (gb / totalWeight)
 }
 
 function metrics(set) {
@@ -357,6 +372,10 @@ const asTrainedRow = (m) => ({
 })
 function evalHistoricalTerminal(m) {
   if (!Array.isArray(m.weights) || m.weights.length !== TERMINAL_FEATURE_LENGTH) return null
+  // A different feature set (e.g. the pre-2026-10-18 brightness models) can't
+  // be re-scored on today's features at all — and must never win the nightly
+  // champion selection by accident.
+  if (m.featureSet !== TERMINAL_FEATURE_SET) return null
   // Length alone can't prove compatibility (an ROI/mask retune can keep the
   // length while changing what every pixel means) — regions AND masks must
   // match before an archived model may be re-scored on today's features.
@@ -407,6 +426,7 @@ printHistory('vs prior models (terminal-cars):', terminalHistory)
 
 // --- Report pages (always written, even when the floor blocks the model) ------
 const freshModel = {
+  featureSet: TERMINAL_FEATURE_SET,
   weights: [...w],
   bias: b,
   threshold: THRESHOLD,
@@ -903,6 +923,7 @@ const shippedModel = {
   enabled: true,
   type: 'logistic',
   version: nextVersion,
+  featureSet: TERMINAL_FEATURE_SET,
   regions: TERMINAL_REGIONS,
   masks: TERMINAL_MASKS,
   weights: [...w].map((x) => Math.round(x * 1e6) / 1e6),

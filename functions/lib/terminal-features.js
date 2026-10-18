@@ -1,8 +1,19 @@
 import sharp from 'sharp'
+import {
+  cellStdGrid,
+  standardizeRegions,
+  featureMask,
+  regionRect,
+  TERMINAL_FEATURE_SET,
+} from './terminal-feature-math.js'
+
+export { TERMINAL_FEATURE_SET }
 
 // Feature extraction for the TERMINAL-CARS classifier — "are there cars
 // waiting in the Bowen terminal frame?" — fully independent of the crosswalk
 // classifier (lineup-features.js): its own region, grid, and model file.
+// The arithmetic lives in terminal-feature-math.js (shared with the browser
+// mirror and the trainer); this file owns the geometry and the sharp I/O.
 //
 // The terminal camera looks down the loading road; cars queue along the
 // center-left lane, receding up-left with perspective. Regions redrawn
@@ -45,8 +56,8 @@ export const TERMINAL_FEATURE_LENGTH = TERMINAL_REGIONS.reduce(
 // Static clutter inside the regions that never carries queue information but
 // does change with the light (shadows, glare, wet/dry): the signpost with the
 // fare sign, and the pedestrian walkway. Cells whose centre falls in a mask
-// are forced to exactly 0 AFTER mean-centering, and are excluded from the
-// mean itself — so they can neither shift the centering nor earn a weight
+// are forced to exactly 0 AFTER standardising, and are excluded from the
+// region statistics — so they can neither shift them nor earn a weight
 // (a feature that is always 0 gets zero gradient and decays under L2).
 //
 // The feature vector keeps its length, so the report's weight maps still line
@@ -61,68 +72,28 @@ export const TERMINAL_MASKS = [
   { name: 'walkway', roi: { left: 0.0, top: 0.4, width: 0.34, height: 0.6 } },
 ]
 
-const inMask = (fx, fy) =>
-  TERMINAL_MASKS.some(
-    ({ roi }) =>
-      fx >= roi.left && fx < roi.left + roi.width && fy >= roi.top && fy < roi.top + roi.height,
-  )
-
 // Per-feature keep flags, computed once from the region grids: a cell's frame
 // coordinate is its centre within the region's crop.
-export const TERMINAL_FEATURE_MASK = (() => {
-  const keep = new Uint8Array(TERMINAL_FEATURE_LENGTH)
-  let offset = 0
-  for (const { roi, width, height } of TERMINAL_REGIONS) {
-    for (let gy = 0; gy < height; gy++) {
-      for (let gx = 0; gx < width; gx++) {
-        const fx = roi.left + ((gx + 0.5) / width) * roi.width
-        const fy = roi.top + ((gy + 0.5) / height) * roi.height
-        keep[offset + gy * width + gx] = inMask(fx, fy) ? 0 : 1
-      }
-    }
-    offset += width * height
-  }
-  return keep
-})()
+export const TERMINAL_FEATURE_MASK = featureMask(TERMINAL_REGIONS, TERMINAL_MASKS)
 
-// JPEG buffer → Float32Array of TERMINAL_FEATURE_LENGTH grayscale values,
-// PER-FRAME MEAN-CENTERED (each value minus the frame's mean brightness).
-// The terminal cam spans full daylight to night: raw intensities encode
-// time-of-day more than content, and centering removes that global term —
-// in the 2026-07 experiments it lifted test accuracy from 0.60 to 0.84.
-// Same code at training and inference, so there is no skew.
+// JPEG buffer → Float32Array of TERMINAL_FEATURE_LENGTH values: per-cell
+// LOCAL STANDARD DEVIATION of the native greyscale pixels, standardised per
+// region (feature set localStd-v1 — the why is in terminal-feature-math.js).
+// The old per-frame mean-centred brightness (2026-07 … 2026-10) could not
+// tell a grey car from grey asphalt at low sun. Same code at training and
+// inference, so there is no skew.
 export async function extractTerminalFeatures(buf) {
   const meta = await sharp(buf).metadata()
   const out = new Float32Array(TERMINAL_FEATURE_LENGTH)
   let offset = 0
   for (const { roi, width, height } of TERMINAL_REGIONS) {
-    const left = Math.round(roi.left * meta.width)
-    const top = Math.round(roi.top * meta.height)
-    const region = {
-      left,
-      top,
-      width: Math.max(1, Math.min(Math.round(roi.width * meta.width), meta.width - left)),
-      height: Math.max(1, Math.min(Math.round(roi.height * meta.height), meta.height - top)),
-    }
-    const raw = await sharp(buf)
-      .extract(region)
-      .resize(width, height, { fit: 'fill' })
-      .greyscale()
-      .raw()
-      .toBuffer()
-    for (let i = 0; i < raw.length; i++) out[offset + i] = raw[i] / 255
-    offset += raw.length
+    const rect = regionRect(roi, meta.width, meta.height)
+    const gray = await sharp(buf).extract(rect).greyscale().raw().toBuffer()
+    cellStdGrid(gray, rect.width, rect.height, width, height, out, offset)
+    offset += width * height
   }
-  // Mean over UNMASKED cells only, then zero the masked ones.
-  let mean = 0
-  let kept = 0
-  for (let i = 0; i < out.length; i++) {
-    if (TERMINAL_FEATURE_MASK[i]) {
-      mean += out[i]
-      kept++
-    }
-  }
-  mean /= kept || 1
-  for (let i = 0; i < out.length; i++) out[i] = TERMINAL_FEATURE_MASK[i] ? out[i] - mean : 0
-  return out
+  // Bytes → units before standardising (the z-score is scale-free, but the
+  // browser mirror works in 0..1 and the trainer's L2 assumes that range).
+  for (let i = 0; i < out.length; i++) out[i] /= 255
+  return standardizeRegions(out, TERMINAL_REGIONS, TERMINAL_FEATURE_MASK)
 }

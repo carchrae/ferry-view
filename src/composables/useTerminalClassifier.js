@@ -1,5 +1,12 @@
 import model from '../../functions/models/terminal-cars-classifier.json'
 import { terminalEmptyFrameTs, terminalFullAtDeparture } from '../../functions/lib/lineup-labels.js'
+import {
+  cellStdGrid,
+  standardizeRegions,
+  featureMask,
+  regionRect,
+  TERMINAL_FEATURE_SET,
+} from '../../functions/lib/terminal-feature-math.js'
 
 // Browser-side terminal-cars classifier — the "ferry left not full" signal.
 // Mirrors useLineupClassifier.js but for the Bowen terminal (departure)
@@ -14,9 +21,10 @@ import { terminalEmptyFrameTs, terminalFullAtDeparture } from '../../functions/l
 // server deploy or backfill: any sailing whose terminal frames are still in
 // Storage gets judged on the spot, cached per device.
 //
-// Terminal features are PER-FRAME MEAN-CENTERED (the camera spans day-to-
-// night; see functions/lib/terminal-features.js) — the canvas extraction
-// here must match.
+// Terminal features are per-cell LOCAL TEXTURE (standard deviation of the
+// native pixels), standardised per region — feature set localStd-v1, see
+// functions/lib/terminal-feature-math.js, whose arithmetic this canvas
+// extraction shares. A model file naming another feature set is refused.
 
 // Single decision threshold, mirroring functions/lib/terminal-classifier.js:
 // cars at p >= THRESHOLD, else empty. EMPTY_THRESHOLD survives only as the
@@ -33,7 +41,10 @@ export const terminalBand = (p) =>
   p >= THRESHOLD ? 'cars' : p < EMPTY_THRESHOLD ? 'empty' : 'unsure'
 
 export const terminalClassifierReady = Boolean(
-  model?.enabled && Array.isArray(model.weights) && Array.isArray(model.regions),
+  model?.enabled &&
+    Array.isArray(model.weights) &&
+    Array.isArray(model.regions) &&
+    model.featureSet === TERMINAL_FEATURE_SET,
 )
 
 // The model's geometry, for drawing where it looks (RoiOverlay): the regions
@@ -59,66 +70,36 @@ const frameTs = (path) => {
 }
 
 // Masked cells (model.masks — static clutter like the signpost and the
-// walkway) are excluded from the mean and forced to 0, exactly as
-// functions/lib/terminal-features.js does. The masks ride along in the model
-// file so this mirror can never drift from the trained geometry.
-const inMask = (fx, fy) =>
-  (model.masks || []).some(
-    ({ roi }) =>
-      fx >= roi.left && fx < roi.left + roi.width && fy >= roi.top && fy < roi.top + roi.height,
-  )
-const FEATURE_MASK = (() => {
-  const keep = []
-  for (const { roi, width, height } of model.regions) {
-    for (let gy = 0; gy < height; gy++) {
-      for (let gx = 0; gx < width; gx++) {
-        keep.push(
-          inMask(
-            roi.left + ((gx + 0.5) / width) * roi.width,
-            roi.top + ((gy + 0.5) / height) * roi.height,
-          )
-            ? 0
-            : 1,
-        )
-      }
-    }
-  }
-  return keep
-})()
+// walkway) are excluded from the region statistics and forced to 0, exactly
+// as functions/lib/terminal-features.js does. The masks ride along in the
+// model file so this mirror can never drift from the trained geometry.
+const regions = model.regions || []
+const FEATURE_MASK = featureMask(regions, model.masks || [])
+const FEATURE_LENGTH = regions.reduce((a, r) => a + r.width * r.height, 0)
 
+// Each region is drawn at NATIVE size (no resampling — the texture is the
+// signal), converted to luma, and reduced to per-cell standard deviations on
+// the model grid; then standardised per region. Mirrors extractTerminalFeatures.
 function extractFeatures(bitmap) {
-  const features = []
-  for (const { roi, width, height } of model.regions) {
+  const features = new Float32Array(FEATURE_LENGTH)
+  let offset = 0
+  for (const { roi, width, height } of regions) {
+    const rect = regionRect(roi, bitmap.width, bitmap.height)
     const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
+    canvas.width = rect.width
+    canvas.height = rect.height
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.drawImage(
-      bitmap,
-      Math.round(roi.left * bitmap.width),
-      Math.round(roi.top * bitmap.height),
-      Math.max(1, Math.round(roi.width * bitmap.width)),
-      Math.max(1, Math.round(roi.height * bitmap.height)),
-      0,
-      0,
-      width,
-      height,
-    )
-    const { data } = ctx.getImageData(0, 0, width, height)
-    for (let i = 0; i < width * height; i++) {
+    ctx.drawImage(bitmap, rect.left, rect.top, rect.width, rect.height, 0, 0, rect.width, rect.height)
+    const { data } = ctx.getImageData(0, 0, rect.width, rect.height)
+    const gray = new Float32Array(rect.width * rect.height)
+    for (let i = 0; i < gray.length; i++) {
       const o = i * 4
-      features.push((0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) / 255)
+      gray[i] = (0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]) / 255
     }
+    cellStdGrid(gray, rect.width, rect.height, width, height, features, offset)
+    offset += width * height
   }
-  let sum = 0
-  let kept = 0
-  for (let i = 0; i < features.length; i++)
-    if (FEATURE_MASK[i]) {
-      sum += features[i]
-      kept++
-    }
-  const mean = sum / (kept || 1)
-  return features.map((v, i) => (FEATURE_MASK[i] ? v - mean : 0))
+  return standardizeRegions(features, regions, FEATURE_MASK)
 }
 
 function score(features) {
