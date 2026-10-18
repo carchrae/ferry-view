@@ -126,14 +126,27 @@ Sequence severity cost per month (lower is better; agree / missed / phantom):
 | Oct | 162 | 90 (26/14/3) | 64 (18/28/0) | 88 (21/24/3) | 81 (24/20/3) | 27 (36/12/0) | 27 (36/12/0) |
 | all | 1,079 | 426 (326/45/18) | 324 (287/112/5) | 348 (306/89/11) | 329 (316/77/11) | **160 (344/58/1)** | **160 (344/58/1)** |
 
-Here the pattern is the seasonal one: every version up to v4 holds about
-0.90–0.95 in its own season and slides to 0.58 by the week of 2026-10-12;
-v4 never saw autumn, and its October cost (81) is twice its July cost. v5
-and v6 are trained through October (in-sample), so their October row is not
-evidence of generalisation; the time-forward crosswalk test is the
-recency-weighting CV in
-[2026-10-17-lineup-seasonal-drift.md](2026-10-17-lineup-seasonal-drift.md),
-which found that the model has to follow the season.
+Read on its own this table is ambiguous, as Tom pointed out: v5 and v6 look
+good in every week, but they were trained on every week, so their rows say
+nothing about carrying forward. The out-of-sample evidence in the table is
+v1–v4 sliding to 0.58 by the week of 2026-10-12 (v4 never saw autumn; its
+October cost, 81, is twice its July cost). The honest test is the same
+**time-forward** run as for the terminal
+(`scripts/experiments/lineup-time-forward.mjs`: the trainer's recipe,
+recency weights included, trained on labelled daylight frames before a
+cutoff and scored on the weeks after it):
+
+| trained before | scored weeks | n | acc | P | R | W42 acc / R | sequence after cutoff |
+|---|---|---:|---:|---:|---:|---|---|
+| 2026-09-06 (v4's cutoff) | W36–W42 | 1,247 | 0.876 | 0.933 | 0.753 | 0.677 / 0.489 | cost 155 over 435 sailings (74 agree / 42 missed / 5 phantom) |
+| 2026-10-01 | W40–W42 | 520 | 0.842 | 0.912 | 0.662 | 0.677 / 0.467 | cost 65 over 162 sailings (27 / 20 / 2) |
+| in-sample v6, for scale | W40–W42 | 627 | 0.95 | | | 0.946 | October cost 27 (36 / 12 / 0) |
+
+A crosswalk model trained through the end of September still loses half
+its recall in the week of 2026-10-12. The recency-weighted recipe does not
+carry forward across the season change; what keeps the live model good is
+that the nightly job retrains it every day, so it is never more than a day
+behind the light.
 
 Agreement: v5 and v6 agree on 100% of frames and detections; v1–v4 agree
 with them on 91–95% of frames and 85–91% of detections.
@@ -145,11 +158,13 @@ with them on 91–95% of frames and 85–91% of detections.
   light that a brightness model collapses on. Successive texture versions
   differ by well under 1% of decisions. The brightness line (v5–v8) was
   seasonal in exactly the way the crosswalk line is.
-- **The crosswalk model is seasonal.** Each version holds in its own light
-  and slides as the sun moves; retraining with recency weights is the right
-  mechanism and the nightly job now does it, but no crosswalk version so far
-  carries forward across a season change. Whether a texture-style feature
-  would do for that camera what it did for the terminal is the obvious next
+- **The crosswalk model is seasonal**, shown time-forward rather than by
+  the archive table (whose v5/v6 rows are in-sample): the current recipe
+  trained through September keeps precision 0.91 but recall falls to 0.47
+  by the week of October 12. Nightly retraining with recency weights is what
+  keeps the live model current, by following the light a day at a time.
+  Whether a texture-style feature would do for that camera what it did for
+  the terminal, carrying forward without retraining, is the obvious next
   experiment.
 - **Agreement is high among versions that share a feature set** (99–100%)
   and modest across sets (81–92% of verdicts), which is the size of the
@@ -170,6 +185,8 @@ with them on 91–95% of frames and 85–91% of detections.
 
 ## Files
 
-- `scripts/experiments/model-history-report.mjs`
+- `scripts/experiments/model-history-report.mjs`,
+  `scripts/experiments/lineup-time-forward.mjs`
 - `docs/experiments/2026-10-18-model-history-report-results.json`
-- `docs/experiments/2026-10-18-terminal-time-forward-results.json`
+- `docs/experiments/2026-10-18-terminal-time-forward-results.json`,
+  `docs/experiments/2026-10-18-lineup-time-forward-results.json`
