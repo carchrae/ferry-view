@@ -56,7 +56,17 @@ credentials.json
 /functions/backup/
 
 # Lineup-classifier training data (exported by scripts/export-lineup-dataset.mjs)
-/training-data/
+# training-data/ is machine-local (frames cache, manifests, exports) EXCEPT the
+# hand-made label files, which are the only ground truth and travel with git
+# (Tom, 2026-10-18 — the terminal labels were lost once in August, and in
+# October each machine held labels the other lacked). A directory ignore
+# cannot be re-included, hence the /* form.
+/training-data/*
+!/training-data/terminal-labels.json
+!/training-data/lineup-crosswalk-hand.json
+!/training-data/lineup-dark-labels.json
+!/training-data/tag-corrections.json
+!/training-data/dark-detections-verdict.json
 /.vscode/
 
 # Classifier-results report: ~75 MB of regenerated artifacts (three HTML pages

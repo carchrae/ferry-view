@@ -2,7 +2,11 @@
 
 What `scripts/export-lineup-dataset.mjs` (run weekly by
 `scripts/cron-export-lineup-dataset.sh`) actually writes to `training-data/`
-(gitignored), and how it relates to the live crosswalk-tagging feature. See
+(gitignored, except the hand-made label files — `terminal-labels.json`,
+`lineup-crosswalk-hand.json`, `lineup-dark-labels.json`, `tag-corrections.json`,
+`dark-detections-verdict.json` — which are tracked since 2026-10-18 so the
+only ground truth travels between machines), and how it relates to the live
+crosswalk-tagging feature. See
 [lineup-classifier.md](lineup-classifier.md) for the full pipeline.
 
 ## What is included

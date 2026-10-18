@@ -1,0 +1,111 @@
+{
+  "reviewedBy": "Tom",
+  "reviewedAt": "2026-09-05",
+  "note": "Tom reviewed dark-detections-review.html and confirmed ALL night (sun < -6°) crosswalkFullAtAuto detections are WRONG — none marked correct. Ground truth for the future night model: the lineup was NOT past the crosswalk at these detection frames.",
+  "sailings": {
+    "2026-08-17_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787028607307
+    },
+    "2026-08-18_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787116807759
+    },
+    "2026-08-19_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787199313776
+    },
+    "2026-08-19_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787200820972
+    },
+    "2026-08-19_23:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787204109914
+    },
+    "2026-08-20_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787285421614
+    },
+    "2026-08-20_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787287514603
+    },
+    "2026-08-20_23:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787291122818
+    },
+    "2026-08-21_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787372107532
+    },
+    "2026-08-21_23:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787380808233
+    },
+    "2026-08-22_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787461230362
+    },
+    "2026-08-22_23:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787465715933
+    },
+    "2026-08-24_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787631319948
+    },
+    "2026-08-25_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787716217078
+    },
+    "2026-08-25_23:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787722226564
+    },
+    "2026-08-27_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787891709043
+    },
+    "2026-08-28_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787975712833
+    },
+    "2026-08-28_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787979313912
+    },
+    "2026-08-28_23:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1787982917255
+    },
+    "2026-08-29_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1788065127075
+    },
+    "2026-08-29_23:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1788067824122
+    },
+    "2026-08-30_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1788153020283
+    },
+    "2026-09-02_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1788410712081
+    },
+    "2026-09-03_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1788492920316
+    },
+    "2026-09-03_22:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1788496224270
+    },
+    "2026-09-04_21:30_To HSB": {
+      "correct": false,
+      "detectionTs": 1788579614004
+    }
+  }
+}
