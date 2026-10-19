@@ -143,7 +143,7 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
         vetoed = false
         reason = 'human-cars-last'
       } else {
-        // No lineup to the crosswalk. When the rider's own tag says the lot
+        // No lineup to the crosswalk. When the rider's own tag says the lineup
         // was EMPTY on the frame just before the trailing run of cars, those
         // vehicles turned up after everyone waiting had gone aboard — late
         // arrivals, so the ferry had room: a verdict, not a question (Tom,

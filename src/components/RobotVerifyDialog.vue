@@ -815,7 +815,7 @@ const reasonText = computed(() => {
     }
     case 'human-late-arrivals': {
       const firstCars = p.seq.find((f) => f.ts > p.verdictTs)
-      return `You said the lot was empty at ${t(p.verdictTs)}; the vehicles on the last frames${firstCars ? ` (from ${t(firstCars.ts)})` : ''} turned up after that, with no lineup back to the crosswalk — late arrivals, so the ferry had room.`
+      return `You said no vehicles were waiting at ${t(p.verdictTs)}; the ones on the last frames${firstCars ? ` (from ${t(firstCars.ts)})` : ''} turned up after that, with no lineup back to the crosswalk — late arrivals, so the ferry had room.`
     }
     case 'vetoed':
       return 'Tag the last frame if you can see vehicles waiting — a rider\'s word on it counts.'
