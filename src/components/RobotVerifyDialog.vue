@@ -804,8 +804,19 @@ const reasonText = computed(() => {
       return `Two empty frames in a row after the last cars, from ${t(p.verdictTs)} — nothing came back after.`
     case 'robot-cars-tail':
       return `The last four frames all read as cars, and the lineup had reached the crosswalk.`
-    case 'human-cars-last-noxwalk':
-      return `Without a lineup back to the crosswalk, the vehicles at ${t(p.verdictTs)} probably rolled up late, after loading closed — then the ferry still had room.`
+    case 'human-cars-last-noxwalk': {
+      // The frame before the trailing cars, when a rider hasn't tagged it:
+      // empty there turns this question into a not-full verdict.
+      const ask = p.needed.length ? p.seq[p.needed[0]] : null
+      return (
+        `Without a lineup back to the crosswalk, the vehicles at ${t(p.verdictTs)} probably rolled up late, after loading closed — then the ferry still had room.` +
+        (ask ? ` Tag ${t(ask.ts)}: empty there settles it.` : '')
+      )
+    }
+    case 'human-late-arrivals': {
+      const firstCars = p.seq.find((f) => f.ts > p.verdictTs)
+      return `You said the lot was empty at ${t(p.verdictTs)}; the vehicles on the last frames${firstCars ? ` (from ${t(firstCars.ts)})` : ''} turned up after that, with no lineup back to the crosswalk — late arrivals, so the ferry had room.`
+    }
     case 'vetoed':
       return 'Tag the last frame if you can see vehicles waiting — a rider\'s word on it counts.'
     case 'mixed': {

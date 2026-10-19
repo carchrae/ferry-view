@@ -72,13 +72,23 @@ export function isDecided(f) {
   return typeof f.p === 'number' && f.p >= FULL_CONFIDENT_P
 }
 
+// Index of the first frame of the run of cars frames that ends the sequence
+// (seq.length when the last frame is not cars).
+export function trailingCarsStart(seq) {
+  let i = seq.length
+  while (i > 0 && seq[i - 1].carsPresent === true) i--
+  return i
+}
+
 // The rider's progress on this sailing.
 //   verdict   'notFull' | 'full' | null — what the merged evidence decides
 //   verdictTs the deciding frame's ts (confirming empty frame / last frame)
 //   decidedBy 'human' when a rider's answer sits in the deciding tail, else 'robot'
 //   reason    a code for why (see below), for the dialog's one-line explanation
 //   vetoed    the full rule fired but the lineup never reached the crosswalk
-//   needed    tail frames still undecided (latest first) — empty once decided
+//   needed    tail frames still undecided (latest first) — empty once decided,
+//             except the late-arrivals question, where it names the one frame
+//             (before the trailing cars) whose answer would settle it
 //   unsure    other unlabelled frames the robot is unsure about (latest first)
 //   walkOrder needed, then unsure, then every other unlabelled frame
 //   enough    a verdict, a veto, or nothing left in the tail to ask about
@@ -116,9 +126,13 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
   // short window, a lone cars blip before).
   // Why, as a code the UI words (with the frame times): 'robot-empty-pair',
   // 'robot-cars-tail', 'human-cars-last', 'human-empty-pair', 'vetoed',
-  // 'human-cars-last-noxwalk' (the rider must confirm), 'mixed' (tail
-  // tagged, nothing decides), or null (not enough yet).
+  // 'human-cars-last-noxwalk' (the rider must confirm), 'human-late-arrivals'
+  // (the rider's empty frame right before the trailing cars settles it: not
+  // full), 'mixed' (tail tagged, nothing decides), or null (not enough yet).
   let reason = verdict === 'notFull' ? 'robot-empty-pair' : verdict === 'full' ? 'robot-cars-tail' : vetoed ? 'vetoed' : null
+  // The frame whose answer would turn the late-arrivals question into a
+  // verdict (the one before the trailing cars), when a rider hasn't tagged it.
+  let lateArrivalsAsk = null
   const last = seq[total - 1]
   if (last?.source === 'human') {
     if (last.carsPresent === true) {
@@ -129,9 +143,27 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
         vetoed = false
         reason = 'human-cars-last'
       } else {
-        verdict = null
-        vetoed = true
-        reason = 'human-cars-last-noxwalk'
+        // No lineup to the crosswalk. When the rider's own tag says the lot
+        // was EMPTY on the frame just before the trailing run of cars, those
+        // vehicles turned up after everyone waiting had gone aboard — late
+        // arrivals, so the ferry had room: a verdict, not a question (Tom,
+        // 2026-10-18: four empties then three cars frames should decide,
+        // not ask). The robot's word alone on that empty frame is not
+        // enough — its per-frame read is what the rider is here to check —
+        // so until a rider has tagged it, that frame is the one to ask about.
+        const runStart = trailingCarsStart(seq)
+        const before = seq[runStart - 1]
+        if (before?.source === 'human' && before.carsPresent === false) {
+          verdict = 'notFull'
+          vetoed = false
+          verdictTs = before.ts
+          reason = 'human-late-arrivals'
+        } else {
+          verdict = null
+          vetoed = true
+          reason = 'human-cars-last-noxwalk'
+          if (before && before.source !== 'human') lateArrivalsAsk = runStart - 1
+        }
       }
     } else if (!verdict && seq[total - 2]?.carsPresent === false) {
       verdict = 'notFull'
@@ -149,7 +181,9 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
   const latestFirst = (a, b) => b - a
   const needed =
     verdict || vetoed
-      ? []
+      ? lateArrivalsAsk == null
+        ? []
+        : [lateArrivalsAsk]
       : [...seq.keys()]
           .filter((i) => i >= tailStart && unlabelled(i) && !isDecided(seq[i]))
           .sort(latestFirst)

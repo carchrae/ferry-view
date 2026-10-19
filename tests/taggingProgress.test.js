@@ -109,6 +109,33 @@ test('a rider\'s answer on the departure frame decides: cars → full (no veto),
   assert.equal(late.reason, 'human-cars-last-noxwalk')
   assert.equal(late.decidedBy, 'human')
   assert.equal(late.enough, true)
+  // Late arrivals settled by the rider: four empties by their hand, then
+  // three cars frames to departure, no lineup to the crosswalk (the 1:55pm
+  // on 2026-10-18) — the lot had cleared before those cars came, so not full.
+  const lateRun = [0.16, 0.15, 0.16, 0.16, 0.98, 0.98, 0.98]
+  const settled = run(lateRun, { f1: false, f2: false, f3: false, f4: true, f5: true, f6: true })
+  assert.equal(settled.verdict, 'notFull')
+  assert.equal(settled.reason, 'human-late-arrivals')
+  assert.equal(settled.decidedBy, 'human')
+  assert.equal(settled.verdictTs, frames(7)[3].ts)
+  assert.equal(settled.vetoed, false)
+  assert.deepEqual(settled.needed, [])
+  // The robot's cars on the run count too: the rider need only empty the
+  // frame before it and confirm the departure frame.
+  assert.equal(run(lateRun, { f3: false, f6: true }).reason, 'human-late-arrivals')
+  // With the crosswalk reached, the same tags still mean full.
+  assert.equal(run(lateRun, { f3: false, f6: true }, { crosswalkOk: true }).verdict, 'full')
+  // The robot's empty before the run is not enough: the question stands and
+  // that frame is the one to ask about.
+  const robotEmpty = run(lateRun, { f6: true })
+  assert.equal(robotEmpty.reason, 'human-cars-last-noxwalk')
+  assert.deepEqual(robotEmpty.needed, [3])
+  assert.equal(robotEmpty.walkOrder[0], 3)
+  assert.equal(robotEmpty.enough, true)
+  // An unsure frame between the rider's empty and the cars breaks the run.
+  const gap = run([0.16, 0.16, 0.45, 0.98, 0.98], { f1: false, f4: true })
+  assert.equal(gap.reason, 'human-cars-last-noxwalk')
+  assert.deepEqual(gap.needed, [2])
   // The robot calls this one not-full (it treats the last cars frame as a
   // blip); a rider saying cars WERE waiting on that frame wins (crosswalk reached).
   const blip = [0.9, 0.9, 0.1, 0.1, 0.9]

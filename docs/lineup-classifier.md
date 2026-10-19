@@ -587,10 +587,12 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   answers decides it, with a one-line reason. A rider's answer on the
   departure (last) frame outranks the robot's rules — vehicles waiting there
   means full when the lineup had reached the crosswalk; without that they
-  probably rolled up late after loading closed, so the dialog asks the rider
-  to confirm (full, or late arrivals = it had room) instead of deciding; an
-  empty last frame with an empty one before it means not full even when no
-  cars were seen first. Home-page past Bowen rows
+  probably rolled up late after loading closed — and when the rider's own tag
+  says the frame just before that run of cars was empty, that is the verdict
+  (not full, late arrivals; 2026-10-18), otherwise the dialog asks the rider
+  to confirm (full, or late arrivals = it had room) and points them at that
+  frame; an empty last frame with an empty one before it means not full even
+  when no cars were seen first. Home-page past Bowen rows
   with frames but no fullness carry a "Was it full? Help tag it" nudge into the same
   dialog, and the per-sailing dialog shows one boxed frame per camera.
 - **Sunrise is where it fails; a sun-up/sun-down pair would fix most of it**
