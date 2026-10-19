@@ -645,7 +645,7 @@ const savingLabel = ref(false)
 // that button shows its spinner, the other is disabled meanwhile.
 const pendingAnswer = ref(null)
 // How long the answer chip shows on the frame before the view moves on.
-const SETTLE_MS = 800
+const SETTLE_MS = 400
 let settleTimer = null
 
 const currentScore = computed(() => (frame.value ? scores.value.get(frame.value.path) : null))
