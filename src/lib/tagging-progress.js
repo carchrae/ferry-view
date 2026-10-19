@@ -9,11 +9,13 @@ import {
 // robot now has enough to decide if the ferry left full. Pure (no Firebase, no
 // DOM) so the walk order and the "enough" rule are unit-testable.
 //
-// The two verdict rules (lineup-labels.js) are both decided by the TAIL of the
-// capture-ordered sequence — not-full needs two empty frames after the last
-// solid cars frame, full needs the last FULL_TAIL_FRAMES frames all confidently
-// cars — so the frames a human answer is worth most on are the undecided ones
-// in that tail. Everything else is optional training data.
+// The two verdict rules (lineup-labels.js): not-full needs two consecutive
+// empty frames once loading (solid cars) has been seen, and cars after that
+// gap are late arrivals that never undo it (one-way, 2026-10-19); full needs
+// the last FULL_TAIL_FRAMES frames all confidently cars. Not full outranks
+// full. The frames a human answer is worth most on are the undecided ones in
+// the tail, where the full rule and a rider's departure-frame word are
+// settled. Everything else is optional training data.
 
 // Robot score bands, mirroring useTerminalClassifier.terminalBand. Only used
 // when a score comes without its band.
@@ -148,7 +150,11 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
         // vehicles turned up after everyone waiting had gone aboard — late
         // arrivals, so the ferry had room: a verdict, not a question (Tom,
         // 2026-10-18: four empties then three cars frames should decide,
-        // not ask). The robot's word alone on that empty frame is not
+        // not ask). When the robot's own empty-gap rule has already decided
+        // it (loading seen, then two empties), the same holds: the rider's
+        // cars on the departure frame ARE the late arrivals that gap
+        // predicts, so the robot's verdict stands (one-way rule, 2026-10-19).
+        // Otherwise the robot's word alone on a lone empty frame is not
         // enough — its per-frame read is what the rider is here to check —
         // so until a rider has tagged it, that frame is the one to ask about.
         const runStart = trailingCarsStart(seq)
@@ -158,6 +164,11 @@ export function taggingProgress(frames, { scores, labels, crosswalkOk = false, .
           vetoed = false
           verdictTs = before.ts
           reason = 'human-late-arrivals'
+        } else if (emptyTs != null) {
+          verdict = 'notFull'
+          vetoed = false
+          verdictTs = emptyTs
+          reason = 'robot-empty-pair'
         } else {
           verdict = null
           vetoed = true

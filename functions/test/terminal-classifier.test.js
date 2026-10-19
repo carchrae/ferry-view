@@ -118,7 +118,7 @@ describe('classifyTerminal', () => {
   })
 })
 
-describe('terminalEmptyFrameTs (tail rule)', () => {
+describe('terminalEmptyFrameTs (one-way empty-gap rule)', () => {
   const f = (ts, carsPresent) => ({ ts, carsPresent })
   const T = true
   const F = false
@@ -135,13 +135,17 @@ describe('terminalEmptyFrameTs (tail rule)', () => {
     expect(terminalEmptyFrameTs(seq(T, T, F, T, T))).toBe(null)
   })
 
-  it('SOLID cars returning after an empty window clears it — it was mid-sailing', () => {
-    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, T))).toBe(null)
-    // …and a new empty pair in the new tail confirms again
-    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, T, F, F))).toBe(8)
+  it('is ONE-WAY: cars after the confirming pair are late arrivals and never undo it', () => {
+    // the 05:15 on 2026-10-19: loading, two empties, a late car on the departure frame
+    expect(terminalEmptyFrameTs(seq(T, T, T, F, F, T, F, F, F, T, T))).toBe(5)
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, T))).toBe(4)
+    // a second empty pair later doesn't move the ts: the FIRST gap is when everyone was aboard
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, T, F, F))).toBe(4)
+    // cars right through to the end after the gap still prove nothing
+    expect(terminalEmptyFrameTs(seq(T, T, F, F, T, T, T, T, T))).toBe(4)
   })
 
-  it('an ISOLATED cars frame is a model blip: breaks a run, never starts a new tail', () => {
+  it('an ISOLATED cars frame is a model blip: breaks a run, never counts as loading', () => {
     // blip after a confirmed window — the verdict stands
     expect(terminalEmptyFrameTs(seq(T, T, F, F, T, F, F))).toBe(4)
     expect(terminalEmptyFrameTs(seq(T, T, F, F, T))).toBe(4)
@@ -164,8 +168,10 @@ describe('terminalEmptyFrameTs (tail rule)', () => {
     // but its frame doesn't count as observed empty either
     const withBlip = [...empties(5), f(6, true), ...Array.from({ length: 5 }, (_, i) => f(7 + i, false))]
     expect(terminalEmptyFrameTs(withBlip)).toBe(11)
-    // solid cars anywhere disables the all-empty path (cars-first applies)
-    expect(terminalEmptyFrameTs([...empties(MIN_ALL_EMPTY_FRAMES), f(98, true), f(99, true)])).toBe(null)
+    // solid cars AFTER a long quiet window are late arrivals (one-way)…
+    expect(terminalEmptyFrameTs([...empties(MIN_ALL_EMPTY_FRAMES), f(98, true), f(99, true)])).toBe(MIN_ALL_EMPTY_FRAMES)
+    // …but solid cars BEFORE the empties mean cars-first applies and the pair confirms on its own
+    expect(terminalEmptyFrameTs([f(0, true), f(1, true), ...empties(2).map((x) => f(x.ts + 1, false))])).toBe(3)
   })
 
   it('carsPresent null (unknown) breaks runs and cars solidity, never counts', () => {
@@ -209,7 +215,7 @@ describe('terminalFullAtDeparture', () => {
     expect(terminalFullAtDeparture(p(0.1, 0.9, 0.9, 0.9, 0.9))).toBe(5)
   })
 
-  it('is mutually exclusive with the not-full tail rule on the same frames', () => {
+  it('cars to the end never fire the not-full rule, and an emptied lane never fires full', () => {
     const frames = p(0.9, 0.9, 0.9, 0.9, 0.9, 0.9)
     const withState = frames.map((f) => ({ ...f, carsPresent: f.p >= 0.5 }))
     expect(terminalFullAtDeparture(frames)).toBe(6)
@@ -218,5 +224,13 @@ describe('terminalFullAtDeparture', () => {
     const emptiedState = emptied.map((f) => ({ ...f, carsPresent: f.p >= 0.5 }))
     expect(terminalFullAtDeparture(emptied)).toBe(null)
     expect(terminalEmptyFrameTs(emptiedState)).toBe(4)
+  })
+
+  it('both rules can fire on one sailing (late arrivals fill the last four frames): not full wins', () => {
+    // callers consult the full rule only when the empty-gap rule returns null
+    const late = p(0.9, 0.9, 0.1, 0.1, 0.9, 0.9, 0.9, 0.9)
+    const state = late.map((f) => ({ ...f, carsPresent: f.p >= 0.5 }))
+    expect(terminalFullAtDeparture(late)).toBe(8)
+    expect(terminalEmptyFrameTs(state)).toBe(4)
   })
 })

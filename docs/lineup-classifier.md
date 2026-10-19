@@ -655,30 +655,41 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   buying, without the erased-car cost. Composites are therefore not used for
   the terminal cam; the experiment stays for re-running if the cadence or
   camera changes.
-- **Tail rule, single threshold** (2026-08-16, second revision of the day):
-  cars at `p >= threshold` (0.5), else empty, and the confirming empty pair
-  must come **after the last solid cars frame**. A stricter per-frame empty
-  threshold (0.35 with an unknown band between) was tried first and turned
-  out to be the wrong mechanism: it cut coverage of with-room sailings from
-  74% to 43% while barely moving precision, because the sweep
-  (`training-data/experiments/empty-threshold-sweep.mjs`) showed **every**
-  wrong flag had the same shape — an empty window in the *middle* of the
-  sailing with cars returning after (loading gap, camera hiccup), which no
-  per-frame confidence can catch. Requiring the empty run to sit in the tail
-  scored 62% coverage with 0 wrong among 239 tagged flags. The 0.35 band
+- **One-way empty-gap rule, single threshold** (2026-10-19, restoring the
+  direction of the original rule): cars at `p >= threshold` (0.5), else
+  empty; the first two consecutive empty frames **after loading (solid cars)
+  has been seen** mean everyone waiting went aboard, and cars after that gap
+  are **late arrivals** — a vehicle that rolls up after loading closed —
+  which never undo it. Between 2026-08-16 and 2026-10-19 this was the
+  *tail* rule: the pair had to follow the **last** solid cars frame, so
+  returning cars cleared a stamped verdict ("the empty window was
+  mid-sailing"). That withdrew correct verdicts — the 05:15 on 2026-10-19
+  loaded three cars frames, emptied for two, and one late car on the
+  departure frame cost it its Not Full (Tom: that is exactly the case the
+  rule exists for). The archive replay
+  ([2026-10-19-empty-gap-one-way.md](experiments/2026-10-19-empty-gap-one-way.md),
+  748 tagged sailings, model v11): one-way flags 77% of room-tagged sailings
+  against the tail rule's 71%, and is wrong on 7 Full-tagged sailings (of
+  179) against 0 — five of those seven have the lane refill for 6–12 frames
+  right through departure, a real returning queue, whereas the 36 late-arrival
+  sailings it newly gets right nearly all have a trailing cars run of 2–3
+  frames. A stricter per-frame empty threshold (0.35 with an unknown band
+  between) was tried on 2026-08-16 and was the wrong mechanism: it cut
+  coverage from 74% to 43% while barely moving precision
+  (`training-data/experiments/empty-threshold-sweep.mjs`). The 0.35 band
   survives as `emptyThreshold` in the model JSON, but **UI-only**: it draws
   the grey "unsure" strips and steers the labelling dialog to the frames
   where a rider's answer is worth most.
-- **Solid cars vs blips**: a cars frame only counts (for cars-first, and for
-  starting a new tail) when an adjacent frame is also cars. An isolated
-  single-frame "cars" between empties is likelier a model false positive
-  than a real queue: it breaks an empty run but never invalidates a verdict.
-- An **empty terminal at departure** means everyone waiting got on →
-  `ferryNotFullAuto`. This replaced the old one-way reading: solid cars
-  after an empty window now *clear* a stamped verdict (it was mid-sailing),
-  server-side too — `captureDepartureTimelapse` deletes the auto fields,
-  withdraws the aggregate `nf`, and retracts the robot's own capacity report
-  (never a human's). An isolated trailing cars frame still proves nothing.
+- **Solid cars vs blips**: a cars frame only counts as loading (cars-first)
+  when an adjacent frame is also cars. An isolated single-frame "cars"
+  between empties is likelier a model false positive than a real queue: it
+  breaks an empty run but never satisfies cars-first.
+- An **empty terminal after loading** means everyone waiting got on →
+  `ferryNotFullAuto`, stamped by `captureDepartureTimelapse` on the
+  confirming frame and never cleared by later frames (the aggregate `nf` and
+  the robot's own capacity report stay too). A rider's word on the departure
+  frame with the lineup at the crosswalk can still outrank it in the tagging
+  dialog (`human-cars-last`).
 - **FULL verdict** (2026-08-16, later the same day): the terminal can also
   assert the opposite — the last `FULL_TAIL_FRAMES` (4) frames all reading
   confidently cars (`p >= FULL_CONFIDENT_P`, 0.7 — stricter than the 0.5
@@ -693,9 +704,11 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   contradictions). Streaming: `terminalFullRun` counter, stamps
   `ferryFullAuto`/`terminalFullProb` + a robot 'Full' capacity report +
   aggregate `fl`; any sub-0.7 frame resets the run and clears a stamped
-  verdict (same withdrawal cascade as not-full). Mutually exclusive with
-  the tail rule by construction: four confident-cars frames at the end are
-  solid cars, so the tail can never hold an empty pair. Three states total:
+  verdict. Not mutually exclusive with the empty-gap rule since 2026-10-19
+  (the lane can empty and then fill its last four frames with late arrivals):
+  **not full wins** — the server never stamps full over a not-full, and the
+  browser mirror and tagging dialog consult the full rule only when the
+  empty-gap rule is silent. Three states total:
   **not full** / **full** / **unsure** (neither — the webapp's grey "not
   sure" button, which collects per-frame labels).
 - **No crosswalk veto** (tried 2026-08-10, removed 2026-08-16): suppressing
@@ -764,10 +777,10 @@ set name in the model file gates both runtimes) →
 2026-08-10 on 488 labeled frames: 5-fold CV precision 0.94 / recall 0.91;
 a lone empty frame misreads ~25% of the time, hence the two-consecutive
 confirmation) → `functions/lib/terminal-classifier.js` (runtime, hooked into
-`captureDepartureTimelapse`; an empty pair after the last solid cars stamps
+`captureDepartureTimelapse`; the first empty pair after solid cars stamps
 `terminalEmptyFrameTs` / `ferryNotFullAuto`, aggregate key `nf`; a lone
 empty parks as `terminalEmptyPending`, a lone cars as `terminalCarsPending`,
-and solid cars clear a stamped verdict — see the tail rule above). Training:
+and nothing clears a stamp — see the one-way empty-gap rule above). Training:
 
 ```bash
 npm run lineup:export      # also downloads terminal frames + terminal-manifest.csv

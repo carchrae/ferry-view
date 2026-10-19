@@ -14,11 +14,12 @@ import {
 // Browser-side terminal-cars classifier — the "ferry left not full" signal.
 // Mirrors useLineupClassifier.js but for the Bowen terminal (departure)
 // timelapse and the terminal model: frames are classified in capture order
-// and the shared TAIL rule (terminalEmptyFrameTs) applies — two consecutive
-// empty frames AFTER the last solid cars frame mean everyone waiting got on.
-// Because a later solid cars frame invalidates an earlier empty window
-// (it was mid-sailing, not departure), the verdict can only be evaluated
-// once ALL frames are classified — no early stop.
+// and the shared one-way EMPTY-GAP rule (terminalEmptyFrameTs) applies —
+// two consecutive empty frames once loading (solid cars) has been seen mean
+// everyone waiting got on, and cars after that gap are late arrivals that
+// never undo it (2026-10-19). The FULL rule can still be undone by a later
+// frame, so both are evaluated once ALL frames are classified — no early
+// stop.
 //
 // Like the crosswalk classifier, this exists so verdicts appear without any
 // server deploy or backfill: any sailing whose terminal frames are still in
@@ -35,8 +36,8 @@ import {
 // Single decision threshold, mirroring functions/lib/terminal-classifier.js:
 // cars at p >= THRESHOLD, else empty. EMPTY_THRESHOLD survives only as the
 // UI band boundary below — 'unsure' frames are where a rider's label is
-// worth most, but they no longer gate the verdict (the tail rule does; see
-// lineup-labels.js).
+// worth most, but they no longer gate the verdict (the empty-gap rule does;
+// see lineup-labels.js).
 loadLiveModels()
 // The model in force right now — read at call time, never captured.
 const current = () => terminalModel.value
@@ -211,15 +212,16 @@ export function cachedTerminal(sailingKey, { crosswalkOk = false } = {}) {
 }
 
 // Classify a sailing's terminal frames and return the three-state verdict:
-//   { kind: 'notFull', emptyTs, prob } — tail rule: empty pair after the
-//     last solid cars frame; prob is the confirming frame's empty
+//   { kind: 'notFull', emptyTs, prob } — empty-gap rule: the first empty
+//     pair after loading was seen; prob is the confirming frame's empty
 //     confidence (1 − p), the number the server stamps as terminalEmptyProb.
+//     Outranks full on the same frames.
 //   { kind: 'full', fullAt, prob } — the last FULL_TAIL_FRAMES frames all
 //     confidently cars AND crosswalkOk (the veto, see resolveVerdict);
 //     prob is the last frame's cars confidence.
 //   null — inconclusive (never a claim either way).
-// NO early stop: later frames can invalidate either verdict, so it only
-// exists once every frame is classified. `final` marks a departed sailing
+// NO early stop: later frames can invalidate a full verdict, so verdicts
+// only exist once every frame is classified. `final` marks a departed sailing
 // whose verdict may cache. `force` re-classifies past a cached
 // no-detection — used by the explicit "question robot" button, where a
 // stale null shouldn't make the click a silent no-op.

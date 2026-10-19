@@ -136,13 +136,26 @@ test('a rider\'s answer on the departure frame decides: cars → full (no veto),
   const gap = run([0.16, 0.16, 0.45, 0.98, 0.98], { f1: false, f4: true })
   assert.equal(gap.reason, 'human-cars-last-noxwalk')
   assert.deepEqual(gap.needed, [2])
-  // The robot calls this one not-full (it treats the last cars frame as a
-  // blip); a rider saying cars WERE waiting on that frame wins (crosswalk reached).
+  // The robot calls this one not-full (loading seen, then an empty gap);
+  // a rider saying cars WERE waiting on the last frame wins only with the
+  // crosswalk reached. Without it those cars are the late arrivals the gap
+  // predicts, so the robot's verdict stands (one-way rule, 2026-10-19).
   const blip = [0.9, 0.9, 0.1, 0.1, 0.9]
   assert.equal(run(blip).verdict, 'notFull')
   assert.equal(run(blip).reason, 'robot-empty-pair')
   assert.equal(run(blip, { f4: true }, { crosswalkOk: true }).verdict, 'full')
-  assert.equal(run(blip, { f4: true }).reason, 'human-cars-last-noxwalk')
+  const lateCar = run(blip, { f4: true })
+  assert.equal(lateCar.verdict, 'notFull')
+  assert.equal(lateCar.reason, 'robot-empty-pair')
+  assert.equal(lateCar.verdictTs, frames(5)[3].ts)
+  assert.equal(lateCar.vetoed, false)
+  assert.deepEqual(lateCar.needed, [])
+  // Same shape as the 05:15 on 2026-10-19: three cars frames, empties, a
+  // late car on the departure frame — decided not full by the robot alone.
+  const morning = run([0.99, 0.99, 0.99, 0.05, 0.04, 0.64, 0.04, 0.36, 0.05, 0.92, 0.78])
+  assert.equal(morning.verdict, 'notFull')
+  assert.equal(morning.verdictTs, frames(11)[4].ts)
+  assert.equal(morning.decidedBy, 'robot')
   // Same when the rider says the last frame was empty and the one before was empty too.
   const quiet = run([0.1, 0.1, 0.1], { f2: false })
   assert.equal(quiet.verdict, 'notFull')

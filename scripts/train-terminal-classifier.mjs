@@ -501,8 +501,8 @@ const freshModel = {
   trainedAt: new Date().toISOString(),
 }
 
-// Per-sailing verdicts over EVERY archived frame, via the shared tail rule
-// (terminalEmptyFrameTs).
+// Per-sailing verdicts over EVERY archived frame, via the shared one-way
+// empty-gap rule (terminalEmptyFrameTs).
 const bySailing = new Map()
 for (const s of samples) {
   if (!bySailing.has(s.sailingKey)) bySailing.set(s.sailingKey, [])

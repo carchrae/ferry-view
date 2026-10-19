@@ -97,37 +97,6 @@ export function firstSustainedPositiveTs(frames) {
   return null
 }
 
-// Terminal-camera "ferry was not full" TAIL rule (2026-08-16, replacing the
-// confirmed-pair rule). `frames` is capture-ordered [{ ts, carsPresent }]
-// from the departure timelapse. The 2026-08-16 sweep
-// (training-data/experiments/empty-threshold-sweep.mjs, 510 tagged sailings)
-// showed EVERY wrong not-full flag had the same shape — an empty window in
-// the MIDDLE of the sailing with cars returning after — while tightening the
-// per-frame empty threshold only cost coverage (43% at pair<0.35, 7 wrong).
-// The rule below scored 62% coverage with 0 wrong among 239 tagged flags.
-//  - TAIL: the confirming frames must come AFTER the last SOLID cars frame.
-//    An empty window that cars follow was mid-sailing, not departure — this
-//    is what actually delivers correctness, not per-frame confidence.
-//  - SOLID CARS: a cars frame only counts when an adjacent frame is also
-//    cars. An isolated single-frame "cars" blip between empties is likelier
-//    a model false positive than a real queue: it breaks an empty run but
-//    neither starts a new tail nor satisfies cars-first.
-//  - CONFIRMATION: a lone empty frame is noise (per-frame false-empty rate
-//    was ~25% in the 2026-07 evaluation) — it takes two CONSECUTIVE empty
-//    frames to count, mirroring firstSustainedPositiveTs.
-//  - CARS FIRST, softened: the tail only confirms after solid cars was seen
-//    (a window empty from its very first frame may have missed the loading)
-//    EXCEPT when the window is long: MIN_ALL_EMPTY_FRAMES observed-empty
-//    frames with no solid cars ever is a genuinely quiet sailing (measured:
-//    all-empty windows of 10+ frames are tagged Not Full / 25% by riders,
-//    never Full).
-//  - carsPresent === null means UNKNOWN (e.g. a dark frame): it breaks an
-//    empty run, breaks cars solidity, and doesn't count as observed.
-// Returns the ts of the CONFIRMING (second) frame of the first qualifying
-// empty run in the tail — "empty from then on" — or null when never
-// confirmed (inconclusive — NOT "full"). The streaming equivalent in
-// webcam.js (pending → confirm, solid cars CLEARS a stamped verdict) must
-// match this rule.
 // Terminal-camera "ferry left FULL" rule (2026-08-16). `frames` is
 // capture-ordered [{ ts, p }] — raw probabilities, because full needs a
 // stricter cut than the 0.5 cars/empty split: the last FULL_TAIL_FRAMES
@@ -140,9 +109,11 @@ export function firstSustainedPositiveTs(frames) {
 // pure rule keeps it testable. Measured (2026-08-16, 510 tagged sailings):
 // with the crosswalk veto this scores 95.7% precision at 87% coverage of
 // Full-tagged sailings; the handful of misses are riders' "10%" tags —
-// nearly full, never "Not Full". Mutually exclusive with
-// terminalEmptyFrameTs by construction: four confident-cars frames at the
-// end are solid cars, so the tail can never contain an empty pair.
+// nearly full, never "Not Full". NOT mutually exclusive with
+// terminalEmptyFrameTs since the one-way empty-gap rule (2026-10-19): a
+// lane can empty and then fill its last four frames with late arrivals.
+// Not full wins — callers only consult this rule when terminalEmptyFrameTs
+// returned null (the server likewise never stamps full over a not-full).
 // Returns the LAST frame's ts, or null.
 export const FULL_TAIL_FRAMES = 4
 export const FULL_CONFIDENT_P = 0.7
@@ -155,32 +126,67 @@ export function terminalFullAtDeparture(frames) {
   return typeof lastTs === 'number' ? lastTs : null
 }
 
+// Terminal-camera "ferry was not full" EMPTY-GAP rule, one-way (2026-10-19,
+// restoring the direction of the pre-2026-08-16 rule). `frames` is
+// capture-ordered [{ ts, carsPresent }] from the departure timelapse. Once
+// the lane has been seen loading and then reads empty on two consecutive
+// frames, everyone who was waiting went aboard: the ferry had room. Vehicles
+// that appear AFTER that gap are late arrivals — a car that rolls up a few
+// minutes before (or as) the ferry leaves, after loading closed — and they
+// never undo the verdict (Tom, 2026-10-19: the 05:15 that morning had three
+// cars frames, two empties, and one late car on the departure frame, and the
+// 2026-08-16 "tail" reading withdrew the Not Full it had already stamped).
+//  - CONFIRMATION: a lone empty frame is noise (per-frame false-empty rate
+//    was ~25% in the 2026-07 evaluation) — it takes two CONSECUTIVE empty
+//    frames to count, mirroring firstSustainedPositiveTs.
+//  - SOLID CARS: a cars frame only counts as loading when an adjacent frame
+//    is also cars. An isolated single-frame "cars" blip between empties is
+//    likelier a model false positive than a real queue: it breaks an empty
+//    run but doesn't satisfy cars-first.
+//  - CARS FIRST, softened: the pair only confirms after solid cars was seen
+//    BEFORE it (a window empty from its very first frame may have missed
+//    the loading) EXCEPT when the window is long: MIN_ALL_EMPTY_FRAMES
+//    observed-empty frames with no solid cars yet is a genuinely quiet
+//    sailing (measured: all-empty windows of 10+ frames are tagged Not
+//    Full / 25% by riders, never Full).
+//  - ONE-WAY: cars after the confirming pair — solid or not, right up to
+//    the departure frame — prove nothing. The 2026-08-16 tail rule made
+//    returning solid cars clear the verdict ("the empty window was
+//    mid-sailing"); the archive replay in
+//    docs/experiments/2026-10-19-empty-gap-one-way.md records what that
+//    trade costs and buys.
+//  - carsPresent === null means UNKNOWN (e.g. a dark frame): it breaks an
+//    empty run, breaks cars solidity, and doesn't count as observed.
+// Returns the ts of the CONFIRMING (second) frame of the FIRST qualifying
+// empty pair — "everyone was aboard by then" — or null when never confirmed
+// (inconclusive — NOT "full"). The streaming equivalent in webcam.js
+// (pending → confirm, nothing ever clears a stamp) must match this rule.
+// A not-full verdict outranks terminalFullAtDeparture on the same frames:
+// callers evaluate the full rule only when this one returns null.
 export const MIN_ALL_EMPTY_FRAMES = 10
 export function terminalEmptyFrameTs(frames) {
   const list = frames || []
   const solid = (i) =>
     list[i]?.carsPresent === true &&
     (list[i - 1]?.carsPresent === true || list[i + 1]?.carsPresent === true)
-  let lastSolid = -1
-  for (let i = 0; i < list.length; i++) if (solid(i)) lastSolid = i
-  const carsSeen = lastSolid >= 0
+  let carsSeen = false
   let observedEmpty = 0
-  for (let i = 0; i <= lastSolid; i++) if (list[i]?.carsPresent === false) observedEmpty++
   let run = 0
-  for (let i = lastSolid + 1; i < list.length; i++) {
-    if (list[i]?.carsPresent === false) {
-      observedEmpty++
-      run++
-    } else {
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i]
+    if (f?.carsPresent !== false) {
       run = 0
+      if (solid(i)) carsSeen = true
       continue
     }
+    observedEmpty++
+    run++
     if (
       run >= 2 &&
       (carsSeen || observedEmpty >= MIN_ALL_EMPTY_FRAMES) &&
-      typeof list[i].ts === 'number'
+      typeof f.ts === 'number'
     ) {
-      return list[i].ts
+      return f.ts
     }
   }
   return null

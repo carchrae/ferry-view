@@ -113,7 +113,7 @@ const nightVerdict = computed(
   () => hitIdx.value >= 0 && (seq.value[hitIdx.value]?.dark || seq.value[hitIdx.value - 1]?.dark),
 )
 // Display bands from the score, not carsPresent: the verdict rule is
-// two-state (tail rule, lineup-labels.js) but the grey 'unsure' band is
+// two-state (empty-gap rule, lineup-labels.js) but the grey 'unsure' band is
 // still the honest visual for coin-flip frames — and where a rider's label
 // is worth most.
 const stateClass = (f) => terminalBand(f.p)

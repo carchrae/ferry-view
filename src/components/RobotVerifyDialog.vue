@@ -818,8 +818,14 @@ const reasonText = computed(() => {
       return `You said vehicles were waiting on the last frame (${t(p.verdictTs)}) — the one taken as the ferry left.`
     case 'human-empty-pair':
       return `You said the last frame (${t(p.verdictTs)}) was empty, and the one before${prev ? ` (${t(prev.ts)})` : ''} was too — nobody was left waiting when the ferry left.`
-    case 'robot-empty-pair':
-      return `Two empty frames in a row after the last cars, from ${t(p.verdictTs)} — nothing came back after.`
+    case 'robot-empty-pair': {
+      // Cars after the gap are late arrivals; say so when there were any.
+      const later = p.seq.some((f) => f.ts > p.verdictTs && f.carsPresent === true)
+      return (
+        `Two empty frames in a row after loading, from ${t(p.verdictTs)} — everyone waiting was aboard by then.` +
+        (later ? ' The vehicles after that turned up late.' : '')
+      )
+    }
     case 'robot-cars-tail':
       return `The last four frames all read as cars, and the lineup had reached the crosswalk.`
     case 'human-cars-last-noxwalk': {
