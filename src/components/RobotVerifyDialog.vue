@@ -317,29 +317,44 @@
                 <q-icon :name="user ? 'check' : 'warning'" size="14px" />
                 {{ savedText(savedLine) }}
               </div>
-              <!-- Vehicles on the departure frame but the lineup never reached
-                   the crosswalk: probably late arrivals, not a full ferry — the
-                   rider confirms either way; both answers file a report. -->
-              <div v-if="progress.reason === 'human-cars-last-noxwalk' && !confirmedLate" class="row q-gutter-sm q-mt-xs">
+              <!-- Vehicles on the departure frame but no crosswalk mark on
+                   record (the robot never saw the lineup get there, no rider
+                   marked it): either late arrivals and room, or a lineup the
+                   robot missed and a full ferry. The rider confirms either
+                   way (both answers file a report) — or marks the crosswalk
+                   on the lineup camera, after which the tags here say full. -->
+              <template v-if="progress.reason === 'human-cars-last-noxwalk' && !confirmedLate">
+                <div class="row q-gutter-sm q-mt-xs">
+                  <q-btn
+                    dense
+                    no-caps
+                    unelevated
+                    color="deep-orange"
+                    class="col"
+                    label="Yes — it left full"
+                    @click="confirmCapacity('Full')"
+                  />
+                  <q-btn
+                    dense
+                    no-caps
+                    outline
+                    color="indigo"
+                    class="col"
+                    label="No — they arrived late, it had room"
+                    @click="confirmCapacity('Not Full')"
+                  />
+                </div>
                 <q-btn
                   dense
                   no-caps
-                  unelevated
-                  color="deep-orange"
-                  class="col"
-                  label="Yes — it left full"
-                  @click="confirmCapacity('Full')"
+                  flat
+                  color="grey-8"
+                  class="full-width q-mt-xs"
+                  icon="directions_walk"
+                  label="The lineup did reach the crosswalk — mark it"
+                  @click="emit('crosswalk')"
                 />
-                <q-btn
-                  dense
-                  no-caps
-                  outline
-                  color="indigo"
-                  class="col"
-                  label="No — they arrived late, it had room"
-                  @click="confirmCapacity('Not Full')"
-                />
-              </div>
+              </template>
               <div v-else-if="confirmedLate" class="text-caption" :class="savedClass">
                 <q-icon :name="user ? 'check' : 'warning'" size="14px" />
                 {{ savedText(`Saved: ${confirmedLate}.`) }}
@@ -447,6 +462,9 @@ const emit = defineEmits([
   'capacity',
   'refute',
   'frame-label',
+  // The rider wants the lineup camera: the crosswalk has no mark on record
+  // and they can give it one (the parent swaps this dialog to kind crosswalk).
+  'crosswalk',
 ])
 
 const { user, loadMyFrameLabels } = useFrameLabel()
@@ -595,9 +613,9 @@ const claimText = computed(() => {
     // this is exactly the case the rider's eyes settle.
     if (!props.crosswalkOk)
       return (
-        'The robot read cars waiting right up to departure, but the lineup never reached the ' +
-        'crosswalk — so they were probably late arrivals and the ferry had room. Your tags settle ' +
-        'it: were cars really waiting on the last frames?'
+        'The robot read cars waiting right up to departure, but has no record of the lineup ' +
+        'reaching the crosswalk — so they were probably late arrivals and the ferry had room. Your ' +
+        'tags settle it: were cars really waiting on the last frames?'
       )
     return `These are the terminal frames the robot judged. It thinks the ferry left full — cars were still waiting right up to departure. ${verify}`
   }
@@ -764,8 +782,8 @@ const verdictHeadline = computed(() => {
   }
   if (p.verdict === 'notFull') return `Not full — ${who}`
   if (p.verdict === 'full') return `Full — ${who}`
-  if (p.reason === 'human-cars-last-noxwalk') return 'Vehicles at departure, but no lineup to the crosswalk — was it full?'
-  if (p.vetoed) return "Cars to the very end, but no lineup to the crosswalk — the robot won't call it full"
+  if (p.reason === 'human-cars-last-noxwalk') return 'Vehicles at departure, but no crosswalk mark — was it full?'
+  if (p.vetoed) return "Cars to the very end, but no crosswalk mark — the robot won't call it full"
   return 'Nothing decided yet'
 })
 const verdictColor = computed(() => {
@@ -809,13 +827,13 @@ const reasonText = computed(() => {
       // empty there turns this question into a not-full verdict.
       const ask = p.needed.length ? p.seq[p.needed[0]] : null
       return (
-        `Without a lineup back to the crosswalk, the vehicles at ${t(p.verdictTs)} probably rolled up late, after loading closed — then the ferry still had room.` +
-        (ask ? ` Tag ${t(ask.ts)}: empty there settles it.` : '')
+        `Nothing on record says the lineup reached the crosswalk — the robot didn't see it and nobody has marked it. If it never did, the vehicles at ${t(p.verdictTs)} probably rolled up late, after loading closed, and the ferry had room; if it did, this was a full ferry.` +
+        (ask ? ` Tagging ${t(ask.ts)} empty would also settle it.` : '')
       )
     }
     case 'human-late-arrivals': {
       const firstCars = p.seq.find((f) => f.ts > p.verdictTs)
-      return `You said no vehicles were waiting at ${t(p.verdictTs)}; the ones on the last frames${firstCars ? ` (from ${t(firstCars.ts)})` : ''} turned up after that, with no lineup back to the crosswalk — late arrivals, so the ferry had room.`
+      return `You said no vehicles were waiting at ${t(p.verdictTs)}; the ones on the last frames${firstCars ? ` (from ${t(firstCars.ts)})` : ''} turned up after that, and nothing on record says the lineup reached the crosswalk — late arrivals, so the ferry had room.`
     }
     case 'vetoed':
       return 'Tag the last frame if you can see vehicles waiting — a rider\'s word on it counts.'

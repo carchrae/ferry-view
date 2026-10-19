@@ -1402,6 +1402,7 @@
       @refute="onRobotVerifyRefute"
       @capacity="onRobotVerifyCapacity"
       @frame-label="onRobotVerifyFrameLabel"
+      @crosswalk="openRobotFromTypical('crosswalk', true)"
     />
     <SignInDialog v-model="showSignInDialog" />
   </q-page>

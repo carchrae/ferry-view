@@ -590,8 +590,11 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   probably rolled up late after loading closed — and when the rider's own tag
   says the frame just before that run of cars was empty, that is the verdict
   (not full, late arrivals; 2026-10-18), otherwise the dialog asks the rider
-  to confirm (full, or late arrivals = it had room) and points them at that
-  frame; an empty last frame with an empty one before it means not full even
+  to confirm (full, or late arrivals = it had room), points them at that
+  frame, and offers the lineup camera — "no crosswalk" only ever means no
+  mark on record (the robot's detection can miss a crossing that happens
+  after the lineup capture stops, as on 2026-10-18 11:15), and a rider's
+  mark there turns the same terminal tags into full; an empty last frame with an empty one before it means not full even
   when no cars were seen first. Home-page past Bowen rows
   with frames but no fullness carry a "Was it full? Help tag it" nudge into the same
   dialog, and the per-sailing dialog shows one boxed frame per camera.
