@@ -65,14 +65,18 @@ const rewrite = args.includes('--rewrite-registry')
 // unchanged data re-stamps identical weights with a new time, and two such
 // twins exist in production (lineup-v3, terminal-cars-v5) — reported below,
 // never a reason to abort.
+// Object.is, not ===: a field absent on both sides (the lineup model has no
+// emptyThreshold) must compare equal, and NaN === NaN is false — which made
+// every lineup publish abort as "DIFFERS" on 2026-10-18.
+const sameNumber = (x, y) => Object.is(Number(x ?? NaN), Number(y ?? NaN))
 const sameModel = (a, b) =>
   Array.isArray(a?.weights) &&
   Array.isArray(b?.weights) &&
   a.weights.length === b.weights.length &&
   a.weights.every((w, i) => Number(w) === Number(b.weights[i])) &&
-  Number(a.bias ?? 0) === Number(b.bias ?? 0) &&
-  Number(a.threshold ?? NaN) === Number(b.threshold ?? NaN) &&
-  Number(a.emptyThreshold ?? NaN) === Number(b.emptyThreshold ?? NaN) &&
+  sameNumber(a.bias ?? 0, b.bias ?? 0) &&
+  sameNumber(a.threshold, b.threshold) &&
+  sameNumber(a.emptyThreshold, b.emptyThreshold) &&
   regionGeometry(a.regions) === regionGeometry(b.regions) &&
   maskGeometry(a.masks) === maskGeometry(b.masks)
 const HISTORY = join(dirname(fileURLToPath(import.meta.url)), 'models/history')
