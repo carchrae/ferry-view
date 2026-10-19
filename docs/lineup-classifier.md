@@ -680,6 +680,18 @@ the frame?* Its purpose is a one-way "the ferry left **not full**" signal:
   survives as `emptyThreshold` in the model JSON, but **UI-only**: it draws
   the grey "unsure" strips and steers the labelling dialog to the frames
   where a rider's answer is worth most.
+- **Re-run on the samples before shipping a rule or model change**
+  (Tom, 2026-10-19): `npm run terminal:replay` scores every archived frame
+  of every tagged To-HSB sailing through the deployed path
+  (`classifyTerminal` on the bytes, so extractor, feature set and band
+  members are what the server runs; per-frame scores cached per model
+  under `training-data/experiments/cache/`), applies both rules and prints
+  per-month coverage and wrong flags, each wrong flag with its frame shape.
+  It writes the run to `training-data/experiments/terminal-rules-replay.json`;
+  copy that aside before a change and pass it back with `--baseline <json>`
+  to list every sailing whose verdict moved. `--model <file>` replays
+  another model (e.g. one in `functions/models/history/`). Numbers that
+  drive a decision still go in a `docs/experiments/` write-up.
 - **Solid cars vs blips**: a cars frame only counts as loading (cars-first)
   when an adjacent frame is also cars. An isolated single-frame "cars"
   between empties is likelier a model false positive than a real queue: it
@@ -785,6 +797,7 @@ and nothing clears a stamp — see the one-way empty-gap rule above). Training:
 ```bash
 npm run lineup:export      # also downloads terminal frames + terminal-manifest.csv
 npm run terminal:train     # writes training-data/terminal-labeling.html
+npm run terminal:replay    # the current rules + bundled model over every tagged sailing (see below)
 # label frames on that page (click: cars / no cars), copy JSON →
 #   training-data/terminal-labels.json
 npm run lineup:export      # re-joins labels

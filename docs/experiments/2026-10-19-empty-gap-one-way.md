@@ -143,6 +143,11 @@ not-full; not full wins everywhere.
 
 ## Files
 
+- `scripts/replay-terminal-rules.mjs` (`npm run terminal:replay`) — the
+  standing re-run of the current rules over the tagged archive, added after
+  this experiment so the next rule or model change is checked the same way
+  (`--baseline` diffs two runs). The one-off script below keeps the old tail
+  rule inline for this comparison only.
 - `scripts/experiments/empty-gap-one-way.mjs`
 - `scripts/experiments/empty-gap-contact-sheets.mjs`
 - `docs/experiments/2026-10-19-empty-gap-one-way-results.json`

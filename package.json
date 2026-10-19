@@ -26,6 +26,7 @@
     "lineup:train": "node scripts/train-lineup-classifier.mjs",
     "lineup:docs": "less docs/lineup-classifier.md docs/training-data.md",
     "terminal:train": "node scripts/train-terminal-classifier.mjs",
+    "terminal:replay": "node scripts/replay-terminal-rules.mjs",
     "terminal:label": "node scripts/train-terminal-classifier.mjs --label-only",
     "terminal:review-claude": "node scripts/review-claude-labels.mjs",
     "terminal:apply-review": "node scripts/apply-label-review.mjs",
