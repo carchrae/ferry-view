@@ -2159,6 +2159,10 @@ const typicalStatus = computed(() => {
     })
   }
   const cap = e.lastCapacity
+  // Past rows carry a diffText key (even when empty); upcoming rows don't.
+  // A capacity report on an upcoming sailing (BC Ferries' "Full", a rider's
+  // tag) is about the boat loading now — it hasn't left yet.
+  const hasLeft = 'diffText' in e
   // Who said so is the icon beside the line (robot / rider), not words.
   // When we know WHEN it filled (automated fill events), say so — the
   // table's "Filled by" column, for the current sailing.
@@ -2169,14 +2173,14 @@ const typicalStatus = computed(() => {
       icon: 'directions_boat',
       color: 'deep-orange',
       source: e.capacitySource,
-      text: `Left full${filledTime ? ` — full by ${filledTime}` : ''}.`,
+      text: `${hasLeft ? 'Left full' : 'Full'}${filledTime ? ` — full by ${filledTime}` : ''}.`,
     })
   } else if (cap === 'Not Full') {
     lines.push({
       icon: 'directions_boat',
       color: 'positive',
       source: e.capacitySource,
-      text: 'Left with room.',
+      text: hasLeft ? 'Left with room.' : 'Has room.',
     })
   } else if (cap) {
     const n = parseInt(cap)
@@ -2184,7 +2188,9 @@ const typicalStatus = computed(() => {
       icon: 'directions_boat',
       color: 'grey-8',
       source: e.capacitySource,
-      text: isNaN(n) ? `Capacity: ${cap}.` : `Left about ${100 - n}% full.`,
+      text: isNaN(n)
+        ? `Capacity: ${cap}.`
+        : `${hasLeft ? 'Left about' : 'About'} ${100 - n}% full.`,
     })
   } else if (e.deckSpace) {
     lines.push({
