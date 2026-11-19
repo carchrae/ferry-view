@@ -37,9 +37,10 @@
 
   <!-- Cards: bordered tile with a fullness-colored left rail; time up top,
        one status line below with the fill / crosswalk time spelled out.
-       Upcoming cards put the "now" fact (fullness / crosswalk / type) on the
-       time line instead, so the typical-history hint gets the whole second
-       line; the fact clips before the lateness on its right does. -->
+       Upcoming cards with no lateness estimate put the "now" fact
+       (fullness / crosswalk / type) on the time line instead, so the
+       typical-history hint gets the whole second line; with an estimate it
+       stays on the second line, ahead of the hint (see factOnTop). -->
   <div v-else-if="design === 'cards'" :class="first ? '' : 'q-mt-xs'">
     <div class="sr-card row no-wrap cursor-pointer" @click="onOpen">
       <div class="sr-rail" :class="'bg-' + railColor"></div>
@@ -455,9 +456,12 @@ watch(
 
 // Upcoming cards carry the "now" fact on the time line (see template); past
 // cards keep it on the status line, where the fill time reads as the record
-// of what happened.
-const factOnTop = computed(() => hasNowFact.value && !isPast.value)
-const factBelow = computed(() => hasNowFact.value && isPast.value)
+// of what happened. An upcoming card with a lateness estimate also moves it
+// down, ahead of the hint: beside "~21..26m late" on a half-width card the
+// time line has no room left, and "Full at 3:41" clipped to "Full at …"
+// hides the one thing the reading is for.
+const factOnTop = computed(() => hasNowFact.value && !isPast.value && !late.value)
+const factBelow = computed(() => hasNowFact.value && !factOnTop.value)
 
 // The "now" fact — fullness, crosswalk, sailing type — as inline runs, so the
 // same markup can sit on either line. Returns a fragment.
